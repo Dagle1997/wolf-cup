@@ -65,11 +65,11 @@ development_status:
   # sub management, side games, auto-calc toggle, post-round correction + audit.
   # FRs: FR20–FR23, FR32, FR41(admin), FR45–FR53, FR56, FR63, FR64
   # ---------------------------------------------------------------------------
-  epic-2: backlog
+  epic-2: in-progress
 
   # Hono app structure, Drizzle ORM + better-sqlite3, SQLite schema,
   # drizzle-kit migrations, three-tier auth middleware stubs, health check.
-  2-1-api-foundation-database-schema: backlog
+  2-1-api-foundation-database-schema: done
 
   # Session auth for Jason + Josh (FR63): bcrypt passwords, httpOnly/Secure
   # session cookies, adminAuthMiddleware, admin user seeding.

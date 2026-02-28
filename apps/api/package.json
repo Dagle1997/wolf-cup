@@ -7,14 +7,25 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "dev": "node --watch dist/index.js",
-    "build": "tsc"
+    "build": "tsc",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
-    "@wolf-cup/engine": "workspace:*",
     "@hono/node-server": "^1.0.0",
-    "hono": "^4.0.0"
+    "@libsql/client": "^0.17.0",
+    "@wolf-cup/engine": "workspace:*",
+    "bcrypt": "^5.1.1",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.0.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.30.5",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.0"
   }
 }

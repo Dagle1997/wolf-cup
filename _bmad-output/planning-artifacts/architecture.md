@@ -225,7 +225,7 @@ any API or UI stories begin.
 
 ### Data Architecture
 
-**Database:** SQLite (better-sqlite3) + Drizzle ORM 0.45.1
+**Database:** SQLite (@libsql/client (Turso — Rust prebuilt, no MSVC required; replaces better-sqlite3)) + Drizzle ORM 0.45.1
 - Rationale: Zero operational overhead, single-process backend, perfect for ~25 users.
   SQLite file lives in a Docker volume — persists across container restarts.
 - Migration approach: drizzle-kit generate + drizzle-kit migrate; migration files committed to repo.
@@ -709,7 +709,7 @@ wolf-cup/
     │       │                               sub management (FR50-FR51), Harvey toggle (FR41)
     │       │
     │       └── db/
-    │           ├── index.ts            ← Drizzle client (better-sqlite3), singleton
+    │           ├── index.ts            ← Drizzle client (@libsql/client (Turso — Rust prebuilt, no MSVC required; replaces better-sqlite3)), singleton
     │           ├── schema.ts           ← all table definitions:
     │           │                           admins, sessions,
     │           │                           seasons, rounds, groups, players, round_players,
@@ -909,7 +909,7 @@ docker compose build && docker compose up -d   # local Docker test
 All technology choices are version-compatible and work together without conflicts:
 - Vite 7.3.1 + vite-plugin-pwa 1.2.0: compatible, standard integration
 - Hono 4.12.2 + @hono/node-server + TypeScript: native support
-- Drizzle ORM 0.45.1 + better-sqlite3: fully tested combination
+- Drizzle ORM 0.45.1 + @libsql/client (Turso — Rust prebuilt, no MSVC required; replaces better-sqlite3): fully tested combination
 - TanStack Router + TanStack Query + React 19: designed to work together
 - shadcn/ui + Tailwind CSS v4: compatible, officially supported
 - pnpm workspaces + Vitest: both work across monorepo packages
