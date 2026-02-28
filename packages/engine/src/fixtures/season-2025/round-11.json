@@ -1,0 +1,34 @@
+{
+  "round": 11,
+  "date": "2025-07-25",
+  "players": [
+    {
+      "name": "Jay Patterson",
+      "stableford": 38.0,
+      "money": 3.0,
+      "expectedHarveyStableford": 12.0,
+      "expectedHarveyMoney": 11.0
+    },
+    {
+      "name": "Scotty Pierson",
+      "stableford": 29.0,
+      "money": -3.0,
+      "expectedHarveyStableford": 10.0,
+      "expectedHarveyMoney": 10.0
+    },
+    {
+      "name": "Ben McGinnis",
+      "stableford": 31.0,
+      "money": 23.0,
+      "expectedHarveyStableford": 11.0,
+      "expectedHarveyMoney": 12.0
+    },
+    {
+      "name": "Chris Keaton",
+      "stableford": 21.0,
+      "money": -23.0,
+      "expectedHarveyStableford": 9.0,
+      "expectedHarveyMoney": 9.0
+    }
+  ]
+}

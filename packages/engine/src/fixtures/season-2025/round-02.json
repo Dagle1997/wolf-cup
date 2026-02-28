@@ -1,0 +1,90 @@
+{
+  "round": 2,
+  "date": "2025-05-09",
+  "players": [
+    {
+      "name": "Matt Jaquint",
+      "stableford": 29.0,
+      "money": -4.0,
+      "expectedHarveyStableford": 10.5,
+      "expectedHarveyMoney": 8.5
+    },
+    {
+      "name": "Jay Patterson",
+      "stableford": 23.0,
+      "money": 14.0,
+      "expectedHarveyStableford": 6.5,
+      "expectedHarveyMoney": 14.0
+    },
+    {
+      "name": "Matt White",
+      "stableford": 36.0,
+      "money": 18.0,
+      "expectedHarveyStableford": 15.0,
+      "expectedHarveyMoney": 16.0
+    },
+    {
+      "name": "Moses",
+      "stableford": 31.0,
+      "money": 15.0,
+      "expectedHarveyStableford": 12.0,
+      "expectedHarveyMoney": 15.0
+    },
+    {
+      "name": "Scotty Pierson",
+      "stableford": 33.0,
+      "money": -5.0,
+      "expectedHarveyStableford": 14.0,
+      "expectedHarveyMoney": 7.0
+    },
+    {
+      "name": "Chris McNeely",
+      "stableford": 25.0,
+      "money": -2.0,
+      "expectedHarveyStableford": 8.0,
+      "expectedHarveyMoney": 10.0
+    },
+    {
+      "name": "Mike Bonner",
+      "stableford": 26.0,
+      "money": -30.0,
+      "expectedHarveyStableford": 9.0,
+      "expectedHarveyMoney": 5.0
+    },
+    {
+      "name": "Ronnie A.",
+      "stableford": 40.0,
+      "money": 13.0,
+      "expectedHarveyStableford": 16.0,
+      "expectedHarveyMoney": 13.0
+    },
+    {
+      "name": "Tim Biller",
+      "stableford": 32.0,
+      "money": -4.0,
+      "expectedHarveyStableford": 13.0,
+      "expectedHarveyMoney": 8.5
+    },
+    {
+      "name": "Kyle Cox",
+      "stableford": 23.0,
+      "money": -23.0,
+      "expectedHarveyStableford": 6.5,
+      "expectedHarveyMoney": 6.0
+    },
+    {
+      "name": "Jeff Biederman",
+      "stableford": 29.0,
+      "money": 4.0,
+      "expectedHarveyStableford": 10.5,
+      "expectedHarveyMoney": 11.5
+    },
+    {
+      "name": "Chris Keaton",
+      "stableford": 20.0,
+      "money": 4.0,
+      "expectedHarveyStableford": 5.0,
+      "expectedHarveyMoney": 11.5
+    }
+  ]
+}

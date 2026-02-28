@@ -1,0 +1,62 @@
+{
+  "round": 14,
+  "date": "2025-08-15",
+  "players": [
+    {
+      "name": "Matt Jaquint",
+      "stableford": 33.0,
+      "money": -25.0,
+      "expectedHarveyStableford": 10.5,
+      "expectedHarveyMoney": 7.0
+    },
+    {
+      "name": "Jay Patterson",
+      "stableford": 39.0,
+      "money": 9.0,
+      "expectedHarveyStableford": 13.0,
+      "expectedHarveyMoney": 13.0
+    },
+    {
+      "name": "Matt White",
+      "stableford": 44.0,
+      "money": 15.0,
+      "expectedHarveyStableford": 14.0,
+      "expectedHarveyMoney": 14.0
+    },
+    {
+      "name": "Moses",
+      "stableford": 33.0,
+      "money": -1.0,
+      "expectedHarveyStableford": 10.5,
+      "expectedHarveyMoney": 9.5
+    },
+    {
+      "name": "Chris McNeely",
+      "stableford": 29.0,
+      "money": -1.0,
+      "expectedHarveyStableford": 8.0,
+      "expectedHarveyMoney": 9.5
+    },
+    {
+      "name": "Jeff Biederman",
+      "stableford": 32.0,
+      "money": 3.0,
+      "expectedHarveyStableford": 9.0,
+      "expectedHarveyMoney": 11.0
+    },
+    {
+      "name": "Chris Keaton",
+      "stableford": 17.0,
+      "money": -7.0,
+      "expectedHarveyStableford": 7.0,
+      "expectedHarveyMoney": 8.0
+    },
+    {
+      "name": "Steve Wellman",
+      "stableford": 37.0,
+      "money": 7.0,
+      "expectedHarveyStableford": 12.0,
+      "expectedHarveyMoney": 12.0
+    }
+  ]
+}

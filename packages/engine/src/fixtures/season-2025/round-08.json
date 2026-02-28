@@ -1,0 +1,90 @@
+{
+  "round": 8,
+  "date": "2025-07-04",
+  "players": [
+    {
+      "name": "Matt Jaquint",
+      "stableford": 40.0,
+      "money": 35.0,
+      "expectedHarveyStableford": 15.5,
+      "expectedHarveyMoney": 16.0
+    },
+    {
+      "name": "Jay Patterson",
+      "stableford": 37.0,
+      "money": 13.0,
+      "expectedHarveyStableford": 14.0,
+      "expectedHarveyMoney": 13.0
+    },
+    {
+      "name": "Matt White",
+      "stableford": 32.0,
+      "money": -9.0,
+      "expectedHarveyStableford": 8.5,
+      "expectedHarveyMoney": 7.0
+    },
+    {
+      "name": "Moses",
+      "stableford": 40.0,
+      "money": 17.0,
+      "expectedHarveyStableford": 15.5,
+      "expectedHarveyMoney": 14.0
+    },
+    {
+      "name": "Scotty Pierson",
+      "stableford": 33.0,
+      "money": 21.0,
+      "expectedHarveyStableford": 11.0,
+      "expectedHarveyMoney": 15.0
+    },
+    {
+      "name": "Josh Stoll",
+      "stableford": 32.0,
+      "money": -3.0,
+      "expectedHarveyStableford": 8.5,
+      "expectedHarveyMoney": 11.0
+    },
+    {
+      "name": "Chris McNeely",
+      "stableford": 34.0,
+      "money": 1.0,
+      "expectedHarveyStableford": 12.5,
+      "expectedHarveyMoney": 12.0
+    },
+    {
+      "name": "Ronnie A.",
+      "stableford": 32.0,
+      "money": -5.0,
+      "expectedHarveyStableford": 8.5,
+      "expectedHarveyMoney": 9.5
+    },
+    {
+      "name": "Tim Biller",
+      "stableford": 34.0,
+      "money": -5.0,
+      "expectedHarveyStableford": 12.5,
+      "expectedHarveyMoney": 9.5
+    },
+    {
+      "name": "Ben McGinnis",
+      "stableford": 32.0,
+      "money": -15.0,
+      "expectedHarveyStableford": 8.5,
+      "expectedHarveyMoney": 6.0
+    },
+    {
+      "name": "Kyle Cox",
+      "stableford": 30.0,
+      "money": -43.0,
+      "expectedHarveyStableford": 5.0,
+      "expectedHarveyMoney": 5.0
+    },
+    {
+      "name": "Jeff Biederman",
+      "stableford": 31.0,
+      "money": -7.0,
+      "expectedHarveyStableford": 6.0,
+      "expectedHarveyMoney": 8.0
+    }
+  ]
+}

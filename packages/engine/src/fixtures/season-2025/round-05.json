@@ -1,0 +1,118 @@
+{
+  "round": 5,
+  "date": "2025-06-13",
+  "players": [
+    {
+      "name": "Matt Jaquint",
+      "stableford": 36.0,
+      "money": 4.0,
+      "expectedHarveyStableford": 14.0,
+      "expectedHarveyMoney": 13.0
+    },
+    {
+      "name": "Jay Patterson",
+      "stableford": 33.0,
+      "money": 32.0,
+      "expectedHarveyStableford": 8.0,
+      "expectedHarveyMoney": 18.0
+    },
+    {
+      "name": "Matt White",
+      "stableford": 42.0,
+      "money": 17.0,
+      "expectedHarveyStableford": 18.0,
+      "expectedHarveyMoney": 16.5
+    },
+    {
+      "name": "Moses",
+      "stableford": 38.0,
+      "money": -3.0,
+      "expectedHarveyStableford": 16.0,
+      "expectedHarveyMoney": 10.5
+    },
+    {
+      "name": "Scotty Pierson",
+      "stableford": 31.0,
+      "money": -32.0,
+      "expectedHarveyStableford": 6.5,
+      "expectedHarveyMoney": 3.0
+    },
+    {
+      "name": "Josh Stoll",
+      "stableford": 36.0,
+      "money": -4.0,
+      "expectedHarveyStableford": 14.0,
+      "expectedHarveyMoney": 9.0
+    },
+    {
+      "name": "Chris McNeely",
+      "stableford": 34.0,
+      "money": 5.0,
+      "expectedHarveyStableford": 10.0,
+      "expectedHarveyMoney": 14.0
+    },
+    {
+      "name": "Mike Bonner",
+      "stableford": 34.0,
+      "money": -9.0,
+      "expectedHarveyStableford": 10.0,
+      "expectedHarveyMoney": 6.0
+    },
+    {
+      "name": "Ronnie A.",
+      "stableford": 31.0,
+      "money": -17.0,
+      "expectedHarveyStableford": 6.5,
+      "expectedHarveyMoney": 4.0
+    },
+    {
+      "name": "Tim Biller",
+      "stableford": 36.0,
+      "money": 17.0,
+      "expectedHarveyStableford": 14.0,
+      "expectedHarveyMoney": 16.5
+    },
+    {
+      "name": "Ben McGinnis",
+      "stableford": 34.0,
+      "money": 1.0,
+      "expectedHarveyStableford": 10.0,
+      "expectedHarveyMoney": 12.0
+    },
+    {
+      "name": "Kyle Cox",
+      "stableford": 26.0,
+      "money": -9.0,
+      "expectedHarveyStableford": 4.0,
+      "expectedHarveyMoney": 6.0
+    },
+    {
+      "name": "Jeff Biederman",
+      "stableford": 35.0,
+      "money": -3.0,
+      "expectedHarveyStableford": 12.0,
+      "expectedHarveyMoney": 10.5
+    },
+    {
+      "name": "Bobby Marshall",
+      "stableford": 19.0,
+      "money": -9.0,
+      "expectedHarveyStableford": 3.0,
+      "expectedHarveyMoney": 6.0
+    },
+    {
+      "name": "Sean Wilson",
+      "stableford": 29.0,
+      "money": -5.0,
+      "expectedHarveyStableford": 5.0,
+      "expectedHarveyMoney": 8.0
+    },
+    {
+      "name": "Glenn Yost",
+      "stableford": 39.0,
+      "money": 15.0,
+      "expectedHarveyStableford": 17.0,
+      "expectedHarveyMoney": 15.0
+    }
+  ]
+}

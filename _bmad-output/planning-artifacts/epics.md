@@ -78,6 +78,7 @@ FR60: Users can install the app to their iPhone home screen via Safari for full-
 FR61: The app is publicly accessible at wolf.dagle.cloud without authentication for all read-only views (leaderboard, standings, course info)
 FR62: Score entry for official rounds is restricted to users who have entered the current week's valid entry code
 FR63: Admin panel access is restricted to authorized admin users (Jason and Josh)
+FR64: Admin can edit per-hole gross scores, wolf partner decisions, and bonus inputs (greenie/polie) for any player in a finalized round; the system recalculates all affected net scores, Stableford points, money results, and YTD totals atomically; every edit is recorded in an immutable audit log with admin user ID, timestamp, round ID, hole number, player ID, field name, old value, and new value
 
 ### NonFunctional Requirements
 
@@ -109,6 +110,7 @@ NFR25: No third-party analytics or tracking scripts
 NFR26: Deploys as a standalone Docker container behind Traefik on the existing VPS — no dependency on other services
 NFR27: Deployment does not require downtime during non-round hours
 NFR28: Application logs must capture scoring calculation inputs and outputs to support post-round dispute resolution
+NFR29: Admin edit operations on finalized round data must be atomic — all recalculations succeed or none are persisted; partial updates are not acceptable
 
 ### Additional Requirements
 
@@ -180,7 +182,8 @@ FR26 → Epic 3 — Scorer records ball draw batting order
 FR27 → Epic 3 — Scorer enters gross scores per hole per player
 FR28 → Epic 3 — System calculates net score using handicap and stroke index
 FR29 → Epic 3 — Wolf assignment displayed to scorer per hole
-FR30 → Epic 3 — Scorer reviews and edits scores for any hole
+FR30 → Epic 3 — Scorer reviews and edits scores for any hole before round finalization
+FR64 → Epic 2 — Admin edits per-hole gross scores, wolf decisions, and bonus inputs on finalized rounds with full audit trail
 FR31 → Epic 3 — Offline score queue + automatic sync on reconnect
 FR32 → Epic 2 — Admin toggles auto-calculate money mode
 FR33 → Epic 3 — Scorer records wolf partner decision per hole
@@ -223,8 +226,8 @@ The mathematical core of the app — Stableford calculation, wolf money resoluti
 **Additional:** Monorepo scaffold (pnpm workspaces), CI pipeline (GitHub Actions), historical validation fixtures (17 rounds)
 
 ### Epic 2: League Administration — Roster, Rounds & Season Setup
-Jason can do everything needed to run the league: maintain the player roster, enter handicaps, create official and casual rounds with entry codes, configure the season, manage subs, handle rainouts, set the side game schedule, record side game results, toggle auto-calculate money and live Harvey settings. Full admin panel with session auth.
-**FRs covered:** FR20–FR23, FR32, FR41 (admin toggle), FR45–FR53, FR56, FR63
+Jason can do everything needed to run the league: maintain the player roster, enter handicaps, create official and casual rounds with entry codes, configure the season, manage subs, handle rainouts, set the side game schedule, record side game results, toggle auto-calculate money and live Harvey settings. Full admin panel with session auth. Includes post-round score correction with full audit trail.
+**FRs covered:** FR20–FR23, FR32, FR41 (admin toggle), FR45–FR53, FR56, FR63, FR64
 
 ### Epic 3: Live Score Entry & Real-Time Leaderboard
 Scorers enter gross scores hole-by-hole during a round — official (entry code) or casual (no code) — with wolf assignment displayed per hole, offline queuing on connectivity loss, and automatic sync on reconnect. All players and remote spectators watch a live leaderboard update every 5 seconds with "thru hole X" per group and a staleness indicator — no login required.
@@ -428,3 +431,46 @@ So that I can be certain the scoring math is correct before the first official 2
 **Given** any single fixture fails
 **When** CI runs
 **Then** the pipeline fails and no API or UI stories may begin until this story passes 100%
+
+---
+
+## Epic 2: League Administration — Roster, Rounds & Season Setup
+
+*(Full story breakdown to be created during Epic 2 sprint planning. Stories listed here as they are identified.)*
+
+### Story 2.x: Post-Round Score Correction with Audit Trail
+
+As an admin,
+I want to correct per-hole gross scores, wolf decisions, and bonus inputs for a finalized round,
+So that scoring errors caught during end-of-round review can be fixed without requiring the round to be voided and re-entered.
+
+**Context:**
+Groups retain a hand-written scorecard throughout the round. After round finalization, the admin compares the app totals to the card. If money doesn't net to $0 or a Stableford total doesn't match, the admin goes hole-by-hole to find and fix the discrepancy. Correctable fields are: gross score per player per hole, wolf partner decision, greenie recipients, and polie recipients.
+
+**Acceptance Criteria:**
+
+**Given** an admin is authenticated and a round has been finalized
+**When** the admin navigates to the round correction view
+**Then** they can select any group, any hole, and edit: gross score for any player, wolf partner decision, greenie inputs, polie inputs
+
+**Given** the admin submits a correction
+**When** the API processes it
+**Then** the system recalculates net scores → Stableford points → hole money → YTD totals atomically for the affected group
+**And** the zero-sum constraint is validated on the recalculated hole money before the write is committed
+**And** if validation fails, no data is persisted and the admin receives a clear error
+
+**Given** any correction is submitted
+**When** it is persisted
+**Then** an audit log entry is created containing: admin_user_id, timestamp (UTC), round_id, hole_number, player_id (where applicable), field_name, old_value, new_value
+**And** the audit log is immutable — entries cannot be edited or deleted through any UI
+
+**Given** an admin views the audit log for a round
+**When** the log is displayed
+**Then** all corrections for that round are shown in reverse-chronological order with admin name, timestamp, hole, field, and old → new values
+
+**Notes:**
+- Engine recalculation is atomic: one hole correction recalculates that hole for all 4 players in the group
+- Wolf decision change and bonus input change each trigger a full hole money recalculation
+- Gross score change triggers: net score recalc → Stableford recalc → money recalc (net scores feed money on non-skins holes via handicap strokes)
+- No UI restriction on number of corrections per round — admin may correct the same hole multiple times (each edit creates a new audit entry)
+- Audit log is read-only in the UI; no delete or edit capability for audit entries

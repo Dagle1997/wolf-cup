@@ -1,0 +1,106 @@
+{
+  "players": [
+    {
+      "name": "Matt Jaquint",
+      "roundsPlayed": 15,
+      "roundsDropped": 5,
+      "expectedSeasonTotal": 271.0
+    },
+    {
+      "name": "Jay Patterson",
+      "roundsPlayed": 14,
+      "roundsDropped": 4,
+      "expectedSeasonTotal": 266.5
+    },
+    {
+      "name": "Matt White",
+      "roundsPlayed": 13,
+      "roundsDropped": 3,
+      "expectedSeasonTotal": 250.0
+    },
+    {
+      "name": "Moses",
+      "roundsPlayed": 12,
+      "roundsDropped": 2,
+      "expectedSeasonTotal": 245.5
+    },
+    {
+      "name": "Scotty Pierson",
+      "roundsPlayed": 15,
+      "roundsDropped": 5,
+      "expectedSeasonTotal": 244.0
+    },
+    {
+      "name": "Josh Stoll",
+      "roundsPlayed": 12,
+      "roundsDropped": 2,
+      "expectedSeasonTotal": 234.5
+    },
+    {
+      "name": "Chris McNeely",
+      "roundsPlayed": 12,
+      "roundsDropped": 2,
+      "expectedSeasonTotal": 232.0
+    },
+    {
+      "name": "Mike Bonner",
+      "roundsPlayed": 10,
+      "roundsDropped": 0,
+      "expectedSeasonTotal": 228.5
+    },
+    {
+      "name": "Ronnie A.",
+      "roundsPlayed": 12,
+      "roundsDropped": 2,
+      "expectedSeasonTotal": 227.5
+    },
+    {
+      "name": "Tim Biller",
+      "roundsPlayed": 12,
+      "roundsDropped": 2,
+      "expectedSeasonTotal": 226.0
+    },
+    {
+      "name": "Jeff Madden",
+      "roundsPlayed": 10,
+      "roundsDropped": 0,
+      "expectedSeasonTotal": 213.0
+    },
+    {
+      "name": "Ben McGinnis",
+      "roundsPlayed": 10,
+      "roundsDropped": 0,
+      "expectedSeasonTotal": 205.5
+    },
+    {
+      "name": "Kyle Cox",
+      "roundsPlayed": 9,
+      "roundsDropped": 0,
+      "expectedSeasonTotal": 167.0
+    },
+    {
+      "name": "Jeff Biederman",
+      "roundsPlayed": 9,
+      "roundsDropped": 0,
+      "expectedSeasonTotal": 155.5
+    },
+    {
+      "name": "Chris Keaton",
+      "roundsPlayed": 11,
+      "roundsDropped": 1,
+      "expectedSeasonTotal": 131.5
+    },
+    {
+      "name": "Bobby Marshall",
+      "roundsPlayed": 6,
+      "roundsDropped": 0,
+      "expectedSeasonTotal": 123.0
+    },
+    {
+      "name": "Sean Wilson",
+      "roundsPlayed": 4,
+      "roundsDropped": 0,
+      "expectedSeasonTotal": 88.5
+    }
+  ]
+}
