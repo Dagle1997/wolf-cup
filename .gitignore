@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# SQLite database (runtime data, not source)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vite
+apps/web/.vite/
+
+# pnpm
+.pnpm-debug.log
+
+# Reference videos / large media (local only)
+reference/videos/
+
+# Claude Code local config (not source)
+.claude/
