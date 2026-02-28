@@ -1,0 +1,207 @@
+# generated: 2026-02-28
+# project: Wolf-Cup
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-02-28
+project: Wolf-Cup
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+
+  # ---------------------------------------------------------------------------
+  # Epic 1: Foundation & Verified Harvey Cup Scoring Engine
+  # Pure TypeScript engine: Stableford, wolf money, Harvey Cup points,
+  # historical data validation against all 2025 season rounds.
+  # ---------------------------------------------------------------------------
+  epic-1: done
+
+  1-1-monorepo-scaffold-ci-pipeline: done
+  1-2-course-data-wolf-hole-assignment-engine: done
+  1-3-stableford-scoring-engine: done
+  1-4-wolf-money-engine-per-hole-resolution: done
+  1-5-wolf-money-engine-bonus-modifiers: done
+  1-6-harvey-cup-points-engine: done
+  1-7-best-10-of-n-drop-score-playoff-multipliers: done
+  1-8-historical-data-validation-gate: done
+
+  epic-1-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic 2: League Administration — Roster, Rounds & Season Setup
+  # Admin panel (Jason + Josh only): roster, handicaps, rounds, season config,
+  # sub management, side games, auto-calc toggle, post-round correction + audit.
+  # FRs: FR20–FR23, FR32, FR41(admin), FR45–FR53, FR56, FR63, FR64
+  # ---------------------------------------------------------------------------
+  epic-2: backlog
+
+  # Hono app structure, Drizzle ORM + better-sqlite3, SQLite schema,
+  # drizzle-kit migrations, three-tier auth middleware stubs, health check.
+  2-1-api-foundation-database-schema: backlog
+
+  # Session auth for Jason + Josh (FR63): bcrypt passwords, httpOnly/Secure
+  # session cookies, adminAuthMiddleware, admin user seeding.
+  2-2-admin-authentication: backlog
+
+  # FR52: Player CRUD (name, GHIN number).
+  # FR53: Per-round handicap index entry and update.
+  2-3-league-roster-handicap-management: backlog
+
+  # FR20: Create official round with entry code.
+  # FR21: Create casual round (open, guests allowed).
+  # FR22: Cancel / mark round as rainout.
+  # FR23: Round type enforcement in data model.
+  # FR45: Season parameters (dates, round count, playoff format).
+  # FR46: Set weekly entry code per round.
+  # FR47: Set headcount and group assignments per round.
+  2-4-season-round-management: backlog
+
+  # FR50: Mark player as sub for a round (tracked separately from standings).
+  # FR51: Convert sub to full league member before playoff cutoff.
+  2-5-sub-player-management: backlog
+
+  # FR32: Auto-calculate money mode toggle per round.
+  # FR41 (admin side): Harvey live display toggle per season/round.
+  2-6-round-settings-auto-calculate-harvey-toggle: backlog
+
+  # FR48: Side game schedule per season; active side game per round.
+  # FR49: Record side game winner(s).
+  # FR56: Record manual side game result.
+  2-7-side-game-management: backlog
+
+  # FR64: Edit per-hole gross scores, wolf decisions, bonus inputs on finalized
+  # rounds; atomic recalculation with zero-sum validation; immutable audit log
+  # (admin_user_id, timestamp, round_id, hole_number, player_id, field, old→new).
+  2-8-post-round-score-correction-audit-trail: backlog
+
+  epic-2-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic 3: Live Score Entry & Real-Time Leaderboard
+  # Scorers enter hole-by-hole scores (official or casual), view wolf
+  # assignments, queue offline, sync on reconnect. Public live leaderboard
+  # polls every 5s with staleness indicator.
+  # FRs: FR24–FR31, FR33–FR35, FR36–FR41(display), FR54, FR55, FR61–FR62
+  # ---------------------------------------------------------------------------
+  epic-3: backlog
+
+  # FR61: Public app at wolf.dagle.cloud (no auth for read-only views).
+  # Vite + React + TanStack Router scaffold, shadcn/ui + Tailwind v4,
+  # mobile-first shell, TanStack Query setup.
+  3-1-react-app-shell-public-routes: backlog
+
+  # FR24: Scorer initiates official round by entering weekly entry code (FR62).
+  # FR25: Scorer initiates casual round without a code.
+  # entryCodeMiddleware validation on score entry routes.
+  3-2-entry-code-round-initiation: backlog
+
+  # FR26: Scorer records ball draw batting order for their group.
+  # FR29: Wolf assignment displayed to scorer per hole (deterministic from engine).
+  3-3-ball-draw-wolf-assignment-display: backlog
+
+  # FR27: Gross score entry per player per hole.
+  # FR28: Net score calculation (handicap index + stroke index).
+  # FR30: Review and edit any hole before round finalization.
+  3-4-per-hole-score-entry: backlog
+
+  # FR33: Wolf partner decision per hole (alone or partner).
+  # FR34: Greenie recording on par-3 holes.
+  # FR35: Polie recording on any hole.
+  3-5-wolf-decisions-bonus-inputs: backlog
+
+  # FR54: Casual round organizer adds guest players by name for a single round.
+  3-6-guest-players-casual-rounds: backlog
+
+  # FR31: IndexedDB offline queue via `idb`; sequential drain by hole number
+  # on reconnect; 100% data preservation with zero loss.
+  3-7-offline-queue-sync: backlog
+
+  # FR36–FR40: Live leaderboard (5s polling, "thru hole X", staleness indicator,
+  # pull-to-refresh). FR41 (display): Harvey toggle visible when enabled.
+  # FR55: Active side game name and format displayed.
+  3-8-live-leaderboard-side-game-display: backlog
+
+  epic-3-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic 4: Season Standings & Year-to-Date Rankings
+  # Any user views full YTD Harvey Cup standings with drop score,
+  # sub separation, and playoff eligibility (top-8 cutoff).
+  # FRs: FR42–FR44
+  # ---------------------------------------------------------------------------
+  epic-4: backlog
+
+  # FR42: YTD standings — Harvey Cup totals (Stableford + money), rounds
+  # played, current best-10 drop score.
+  # FR43: Sub player results in a section separate from full member standings.
+  # FR44: Playoff-eligible players displayed (top-8 after regular season).
+  4-1-season-standings-playoff-eligibility: backlog
+
+  epic-4-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic 5: Player Statistics & Wolf Records
+  # Personal stat summaries: wolf record, net birdies/eagles, greenies,
+  # polies, biggest money win/loss — persistent across rounds and seasons.
+  # FRs: FR57–FR59
+  # ---------------------------------------------------------------------------
+  epic-5: backlog
+
+  # FR57: Record wolf call decisions (alone vs. partner, win/loss) per hole.
+  # FR58: Player stat summaries (wolf record, birdies, greenies, polies,
+  # biggest money win/loss).
+  # FR59: Persistent statistical data across rounds and seasons.
+  5-1-wolf-call-recording-player-statistics: backlog
+
+  epic-5-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic 6: PWA Installation & Production Deployment
+  # iPhone home screen install via Safari; Docker Compose deploy to
+  # wolf.dagle.cloud behind existing Traefik/Docker VPS.
+  # FRs: FR60 + deployment additional requirements
+  # ---------------------------------------------------------------------------
+  epic-6: backlog
+
+  # FR60: vite-plugin-pwa with manifest (icon, display:standalone, theme_color)
+  # for iPhone home screen install via Safari; service worker app shell cache.
+  6-1-pwa-configuration-iphone-install: backlog
+
+  # Two-container Docker Compose: api (Hono+Node.js) + web (nginx+Vite build).
+  # SQLite volume (./data/wolf-cup.db), deploy.sh for deliberate SSH deploy,
+  # Traefik TLS routing, structured JSON logging.
+  6-2-docker-compose-production-deployment: backlog
+
+  epic-6-retrospective: optional
