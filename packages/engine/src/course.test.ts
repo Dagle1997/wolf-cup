@@ -35,12 +35,28 @@ describe('getCourseHole', () => {
     }
   });
 
+  describe('black tee yardages for all 18 holes', () => {
+    const expectedBlack: Record<number, number> = {
+      1: 558, 2: 444, 3: 339, 4: 358, 5: 423,
+      6: 148, 7: 222, 8: 525, 9: 387,
+      10: 352, 11: 561, 12: 165, 13: 378, 14: 361,
+      15: 191, 16: 390, 17: 341, 18: 380,
+    };
+
+    for (const [holeStr, yardage] of Object.entries(expectedBlack)) {
+      const hole = Number(holeStr);
+      it(`hole ${hole} black: ${yardage} yards`, () => {
+        expect(getCourseHole(hole).yardages.black).toBe(yardage);
+      });
+    }
+  });
+
   describe('blue tee yardages for all 18 holes', () => {
     const expectedBlue: Record<number, number> = {
-      1: 567, 2: 444, 3: 328, 4: 358, 5: 414,
-      6: 148, 7: 222, 8: 510, 9: 346,
-      10: 356, 11: 566, 12: 159, 13: 383, 14: 357,
-      15: 176, 16: 396, 17: 345, 18: 380,
+      1: 543, 2: 396, 3: 325, 4: 353, 5: 409,
+      6: 135, 7: 201, 8: 515, 9: 331,
+      10: 344, 11: 547, 12: 156, 13: 365, 14: 341,
+      15: 167, 16: 381, 17: 334, 18: 366,
     };
 
     for (const [holeStr, yardage] of Object.entries(expectedBlue)) {
@@ -51,10 +67,26 @@ describe('getCourseHole', () => {
     }
   });
 
+  describe('white tee yardages for all 18 holes', () => {
+    const expectedWhite: Record<number, number> = {
+      1: 497, 2: 396, 3: 325, 4: 276, 5: 402,
+      6: 135, 7: 188, 8: 499, 9: 331,
+      10: 344, 11: 474, 12: 156, 13: 365, 14: 309,
+      15: 140, 16: 328, 17: 296, 18: 334,
+    };
+
+    for (const [holeStr, yardage] of Object.entries(expectedWhite)) {
+      const hole = Number(holeStr);
+      it(`hole ${hole} white: ${yardage} yards`, () => {
+        expect(getCourseHole(hole).yardages.white).toBe(yardage);
+      });
+    }
+  });
+
   describe('all tee yardages for hole 1', () => {
-    it('hole 1 yardages: blue 567, white 548, gold 508, red 466', () => {
+    it('hole 1 yardages: black 558, blue 543, white 497', () => {
       const h = getCourseHole(1);
-      expect(h.yardages).toEqual({ blue: 567, white: 548, gold: 508, red: 466 });
+      expect(h.yardages).toEqual({ black: 558, blue: 543, white: 497 });
     });
   });
 
@@ -143,13 +175,18 @@ describe('getAllCourseHoles', () => {
     }
   });
 
-  it('blue total yardage is 6455', () => {
-    const total = getAllCourseHoles().reduce((sum, h) => sum + h.yardages.blue, 0);
-    expect(total).toBe(6455);
+  it('black total yardage is 6523', () => {
+    const total = getAllCourseHoles().reduce((sum, h) => sum + h.yardages.black, 0);
+    expect(total).toBe(6523);
   });
 
-  it('white total yardage is 6062', () => {
+  it('blue total yardage is 6209', () => {
+    const total = getAllCourseHoles().reduce((sum, h) => sum + h.yardages.blue, 0);
+    expect(total).toBe(6209);
+  });
+
+  it('white total yardage is 5795', () => {
     const total = getAllCourseHoles().reduce((sum, h) => sum + h.yardages.white, 0);
-    expect(total).toBe(6062);
+    expect(total).toBe(5795);
   });
 });

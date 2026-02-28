@@ -22,12 +22,11 @@ export type WolfHoleAssignment = {
 /** Combined hole assignment type */
 export type HoleAssignment = SkinsHoleAssignment | WolfHoleAssignment;
 
-/** Tee yardages available at Guyan G&CC */
+/** Tee yardages available at Guyan G&CC (Wolf Cup rotation: black → blue → white) */
 export type TeeYardages = {
+  readonly black: number;
   readonly blue: number;
   readonly white: number;
-  readonly gold: number;
-  readonly red: number;
 };
 
 /** Full data for one hole at Guyan G&CC */

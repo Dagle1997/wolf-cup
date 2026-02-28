@@ -4,33 +4,31 @@ import { InvalidHoleError } from './types.js';
 /**
  * Guyan Golf & Country Club — Huntington, WV
  *
- * Course ratings:
- *   Blue  71.2 / 126  (6,455 yds)
- *   White 69.3 / 122  (6,062 yds)
- *   Gold  66.5 / 113  (5,602 yds)
- *   Red   71.8 / 123  (4,942 yds)
+ * Source: Wolf Cup physical scorecard (authoritative)
+ * Weekly tee rotation: black → blue → white → repeat
  *
  * Total par: 71 (36 out / 35 in)
+ * Black: 6,523 yds  Blue: 6,209 yds  White: 5,795 yds
  */
 const COURSE_DATA: CourseHole[] = [
-  { hole:  1, par: 5, strokeIndex:  3, yardages: { blue: 567, white: 548, gold: 508, red: 466 } },
-  { hole:  2, par: 4, strokeIndex:  1, yardages: { blue: 444, white: 382, gold: 357, red: 311 } },
-  { hole:  3, par: 4, strokeIndex: 13, yardages: { blue: 328, white: 317, gold: 303, red: 271 } },
-  { hole:  4, par: 4, strokeIndex:  5, yardages: { blue: 358, white: 351, gold: 325, red: 289 } },
-  { hole:  5, par: 4, strokeIndex:  9, yardages: { blue: 414, white: 401, gold: 381, red: 347 } },
-  { hole:  6, par: 3, strokeIndex: 17, yardages: { blue: 148, white: 135, gold: 118, red:  95 } },
-  { hole:  7, par: 3, strokeIndex: 15, yardages: { blue: 222, white: 197, gold: 171, red: 128 } },
-  { hole:  8, par: 5, strokeIndex:  7, yardages: { blue: 510, white: 488, gold: 461, red: 412 } },
-  { hole:  9, par: 4, strokeIndex: 11, yardages: { blue: 346, white: 311, gold: 289, red: 251 } },
-  { hole: 10, par: 4, strokeIndex:  8, yardages: { blue: 356, white: 344, gold: 315, red: 280 } },
-  { hole: 11, par: 5, strokeIndex:  2, yardages: { blue: 566, white: 543, gold: 508, red: 459 } },
-  { hole: 12, par: 3, strokeIndex: 18, yardages: { blue: 159, white: 147, gold: 133, red: 111 } },
-  { hole: 13, par: 4, strokeIndex:  6, yardages: { blue: 383, white: 357, gold: 329, red: 285 } },
-  { hole: 14, par: 4, strokeIndex: 10, yardages: { blue: 357, white: 304, gold: 279, red: 246 } },
-  { hole: 15, par: 3, strokeIndex: 16, yardages: { blue: 176, white: 151, gold: 126, red: 102 } },
-  { hole: 16, par: 4, strokeIndex:  4, yardages: { blue: 396, white: 386, gold: 352, red: 312 } },
-  { hole: 17, par: 4, strokeIndex: 14, yardages: { blue: 345, white: 334, gold: 309, red: 275 } },
-  { hole: 18, par: 4, strokeIndex: 12, yardages: { blue: 380, white: 366, gold: 338, red: 302 } },
+  { hole:  1, par: 5, strokeIndex:  3, yardages: { black: 558, blue: 543, white: 497 } },
+  { hole:  2, par: 4, strokeIndex:  1, yardages: { black: 444, blue: 396, white: 396 } },
+  { hole:  3, par: 4, strokeIndex: 13, yardages: { black: 339, blue: 325, white: 325 } },
+  { hole:  4, par: 4, strokeIndex:  5, yardages: { black: 358, blue: 353, white: 276 } },
+  { hole:  5, par: 4, strokeIndex:  9, yardages: { black: 423, blue: 409, white: 402 } },
+  { hole:  6, par: 3, strokeIndex: 17, yardages: { black: 148, blue: 135, white: 135 } },
+  { hole:  7, par: 3, strokeIndex: 15, yardages: { black: 222, blue: 201, white: 188 } },
+  { hole:  8, par: 5, strokeIndex:  7, yardages: { black: 525, blue: 515, white: 499 } },
+  { hole:  9, par: 4, strokeIndex: 11, yardages: { black: 387, blue: 331, white: 331 } },
+  { hole: 10, par: 4, strokeIndex:  8, yardages: { black: 352, blue: 344, white: 344 } },
+  { hole: 11, par: 5, strokeIndex:  2, yardages: { black: 561, blue: 547, white: 474 } },
+  { hole: 12, par: 3, strokeIndex: 18, yardages: { black: 165, blue: 156, white: 156 } },
+  { hole: 13, par: 4, strokeIndex:  6, yardages: { black: 378, blue: 365, white: 365 } },
+  { hole: 14, par: 4, strokeIndex: 10, yardages: { black: 361, blue: 341, white: 309 } },
+  { hole: 15, par: 3, strokeIndex: 16, yardages: { black: 191, blue: 167, white: 140 } },
+  { hole: 16, par: 4, strokeIndex:  4, yardages: { black: 390, blue: 381, white: 328 } },
+  { hole: 17, par: 4, strokeIndex: 14, yardages: { black: 341, blue: 334, white: 296 } },
+  { hole: 18, par: 4, strokeIndex: 12, yardages: { black: 380, blue: 366, white: 334 } },
 ];
 
 // O(1) lookup map — avoids noUncheckedIndexedAccess issues with array indexing
@@ -58,7 +56,7 @@ export function getCourseHole(holeNumber: number): CourseHole {
 
 /**
  * Returns all 18 holes in order (hole 1 first, hole 18 last).
- * Readonly — the underlying array is not exposed.
+ * Returns a shallow copy — internal data is not exposed.
  */
 export function getAllCourseHoles(): readonly CourseHole[] {
   return [...COURSE_DATA];
