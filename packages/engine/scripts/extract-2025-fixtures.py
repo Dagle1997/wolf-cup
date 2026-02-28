@@ -175,7 +175,7 @@ def extract_rounds(cell_map: dict, players: list[dict]) -> list[dict]:
 
             # Stableford score in input_col / harvey row
             stableford_raw = cell_map.get((hr, input_col))
-            if stableford_raw is None or stableford_raw == "" or stableford_raw == 0:
+            if stableford_raw is None or stableford_raw == "":
                 continue  # Player did not participate in this round
 
             stableford = float(stableford_raw)

@@ -1,6 +1,6 @@
 # Story 1.8: Historical Data Validation Gate
 
-Status: review
+Status: done
 
 ## Story
 
@@ -12,9 +12,9 @@ So that I can be certain the Harvey Cup scoring math is correct before the first
 
 1. **Given** the 2025 season Excel at `reference/scorecards/Wolf Cup 2025 Final Sheet Season Ended.xlsm`
    **When** the one-time extraction script is run
-   **Then** it produces 15 JSON fixture files in `packages/engine/src/fixtures/season-2025/`
+   **Then** it produces 16 JSON fixture files in `packages/engine/src/fixtures/season-2025/` (rounds 1–15 + round 16 makeup)
    **And** each fixture contains per-player Stableford scores, money balances, and the Excel-calculated Harvey Cup points for that round
-   **And** a `season-standings.json` file captures each player's expected season totals (for drop-score validation)
+   **And** a `season-standings.json` file captures each player's expected combined season totals (for drop-score validation)
 
 2. **Given** all 15 fixture files exist
    **When** `pnpm --filter @wolf-cup/engine exec vitest run` runs `season-2025.test.ts`
@@ -37,39 +37,39 @@ So that I can be certain the Harvey Cup scoring math is correct before the first
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Map Excel Standings sheet structure and write extraction script (AC: 1)
-  - [ ] 1.1 Read `xl/worksheets/sheet2.xml` from the xlsm zip with full cell references (e.g. `F5`, `G6`) to map exact column positions for Score, Harvey, Money, H Rank, M Rank per round
-  - [ ] 1.2 Map which rows belong to which player (3 rows per player: stableford score row, harvey points row, cash row)
-  - [ ] 1.3 Identify round column offsets (5 columns per round: Score, Harvey, Money, H Rank, M Rank)
-  - [ ] 1.4 Write extraction script `packages/engine/scripts/extract-2025-fixtures.ts` using Node.js built-ins (`fs`, `zlib`) + `fast-xml-parser` to parse the ZIP/XML
-  - [ ] 1.5 Script outputs `packages/engine/src/fixtures/season-2025/round-01.json` through `round-15.json`
-  - [ ] 1.6 Script outputs `packages/engine/src/fixtures/season-2025/season-standings.json`
-  - [ ] 1.7 Run extraction script, manually verify 2–3 known values against the open Excel (e.g. Pierson round 1 Stableford=35, Harvey=?)
-  - [ ] 1.8 Commit generated fixture JSON files
+- [x] Task 1: Map Excel Standings sheet structure and write extraction script (AC: 1)
+  - [x] 1.1 Read `xl/worksheets/sheet2.xml` from the xlsm zip to map exact column positions for Score, Harvey, Money per round
+  - [x] 1.2 Map which rows belong to which player (3 rows per player: stableford row, harvey row, cash row) by E-column value
+  - [x] 1.3 Identify round column pairs (ODD=input, EVEN=calc) — CS/CT through DZ (18 slots; round 0 and 17 skipped as empty)
+  - [x] 1.4 Write extraction script `packages/engine/scripts/extract-2025-fixtures.py` (Python 3, stdlib only — zipfile + xml.etree.ElementTree; no npm deps)
+  - [x] 1.5 Script outputs `round-01.json` through `round-16.json` (16 rounds including makeup DY/DZ)
+  - [x] 1.6 Script outputs `packages/engine/src/fixtures/season-2025/season-standings.json`
+  - [x] 1.7 Verified multiple rounds manually; confirmed Harvey bonus (+8/+6/+4/+2 per group count) and combined-drops formula
+  - [x] 1.8 Committed all 16 generated fixture JSON files
 
-- [ ] Task 2: Define fixture TypeScript types (AC: 1–5)
-  - [ ] 2.1 Create `packages/engine/src/fixtures/season-2025/fixture-types.ts` with:
+- [x] Task 2: Define fixture TypeScript types (AC: 1–5)
+  - [x] 2.1 Create `packages/engine/src/fixtures/season-2025/fixture-types.ts` with:
     - `PlayerRoundFixture`: `{ name: string; stableford: number; money: number; expectedHarveyStableford: number; expectedHarveyMoney: number; }`
     - `RoundFixture`: `{ round: number; date: string; players: readonly PlayerRoundFixture[]; }`
-    - `PlayerSeasonStandings`: `{ name: string; roundsPlayed: number; roundsDropped: number; expectedSeasonStableford: number; expectedSeasonMoney: number; }`
+    - `PlayerSeasonStandings`: `{ name: string; roundsPlayed: number; roundsDropped: number; expectedSeasonTotal: number; }` ← combined total (Excel uses combined drops, not per-category)
     - `SeasonStandings`: `{ players: readonly PlayerSeasonStandings[]; }`
 
-- [ ] Task 3: Write validation test suite (AC: 2–5)
-  - [ ] 3.1 Create `packages/engine/src/season-2025.test.ts`
-  - [ ] 3.2 Load all 15 round fixtures from JSON; for each round: build `HarveyRoundInput[]` from stableford+money, call `calculateHarveyPoints`, assert `stablefordPoints` and `moneyPoints` match expected (tolerance: ±0.01 for float rounding)
-  - [ ] 3.3 Load `season-standings.json`; for each player: collect their `HarveyRoundResult[]` across all rounds they played, call `calculateSeasonTotal`, assert season stableford and money totals match expected
-  - [ ] 3.4 On failure, throw with diagnostic: `Round ${round} (${date}): ${playerName} stablefordPoints — engine: ${actual}, expected: ${expected}`
-  - [ ] 3.5 Verify sum invariants hold for every round: `sumOf(stablefordPoints) === N*(N+1)/2` and same for money (validates no data corruption in fixtures)
+- [x] Task 3: Write validation test suite (AC: 2–5)
+  - [x] 3.1 Create `packages/engine/src/season-2025.test.ts` (uses `import.meta.glob` — no node:fs)
+  - [x] 3.2 Load all 16 round fixtures; for each round: build `HarveyRoundInput[]`, call `calculateHarveyPoints` with bonus, assert `stablefordPoints` and `moneyPoints` match expected exactly (`toBe` — all values are 0.5 multiples)
+  - [x] 3.3 Load `season-standings.json`; for each player: collect `HarveyRoundResult[]`, call `calculateSeasonTotal`, assert `stableford + money === expectedSeasonTotal`
+  - [x] 3.4 On failure, diagnostic message identifies: round number, date, player name, engine value vs expected
+  - [x] 3.5 Sum invariant check per round: `sumOf(stablefordPoints) === N*(N+1)/2 + N*bonus` (exact `toBe`)
 
-- [ ] Task 4: Add `fast-xml-parser` dev dependency and extraction script runner (AC: 1)
-  - [ ] 4.1 `pnpm --filter @wolf-cup/engine add -D fast-xml-parser` (for extraction script only; not used in production engine)
-  - [ ] 4.2 Add `"extract-fixtures": "tsx scripts/extract-2025-fixtures.ts"` script to `packages/engine/package.json`
-  - [ ] 4.3 Ensure fixtures directory is committed (not gitignored)
+- [x] Task 4: Extraction dependencies (AC: 1) — Python approach used; no npm deps added
+  - [x] 4.1 N/A — Python stdlib used instead of `fast-xml-parser`; no `pnpm add` needed
+  - [x] 4.2 N/A — Script run directly via `python3 packages/engine/scripts/extract-2025-fixtures.py`
+  - [x] 4.3 Fixtures directory committed (not gitignored)
 
-- [ ] Task 5: Run full suite and confirm CI gate (AC: 4)
-  - [ ] 5.1 `pnpm --filter @wolf-cup/engine exec vitest run` — all tests pass (393 previous + 15+ new fixture tests)
-  - [ ] 5.2 `pnpm --filter @wolf-cup/engine typecheck` — zero errors
-  - [ ] 5.3 `pnpm -r lint` — zero warnings
+- [x] Task 5: Run full suite and confirm CI gate (AC: 4)
+  - [x] 5.1 All 426 tests pass (33 new season-2025 tests + 393 existing)
+  - [x] 5.2 `pnpm --filter @wolf-cup/engine typecheck` — zero errors
+  - [x] 5.3 `pnpm -r lint` — zero warnings
 
 ## Dev Notes
 
@@ -260,6 +260,31 @@ claude-sonnet-4-6
 
 ### Debug Log References
 
+- Python extraction script used instead of TypeScript — no npm deps added; stdout logged WARN for empty slots
+- Harvey bonus discovered: VLOOKUP(N/4, {1:8,2:6,3:4,4:2,5:0}) — only exact multiples of 4 players
+- Season total formula: Excel `LARGE($G6:$CN6, 1..10)` = top-10 COMBINED (stab+money) Harvey per round, NOT independent per-category
+- Makeup round (DY/DZ) discovered during Jaquint season total debugging — 12 players played, included as round 16
+- `calculateSeasonTotal` changed to combined-drops; 2 harvey.test.ts tests updated accordingly
+- `validateHarveyTotal` extended with `bonusPerPlayer` parameter; backward-compatible default=0
+- `vitest-globals.d.ts` created to provide `import.meta.glob` types without `@types/node` or `vite/client`
+- Windows path: used `import.meta.glob` instead of `node:fs`+`fileURLToPath` to avoid drive-letter doubling issue
+
 ### Completion Notes List
 
+- 16 round fixtures generated (rounds 1–15 + round 16 makeup at DY/DZ columns), not 15 as originally scoped
+- All player counts are exact multiples of 4 (4, 8, 12, or 16) — bonus system applies cleanly to all rounds
+- `PlayerSeasonStandings.expectedSeasonTotal` is a single combined field (not separate stableford/money) — mirrors how Excel stores and validates the season total (combined top-10 drops)
+- Harvey point assertions changed from `toBeCloseTo` to `toBe` — all valid Harvey values are 0.5 multiples; exact comparison is correct and more rigorous
+- Sum invariant assertions also use `toBe` — engine's `validateHarveyTotal` already guarantees exact equality before assertions run
+
 ### File List
+
+- `packages/engine/scripts/extract-2025-fixtures.py` — new (one-time Python extraction script)
+- `packages/engine/src/fixtures/season-2025/fixture-types.ts` — new
+- `packages/engine/src/fixtures/season-2025/round-01.json` through `round-16.json` — new (16 files)
+- `packages/engine/src/fixtures/season-2025/season-standings.json` — new
+- `packages/engine/src/season-2025.test.ts` — new
+- `packages/engine/src/vitest-globals.d.ts` — new
+- `packages/engine/src/harvey.ts` — modified (bonusPerPlayer param on calculateHarveyPoints; combined-drops in calculateSeasonTotal)
+- `packages/engine/src/validation.ts` — modified (bonusPerPlayer param on validateHarveyTotal)
+- `packages/engine/src/harvey.test.ts` — modified (2 tests updated for combined-drops behavior)

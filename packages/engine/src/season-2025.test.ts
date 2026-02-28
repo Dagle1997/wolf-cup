@@ -20,7 +20,9 @@ const roundFiles: RoundFixture[] = Object.entries(roundGlob)
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([, mod]) => mod.default);
 
-const standings: SeasonStandings = Object.values(standingsGlob)[0]!.default;
+const standingsEntry = Object.values(standingsGlob)[0];
+if (!standingsEntry) throw new Error('season-standings.json not found via import.meta.glob');
+const standings: SeasonStandings = standingsEntry.default;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,12 +59,12 @@ describe('2025 season Harvey Cup — per-round validation', () => {
         expect(
           result.stablefordPoints,
           `Round ${fixture.round} (${fixture.date}): ${player.name} stablefordPoints — engine: ${result.stablefordPoints}, expected: ${player.expectedHarveyStableford}`,
-        ).toBeCloseTo(player.expectedHarveyStableford, 1);
+        ).toBe(player.expectedHarveyStableford);
 
         expect(
           result.moneyPoints,
           `Round ${fixture.round} (${fixture.date}): ${player.name} moneyPoints — engine: ${result.moneyPoints}, expected: ${player.expectedHarveyMoney}`,
-        ).toBeCloseTo(player.expectedHarveyMoney, 1);
+        ).toBe(player.expectedHarveyMoney);
       }
     });
 
@@ -76,8 +78,8 @@ describe('2025 season Harvey Cup — per-round validation', () => {
       const stablefordSum = results.reduce((acc, r) => acc + r.stablefordPoints, 0);
       const moneySum = results.reduce((acc, r) => acc + r.moneyPoints, 0);
 
-      expect(stablefordSum).toBeCloseTo(expectedSum, 1);
-      expect(moneySum).toBeCloseTo(expectedSum, 1);
+      expect(stablefordSum).toBe(expectedSum);
+      expect(moneySum).toBe(expectedSum);
     });
   }
 });
