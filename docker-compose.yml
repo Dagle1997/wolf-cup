@@ -35,21 +35,16 @@ services:
         condition: service_started
     networks:
       - internal
-      - traefik
+      - n8n_default
     labels:
       - "traefik.enable=true"
       # HTTPS router
       - "traefik.http.routers.wolf-cup.rule=Host(`wolf.dagle.cloud`)"
       - "traefik.http.routers.wolf-cup.entrypoints=websecure"
       - "traefik.http.routers.wolf-cup.tls=true"
-      - "traefik.http.routers.wolf-cup.tls.certresolver=le"
+      - "traefik.http.routers.wolf-cup.tls.certresolver=mytlschallenge"
       - "traefik.http.services.wolf-cup.loadbalancer.server.port=80"
-      # HTTP → HTTPS redirect (remove if Traefik global redirect is already configured)
-      - "traefik.http.routers.wolf-cup-http.rule=Host(`wolf.dagle.cloud`)"
-      - "traefik.http.routers.wolf-cup-http.entrypoints=web"
-      - "traefik.http.routers.wolf-cup-http.middlewares=wolf-cup-redirect"
-      - "traefik.http.middlewares.wolf-cup-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.wolf-cup-redirect.redirectscheme.permanent=true"
+      # HTTP → HTTPS handled globally by Traefik entrypoint config
 
 volumes:
   sqlite_data:
@@ -57,5 +52,5 @@ volumes:
 networks:
   internal:
     driver: bridge
-  traefik:
+  n8n_default:
     external: true
