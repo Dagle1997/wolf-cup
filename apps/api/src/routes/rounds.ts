@@ -265,59 +265,62 @@ app.post('/rounds/practice', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
   }
-  const { players: playerInputs } = parsed.data;
+  const { groupCount } = parsed.data;
 
-  // Use the most recently created season so practice rounds have a valid FK
-  let latestSeason: { id: number } | undefined;
+  const today = new Date().toISOString().slice(0, 10);
+  const now = Date.now();
+
+  // Use the most recently created season; auto-create a minimal one if none exists
+  let seasonId: number;
   try {
-    latestSeason = await db
+    const latestSeason = await db
       .select({ id: seasons.id })
       .from(seasons)
       .orderBy(desc(seasons.id))
       .limit(1)
       .get();
+
+    if (latestSeason) {
+      seasonId = latestSeason.id;
+    } else {
+      const [newSeason] = await db
+        .insert(seasons)
+        .values({
+          name: 'Practice',
+          startDate: today,
+          endDate: today,
+          totalRounds: 0,
+          playoffFormat: 'none',
+          harveyLiveEnabled: 0,
+          createdAt: now,
+        })
+        .returning({ id: seasons.id });
+      if (!newSeason) throw new Error('Season insert failed');
+      seasonId = newSeason.id;
+    }
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
-  if (!latestSeason) {
-    return c.json({ error: 'No season configured', code: 'NO_SEASON' }, 422);
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const now = Date.now();
 
   try {
     const result = await db.transaction(async (tx) => {
       const [newRound] = await tx
         .insert(rounds)
-        .values({ seasonId: latestSeason!.id, type: 'casual', status: 'active', scheduledDate: today, autoCalculateMoney: 1, createdAt: now })
+        .values({ seasonId, type: 'casual', status: 'active', scheduledDate: today, autoCalculateMoney: 1, createdAt: now })
         .returning({ id: rounds.id });
       if (!newRound) throw new Error('Round insert failed');
 
-      const [newGroup] = await tx
-        .insert(groups)
-        .values({ roundId: newRound.id, groupNumber: 1 })
-        .returning({ id: groups.id });
-      if (!newGroup) throw new Error('Group insert failed');
-
-      const createdPlayers = [];
-      for (const pi of playerInputs) {
-        const [player] = await tx
-          .insert(players)
-          .values({ name: pi.name, ghinNumber: null, isActive: 1, isGuest: 1, createdAt: now })
-          .returning({ id: players.id });
-        if (!player) throw new Error('Player insert failed');
-        await tx.insert(roundPlayers).values({
-          roundId: newRound.id,
-          playerId: player.id,
-          groupId: newGroup.id,
-          handicapIndex: pi.handicapIndex,
-          isSub: 0,
-        });
-        createdPlayers.push({ id: player.id, name: pi.name, handicapIndex: pi.handicapIndex });
+      const createdGroups: { id: number; groupNumber: number }[] = [];
+      for (let i = 1; i <= groupCount; i++) {
+        const [newGroup] = await tx
+          .insert(groups)
+          .values({ roundId: newRound.id, groupNumber: i })
+          .returning({ id: groups.id });
+        if (!newGroup) throw new Error('Group insert failed');
+        createdGroups.push({ id: newGroup.id, groupNumber: i });
       }
 
-      return { roundId: newRound.id, groupId: newGroup.id, players: createdPlayers };
+      return { roundId: newRound.id, groups: createdGroups };
     });
 
     return c.json(result, 201);

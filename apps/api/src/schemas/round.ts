@@ -62,15 +62,7 @@ export const addGuestSchema = z.object({
 export type AddGuestBody = z.infer<typeof addGuestSchema>;
 
 export const createPracticeRoundSchema = z.object({
-  players: z
-    .array(
-      z.object({
-        name: z.string().trim().min(1).max(100),
-        handicapIndex: z.number().min(0).max(54),
-      }),
-    )
-    .min(2)
-    .max(4),
+  groupCount: z.number().int().min(1).max(4),
 });
 export type CreatePracticeRoundBody = z.infer<typeof createPracticeRoundSchema>;
 
