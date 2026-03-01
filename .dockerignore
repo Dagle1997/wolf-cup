@@ -1,0 +1,13 @@
+.git
+.github
+.claude
+node_modules
+**/node_modules
+**/dist
+packages/engine/fixtures
+packages/engine/scripts
+_bmad-output
+*.md
+.env
+.env.*
+!.env.example

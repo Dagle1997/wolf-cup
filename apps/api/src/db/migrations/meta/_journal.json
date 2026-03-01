@@ -8,6 +8,34 @@
       "when": 1772315990631,
       "tag": "0000_busy_toad_men",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1772325544929,
+      "tag": "0001_third_frank_castle",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1772327010944,
+      "tag": "0002_secret_lethal_legion",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1772337410836,
+      "tag": "0003_same_invaders",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1772371239516,
+      "tag": "0004_right_slyde",
+      "breakpoints": true
     }
   ]
 }

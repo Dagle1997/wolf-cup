@@ -63,6 +63,7 @@ export const players = sqliteTable('players', {
   name: text('name').notNull(),
   ghinNumber: text('ghin_number'),
   isActive: integer('is_active').notNull().default(1), // boolean 0/1
+  isGuest: integer('is_guest').notNull().default(0), // boolean 0/1; guests are round-only, not roster
   createdAt: integer('created_at').notNull(),
 });
 
@@ -243,19 +244,19 @@ export const wolfDecisions = sqliteTable(
       .notNull()
       .references(() => groups.id),
     holeNumber: integer('hole_number').notNull(),
-    wolfPlayerId: integer('wolf_player_id')
-      .notNull()
-      .references(() => players.id),
-    decision: text('decision').notNull(), // 'partner' | 'alone'
+    wolfPlayerId: integer('wolf_player_id').references(() => players.id), // null on skins holes 1–2
+    decision: text('decision'), // null on skins holes; 'partner'|'alone'|'blind_wolf' on wolf holes
     partnerPlayerId: integer('partner_player_id').references(() => players.id),
+    bonusesJson: text('bonuses_json'), // JSON {greenies:[playerId,...], polies:[playerId,...]}
     outcome: text('outcome'), // 'win' | 'loss' | 'push' | null
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
+    roundDecisionUniq: uniqueIndex('uniq_wolf_decisions').on(t.roundId, t.groupId, t.holeNumber),
     roundIdx: index('idx_wolf_decisions_round_id').on(t.roundId),
     decisionCheck: check(
       'chk_wolf_decisions_decision',
-      sql`decision IN ('partner', 'alone')`,
+      sql`decision IN ('partner', 'alone', 'blind_wolf')`,
     ),
     outcomeCheck: check(
       'chk_wolf_decisions_outcome',
@@ -306,5 +307,31 @@ export const sideGameResults = sqliteTable(
   },
   (t) => ({
     roundIdx: index('idx_side_game_results_round_id').on(t.roundId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// score_corrections  (immutable audit log for post-round corrections — FR64)
+// ---------------------------------------------------------------------------
+
+export const scoreCorrections = sqliteTable(
+  'score_corrections',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    adminUserId: integer('admin_user_id')
+      .notNull()
+      .references(() => admins.id),
+    roundId: integer('round_id')
+      .notNull()
+      .references(() => rounds.id),
+    holeNumber: integer('hole_number').notNull(),
+    playerId: integer('player_id').references(() => players.id), // nullable (wolf fields)
+    fieldName: text('field_name').notNull(),
+    oldValue: text('old_value').notNull(),
+    newValue: text('new_value').notNull(),
+    correctedAt: integer('corrected_at').notNull(),
+  },
+  (t) => ({
+    roundIdx: index('idx_score_corrections_round_id').on(t.roundId),
   }),
 );

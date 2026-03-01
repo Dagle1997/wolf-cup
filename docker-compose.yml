@@ -1,0 +1,61 @@
+services:
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: wolf-cup-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/wolf-cup.db
+      - PORT=3000
+      - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET}
+      - ADMIN_JASON_PASSWORD=${ADMIN_JASON_PASSWORD:-changeme-jason}
+      - ADMIN_JOSH_PASSWORD=${ADMIN_JOSH_PASSWORD:-changeme-josh}
+    volumes:
+      - sqlite_data:/app/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: wolf-cup-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - internal
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      # HTTPS router
+      - "traefik.http.routers.wolf-cup.rule=Host(`wolf.dagle.cloud`)"
+      - "traefik.http.routers.wolf-cup.entrypoints=websecure"
+      - "traefik.http.routers.wolf-cup.tls=true"
+      - "traefik.http.routers.wolf-cup.tls.certresolver=le"
+      - "traefik.http.services.wolf-cup.loadbalancer.server.port=80"
+      # HTTP → HTTPS redirect (remove if Traefik global redirect is already configured)
+      - "traefik.http.routers.wolf-cup-http.rule=Host(`wolf.dagle.cloud`)"
+      - "traefik.http.routers.wolf-cup-http.entrypoints=web"
+      - "traefik.http.routers.wolf-cup-http.middlewares=wolf-cup-redirect"
+      - "traefik.http.middlewares.wolf-cup-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.wolf-cup-redirect.redirectscheme.permanent=true"
+
+volumes:
+  sqlite_data:
+
+networks:
+  internal:
+    driver: bridge
+  traefik:
+    external: true

@@ -10,19 +10,12 @@ REMOTE_USER="${DEPLOY_USER:-deploy}"
 REMOTE_DIR="${DEPLOY_DIR:-/opt/wolf-cup}"
 
 echo "🐺 Wolf Cup Deploy — target: ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}"
+echo "⚠️  Only deploy when no active round is in progress."
 echo "Press Ctrl+C within 5 seconds to abort..."
 sleep 5
 
-echo "📦 Building..."
-pnpm -r build
-
 echo "🚀 Deploying to ${REMOTE_HOST}..."
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "
-  cd \"${REMOTE_DIR}\" &&
-  git pull &&
-  pnpm install --frozen-lockfile &&
-  pnpm -r build &&
-  docker compose up -d --build
-"
+ssh "${REMOTE_USER}@${REMOTE_HOST}" \
+  "cd '${REMOTE_DIR}' && git pull && docker compose up -d --build"
 
-echo "✅ Deploy complete"
+echo "✅ Deploy complete — migrations + seed ran automatically on container start."

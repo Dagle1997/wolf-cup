@@ -32,3 +32,6 @@ jobs:
 
       - name: Lint
         run: pnpm -r lint
+
+      - name: Docker build smoke test
+        run: docker compose build
