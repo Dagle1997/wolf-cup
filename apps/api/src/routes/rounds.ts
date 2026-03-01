@@ -11,7 +11,7 @@ import {
 } from '@wolf-cup/engine';
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
 import { db } from '../db/index.js';
-import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons } from '../db/schema.js';
+import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults } from '../db/schema.js';
 import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema, createPracticeRoundSchema } from '../schemas/round.js';
 
 const app = new Hono();
@@ -211,6 +211,139 @@ async function getRoundDetail(roundId: number) {
     groups: groupsWithPlayers,
   };
 }
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:id/cancel — cancel a casual round (public, casual only)
+// ---------------------------------------------------------------------------
+
+app.post('/rounds/:id/cancel', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let round: { id: number; type: string; status: string } | undefined;
+  try {
+    round = await db
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status })
+      .from(rounds)
+      .where(eq(rounds.id, id))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  if (round.type !== 'casual') {
+    return c.json({ error: 'Only casual rounds can be self-cancelled', code: 'OFFICIAL_ONLY' }, 422);
+  }
+  if (round.status === 'cancelled') {
+    return c.json({ success: true }, 200); // idempotent
+  }
+  if (round.status === 'finalized') {
+    return c.json({ error: 'Cannot cancel a finalized round', code: 'ROUND_NOT_ACTIVE' }, 422);
+  }
+
+  try {
+    await db.update(rounds).set({ status: 'cancelled' }).where(eq(rounds.id, id));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ success: true }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:id/groups/:groupId/quit — remove one group from a casual round
+// If this is the last group, the round is cancelled. Otherwise only this
+// group's data is deleted and the round stays active for other groups.
+// ---------------------------------------------------------------------------
+
+app.post('/rounds/:id/groups/:groupId/quit', async (c) => {
+  const roundId = Number(c.req.param('id'));
+  const groupId = Number(c.req.param('groupId'));
+  if (!Number.isInteger(roundId) || roundId <= 0 || !Number.isInteger(groupId) || groupId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let round: { id: number; type: string; status: string } | undefined;
+  try {
+    round = await db
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status })
+      .from(rounds)
+      .where(eq(rounds.id, roundId))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  if (round.type !== 'casual') {
+    return c.json({ error: 'Only casual rounds can be quit', code: 'OFFICIAL_ONLY' }, 422);
+  }
+  if (round.status === 'finalized') {
+    return c.json({ error: 'Cannot quit a finalized round', code: 'ROUND_FINALIZED' }, 422);
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // Get player IDs for this group
+      const groupPlayerRows = await tx
+        .select({ playerId: roundPlayers.playerId })
+        .from(roundPlayers)
+        .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId)));
+      const playerIds = groupPlayerRows.map((r) => r.playerId);
+
+      // Identify guest players in this group
+      const guestIds: number[] = [];
+      if (playerIds.length > 0) {
+        const guestRows = await tx
+          .select({ id: players.id })
+          .from(players)
+          .where(and(inArray(players.id, playerIds), eq(players.isGuest, 1)));
+        guestIds.push(...guestRows.map((r) => r.id));
+      }
+
+      // Delete group-scoped data
+      await tx.delete(holeScores).where(and(eq(holeScores.roundId, roundId), eq(holeScores.groupId, groupId)));
+      await tx.delete(wolfDecisions).where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId)));
+
+      if (playerIds.length > 0) {
+        await tx.delete(roundResults).where(and(eq(roundResults.roundId, roundId), inArray(roundResults.playerId, playerIds)));
+        await tx.delete(harveyResults).where(and(eq(harveyResults.roundId, roundId), inArray(harveyResults.playerId, playerIds)));
+      }
+
+      await tx.delete(roundPlayers).where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId)));
+      await tx.delete(groups).where(eq(groups.id, groupId));
+
+      // Orphan guest player cleanup
+      if (guestIds.length > 0) {
+        const stillUsed = await tx
+          .select({ playerId: roundPlayers.playerId })
+          .from(roundPlayers)
+          .where(inArray(roundPlayers.playerId, guestIds));
+        const stillUsedSet = new Set(stillUsed.map((r) => r.playerId));
+        const orphanIds = guestIds.filter((id) => !stillUsedSet.has(id));
+        if (orphanIds.length > 0) {
+          await tx.delete(players).where(inArray(players.id, orphanIds));
+        }
+      }
+
+      // If no groups remain, cancel the round
+      const remainingGroups = await tx
+        .select({ id: groups.id })
+        .from(groups)
+        .where(eq(groups.roundId, roundId));
+      if (remainingGroups.length === 0) {
+        await tx.update(rounds).set({ status: 'cancelled' }).where(eq(rounds.id, roundId));
+      }
+    });
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ success: true }, 200);
+});
 
 // ---------------------------------------------------------------------------
 // GET /rounds — list scheduled/active rounds within ±1-day window of today

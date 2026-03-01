@@ -1,10 +1,10 @@
 import { createFileRoute, useRouter, Link } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff } from 'lucide-react';
+import { Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
-import { getSession } from '@/lib/session-store';
+import { getSession, clearSession } from '@/lib/session-store';
 import { enqueueScore } from '@/lib/offline-queue';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 
@@ -134,6 +134,7 @@ function ScoreEntryHolePage() {
   const [currentPolies, setCurrentPolies] = useState<Set<number>>(new Set());
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [wolfError, setWolfError] = useState<string | null>(null);
+  const [showEndRoundConfirm, setShowEndRoundConfirm] = useState(false);
 
   const { pendingCount, isDraining, drainError, refreshCount } = useOfflineQueue(
     session?.roundId ?? 0,
@@ -332,6 +333,18 @@ function ScoreEntryHolePage() {
           setWolfError('Could not save wolf decision — please try again.');
         }
       }
+    },
+  });
+
+  const quitMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ success: boolean }>(
+        `/rounds/${session!.roundId}/groups/${session!.groupId}/quit`,
+        { method: 'POST' },
+      ),
+    onSuccess: () => {
+      clearSession();
+      void router.navigate({ to: '/' });
     },
   });
 
@@ -758,6 +771,59 @@ function ScoreEntryHolePage() {
           <ChevronRight className="w-4 h-4 ml-1" />
         </Button>
       </div>
+
+      {/* End Round — casual rounds only */}
+      {roundData.type === 'casual' && !showEndRoundConfirm && (
+        <Button
+          variant="ghost"
+          className="text-xs text-muted-foreground mt-2"
+          onClick={() => setShowEndRoundConfirm(true)}
+        >
+          End Round
+        </Button>
+      )}
+
+      {roundData.type === 'casual' && showEndRoundConfirm && (
+        <div className="flex flex-col gap-3 border border-destructive rounded-xl p-4 mt-2">
+          <div className="flex items-start gap-2">
+            <TriangleAlert className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-sm text-destructive">End this round?</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                All scores for your group will be permanently deleted. Other groups (if any) will not be affected.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 min-h-11"
+              disabled={quitMutation.isPending}
+              onClick={() => setShowEndRoundConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1 min-h-11"
+              disabled={quitMutation.isPending}
+              onClick={() => quitMutation.mutate()}
+            >
+              {quitMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                'Yes, End Round'
+              )}
+            </Button>
+          </div>
+          {quitMutation.isError && (
+            <div className="flex items-center gap-2 text-destructive text-xs">
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              Could not end round — please try again.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
