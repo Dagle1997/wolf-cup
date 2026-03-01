@@ -12,9 +12,9 @@ import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 // Constants (from packages/engine/src/course.ts)
 // ---------------------------------------------------------------------------
 
-const HOLE_PARS = [4, 4, 4, 3, 4, 4, 3, 5, 4, 4, 3, 4, 4, 5, 4, 3, 4, 4] as const;
-const HOLE_STROKE_INDEXES = [5, 1, 15, 9, 13, 7, 17, 3, 11, 6, 16, 12, 8, 2, 14, 18, 4, 10] as const;
-const PAR3_HOLES = new Set([4, 7, 11, 16]); // Guyan G&CC par-3 holes
+const HOLE_PARS = [5, 4, 4, 4, 4, 3, 3, 5, 4, 4, 5, 3, 4, 4, 3, 4, 4, 4] as const;
+const HOLE_STROKE_INDEXES = [3, 1, 13, 5, 9, 17, 15, 7, 11, 8, 2, 18, 6, 10, 16, 4, 14, 12] as const;
+const PAR3_HOLES = new Set([6, 7, 12, 15]); // Guyan G&CC par-3 holes
 
 // ---------------------------------------------------------------------------
 // Types
@@ -152,7 +152,7 @@ function ScoreEntryHolePage() {
     queryFn: () =>
       apiFetch<{ round: RoundDetail }>(`/rounds/${session!.roundId}`).then((d) => d.round),
     enabled: session !== null && session.groupId !== null,
-    staleTime: 60_000,
+    staleTime: 0,
   });
 
   const { data: scoresData, isLoading: scoresLoading } = useQuery({
@@ -634,7 +634,7 @@ function ScoreEntryHolePage() {
                 className="flex-1 text-xs"
                 onClick={() => setCurrentDecision(d)}
               >
-                {d === 'alone' ? 'Alone' : d === 'partner' ? 'Partner' : 'Blind Wolf'}
+                {d === 'alone' ? 'Wolf' : d === 'partner' ? 'Partner' : 'Blind Wolf'}
               </Button>
             ))}
           </div>

@@ -21,12 +21,14 @@ async function upsertAdmin(username: string, password: string): Promise<void> {
     .where(eq(admins.username, username))
     .get();
 
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+
   if (existing) {
-    console.log(`  ✓ Admin '${username}' already exists — skipping`);
+    await db.update(admins).set({ passwordHash }).where(eq(admins.username, username));
+    console.log(`  ✓ Admin '${username}' password updated`);
     return;
   }
 
-  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await db.insert(admins).values({
     username,
     passwordHash,

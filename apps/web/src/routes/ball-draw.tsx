@@ -11,7 +11,7 @@ import { getSession, setSession } from '@/lib/session-store';
 // ---------------------------------------------------------------------------
 
 // Par for each hole 1–18 at Guyan G&CC (from engine/course.ts)
-const HOLE_PARS = [4, 4, 4, 3, 4, 4, 3, 5, 4, 4, 3, 4, 4, 5, 4, 3, 4, 4] as const;
+const HOLE_PARS = [5, 4, 4, 4, 4, 3, 3, 5, 4, 4, 5, 3, 4, 4, 3, 4, 4, 4] as const;
 
 const POSITIONS = ['1st', '2nd', '3rd', '4th'] as const;
 

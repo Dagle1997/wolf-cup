@@ -20,7 +20,7 @@ const app = new Hono();
 // Constants
 // ---------------------------------------------------------------------------
 
-const PAR3_HOLES = new Set([4, 7, 11, 16]); // Guyan G&CC par-3 holes
+const PAR3_HOLES = new Set([6, 7, 12, 15]); // Guyan G&CC par-3 holes
 
 // ---------------------------------------------------------------------------
 // Money engine helpers
