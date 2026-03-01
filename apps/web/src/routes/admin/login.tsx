@@ -18,7 +18,7 @@ function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await apiFetch('/admin/auth/login', {
+      await apiFetch('/admin/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
