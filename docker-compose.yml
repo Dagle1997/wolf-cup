@@ -38,6 +38,7 @@ services:
       - n8n_default
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=n8n_default"
       # HTTPS router
       - "traefik.http.routers.wolf-cup.rule=Host(`wolf.dagle.cloud`)"
       - "traefik.http.routers.wolf-cup.entrypoints=websecure"
