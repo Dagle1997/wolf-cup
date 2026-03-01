@@ -115,7 +115,7 @@ development_status:
   # polls every 5s with staleness indicator.
   # FRs: FR24–FR31, FR33–FR35, FR36–FR41(display), FR54, FR55, FR61–FR62
   # ---------------------------------------------------------------------------
-  epic-3: in-progress
+  epic-3: done
 
   # FR61: Public app at wolf.dagle.cloud (no auth for read-only views).
   # Vite + React + TanStack Router scaffold, shadcn/ui + Tailwind v4,
@@ -205,3 +205,41 @@ development_status:
   6-2-docker-compose-production-deployment: done
 
   epic-6-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic 7: Admin UI, Integration Tests & Player Scorecard
+  # Build all admin frontend pages (roster, rounds, season, score corrections),
+  # a full-stack practice round integration test suite, and a player scorecard
+  # drill-down on the live leaderboard.
+  # ---------------------------------------------------------------------------
+  epic-7: done
+
+  # Full end-to-end integration test: create practice round with 1–4 groups,
+  # set batting order, post all 18 hole scores + wolf decisions, then assert
+  # Stableford totals match engine output and money totals net to $0 (zero-sum).
+  7-0-practice-round-integration-test: done
+
+  # Admin web UI for player roster: list all players, add new player (name +
+  # GHIN), edit name/GHIN, soft-delete (deactivate). Uses existing admin API.
+  7-1-admin-roster-ui: done
+
+  # Admin web UI for rounds: create official/casual rounds, set scheduled date,
+  # entry code, assign groups and players, toggle autoCalculateMoney per round.
+  7-2-admin-rounds-ui: done
+
+  # Admin web UI for season settings: create/edit season (dates, total rounds,
+  # playoff format), toggle harveyLiveEnabled, manage side games schedule and
+  # record results.
+  7-3-admin-season-settings-ui: done
+
+  # Admin web UI for post-round score correction: select finalized round + group
+  # + hole, edit gross scores / wolf decision / greenies / polies, view immutable
+  # audit log. Atomic recalc with zero-sum validation.
+  7-4-admin-score-correction-ui: done
+
+  # Public leaderboard drill-down: tap any player row to expand hole-by-hole
+  # scorecard with golf notation (circles = birdies, squares = bogeys), net score
+  # and money per hole. Tap another player to switch views.
+  7-5-player-scorecard-leaderboard-drilldown: done
+
+  epic-7-retrospective: optional

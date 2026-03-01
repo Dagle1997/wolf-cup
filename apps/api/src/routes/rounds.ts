@@ -1312,4 +1312,167 @@ app.post('/rounds/:roundId/groups/:groupId/guests', async (c) => {
   return c.json({ player: { id: newPlayerId, name, handicapIndex } }, 200);
 });
 
+// ---------------------------------------------------------------------------
+// GET /rounds/:roundId/players/:playerId/scorecard — public
+// Per-hole scorecard: gross, net, stableford, money for a single player.
+// ---------------------------------------------------------------------------
+
+app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  const playerId = Number(c.req.param('playerId'));
+  if (!Number.isInteger(roundId) || roundId <= 0 || !Number.isInteger(playerId) || playerId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  // Look up round
+  const round = await db
+    .select({ autoCalculateMoney: rounds.autoCalculateMoney })
+    .from(rounds)
+    .where(eq(rounds.id, roundId))
+    .get();
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+
+  // Look up player in round → get groupId and handicapIndex
+  const rp = await db
+    .select({ groupId: roundPlayers.groupId, handicapIndex: roundPlayers.handicapIndex })
+    .from(roundPlayers)
+    .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId)))
+    .get();
+  if (!rp) return c.json({ error: 'Player not in round', code: 'NOT_FOUND' }, 404);
+
+  const { groupId, handicapIndex } = rp;
+
+  // Get batting order for the group
+  const group = await db
+    .select({ battingOrder: groups.battingOrder })
+    .from(groups)
+    .where(eq(groups.id, groupId))
+    .get();
+  const battingOrder: number[] = group?.battingOrder ? (JSON.parse(group.battingOrder) as number[]) : [];
+  const playerPos = battingOrder.indexOf(playerId); // 0–3; -1 if not in order
+
+  // Fetch all data for the group in parallel
+  const [allScores, allDecisions, allHandicaps, playerRow] = await Promise.all([
+    db
+      .select({
+        playerId: holeScores.playerId,
+        holeNumber: holeScores.holeNumber,
+        grossScore: holeScores.grossScore,
+      })
+      .from(holeScores)
+      .where(and(eq(holeScores.roundId, roundId), eq(holeScores.groupId, groupId))),
+    db
+      .select({
+        holeNumber: wolfDecisions.holeNumber,
+        decision: wolfDecisions.decision,
+        partnerPlayerId: wolfDecisions.partnerPlayerId,
+        bonusesJson: wolfDecisions.bonusesJson,
+      })
+      .from(wolfDecisions)
+      .where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId))),
+    db
+      .select({ playerId: roundPlayers.playerId, handicapIndex: roundPlayers.handicapIndex })
+      .from(roundPlayers)
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId))),
+    db.select({ name: players.name }).from(players).where(eq(players.id, playerId)).get(),
+  ]);
+
+  const handicapMap = new Map(allHandicaps.map((r) => [r.playerId, r.handicapIndex]));
+
+  const scoresByHole = new Map<number, Map<number, number>>();
+  for (const row of allScores) {
+    if (!scoresByHole.has(row.holeNumber)) scoresByHole.set(row.holeNumber, new Map());
+    scoresByHole.get(row.holeNumber)!.set(row.playerId, row.grossScore);
+  }
+
+  const decisionByHole = new Map(allDecisions.map((r) => [r.holeNumber, r]));
+
+  const canCalcMoney =
+    Boolean(round.autoCalculateMoney) && battingOrder.length === 4 && playerPos >= 0;
+
+  const holes: {
+    holeNumber: number;
+    par: number;
+    grossScore: number;
+    netScore: number;
+    stablefordPoints: number;
+    moneyNet: number;
+  }[] = [];
+
+  for (let holeNum = 1; holeNum <= 18; holeNum++) {
+    const holeMap = scoresByHole.get(holeNum);
+    const grossScore = holeMap?.get(playerId);
+    if (grossScore === undefined) continue; // hole not yet played
+
+    const courseHole = getCourseHole(holeNum as HoleNumber);
+    const strokes = getHandicapStrokes(handicapIndex, courseHole.strokeIndex);
+    const netScore = grossScore - strokes;
+    const stablefordPoints = calculateStablefordPoints(
+      grossScore,
+      handicapIndex,
+      courseHole.par,
+      courseHole.strokeIndex,
+    );
+
+    let moneyNet = 0;
+
+    if (canCalcMoney && holeMap && holeMap.size >= 4) {
+      const grossScores = battingOrder.map((pid) => holeMap.get(pid) ?? 0) as [
+        number,
+        number,
+        number,
+        number,
+      ];
+      const netScores = battingOrder.map((pid, i) => {
+        // Reuse already-computed strokes for the target player; compute for all others
+        const s = pid === playerId ? strokes : getHandicapStrokes(handicapMap.get(pid) ?? 0, courseHole.strokeIndex);
+        return grossScores[i]! - s;
+      }) as [number, number, number, number];
+
+      const holeAssignment = buildHoleAssignment(holeNum);
+      const decisionRecord = decisionByHole.get(holeNum);
+
+      let wolfDecision: WolfDecision | null = null;
+      if (holeNum > 2) {
+        if (!decisionRecord?.decision) {
+          // Wolf hole with no decision recorded yet — push hole with $0 and move on
+          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0 });
+          continue;
+        }
+        wolfDecision = buildWolfDecision(
+          decisionRecord.decision,
+          decisionRecord.partnerPlayerId,
+          battingOrder,
+        );
+      }
+
+      const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
+      const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
+      const result =
+        bonusInput.greenies.length > 0 || bonusInput.polies.length > 0
+          ? applyBonusModifiers(
+              base,
+              netScores,
+              grossScores,
+              bonusInput,
+              holeAssignment,
+              wolfDecision,
+              courseHole.par,
+            )
+          : base;
+      moneyNet = result[playerPos]!.total;
+    }
+
+    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet });
+  }
+
+  return c.json({
+    playerId,
+    playerName: playerRow?.name ?? 'Unknown',
+    groupId,
+    autoCalculateMoney: Boolean(round.autoCalculateMoney),
+    holes,
+  });
+});
+
 export default app;

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { useState, useEffect, Fragment } from 'react';
+import { RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -38,6 +38,27 @@ type LeaderboardResponse = {
 };
 
 // ---------------------------------------------------------------------------
+// Scorecard types
+// ---------------------------------------------------------------------------
+
+type ScorecardHole = {
+  holeNumber: number;
+  par: number;
+  grossScore: number;
+  netScore: number;
+  stablefordPoints: number;
+  moneyNet: number;
+};
+
+type ScorecardResponse = {
+  playerId: number;
+  playerName: string;
+  groupId: number;
+  autoCalculateMoney: boolean;
+  holes: ScorecardHole[];
+};
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -53,6 +74,115 @@ function formatThru(thruHole: number): string {
   return `Thru ${thruHole}`;
 }
 
+function renderGolfNotation(grossScore: number, netScore: number, par: number) {
+  if (netScore <= par - 2) {
+    // Eagle or better: double circle
+    return (
+      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full border-2 border-foreground">
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full border-2 border-foreground text-xs font-bold">
+          {grossScore}
+        </span>
+      </span>
+    );
+  }
+  if (netScore === par - 1) {
+    // Birdie: single circle
+    return (
+      <span className="inline-flex items-center justify-center w-7 h-7 rounded-full border-2 border-foreground text-xs font-bold">
+        {grossScore}
+      </span>
+    );
+  }
+  if (netScore === par) {
+    // Par: plain
+    return <span className="text-xs font-medium">{grossScore}</span>;
+  }
+  if (netScore === par + 1) {
+    // Bogey: single square
+    return (
+      <span className="inline-flex items-center justify-center w-7 h-7 border-2 border-foreground text-xs font-bold">
+        {grossScore}
+      </span>
+    );
+  }
+  // Double bogey or worse: double square
+  return (
+    <span className="inline-flex items-center justify-center w-8 h-8 border-2 border-foreground">
+      <span className="inline-flex items-center justify-center w-5 h-5 border-2 border-foreground text-xs font-bold">
+        {grossScore}
+      </span>
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ScorecardPanel — inline per-hole scorecard for a selected player
+// ---------------------------------------------------------------------------
+
+function ScorecardPanel({
+  roundId,
+  playerId,
+  autoCalculateMoney,
+}: {
+  roundId: number;
+  playerId: number;
+  autoCalculateMoney: boolean;
+}) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['scorecard', roundId, playerId],
+    queryFn: () => apiFetch<ScorecardResponse>(`/rounds/${roundId}/players/${playerId}/scorecard`),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="p-4 text-center">
+        <Loader2 className="h-4 w-4 animate-spin inline" />
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <div className="p-4 text-center text-muted-foreground text-xs">Could not load scorecard</div>
+    );
+  }
+  if (!data || data.holes.length === 0) {
+    return (
+      <div className="p-4 text-center text-muted-foreground text-xs">No scores yet</div>
+    );
+  }
+
+  return (
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="text-muted-foreground">
+          <th className="py-1 pl-3 text-left">Hole</th>
+          <th className="py-1 text-center">Par</th>
+          <th className="py-1 text-center">Gross</th>
+          <th className="py-1 text-center">Net</th>
+          <th className="py-1 text-center">Stab</th>
+          {data.autoCalculateMoney && <th className="py-1 pr-3 text-right">$</th>}
+        </tr>
+      </thead>
+      <tbody>
+        {data.holes.map((hole) => (
+          <tr key={hole.holeNumber} className="border-t border-muted">
+            <td className="py-1 pl-3">{hole.holeNumber}</td>
+            <td className="py-1 text-center">{hole.par}</td>
+            <td className="py-1 text-center">
+              {renderGolfNotation(hole.grossScore, hole.netScore, hole.par)}
+            </td>
+            <td className="py-1 text-center">{hole.netScore}</td>
+            <td className="py-1 text-center">{hole.stablefordPoints}</td>
+            {data.autoCalculateMoney && (
+              <td className="py-1 pr-3 text-right">{formatMoney(hole.moneyNet)}</td>
+            )}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -65,6 +195,15 @@ function LeaderboardPage() {
   });
 
   const [secondsAgo, setSecondsAgo] = useState(0);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+
+  // Derived: non-null round reference so TypeScript can narrow without ! assertions
+  const currentRound = data?.round ?? null;
+
+  // Reset scorecard selection when the active round changes (new round, round ends, etc.)
+  useEffect(() => {
+    setSelectedPlayerId(null);
+  }, [data?.round?.id]);
 
   useEffect(() => {
     if (!data?.lastUpdated) return;
@@ -139,7 +278,7 @@ function LeaderboardPage() {
       )}
 
       {/* Active leaderboard */}
-      {data && data.round !== null && (
+      {data && currentRound && (
         <>
           {/* Side game banner */}
           {data.sideGame && (
@@ -171,33 +310,55 @@ function LeaderboardPage() {
               </thead>
               <tbody>
                 {data.leaderboard.map((player) => (
-                  <tr key={player.playerId} className="border-b last:border-0">
-                    <td className="py-2 px-3 font-medium text-muted-foreground">
-                      {player.stablefordRank}
-                    </td>
-                    <td className="py-2 pr-2">
-                      <div className="font-medium">{player.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatThru(player.thruHole)}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-2 text-right font-medium">
-                      {player.stablefordTotal}
-                    </td>
-                    <td className="py-2 pr-2 text-right">
-                      {formatMoney(player.moneyTotal)}
-                    </td>
-                    {data.harveyLiveEnabled && (
+                  <Fragment key={player.playerId}>
+                    <tr
+                      role="button"
+                      aria-expanded={selectedPlayerId === player.playerId}
+                      onClick={() =>
+                        setSelectedPlayerId((prev) =>
+                          prev === player.playerId ? null : player.playerId,
+                        )
+                      }
+                      className={`border-b last:border-0 cursor-pointer hover:bg-muted/30 transition-colors ${selectedPlayerId === player.playerId ? 'bg-muted/20' : ''}`}
+                    >
+                      <td className="py-2 px-3 font-medium text-muted-foreground">
+                        {player.stablefordRank}
+                      </td>
+                      <td className="py-2 pr-2">
+                        <div className="font-medium">{player.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatThru(player.thruHole)}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-2 text-right font-medium">
+                        {player.stablefordTotal}
+                      </td>
                       <td className="py-2 pr-2 text-right">
-                        {player.harveyStableford !== null ? player.harveyStableford : '—'}
+                        {formatMoney(player.moneyTotal)}
                       </td>
+                      {data.harveyLiveEnabled && (
+                        <td className="py-2 pr-2 text-right">
+                          {player.harveyStableford !== null ? player.harveyStableford : '—'}
+                        </td>
+                      )}
+                      {data.harveyLiveEnabled && (
+                        <td className="py-2 pr-3 text-right">
+                          {player.harveyMoney !== null ? player.harveyMoney : '—'}
+                        </td>
+                      )}
+                    </tr>
+                    {selectedPlayerId === player.playerId && (
+                      <tr className="border-b bg-muted/10">
+                        <td colSpan={data.harveyLiveEnabled ? 6 : 4} className="p-0">
+                          <ScorecardPanel
+                            roundId={currentRound.id}
+                            playerId={player.playerId}
+                            autoCalculateMoney={currentRound.autoCalculateMoney}
+                          />
+                        </td>
+                      </tr>
                     )}
-                    {data.harveyLiveEnabled && (
-                      <td className="py-2 pr-3 text-right">
-                        {player.harveyMoney !== null ? player.harveyMoney : '—'}
-                      </td>
-                    )}
-                  </tr>
+                  </Fragment>
                 ))}
                 {data.leaderboard.length === 0 && (
                   <tr>

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { Users, CalendarDays, Trophy } from 'lucide-react';
+import { Users, CalendarDays, Trophy, FilePenLine } from 'lucide-react';
 
 export const Route = createFileRoute('/admin/')({
   component: AdminDashboard,
@@ -23,6 +23,12 @@ const NAV_CARDS = [
     icon: Trophy,
     title: 'Season',
     description: 'Configure season settings and playoff format',
+  },
+  {
+    to: '/admin/score-corrections' as const,
+    icon: FilePenLine,
+    title: 'Score Corrections',
+    description: 'Edit finalized round scores with full audit trail',
   },
 ];
 
