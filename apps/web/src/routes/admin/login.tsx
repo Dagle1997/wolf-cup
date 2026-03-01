@@ -22,7 +22,7 @@ function LoginPage() {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       });
-      await navigate({ to: '/admin/' });
+      await navigate({ to: '/admin' });
     } catch (err) {
       setError(err instanceof Error && err.message === 'INVALID_CREDENTIALS'
         ? 'Invalid username or password.'

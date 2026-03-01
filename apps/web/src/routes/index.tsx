@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { RefreshCw, AlertCircle } from 'lucide-react';
@@ -80,15 +80,20 @@ function LeaderboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Live Leaderboard</h1>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void refetch()}
-          className="gap-1"
-        >
-          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link to="/practice" className="text-xs text-muted-foreground hover:underline">
+            Practice round
+          </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void refetch()}
+            className="gap-1"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Staleness indicator */}
@@ -120,7 +125,17 @@ function LeaderboardPage() {
 
       {/* No-round state */}
       {data && data.round === null && (
-        <p className="text-muted-foreground py-8 text-center">No active round today</p>
+        <div className="flex flex-col items-center gap-4 py-8 text-center">
+          <p className="text-muted-foreground">No official round today</p>
+          <div className="flex flex-col gap-3 w-full max-w-xs">
+            <Link to="/practice">
+              <Button className="w-full min-h-12">Start Practice Round</Button>
+            </Link>
+            <Link to="/score-entry">
+              <Button variant="outline" className="w-full min-h-12">Join Official Round</Button>
+            </Link>
+          </div>
+        </div>
       )}
 
       {/* Active leaderboard */}

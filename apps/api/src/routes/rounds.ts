@@ -11,8 +11,8 @@ import {
 } from '@wolf-cup/engine';
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
 import { db } from '../db/index.js';
-import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions } from '../db/schema.js';
-import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema } from '../schemas/round.js';
+import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons } from '../db/schema.js';
+import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema, createPracticeRoundSchema } from '../schemas/round.js';
 
 const app = new Hono();
 
@@ -245,6 +245,82 @@ app.get('/rounds', async (c) => {
     }));
 
     return c.json({ items }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/practice — create a casual practice round (no auth required)
+// ---------------------------------------------------------------------------
+
+app.post('/rounds/practice', async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
+  }
+  const parsed = createPracticeRoundSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
+  }
+  const { players: playerInputs } = parsed.data;
+
+  // Use the most recently created season so practice rounds have a valid FK
+  let latestSeason: { id: number } | undefined;
+  try {
+    latestSeason = await db
+      .select({ id: seasons.id })
+      .from(seasons)
+      .orderBy(desc(seasons.id))
+      .limit(1)
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!latestSeason) {
+    return c.json({ error: 'No season configured', code: 'NO_SEASON' }, 422);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const now = Date.now();
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [newRound] = await tx
+        .insert(rounds)
+        .values({ seasonId: latestSeason!.id, type: 'casual', status: 'active', scheduledDate: today, autoCalculateMoney: 1, createdAt: now })
+        .returning({ id: rounds.id });
+      if (!newRound) throw new Error('Round insert failed');
+
+      const [newGroup] = await tx
+        .insert(groups)
+        .values({ roundId: newRound.id, groupNumber: 1 })
+        .returning({ id: groups.id });
+      if (!newGroup) throw new Error('Group insert failed');
+
+      const createdPlayers = [];
+      for (const pi of playerInputs) {
+        const [player] = await tx
+          .insert(players)
+          .values({ name: pi.name, ghinNumber: null, isActive: 1, isGuest: 1, createdAt: now })
+          .returning({ id: players.id });
+        if (!player) throw new Error('Player insert failed');
+        await tx.insert(roundPlayers).values({
+          roundId: newRound.id,
+          playerId: player.id,
+          groupId: newGroup.id,
+          handicapIndex: pi.handicapIndex,
+          isSub: 0,
+        });
+        createdPlayers.push({ id: player.id, name: pi.name, handicapIndex: pi.handicapIndex });
+      }
+
+      return { roundId: newRound.id, groupId: newGroup.id, players: createdPlayers };
+    });
+
+    return c.json(result, 201);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
