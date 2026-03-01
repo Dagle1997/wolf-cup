@@ -24,7 +24,7 @@ function RootComponent() {
       {/* App header */}
       <header className="sticky top-0 z-50 bg-background border-b px-4 py-3">
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold">🐺 Wolf Cup</h1>
+          <Link to="/" className="text-lg font-bold">🐺 Wolf Cup</Link>
           <div aria-live="assertive" aria-atomic="true">
             {!isOnline && (
               <span className="flex items-center gap-1 text-xs text-destructive font-medium">
