@@ -74,7 +74,10 @@ function RosterPage() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
-      <h2 className="text-xl font-semibold mb-4">Roster</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold">Roster</h2>
+        <RefreshAllHIButton />
+      </div>
       <AddPlayerForm />
       <div className="mt-6">
         {isLoading ? (
@@ -83,6 +86,55 @@ function RosterPage() {
           <PlayerTable players={rosterPlayers} />
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Refresh All HI Button
+// ---------------------------------------------------------------------------
+
+function RefreshAllHIButton() {
+  const navigate = useNavigate();
+  const [result, setResult] = useState<{ updated: number; failed: number; total: number } | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ updated: number; failed: number; total: number }>('/admin/players/refresh-handicaps', {
+        method: 'POST',
+      }),
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-roster'] });
+      setResult(data);
+      setTimeout(() => setResult(null), 5000);
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
+  return (
+    <div className="flex items-center gap-2">
+      {result && (
+        <span className="text-xs text-muted-foreground">
+          Updated {result.updated}/{result.total}
+          {result.failed > 0 && ` (${result.failed} failed)`}
+        </span>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => { setResult(null); mutation.mutate(); }}
+        disabled={mutation.isPending}
+        title="Refresh handicap index for all players with a GHIN number"
+      >
+        {mutation.isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <RefreshCw className="h-3.5 w-3.5" />
+        )}
+        <span className="ml-1.5">{mutation.isPending ? 'Refreshing…' : 'Refresh All HI'}</span>
+      </Button>
     </div>
   );
 }

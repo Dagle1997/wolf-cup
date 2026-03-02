@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNotNull } from 'drizzle-orm';
 import { db } from '../../db/index.js';
 import { players, roundPlayers, rounds } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { createPlayerSchema, updatePlayerSchema } from '../../schemas/player.js';
 import { updateHandicapSchema } from '../../schemas/handicap.js';
 import { updateSubStatusSchema } from '../../schemas/sub.js';
+import { ghinClient } from '../../lib/ghin-client.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -24,6 +25,41 @@ app.get('/players', adminAuthMiddleware, async (c) => {
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
+});
+
+// ---------------------------------------------------------------------------
+// POST /players/refresh-handicaps — bulk-refresh HI for all GHIN players
+// ---------------------------------------------------------------------------
+
+app.post('/players/refresh-handicaps', adminAuthMiddleware, async (c) => {
+  if (!ghinClient) {
+    return c.json({ error: 'GHIN credentials not configured', code: 'GHIN_NOT_CONFIGURED' }, 503);
+  }
+
+  let roster: { id: number; ghinNumber: string | null }[];
+  try {
+    roster = await db
+      .select({ id: players.id, ghinNumber: players.ghinNumber })
+      .from(players)
+      .where(and(eq(players.isActive, 1), isNotNull(players.ghinNumber)));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  let updated = 0;
+  let failed = 0;
+
+  for (const player of roster) {
+    try {
+      const { handicapIndex } = await ghinClient.getHandicap(Number(player.ghinNumber));
+      await db.update(players).set({ handicapIndex }).where(eq(players.id, player.id));
+      updated++;
+    } catch {
+      failed++;
+    }
+  }
+
+  return c.json({ updated, failed, total: roster.length }, 200);
 });
 
 // ---------------------------------------------------------------------------
