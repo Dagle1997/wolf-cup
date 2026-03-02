@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter, Link } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { getSession, clearSession } from '@/lib/session-store';
@@ -154,6 +154,13 @@ function ScoreEntryHolePage() {
       apiFetch<{ round: RoundDetail }>(`/rounds/${session!.roundId}`).then((d) => d.round),
     enabled: session !== null && session.groupId !== null,
     staleTime: 0,
+    // Poll every 5s on the summary screen until the round is finalized
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.status === 'finalized') return false;
+      return 5000;
+    },
+    refetchIntervalInBackground: false,
   });
 
   const { data: scoresData, isLoading: scoresLoading } = useQuery({
@@ -516,7 +523,17 @@ function ScoreEntryHolePage() {
     return (
       <div className="p-4 flex flex-col gap-4">
         <h2 className="text-xl font-semibold">Round Complete</h2>
-        <p className="text-sm text-muted-foreground">Awaiting finalization by admin.</p>
+        {roundData?.status === 'finalized' ? (
+          <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-300 text-green-800 text-sm px-3 py-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Round Finalized — scores are locked.
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            Awaiting finalization by admin.
+          </div>
+        )}
         {pendingCount > 0 && (
           <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-800 text-sm px-3 py-2">
             <WifiOff className="w-4 h-4 shrink-0" />

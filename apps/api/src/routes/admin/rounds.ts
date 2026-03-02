@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, count, countDistinct } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import {
   createRoundSchema,
@@ -30,7 +30,33 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
       .select()
       .from(rounds)
       .orderBy(desc(rounds.scheduledDate));
-    return c.json({ items: allRounds.map(toRoundResponse) }, 200);
+
+    // Build groupCompletion map: total groups and how many have all 18 holes scored
+    const allGroups = await db
+      .select({ id: groups.id, roundId: groups.roundId })
+      .from(groups);
+
+    const holeCountRows = await db
+      .select({ groupId: holeScores.groupId, scored: countDistinct(holeScores.holeNumber) })
+      .from(holeScores)
+      .groupBy(holeScores.groupId);
+
+    const holeCountMap = new Map(holeCountRows.map((r) => [r.groupId, r.scored]));
+
+    const completionMap = new Map<number, { total: number; complete: number }>();
+    for (const g of allGroups) {
+      const entry = completionMap.get(g.roundId) ?? { total: 0, complete: 0 };
+      entry.total++;
+      if ((holeCountMap.get(g.id) ?? 0) >= 18) entry.complete++;
+      completionMap.set(g.roundId, entry);
+    }
+
+    const items = allRounds.map((r) => ({
+      ...toRoundResponse(r),
+      groupCompletion: completionMap.get(r.id) ?? { total: 0, complete: 0 },
+    }));
+
+    return c.json({ items }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
@@ -400,6 +426,44 @@ app.post('/rounds/:roundId/groups/:groupId/players', adminAuthMiddleware, async 
   }
 
   return c.json({ roundPlayer: { roundId, groupId, playerId, handicapIndex, isSub: 0 } }, 201);
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:id/finalize — lock an active official round
+// ---------------------------------------------------------------------------
+
+app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let round: { id: number; type: string; status: string } | undefined;
+  try {
+    round = await db
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status })
+      .from(rounds)
+      .where(eq(rounds.id, id))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  if (round.type === 'casual') {
+    return c.json({ error: 'Casual rounds cannot be finalized', code: 'CASUAL_ROUND' }, 422);
+  }
+  if (round.status !== 'active') {
+    return c.json({ error: 'Round must be active to finalize', code: 'ROUND_NOT_ACTIVE' }, 422);
+  }
+
+  try {
+    await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, id));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ id, status: 'finalized' }, 200);
 });
 
 export default app;

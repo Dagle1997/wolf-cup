@@ -24,7 +24,7 @@ vi.mock('../../middleware/admin-auth.js', () => ({
 
 import roundsApp from './rounds.js';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores } from '../../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -492,6 +492,100 @@ describe('POST /rounds/:roundId/groups/:groupId/players', () => {
         body: JSON.stringify({ playerId: 99999, handicapIndex: 10.0 }),
       },
     );
+
+    expect(res.status).toBe(404);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('NOT_FOUND');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /rounds — groupCompletion field
+// ---------------------------------------------------------------------------
+
+describe('GET /rounds — groupCompletion', () => {
+  it('returns groupCompletion with complete=0 for a round with no scored holes', async () => {
+    const res = await roundsApp.request('/rounds', { method: 'GET' });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { items: { id: number; groupCompletion: { total: number; complete: number } }[] };
+    const item = body.items.find((r) => r.id === testRoundId);
+    expect(item).toBeDefined();
+    expect(item!.groupCompletion.total).toBeGreaterThanOrEqual(1);
+    expect(item!.groupCompletion.complete).toBe(0);
+  });
+
+  it('counts a group as complete when it has 18 distinct hole scores', async () => {
+    await db.insert(roundPlayers).values({
+      roundId: testRoundId, groupId: testGroupId, playerId: testPlayerId,
+      handicapIndex: 10.0, isSub: 0,
+    });
+    const now = Date.now();
+    for (let h = 1; h <= 18; h++) {
+      await db.insert(holeScores).values({
+        roundId: testRoundId, groupId: testGroupId, playerId: testPlayerId,
+        holeNumber: h, grossScore: 4, createdAt: now, updatedAt: now,
+      });
+    }
+
+    const res = await roundsApp.request('/rounds', { method: 'GET' });
+    const body = await res.json() as { items: { id: number; groupCompletion: { total: number; complete: number } }[] };
+    const item = body.items.find((r) => r.id === testRoundId);
+    expect(item!.groupCompletion.complete).toBe(1);
+
+    // Clean up
+    await db.delete(holeScores).where(eq(holeScores.roundId, testRoundId));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:id/finalize
+// ---------------------------------------------------------------------------
+
+describe('POST /rounds/:id/finalize', () => {
+  it('finalizes an active official round and returns 200', async () => {
+    await db.update(rounds).set({ status: 'active', type: 'official' }).where(eq(rounds.id, testRoundId));
+
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { id: number; status: string };
+    expect(body.status).toBe('finalized');
+    expect(body.id).toBe(testRoundId);
+
+    const row = await db.select({ status: rounds.status }).from(rounds).where(eq(rounds.id, testRoundId)).get();
+    expect(row?.status).toBe('finalized');
+  });
+
+  it('returns 422 ROUND_NOT_ACTIVE when round is scheduled', async () => {
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+
+    expect(res.status).toBe(422);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROUND_NOT_ACTIVE');
+  });
+
+  it('returns 422 ROUND_NOT_ACTIVE when round is already finalized', async () => {
+    await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, testRoundId));
+
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+
+    expect(res.status).toBe(422);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROUND_NOT_ACTIVE');
+  });
+
+  it('returns 422 CASUAL_ROUND for a casual round', async () => {
+    await db.update(rounds).set({ status: 'active', type: 'casual' }).where(eq(rounds.id, testRoundId));
+
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+
+    expect(res.status).toBe(422);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('CASUAL_ROUND');
+  });
+
+  it('returns 404 NOT_FOUND for unknown round ID', async () => {
+    const res = await roundsApp.request('/rounds/99999/finalize', { method: 'POST' });
 
     expect(res.status).toBe(404);
     const body = await res.json() as { code: string };

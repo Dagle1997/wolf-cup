@@ -6,6 +6,7 @@ import {
   Ban,
   CalendarDays,
   Check,
+  Lock,
   Loader2,
   Pencil,
   Plus,
@@ -40,6 +41,7 @@ type Round = {
   autoCalculateMoney: number; // 0 | 1
   headcount: number | null;
   createdAt: number;
+  groupCompletion: { total: number; complete: number };
 };
 
 // ---------------------------------------------------------------------------
@@ -351,6 +353,8 @@ function RoundRow({ round, onEdit }: { round: Round; onEdit: () => void }) {
   const navigate = useNavigate();
   const dimmed = round.status === 'cancelled' || round.status === 'finalized';
   const editable = round.status === 'scheduled' || round.status === 'active';
+  const { total, complete } = round.groupCompletion ?? { total: 0, complete: 0 };
+  const allComplete = total > 0 && complete === total;
 
   const cancelMutation = useMutation({
     mutationFn: (id: number) =>
@@ -364,9 +368,25 @@ function RoundRow({ round, onEdit }: { round: Round; onEdit: () => void }) {
     },
   });
 
+  const finalizeMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<{ id: number; status: string }>(`/admin/rounds/${id}/finalize`, { method: 'POST' }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-rounds'] }),
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
+  const isBusy = cancelMutation.isPending || finalizeMutation.isPending;
+
   function handleCancel() {
     if (!window.confirm(`Cancel round on ${formatDate(round.scheduledDate)}? This cannot be undone.`)) return;
     cancelMutation.mutate(round.id);
+  }
+
+  function handleFinalize() {
+    if (!window.confirm(`Finalize round on ${formatDate(round.scheduledDate)}? Scores will be locked.`)) return;
+    finalizeMutation.mutate(round.id);
   }
 
   return (
@@ -376,6 +396,11 @@ function RoundRow({ round, onEdit }: { round: Round; onEdit: () => void }) {
           <CalendarDays className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           {formatDate(round.scheduledDate)}
         </span>
+        {round.status === 'active' && round.type === 'official' && total > 0 && (
+          <span className={`text-xs mt-0.5 block ${allComplete ? 'text-green-600' : 'text-muted-foreground'}`}>
+            {complete}/{total} groups complete
+          </span>
+        )}
       </td>
       <td className="py-2 px-3">
         <Badge text={round.type === 'official' ? 'Official' : 'Casual'} className={TYPE_BADGE[round.type]} />
@@ -392,8 +417,25 @@ function RoundRow({ round, onEdit }: { round: Round; onEdit: () => void }) {
       </td>
       <td className="py-2 px-3">
         {editable && (
-          <div className="flex items-center justify-end gap-1">
-            <Button variant="outline" size="sm" onClick={onEdit} disabled={cancelMutation.isPending} aria-label="Edit round">
+          <div className="flex items-center justify-end gap-1 flex-wrap">
+            {round.status === 'active' && round.type === 'official' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFinalize}
+                disabled={isBusy || !allComplete}
+                title={allComplete ? 'Finalize round' : 'Waiting for all groups to finish'}
+                aria-label="Finalize round"
+              >
+                {finalizeMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Lock className="h-3 w-3" />
+                )}
+                <span className="ml-1 hidden sm:inline">Finalize</span>
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={onEdit} disabled={isBusy} aria-label="Edit round">
               <Pencil className="h-3 w-3" />
               <span className="ml-1 hidden sm:inline">Edit</span>
             </Button>
@@ -401,7 +443,7 @@ function RoundRow({ round, onEdit }: { round: Round; onEdit: () => void }) {
               variant="outline"
               size="sm"
               onClick={handleCancel}
-              disabled={cancelMutation.isPending}
+              disabled={isBusy}
               aria-label="Cancel round"
             >
               {cancelMutation.isPending ? (
