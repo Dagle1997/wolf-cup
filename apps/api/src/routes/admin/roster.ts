@@ -148,6 +148,51 @@ app.patch('/players/:id', adminAuthMiddleware, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /players/:id — hard-delete a player (only if no round history)
+// ---------------------------------------------------------------------------
+
+app.delete('/players/:id', adminAuthMiddleware, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let existing: { id: number } | undefined;
+  try {
+    existing = await db.select({ id: players.id }).from(players).where(eq(players.id, id)).get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!existing) return c.json({ error: 'Player not found', code: 'NOT_FOUND' }, 404);
+
+  // Block deletion if player has round history (preserves data integrity)
+  let roundEntry: { id: number } | undefined;
+  try {
+    roundEntry = await db
+      .select({ id: roundPlayers.id })
+      .from(roundPlayers)
+      .where(eq(roundPlayers.playerId, id))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (roundEntry) {
+    return c.json(
+      { error: 'Player has round history — deactivate instead', code: 'HAS_ROUND_HISTORY' },
+      409,
+    );
+  }
+
+  try {
+    await db.delete(players).where(eq(players.id, id));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ success: true }, 200);
+});
+
+// ---------------------------------------------------------------------------
 // PATCH /rounds/:roundId/players/:playerId/handicap — update handicap index
 // ---------------------------------------------------------------------------
 

@@ -14,6 +14,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Users,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,6 +56,20 @@ type RoundPlayer = {
   groupNumber: number;
   handicapIndex: number;
   isSub: number;
+};
+
+type GroupDetail = {
+  id: number;
+  roundId: number;
+  groupNumber: number;
+};
+
+type RosterPlayer = {
+  id: number;
+  name: string;
+  ghinNumber: string | null;
+  isActive: number;
+  isGuest: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -328,6 +343,17 @@ function CreateRoundForm({ seasons, isLoading }: { seasons: Season[]; isLoading:
 function RoundsTable({ rounds }: { rounds: Round[] }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [handicapExpandedId, setHandicapExpandedId] = useState<number | null>(null);
+  const [groupsExpandedId, setGroupsExpandedId] = useState<number | null>(null);
+
+  function toggleGroups(roundId: number) {
+    setGroupsExpandedId((prev) => (prev === roundId ? null : roundId));
+    setHandicapExpandedId(null); // close HI panel when opening groups
+  }
+
+  function toggleHandicap(roundId: number) {
+    setHandicapExpandedId((prev) => (prev === roundId ? null : roundId));
+    setGroupsExpandedId(null); // close groups panel when opening HI
+  }
 
   return (
     <div className="rounded-md border overflow-hidden">
@@ -351,15 +377,22 @@ function RoundsTable({ rounds }: { rounds: Round[] }) {
                   round={r}
                   onEdit={() => setEditingId(r.id)}
                   handicapExpanded={handicapExpandedId === r.id}
-                  onToggleHandicap={() =>
-                    setHandicapExpandedId((prev) => (prev === r.id ? null : r.id))
-                  }
+                  onToggleHandicap={() => toggleHandicap(r.id)}
+                  groupsExpanded={groupsExpandedId === r.id}
+                  onToggleGroups={() => toggleGroups(r.id)}
                 />
               )}
               {handicapExpandedId === r.id && editingId !== r.id && (
                 <tr className="border-b bg-muted/10">
                   <td colSpan={5} className="p-0">
                     <HandicapPanel roundId={r.id} />
+                  </td>
+                </tr>
+              )}
+              {groupsExpandedId === r.id && editingId !== r.id && (
+                <tr className="border-b bg-muted/10">
+                  <td colSpan={5} className="p-0">
+                    <GroupsPanel roundId={r.id} />
                   </td>
                 </tr>
               )}
@@ -380,11 +413,15 @@ function RoundRow({
   onEdit,
   handicapExpanded,
   onToggleHandicap,
+  groupsExpanded,
+  onToggleGroups,
 }: {
   round: Round;
   onEdit: () => void;
   handicapExpanded: boolean;
   onToggleHandicap: () => void;
+  groupsExpanded: boolean;
+  onToggleGroups: () => void;
 }) {
   const navigate = useNavigate();
   const dimmed = round.status === 'cancelled' || round.status === 'finalized';
@@ -471,6 +508,17 @@ function RoundRow({
                 <span className="ml-1 hidden sm:inline">Finalize</span>
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onToggleGroups}
+              disabled={isBusy}
+              aria-label="Toggle groups panel"
+              title="Manage groups and player assignments"
+            >
+              <Users className="h-3 w-3" />
+              <span className="ml-1 hidden sm:inline">Groups</span>
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -634,6 +682,318 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Groups Panel
+// ---------------------------------------------------------------------------
+
+function GroupsPanel({ roundId }: { roundId: number }) {
+  const navigate = useNavigate();
+
+  const groupsQuery = useQuery({
+    queryKey: ['admin-round-groups', roundId],
+    queryFn: () => apiFetch<{ items: GroupDetail[] }>(`/admin/rounds/${roundId}/groups`),
+    retry: false,
+  });
+
+  const playersQuery = useQuery({
+    queryKey: ['admin-round-players', roundId],
+    queryFn: () => apiFetch<{ items: RoundPlayer[] }>(`/admin/rounds/${roundId}/players`),
+    retry: false,
+  });
+
+  const rosterQuery = useQuery({
+    queryKey: ['admin-roster'],
+    queryFn: () => apiFetch<{ items: RosterPlayer[] }>('/admin/players'),
+    retry: false,
+  });
+
+  const addGroupMutation = useMutation({
+    mutationFn: (groupNumber: number) =>
+      apiFetch<{ group: GroupDetail }>(`/admin/rounds/${roundId}/groups`, {
+        method: 'POST',
+        body: JSON.stringify({ groupNumber }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-round-groups', roundId] });
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
+  for (const q of [groupsQuery, playersQuery, rosterQuery]) {
+    if ((q.error as Error | null)?.message === 'UNAUTHORIZED') {
+      void navigate({ to: '/admin/login' });
+      return null;
+    }
+  }
+
+  if (groupsQuery.isLoading || playersQuery.isLoading || rosterQuery.isLoading) {
+    return (
+      <div className="p-3 flex justify-center">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (groupsQuery.isError || playersQuery.isError || rosterQuery.isError) {
+    return <div className="p-3 text-xs text-destructive">Could not load group data.</div>;
+  }
+
+  const groupList = groupsQuery.data?.items ?? [];
+  const roundPlayerList = playersQuery.data?.items ?? [];
+  const roster = (rosterQuery.data?.items ?? []).filter(
+    (p) => p.isActive === 1 && p.isGuest === 0,
+  );
+  const assignedPlayerIds = new Set(roundPlayerList.map((p) => p.playerId));
+  const nextGroupNumber = groupList.length + 1;
+
+  return (
+    <div className="p-3">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Group Assignments
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-xs"
+          onClick={() => addGroupMutation.mutate(nextGroupNumber)}
+          disabled={addGroupMutation.isPending || groupList.length >= 4}
+          title={groupList.length >= 4 ? 'Max 4 groups' : 'Add a new group'}
+        >
+          {addGroupMutation.isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Plus className="h-3 w-3" />
+          )}
+          <span className="ml-1">Add Group</span>
+        </Button>
+      </div>
+
+      {groupList.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No groups yet — add one above.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {groupList.map((group) => {
+            const groupPlayers = roundPlayerList.filter((p) => p.groupId === group.id);
+            const availableRoster = roster.filter((p) => !assignedPlayerIds.has(p.id));
+            return (
+              <GroupCard
+                key={group.id}
+                roundId={roundId}
+                group={group}
+                groupPlayers={groupPlayers}
+                availableRoster={availableRoster}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GroupCard({
+  roundId,
+  group,
+  groupPlayers,
+  availableRoster,
+}: {
+  roundId: number;
+  group: GroupDetail;
+  groupPlayers: RoundPlayer[];
+  availableRoster: RosterPlayer[];
+}) {
+  const navigate = useNavigate();
+  const [adding, setAdding] = useState(false);
+  const [selectedPlayerId, setSelectedPlayerId] = useState('');
+  const [hiValue, setHiValue] = useState('');
+  const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [addError, setAddError] = useState<string | null>(null);
+
+  const addPlayerMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<Record<string, unknown>>(
+        `/admin/rounds/${roundId}/groups/${group.id}/players`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            playerId: Number(selectedPlayerId),
+            handicapIndex: Number(hiValue),
+          }),
+        },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-round-players', roundId] });
+      setAdding(false);
+      setSelectedPlayerId('');
+      setHiValue('');
+      setAddError(null);
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') { void navigate({ to: '/admin/login' }); return; }
+      if (err.message === 'CONFLICT') { setAddError('Player already in this round.'); return; }
+      setAddError('Could not add player — try again.');
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (playerId: number) =>
+      apiFetch<{ success: boolean }>(
+        `/admin/rounds/${roundId}/groups/${group.id}/players/${playerId}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-round-players', roundId] });
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
+  const selectedRosterPlayer = availableRoster.find((p) => p.id === Number(selectedPlayerId));
+
+  async function handleFetchHI() {
+    if (!selectedRosterPlayer?.ghinNumber) return;
+    setFetchState('loading');
+    try {
+      const result = await apiFetch<{ handicapIndex: number | null }>(
+        `/admin/ghin/${selectedRosterPlayer.ghinNumber}`,
+      );
+      if (result.handicapIndex !== null) setHiValue(String(result.handicapIndex));
+      setFetchState('idle');
+    } catch {
+      setFetchState('error');
+    }
+  }
+
+  const hiNum = Number(hiValue);
+  const hiInvalid = hiValue === '' || isNaN(hiNum) || hiNum < 0 || hiNum > 54;
+
+  return (
+    <div className="rounded-md border overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+        <p className="text-xs font-semibold">Group {group.groupNumber}</p>
+        <span className="text-xs text-muted-foreground">{groupPlayers.length}/4 players</span>
+      </div>
+      <div className="px-3 py-2 flex flex-col gap-1.5">
+        {groupPlayers.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">No players assigned</p>
+        ) : (
+          groupPlayers.map((p) => (
+            <div key={p.playerId} className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium">{p.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">HI {p.handicapIndex}</span>
+                <button
+                  type="button"
+                  onClick={() => removeMutation.mutate(p.playerId)}
+                  disabled={removeMutation.isPending}
+                  className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                  aria-label={`Remove ${p.name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+
+        {!adding && groupPlayers.length < 4 && availableRoster.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="text-xs text-primary underline underline-offset-2 hover:no-underline mt-1 self-start"
+          >
+            + Add Player
+          </button>
+        )}
+
+        {!adding && availableRoster.length === 0 && groupPlayers.length < 4 && (
+          <p className="text-xs text-muted-foreground mt-1">All roster players assigned.</p>
+        )}
+
+        {adding && (
+          <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t">
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <select
+                value={selectedPlayerId}
+                onChange={(e) => {
+                  setSelectedPlayerId(e.target.value);
+                  setHiValue('');
+                  setFetchState('idle');
+                }}
+                disabled={addPlayerMutation.isPending}
+                className="flex-1 min-w-32 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Select player</option>
+                {availableRoster.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={0}
+                max={54}
+                step={0.1}
+                placeholder="HI"
+                value={hiValue}
+                onChange={(e) => setHiValue(e.target.value)}
+                disabled={addPlayerMutation.isPending}
+                className="w-16 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              {selectedRosterPlayer?.ghinNumber && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => void handleFetchHI()}
+                  disabled={fetchState === 'loading' || addPlayerMutation.isPending}
+                  title="Fetch HI from GHIN"
+                >
+                  {fetchState === 'loading' ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    'Fetch HI'
+                  )}
+                </Button>
+              )}
+            </div>
+            {fetchState === 'error' && (
+              <p className="text-xs text-destructive">GHIN fetch failed</p>
+            )}
+            {addError && <p className="text-xs text-destructive">{addError}</p>}
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => addPlayerMutation.mutate()}
+                disabled={!selectedPlayerId || hiInvalid || addPlayerMutation.isPending}
+              >
+                {addPlayerMutation.isPending ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  'Add'
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => { setAdding(false); setAddError(null); }}
+                disabled={addPlayerMutation.isPending}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

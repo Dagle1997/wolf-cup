@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Pencil, Plus, RefreshCw, UserCheck, UserX } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Pencil, Plus, RefreshCw, Trash2, UserCheck, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { queryClient } from '@/lib/query-client';
@@ -162,6 +162,8 @@ function PlayerTable({ players }: { players: Player[] }) {
   const navigate = useNavigate();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: number; isActive: 0 | 1 }) =>
@@ -177,12 +179,38 @@ function PlayerTable({ players }: { players: Player[] }) {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<{ success: boolean }>(`/admin/players/${id}`, { method: 'DELETE' }),
+    onMutate: (id) => setDeletingId(id),
+    onSettled: () => setDeletingId(null),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-roster'] });
+      setDeleteError(null);
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') { void navigate({ to: '/admin/login' }); return; }
+      if (err.message === 'HAS_ROUND_HISTORY') {
+        setDeleteError('Cannot delete — player has round history. Deactivate instead.');
+      } else {
+        setDeleteError('Could not delete player — try again.');
+      }
+    },
+  });
+
   if (players.length === 0) {
     return <p className="text-muted-foreground text-sm">No players yet.</p>;
   }
 
   return (
     <div className="rounded-md border overflow-hidden">
+      {deleteError && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 text-destructive text-xs border-b">
+          <AlertCircle className="h-3 w-3 shrink-0" />
+          {deleteError}
+          <button className="ml-auto underline underline-offset-2" onClick={() => setDeleteError(null)}>Dismiss</button>
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/50">
@@ -205,8 +233,14 @@ function PlayerTable({ players }: { players: Player[] }) {
                 key={p.id}
                 player={p}
                 isToggling={togglingId === p.id}
+                isDeleting={deletingId === p.id}
                 onEdit={() => setEditingId(p.id)}
                 onToggle={(isActive) => toggleMutation.mutate({ id: p.id, isActive })}
+                onDelete={() => {
+                  if (!window.confirm(`Delete ${p.name}? This cannot be undone.`)) return;
+                  setDeleteError(null);
+                  deleteMutation.mutate(p.id);
+                }}
               />
             ),
           )}
@@ -223,13 +257,17 @@ function PlayerTable({ players }: { players: Player[] }) {
 function PlayerRow({
   player,
   isToggling,
+  isDeleting,
   onEdit,
   onToggle,
+  onDelete,
 }: {
   player: Player;
   isToggling: boolean;
+  isDeleting: boolean;
   onEdit: () => void;
   onToggle: (isActive: 0 | 1) => void;
+  onDelete: () => void;
 }) {
   const inactive = player.isActive === 0;
   const [hiState, setHiState] = useState<
@@ -325,7 +363,7 @@ function PlayerRow({
       </td>
       <td className="py-2 px-3">
         <div className="flex items-center justify-end gap-1">
-          <Button variant="outline" size="sm" onClick={onEdit} disabled={isToggling} aria-label="Edit player">
+          <Button variant="outline" size="sm" onClick={onEdit} disabled={isToggling || isDeleting} aria-label="Edit player">
             <Pencil className="h-3 w-3" />
             <span className="ml-1 hidden sm:inline">Edit</span>
           </Button>
@@ -333,7 +371,7 @@ function PlayerRow({
             variant="outline"
             size="sm"
             onClick={() => onToggle(inactive ? 1 : 0)}
-            disabled={isToggling}
+            disabled={isToggling || isDeleting}
             aria-label={inactive ? 'Reactivate player' : 'Deactivate player'}
           >
             {isToggling ? (
@@ -344,6 +382,16 @@ function PlayerRow({
               <UserX className="h-3 w-3" />
             )}
             <span className="ml-1 hidden sm:inline">{inactive ? 'Reactivate' : 'Deactivate'}</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onDelete}
+            disabled={isToggling || isDeleting}
+            aria-label="Delete player"
+            className="text-destructive hover:text-destructive"
+          >
+            {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
           </Button>
         </div>
       </td>

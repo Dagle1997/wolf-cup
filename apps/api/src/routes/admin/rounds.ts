@@ -430,6 +430,49 @@ app.post('/rounds/:roundId/groups/:groupId/players', adminAuthMiddleware, async 
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /rounds/:roundId/groups/:groupId/players/:playerId — remove player
+// ---------------------------------------------------------------------------
+
+app.delete('/rounds/:roundId/groups/:groupId/players/:playerId', adminAuthMiddleware, async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  const groupId = Number(c.req.param('groupId'));
+  const playerId = Number(c.req.param('playerId'));
+
+  if (!Number.isInteger(roundId) || roundId <= 0 ||
+      !Number.isInteger(groupId) || groupId <= 0 ||
+      !Number.isInteger(playerId) || playerId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let rp: { id: number } | undefined;
+  try {
+    rp = await db
+      .select({ id: roundPlayers.id })
+      .from(roundPlayers)
+      .where(
+        and(
+          eq(roundPlayers.roundId, roundId),
+          eq(roundPlayers.groupId, groupId),
+          eq(roundPlayers.playerId, playerId),
+        ),
+      )
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  if (!rp) return c.json({ error: 'Player not in group', code: 'NOT_FOUND' }, 404);
+
+  try {
+    await db.delete(roundPlayers).where(eq(roundPlayers.id, rp.id));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ success: true }, 200);
+});
+
+// ---------------------------------------------------------------------------
 // POST /rounds/:id/finalize — lock an active official round
 // ---------------------------------------------------------------------------
 
