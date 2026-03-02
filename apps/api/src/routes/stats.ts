@@ -14,8 +14,8 @@ type PlayerStats = {
   playerId: number;
   name: string;
   wolfCallsTotal: number;
-  wolfCallsAlone: number;
-  wolfCallsPartner: number;
+  wolfCallsWolf: number;
+  wolfCallsBlindWolf: number;
   wolfWins: number;
   wolfLosses: number;
   wolfPushes: number;
@@ -23,6 +23,7 @@ type PlayerStats = {
   netEagles: number;
   greenies: number;
   polies: number;
+  totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
 };
@@ -81,21 +82,21 @@ app.get('/stats', async (c) => {
     // Step 5: Aggregate wolf record per player
     const wolfMap = new Map<
       number,
-      { total: number; alone: number; partner: number; wins: number; losses: number; pushes: number }
+      { total: number; wolf: number; blindWolf: number; wins: number; losses: number; pushes: number }
     >();
     for (const row of wdRows) {
       if (row.wolfPlayerId == null) continue; // skip skins holes
       const s = wolfMap.get(row.wolfPlayerId) ?? {
         total: 0,
-        alone: 0,
-        partner: 0,
+        wolf: 0,
+        blindWolf: 0,
         wins: 0,
         losses: 0,
         pushes: 0,
       };
       s.total++;
-      if (row.decision === 'alone' || row.decision === 'blind_wolf') s.alone++;
-      else if (row.decision === 'partner') s.partner++;
+      if (row.decision === 'alone') s.wolf++;
+      else if (row.decision === 'blind_wolf') s.blindWolf++;
       if (row.outcome === 'win') s.wins++;
       else if (row.outcome === 'loss') s.losses++;
       else if (row.outcome === 'push') s.pushes++;
@@ -130,10 +131,12 @@ app.get('/stats', async (c) => {
       }
     }
 
-    // Step 8: Biggest round win / loss
+    // Step 8: Total money, biggest round win / loss
+    const totalMoneyMap = new Map<number, number>();
     const winMap = new Map<number, number>();
     const lossMap = new Map<number, number>();
     for (const row of rrRows) {
+      totalMoneyMap.set(row.playerId, (totalMoneyMap.get(row.playerId) ?? 0) + row.moneyTotal);
       winMap.set(row.playerId, Math.max(winMap.get(row.playerId) ?? 0, row.moneyTotal));
       lossMap.set(row.playerId, Math.min(lossMap.get(row.playerId) ?? 0, row.moneyTotal));
     }
@@ -145,8 +148,8 @@ app.get('/stats', async (c) => {
         playerId: p.id,
         name: p.name,
         wolfCallsTotal: w?.total ?? 0,
-        wolfCallsAlone: w?.alone ?? 0,
-        wolfCallsPartner: w?.partner ?? 0,
+        wolfCallsWolf: w?.wolf ?? 0,
+        wolfCallsBlindWolf: w?.blindWolf ?? 0,
         wolfWins: w?.wins ?? 0,
         wolfLosses: w?.losses ?? 0,
         wolfPushes: w?.pushes ?? 0,
@@ -154,6 +157,7 @@ app.get('/stats', async (c) => {
         netEagles: eagleMap.get(p.id) ?? 0,
         greenies: greenieMap.get(p.id) ?? 0,
         polies: polieMap.get(p.id) ?? 0,
+        totalMoney: totalMoneyMap.get(p.id) ?? 0,
         biggestRoundWin: winMap.get(p.id) ?? 0,
         biggestRoundLoss: lossMap.get(p.id) ?? 0,
       };

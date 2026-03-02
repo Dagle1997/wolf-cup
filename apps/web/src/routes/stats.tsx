@@ -12,8 +12,8 @@ type PlayerStats = {
   playerId: number;
   name: string;
   wolfCallsTotal: number;
-  wolfCallsAlone: number;
-  wolfCallsPartner: number;
+  wolfCallsWolf: number;
+  wolfCallsBlindWolf: number;
   wolfWins: number;
   wolfLosses: number;
   wolfPushes: number;
@@ -21,6 +21,7 @@ type PlayerStats = {
   netEagles: number;
   greenies: number;
   polies: number;
+  totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
 };
@@ -98,7 +99,7 @@ function StatsPage() {
 function StatsTable({ players }: { players: PlayerStats[] }) {
   return (
     <div className="rounded-md border overflow-x-auto">
-      <table className="w-full text-sm min-w-[640px]">
+      <table className="w-full text-sm min-w-[780px]">
         <thead>
           <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
             <th className="py-2 px-2 text-left font-medium">Player</th>
@@ -107,14 +108,15 @@ function StatsTable({ players }: { players: PlayerStats[] }) {
               <br />
               <span className="font-normal">W-L-P</span>
             </th>
-            <th className="py-2 px-2 text-center font-medium">Alone</th>
-            <th className="py-2 px-2 text-center font-medium">Partner</th>
+            <th className="py-2 px-2 text-center font-medium">Wolf</th>
+            <th className="py-2 px-2 text-center font-medium">Blind Wolf</th>
             <th className="py-2 px-2 text-center font-medium">Birdies</th>
             <th className="py-2 px-2 text-center font-medium">Eagles</th>
             <th className="py-2 px-2 text-center font-medium">Greenies</th>
             <th className="py-2 px-2 text-center font-medium">Polies</th>
-            <th className="py-2 px-2 text-right font-medium">Best $</th>
-            <th className="py-2 px-2 text-right font-medium">Worst $</th>
+            <th className="py-2 px-2 text-right font-medium">Total $</th>
+            <th className="py-2 px-2 text-right font-medium">High $</th>
+            <th className="py-2 px-2 text-right font-medium">Low $</th>
           </tr>
         </thead>
         <tbody>
@@ -122,12 +124,15 @@ function StatsTable({ players }: { players: PlayerStats[] }) {
             <tr key={p.playerId} className="border-b last:border-0">
               <td className="py-2 px-2 font-medium">{p.name}</td>
               <td className="py-2 px-2 text-center tabular-nums">{wolfRecord(p)}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{p.wolfCallsAlone}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{p.wolfCallsPartner}</td>
+              <td className="py-2 px-2 text-center tabular-nums">{p.wolfCallsWolf}</td>
+              <td className="py-2 px-2 text-center tabular-nums">{p.wolfCallsBlindWolf}</td>
               <td className="py-2 px-2 text-center tabular-nums">{p.netBirdies}</td>
               <td className="py-2 px-2 text-center tabular-nums">{p.netEagles}</td>
               <td className="py-2 px-2 text-center tabular-nums">{p.greenies}</td>
               <td className="py-2 px-2 text-center tabular-nums">{p.polies}</td>
+              <td className={`py-2 px-2 text-right tabular-nums ${p.totalMoney >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                {formatMoney(p.totalMoney)}
+              </td>
               <td className="py-2 px-2 text-right tabular-nums text-green-600">
                 {formatMoney(p.biggestRoundWin)}
               </td>
