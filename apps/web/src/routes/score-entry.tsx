@@ -100,6 +100,10 @@ function ScoreEntryPage() {
   if (joined) {
     const round = data?.items.find((r) => r.id === joined.roundId);
     const hasGroup = joined.groupId != null;
+    // For official rounds, groupId being set guarantees ball draw is complete — safe to resume directly.
+    // For casual rounds, groupId is set immediately by the practice route before ball draw is done,
+    // so always route through ball-draw (which shows wolf schedule if done, guest form if not).
+    const canResumeDirectly = round?.type === 'official' && hasGroup;
     return (
       <div className="p-4 flex flex-col items-center gap-4 pt-8">
         <CheckCircle2 className="w-12 h-12 text-green-600" />
@@ -109,13 +113,15 @@ function ScoreEntryPage() {
         <p className="text-muted-foreground text-sm text-center">
           {round?.scheduledDate} · Round #{joined.roundId}
         </p>
-        {hasGroup ? (
+        {canResumeDirectly ? (
           <Link to="/score-entry-hole" className="mt-4 w-full max-w-xs">
             <Button className="min-h-12 w-full">Resume Round</Button>
           </Link>
         ) : (
           <Link to="/ball-draw" className="mt-4 w-full max-w-xs">
-            <Button className="min-h-12 w-full">Start Ball Draw</Button>
+            <Button className="min-h-12 w-full">
+              {hasGroup ? 'Continue Ball Draw' : 'Start Ball Draw'}
+            </Button>
           </Link>
         )}
         <Button
