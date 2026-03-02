@@ -1,11 +1,14 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import {
   AlertCircle,
   Ban,
   CalendarDays,
   Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Lock,
   Loader2,
   Pencil,
@@ -42,6 +45,16 @@ type Round = {
   headcount: number | null;
   createdAt: number;
   groupCompletion: { total: number; complete: number };
+};
+
+type RoundPlayer = {
+  playerId: number;
+  name: string;
+  ghinNumber: string | null;
+  groupId: number;
+  groupNumber: number;
+  handicapIndex: number;
+  isSub: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -314,6 +327,7 @@ function CreateRoundForm({ seasons, isLoading }: { seasons: Season[]; isLoading:
 
 function RoundsTable({ rounds }: { rounds: Round[] }) {
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [handicapExpandedId, setHandicapExpandedId] = useState<number | null>(null);
 
   return (
     <div className="rounded-md border overflow-hidden">
@@ -328,17 +342,29 @@ function RoundsTable({ rounds }: { rounds: Round[] }) {
           </tr>
         </thead>
         <tbody>
-          {rounds.map((r) =>
-            editingId === r.id ? (
-              <EditRow key={r.id} round={r} onClose={() => setEditingId(null)} />
-            ) : (
-              <RoundRow
-                key={r.id}
-                round={r}
-                onEdit={() => setEditingId(r.id)}
-              />
-            ),
-          )}
+          {rounds.map((r) => (
+            <Fragment key={r.id}>
+              {editingId === r.id ? (
+                <EditRow round={r} onClose={() => setEditingId(null)} />
+              ) : (
+                <RoundRow
+                  round={r}
+                  onEdit={() => setEditingId(r.id)}
+                  handicapExpanded={handicapExpandedId === r.id}
+                  onToggleHandicap={() =>
+                    setHandicapExpandedId((prev) => (prev === r.id ? null : r.id))
+                  }
+                />
+              )}
+              {handicapExpandedId === r.id && editingId !== r.id && (
+                <tr className="border-b bg-muted/10">
+                  <td colSpan={5} className="p-0">
+                    <HandicapPanel roundId={r.id} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          ))}
         </tbody>
       </table>
     </div>
@@ -349,7 +375,17 @@ function RoundsTable({ rounds }: { rounds: Round[] }) {
 // Round Row
 // ---------------------------------------------------------------------------
 
-function RoundRow({ round, onEdit }: { round: Round; onEdit: () => void }) {
+function RoundRow({
+  round,
+  onEdit,
+  handicapExpanded,
+  onToggleHandicap,
+}: {
+  round: Round;
+  onEdit: () => void;
+  handicapExpanded: boolean;
+  onToggleHandicap: () => void;
+}) {
   const navigate = useNavigate();
   const dimmed = round.status === 'cancelled' || round.status === 'finalized';
   const editable = round.status === 'scheduled' || round.status === 'active';
@@ -435,6 +471,21 @@ function RoundRow({ round, onEdit }: { round: Round; onEdit: () => void }) {
                 <span className="ml-1 hidden sm:inline">Finalize</span>
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onToggleHandicap}
+              disabled={isBusy}
+              aria-label="Toggle handicap panel"
+              title="View / set handicap indexes"
+            >
+              {handicapExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <span className="ml-1 hidden sm:inline">HI</span>
+            </Button>
             <Button variant="outline" size="sm" onClick={onEdit} disabled={isBusy} aria-label="Edit round">
               <Pencil className="h-3 w-3" />
               <span className="ml-1 hidden sm:inline">Edit</span>
@@ -583,6 +634,147 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Handicap Panel
+// ---------------------------------------------------------------------------
+
+function HandicapPanel({ roundId }: { roundId: number }) {
+  const navigate = useNavigate();
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['admin-round-players', roundId],
+    queryFn: () => apiFetch<{ items: RoundPlayer[] }>(`/admin/rounds/${roundId}/players`),
+    retry: false,
+  });
+
+  if ((error as Error | null)?.message === 'UNAUTHORIZED') {
+    void navigate({ to: '/admin/login' });
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-3 flex justify-center">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="p-3 text-xs text-destructive">Could not load players for this round.</div>
+    );
+  }
+
+  if (!data || data.items.length === 0) {
+    return (
+      <div className="p-3 text-xs text-muted-foreground">No players in this round yet.</div>
+    );
+  }
+
+  return (
+    <div className="p-3">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+        Handicap Indexes
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {data.items.map((p) => (
+          <PlayerHIRow key={p.playerId} roundId={roundId} player={p} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PlayerHIRow({ roundId, player }: { roundId: number; player: RoundPlayer }) {
+  const navigate = useNavigate();
+  const [hiValue, setHiValue] = useState(String(player.handicapIndex));
+  const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [saved, setSaved] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ playerId: number; roundId: number; handicapIndex: number }>(
+        `/admin/rounds/${roundId}/players/${player.playerId}/handicap`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ handicapIndex: Number(hiValue) }),
+        },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-round-players', roundId] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
+  async function handleFetch() {
+    if (!player.ghinNumber) return;
+    setFetchState('loading');
+    try {
+      const result = await apiFetch<{ handicapIndex: number | null }>(
+        `/admin/ghin/${player.ghinNumber}`,
+      );
+      if (result.handicapIndex !== null) {
+        setHiValue(String(result.handicapIndex));
+      }
+      setFetchState('idle');
+    } catch {
+      setFetchState('error');
+    }
+  }
+
+  const hiNum = Number(hiValue);
+  const hiInvalid = isNaN(hiNum) || hiNum < 0 || hiNum > 54;
+
+  return (
+    <div className="flex items-center gap-2 text-sm flex-wrap">
+      <span className="w-28 font-medium truncate text-xs">{player.name}</span>
+      <span className="text-xs text-muted-foreground">Grp {player.groupNumber}</span>
+      <input
+        type="number"
+        min={0}
+        max={54}
+        step={0.1}
+        value={hiValue}
+        onChange={(e) => { setHiValue(e.target.value); setSaved(false); }}
+        className="w-20 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+        disabled={saveMutation.isPending}
+      />
+      {player.ghinNumber && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 px-2 text-xs"
+          onClick={() => void handleFetch()}
+          disabled={fetchState === 'loading' || saveMutation.isPending}
+          title="Fetch from GHIN"
+        >
+          {fetchState === 'loading' ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Fetch'}
+        </Button>
+      )}
+      {fetchState === 'error' && (
+        <span className="text-xs text-destructive">Fetch failed</span>
+      )}
+      <Button
+        size="sm"
+        className="h-6 px-2 text-xs"
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending || hiInvalid}
+      >
+        {saveMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+      </Button>
+      {saved && <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />}
+      {saveMutation.isError && (
+        <span className="text-xs text-destructive">Save failed</span>
+      )}
+    </div>
   );
 }
 

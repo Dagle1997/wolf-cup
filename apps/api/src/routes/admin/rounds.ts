@@ -10,6 +10,7 @@ import {
   createGroupSchema,
   addGroupPlayerSchema,
 } from '../../schemas/round.js';
+import { updateHandicapSchema } from '../../schemas/handicap.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -464,6 +465,117 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
   }
 
   return c.json({ id, status: 'finalized' }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// GET /rounds/:roundId/players — list all players in a round with their HI
+// ---------------------------------------------------------------------------
+
+app.get('/rounds/:roundId/players', adminAuthMiddleware, async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  if (!Number.isInteger(roundId) || roundId <= 0) {
+    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let round: { id: number } | undefined;
+  try {
+    round = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.id, roundId)).get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+
+  try {
+    const rows = await db
+      .select({
+        playerId: roundPlayers.playerId,
+        name: players.name,
+        ghinNumber: players.ghinNumber,
+        groupId: roundPlayers.groupId,
+        groupNumber: groups.groupNumber,
+        handicapIndex: roundPlayers.handicapIndex,
+        isSub: roundPlayers.isSub,
+      })
+      .from(roundPlayers)
+      .innerJoin(players, eq(roundPlayers.playerId, players.id))
+      .innerJoin(groups, eq(roundPlayers.groupId, groups.id))
+      .where(eq(roundPlayers.roundId, roundId))
+      .orderBy(groups.groupNumber, players.name);
+    return c.json({ items: rows }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /rounds/:roundId/players/:playerId/handicap — set HI for a player
+// ---------------------------------------------------------------------------
+
+app.patch('/rounds/:roundId/players/:playerId/handicap', adminAuthMiddleware, async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  const playerId = Number(c.req.param('playerId'));
+  if (!Number.isInteger(roundId) || roundId <= 0) {
+    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
+  }
+  if (!Number.isInteger(playerId) || playerId <= 0) {
+    return c.json({ error: 'Invalid player ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
+  }
+
+  const result = updateHandicapSchema.safeParse(body);
+  if (!result.success) {
+    return c.json(
+      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: result.error.issues },
+      400,
+    );
+  }
+
+  let round: { id: number; status: string } | undefined;
+  try {
+    round = await db
+      .select({ id: rounds.id, status: rounds.status })
+      .from(rounds)
+      .where(eq(rounds.id, roundId))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  if (round.status === 'finalized') {
+    return c.json(
+      { error: 'Use corrections flow for finalized rounds', code: 'ROUND_FINALIZED' },
+      422,
+    );
+  }
+
+  let rp: { id: number } | undefined;
+  try {
+    rp = await db
+      .select({ id: roundPlayers.id })
+      .from(roundPlayers)
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId)))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!rp) return c.json({ error: 'Player not in round', code: 'NOT_FOUND' }, 404);
+
+  try {
+    await db
+      .update(roundPlayers)
+      .set({ handicapIndex: result.data.handicapIndex })
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId)));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ playerId, roundId, handicapIndex: result.data.handicapIndex }, 200);
 });
 
 export default app;

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import type { Context, Next } from 'hono';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
@@ -587,6 +587,167 @@ describe('POST /rounds/:id/finalize', () => {
   it('returns 404 NOT_FOUND for unknown round ID', async () => {
     const res = await roundsApp.request('/rounds/99999/finalize', { method: 'POST' });
 
+    expect(res.status).toBe(404);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('NOT_FOUND');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /rounds/:roundId/players
+// ---------------------------------------------------------------------------
+
+describe('GET /rounds/:roundId/players', () => {
+  beforeEach(async () => {
+    // Ensure the test player is in the round for each test
+    await db
+      .insert(roundPlayers)
+      .values({ roundId: testRoundId, groupId: testGroupId, playerId: testPlayerId, handicapIndex: 12.5, isSub: 0 })
+      .onConflictDoNothing();
+  });
+
+  it('returns 200 with player list including HI for a round with players', async () => {
+    const res = await roundsApp.request(`/rounds/${testRoundId}/players`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      items: {
+        playerId: number;
+        name: string;
+        ghinNumber: string | null;
+        groupId: number;
+        groupNumber: number;
+        handicapIndex: number;
+        isSub: number;
+      }[];
+    };
+    expect(Array.isArray(body.items)).toBe(true);
+    // testPlayerId was added to the round in the global beforeAll
+    const row = body.items.find((p) => p.playerId === testPlayerId);
+    expect(row).toBeDefined();
+    expect(typeof row!.handicapIndex).toBe('number');
+    expect(typeof row!.groupNumber).toBe('number');
+  });
+
+  it('returns 200 with empty items for a round with no players', async () => {
+    const [emptyRound] = await db
+      .insert(rounds)
+      .values({
+        seasonId: testSeasonId,
+        type: 'official',
+        scheduledDate: '2026-07-01',
+        status: 'scheduled',
+        entryCodeHash: null,
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning();
+    const res = await roundsApp.request(`/rounds/${emptyRound!.id}/players`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { items: unknown[] };
+    expect(body.items).toHaveLength(0);
+    await db.delete(rounds).where(eq(rounds.id, emptyRound!.id));
+  });
+
+  it('returns 404 for unknown round', async () => {
+    const res = await roundsApp.request('/rounds/99999/players');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /rounds/:roundId/players/:playerId/handicap
+// ---------------------------------------------------------------------------
+
+describe('PATCH /rounds/:roundId/players/:playerId/handicap', () => {
+  beforeEach(async () => {
+    // Ensure the test player is in the round for each test
+    await db
+      .insert(roundPlayers)
+      .values({ roundId: testRoundId, groupId: testGroupId, playerId: testPlayerId, handicapIndex: 12.5, isSub: 0 })
+      .onConflictDoNothing();
+  });
+
+  it('updates handicapIndex and returns 200', async () => {
+    const res = await roundsApp.request(
+      `/rounds/${testRoundId}/players/${testPlayerId}/handicap`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handicapIndex: 18.5 }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      playerId: number;
+      roundId: number;
+      handicapIndex: number;
+    };
+    expect(body.handicapIndex).toBe(18.5);
+    expect(body.playerId).toBe(testPlayerId);
+    expect(body.roundId).toBe(testRoundId);
+
+    // Verify persisted
+    const rp = await db
+      .select({ handicapIndex: roundPlayers.handicapIndex })
+      .from(roundPlayers)
+      .where(and(eq(roundPlayers.roundId, testRoundId), eq(roundPlayers.playerId, testPlayerId)))
+      .get();
+    expect(rp?.handicapIndex).toBe(18.5);
+  });
+
+  it('returns 422 ROUND_FINALIZED for a finalized round', async () => {
+    await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, testRoundId));
+    const res = await roundsApp.request(
+      `/rounds/${testRoundId}/players/${testPlayerId}/handicap`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handicapIndex: 10.0 }),
+      },
+    );
+    expect(res.status).toBe(422);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('ROUND_FINALIZED');
+    await db.update(rounds).set({ status: 'scheduled' }).where(eq(rounds.id, testRoundId));
+  });
+
+  it('returns 400 for handicapIndex out of range', async () => {
+    const res = await roundsApp.request(
+      `/rounds/${testRoundId}/players/${testPlayerId}/handicap`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handicapIndex: 99 }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 404 for player not in round', async () => {
+    const res = await roundsApp.request(
+      `/rounds/${testRoundId}/players/99999/handicap`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handicapIndex: 12.0 }),
+      },
+    );
+    expect(res.status).toBe(404);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 404 for unknown round', async () => {
+    const res = await roundsApp.request(
+      `/rounds/99999/players/${testPlayerId}/handicap`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ handicapIndex: 12.0 }),
+      },
+    );
     expect(res.status).toBe(404);
     const body = await res.json() as { code: string };
     expect(body.code).toBe('NOT_FOUND');

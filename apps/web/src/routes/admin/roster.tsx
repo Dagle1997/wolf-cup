@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AlertCircle, Loader2, Pencil, Plus, RefreshCw, UserCheck, UserX } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Pencil, Plus, RefreshCw, UserCheck, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { queryClient } from '@/lib/query-client';
@@ -232,6 +232,36 @@ function PlayerRow({
   onToggle: (isActive: 0 | 1) => void;
 }) {
   const inactive = player.isActive === 0;
+  const [hiState, setHiState] = useState<
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'ok'; hi: number | null; date: string }
+    | { status: 'error'; msg: string }
+  >({ status: 'idle' });
+
+  async function handleFetchHI() {
+    if (!player.ghinNumber) return;
+    setHiState({ status: 'loading' });
+    try {
+      const result = await apiFetch<{ handicapIndex: number | null; retrievedAt: string }>(
+        `/admin/ghin/${player.ghinNumber}`,
+      );
+      const date = new Date(result.retrievedAt).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+      setHiState({ status: 'ok', hi: result.handicapIndex, date });
+    } catch (err) {
+      const code = (err as Error).message;
+      const msg =
+        code === 'NOT_FOUND'
+          ? 'GHIN # not found'
+          : code === 'GHIN_NOT_CONFIGURED'
+            ? 'GHIN not configured'
+            : 'Lookup failed';
+      setHiState({ status: 'error', msg });
+    }
+  }
 
   return (
     <tr className="border-b last:border-0">
@@ -239,7 +269,48 @@ function PlayerRow({
         {player.name}
       </td>
       <td className={`py-2 px-3 ${inactive ? 'text-muted-foreground' : ''}`}>
-        {player.ghinNumber ?? <span className="text-muted-foreground/50">—</span>}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span>{player.ghinNumber ?? <span className="text-muted-foreground/50">—</span>}</span>
+          {player.ghinNumber && hiState.status === 'idle' && (
+            <button
+              type="button"
+              onClick={() => void handleFetchHI()}
+              className="text-xs text-primary underline underline-offset-2 hover:no-underline"
+              title="Fetch current handicap index from GHIN"
+            >
+              Fetch HI
+            </button>
+          )}
+          {player.ghinNumber && hiState.status === 'loading' && (
+            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+          )}
+          {hiState.status === 'ok' && (
+            <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-3 w-3" />
+              HI: {hiState.hi ?? '—'} ({hiState.date})
+              <button
+                type="button"
+                onClick={() => setHiState({ status: 'idle' })}
+                className="ml-0.5 text-muted-foreground hover:text-foreground"
+                aria-label="Dismiss"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+          {hiState.status === 'error' && (
+            <span className="text-xs text-destructive">
+              {hiState.msg}
+              <button
+                type="button"
+                onClick={() => setHiState({ status: 'idle' })}
+                className="ml-1 underline underline-offset-2"
+              >
+                retry
+              </button>
+            </span>
+          )}
+        </div>
       </td>
       <td className="py-2 px-3">
         {inactive ? (
