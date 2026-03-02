@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Pencil, Plus, RefreshCw, Search, Trash2, UserCheck, UserX } from 'lucide-react';
+import { AlertCircle, Loader2, Pencil, Plus, RefreshCw, Search, Trash2, UserCheck, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { queryClient } from '@/lib/query-client';
