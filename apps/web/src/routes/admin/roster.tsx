@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Pencil, Plus, RefreshCw, Trash2, UserCheck, UserX } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Pencil, Plus, RefreshCw, Search, Trash2, UserCheck, UserX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { queryClient } from '@/lib/query-client';
@@ -17,6 +17,15 @@ type Player = {
   isActive: number;
   isGuest: number;
   createdAt: number;
+};
+
+type GhinSearchResult = {
+  ghinNumber: number;
+  firstName: string;
+  lastName: string;
+  handicapIndex: number | null;
+  club: string | null;
+  state: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -408,6 +417,12 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
   const [name, setName] = useState(player.name);
   const [ghin, setGhin] = useState(player.ghinNumber ?? '');
   const [editError, setEditError] = useState<string | null>(null);
+  const [searchState, setSearchState] = useState<
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'results'; results: GhinSearchResult[] }
+    | { status: 'error'; msg: string }
+  >({ status: 'idle' });
 
   const editMutation = useMutation({
     mutationFn: (body: { name: string; ghinNumber: string | null }) =>
@@ -439,6 +454,27 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
     editMutation.mutate({ name: name.trim(), ghinNumber: ghin.trim() || null });
   }
 
+  async function handleGhinSearch() {
+    const parts = name.trim().split(/\s+/);
+    const lastName = parts[parts.length - 1] ?? '';
+    const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : undefined;
+    if (!lastName) return;
+
+    setSearchState({ status: 'loading' });
+    try {
+      const qs = `last_name=${encodeURIComponent(lastName)}${firstName ? `&first_name=${encodeURIComponent(firstName)}` : ''}`;
+      const result = await apiFetch<{ results: GhinSearchResult[] }>(`/admin/ghin/search?${qs}`);
+      setSearchState({ status: 'results', results: result.results });
+    } catch (err) {
+      const code = (err as Error).message;
+      const msg =
+        code === 'GHIN_NOT_CONFIGURED' ? 'GHIN not configured'
+        : code === 'GHIN_UNAVAILABLE' ? 'GHIN API unavailable'
+        : 'Search failed';
+      setSearchState({ status: 'error', msg });
+    }
+  }
+
   return (
     <tr className="border-b last:border-0 bg-muted/20">
       <td className="py-2 px-3" colSpan={4}>
@@ -451,14 +487,31 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
             disabled={editMutation.isPending}
             autoFocus
           />
-          <input
-            type="text"
-            placeholder="GHIN # (optional)"
-            value={ghin}
-            onChange={(e) => setGhin(e.target.value)}
-            className="w-full sm:w-36 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            disabled={editMutation.isPending}
-          />
+          <div className="flex gap-1">
+            <input
+              type="text"
+              placeholder="GHIN # (optional)"
+              value={ghin}
+              onChange={(e) => { setGhin(e.target.value); setSearchState({ status: 'idle' }); }}
+              className="w-32 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              disabled={editMutation.isPending}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => void handleGhinSearch()}
+              disabled={editMutation.isPending || !name.trim()}
+              title="Search GHIN by name"
+              aria-label="Search GHIN"
+            >
+              {searchState.status === 'loading' ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Search className="h-3 w-3" />
+              )}
+            </Button>
+          </div>
           <div className="flex gap-1 shrink-0">
             <Button size="sm" onClick={handleSave} disabled={editMutation.isPending}>
               {editMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
@@ -468,6 +521,32 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
             </Button>
           </div>
         </div>
+        {searchState.status === 'results' && (
+          <div className="mt-2 rounded-md border bg-background text-sm overflow-hidden max-h-48 overflow-y-auto">
+            {searchState.results.length === 0 ? (
+              <p className="px-3 py-2 text-muted-foreground">No matches found.</p>
+            ) : (
+              searchState.results.map((r) => (
+                <button
+                  key={r.ghinNumber}
+                  type="button"
+                  className="w-full text-left px-3 py-2 border-b last:border-0 hover:bg-muted/50 flex items-center gap-2 flex-wrap"
+                  onClick={() => { setGhin(String(r.ghinNumber)); setSearchState({ status: 'idle' }); }}
+                >
+                  <span className="font-medium">{r.firstName} {r.lastName}</span>
+                  <span className="text-muted-foreground text-xs">#{r.ghinNumber}</span>
+                  {r.handicapIndex !== null && (
+                    <span className="text-xs text-muted-foreground">HI: {r.handicapIndex}</span>
+                  )}
+                  {r.club && <span className="text-xs text-muted-foreground ml-auto">{r.club}</span>}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+        {searchState.status === 'error' && (
+          <p className="mt-1 text-sm text-destructive">{searchState.msg}</p>
+        )}
         {editError && <p className="mt-1 text-sm text-destructive">{editError}</p>}
       </td>
     </tr>
