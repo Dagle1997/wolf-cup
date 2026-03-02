@@ -25,13 +25,16 @@ function RootComponent() {
       <header className="sticky top-0 z-50 bg-background border-b px-4 py-3">
         <div className="flex items-center justify-between">
           <Link to="/" className="text-lg font-bold">🐺 Wolf Cup</Link>
-          <div aria-live="assertive" aria-atomic="true">
-            {!isOnline && (
-              <span className="flex items-center gap-1 text-xs text-destructive font-medium">
-                <span className="h-2 w-2 rounded-full bg-destructive inline-block" />
-                Offline
-              </span>
-            )}
+          <div className="flex items-center gap-3">
+            <div aria-live="assertive" aria-atomic="true">
+              {!isOnline && (
+                <span className="flex items-center gap-1 text-xs text-destructive font-medium">
+                  <span className="h-2 w-2 rounded-full bg-destructive inline-block" />
+                  Offline
+                </span>
+              )}
+            </div>
+            <span className="text-xs font-black tracking-widest text-muted-foreground/50 select-none">📺 AssTV</span>
           </div>
         </div>
       </header>
@@ -40,6 +43,11 @@ function RootComponent() {
       <main className="flex-1 overflow-y-auto">
         <Outlet />
       </main>
+
+      {/* AssTV watermark */}
+      <div className="text-center py-0.5 text-[10px] text-muted-foreground/30 select-none tracking-wide">
+        ® Registered Product of AssTV™
+      </div>
 
       {/* Mobile bottom nav */}
       <nav className="sticky bottom-0 border-t bg-background grid grid-cols-4 divide-x">
