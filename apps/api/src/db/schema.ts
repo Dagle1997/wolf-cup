@@ -110,6 +110,7 @@ export const groups = sqliteTable(
       .references(() => rounds.id),
     groupNumber: integer('group_number').notNull(),
     battingOrder: text('batting_order'), // JSON array of player IDs
+    tee: text('tee'), // 'black' | 'blue' | 'white' — nullable, set at ball-draw time
   },
   (t) => ({
     roundIdx: index('idx_groups_round_id').on(t.roundId),

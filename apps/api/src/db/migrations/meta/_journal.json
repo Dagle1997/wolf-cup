@@ -50,6 +50,13 @@
       "when": 1772554800000,
       "tag": "0006_player_handicap_index",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1772641200000,
+      "tag": "0007_group_tee",
+      "breakpoints": true
     }
   ]
 }

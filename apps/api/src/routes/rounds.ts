@@ -346,6 +346,23 @@ app.post('/rounds/:id/groups/:groupId/quit', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /players/active — public roster for ball-draw dropdown (no auth)
+// ---------------------------------------------------------------------------
+
+app.get('/players/active', async (c) => {
+  try {
+    const rows = await db
+      .select({ id: players.id, name: players.name, handicapIndex: players.handicapIndex })
+      .from(players)
+      .where(and(eq(players.isActive, 1), eq(players.isGuest, 0)))
+      .orderBy(asc(players.name));
+    return c.json({ players: rows }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /rounds — list scheduled/active rounds within ±1-day window of today
 // ---------------------------------------------------------------------------
 
@@ -636,7 +653,7 @@ app.put('/rounds/:roundId/groups/:groupId/batting-order', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
   }
-  const { order } = parsed.data;
+  const { order, tee } = parsed.data;
 
   // Validate: exactly 4 players
   if (order.length !== 4) {
@@ -667,9 +684,11 @@ app.put('/rounds/:roundId/groups/:groupId/batting-order', async (c) => {
     }
   }
 
-  // Save batting order
+  // Save batting order (and tee if provided)
   try {
-    await db.update(groups).set({ battingOrder: JSON.stringify(order) }).where(eq(groups.id, groupId));
+    const updateFields: { battingOrder: string; tee?: string } = { battingOrder: JSON.stringify(order) };
+    if (tee) updateFields.tee = tee;
+    await db.update(groups).set(updateFields).where(eq(groups.id, groupId));
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }

@@ -1,6 +1,21 @@
 import type { CourseHole, HoleNumber } from './types.js';
 import { InvalidHoleError } from './types.js';
 
+export type Tee = 'black' | 'blue' | 'white';
+
+const COURSE_PAR = 71;
+
+export const TEE_RATINGS: Record<Tee, { courseRating: number; slopeRating: number }> = {
+  black: { courseRating: 71.4, slopeRating: 128 },
+  blue:  { courseRating: 69.9, slopeRating: 126 },
+  white: { courseRating: 67.7, slopeRating: 119 },
+};
+
+export function calcCourseHandicap(handicapIndex: number, tee: Tee): number {
+  const { slopeRating, courseRating } = TEE_RATINGS[tee];
+  return Math.round(handicapIndex * (slopeRating / 113) + (courseRating - COURSE_PAR));
+}
+
 /**
  * Guyan Golf & Country Club — Huntington, WV
  *

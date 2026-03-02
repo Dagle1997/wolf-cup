@@ -5,6 +5,8 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { getSession, setSession } from '@/lib/session-store';
+import { calcCourseHandicap, TEE_RATINGS } from '@wolf-cup/engine';
+import type { Tee } from '@wolf-cup/engine';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -15,11 +17,19 @@ const HOLE_PARS = [5, 4, 4, 4, 4, 3, 3, 5, 4, 4, 5, 3, 4, 4, 3, 4, 4, 4] as cons
 
 const POSITIONS = ['1st', '2nd', '3rd', '4th'] as const;
 
+const TEE_OPTIONS: { tee: Tee; label: string; yards: number }[] = [
+  { tee: 'black', label: 'Black', yards: 6523 },
+  { tee: 'blue',  label: 'Blue',  yards: 6209 },
+  { tee: 'white', label: 'White', yards: 5795 },
+];
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Player = { id: number; name: string; handicapIndex: number };
+
+type RosterPlayer = { id: number; name: string; handicapIndex: number | null };
 
 type Group = {
   id: number;
@@ -89,12 +99,16 @@ function BallDrawPage() {
   const [wolfSchedule, setWolfSchedule] = useState<WolfHole[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Tee selection for casual rounds
+  const [selectedTee, setSelectedTee] = useState<Tee | null>(null);
+
   // Local player list for the selected group (roster + any guests added this session)
   const [localPlayers, setLocalPlayers] = useState<Player[]>([]);
   // Track which group we've already initialized to avoid overwriting on query refetch
   const initializedGroupRef = useRef<number | null>(null);
 
-  // Guest form state
+  // Guest form state — roster select or free-text guest
+  const [selectedRosterId, setSelectedRosterId] = useState<string>('');
   const [guestName, setGuestName] = useState('');
   const [guestHandicap, setGuestHandicap] = useState('');
   const [guestError, setGuestError] = useState<string | null>(null);
@@ -113,6 +127,14 @@ function BallDrawPage() {
     enabled: session !== null,
     staleTime: 30_000,
   });
+
+  // Fetch active roster players for the dropdown
+  const { data: rosterData } = useQuery({
+    queryKey: ['active-players'],
+    queryFn: () => apiFetch<{ players: RosterPlayer[] }>('/players/active').then((d) => d.players),
+    staleTime: 60_000,
+  });
+  const rosterPlayers = rosterData ?? [];
 
   // Auto-select group when data arrives (single-group fast path)
   useEffect(() => {
@@ -135,7 +157,6 @@ function BallDrawPage() {
   }, [data, selectedGroupId]);
 
   // Restore wolf schedule from existing batting order when a group is selected
-  // (handles both single-group auto-select and multi-group manual selection)
   useEffect(() => {
     if (!data || selectedGroupId === null || wolfSchedule !== null) return;
     const group = data.groups.find((g) => g.id === selectedGroupId);
@@ -143,6 +164,22 @@ function BallDrawPage() {
       setWolfSchedule(buildWolfScheduleFromOrder(group.battingOrder, group.players));
     }
   }, [data, selectedGroupId, wolfSchedule]);
+
+  // Derive name/HI from roster selection
+  const resolvedName =
+    selectedRosterId === 'guest' || selectedRosterId === ''
+      ? guestName
+      : (rosterPlayers.find((p) => p.id === Number(selectedRosterId))?.name ?? guestName);
+
+  const resolvedHI =
+    selectedRosterId === 'guest' || selectedRosterId === ''
+      ? guestHandicap
+      : guestHandicap; // HI field is always user-editable; auto-filled when roster player selected
+
+  const courseHC =
+    selectedTee && resolvedHI !== '' && !isNaN(Number(resolvedHI))
+      ? calcCourseHandicap(Number(resolvedHI), selectedTee)
+      : null;
 
   const guestMutation = useMutation({
     mutationFn: ({ name, handicapIndex }: { name: string; handicapIndex: number }) =>
@@ -155,6 +192,7 @@ function BallDrawPage() {
       ),
     onSuccess: (data) => {
       setLocalPlayers((prev) => [...prev, data.player]);
+      setSelectedRosterId('');
       setGuestName('');
       setGuestHandicap('');
       setGuestError(null);
@@ -171,13 +209,13 @@ function BallDrawPage() {
   });
 
   const submitMutation = useMutation({
-    mutationFn: ({ groupId, order }: { groupId: number; order: number[] }) =>
+    mutationFn: ({ groupId, order, tee }: { groupId: number; order: number[]; tee: Tee | null }) =>
       apiFetch<{ group: GroupWithSchedule }>(
         `/rounds/${session!.roundId}/groups/${groupId}/batting-order`,
         {
           method: 'PUT',
           headers: session?.entryCode ? { 'x-entry-code': session.entryCode } : {},
-          body: JSON.stringify({ order }),
+          body: JSON.stringify(tee ? { order, tee } : { order }),
         },
       ),
     onSuccess: (data) => {
@@ -223,6 +261,7 @@ function BallDrawPage() {
   }
 
   const groups = data?.groups ?? [];
+  const isCasual = data?.type === 'casual';
 
   // ---------------------------------------------------------------------------
   // Wolf schedule view (after ball draw confirmed or restored from session)
@@ -301,51 +340,129 @@ function BallDrawPage() {
     );
   }
 
-  const isCasual = data?.type === 'casual';
+  // ---------------------------------------------------------------------------
+  // Casual round: tee selection screen (before any players added)
+  // ---------------------------------------------------------------------------
+
+  if (isCasual && selectedTee === null && localPlayers.length === 0 && !group.battingOrder) {
+    return (
+      <div className="p-4 flex flex-col gap-4">
+        <h2 className="text-xl font-semibold">Which tees are you playing today?</h2>
+        <div className="flex flex-col gap-3">
+          {TEE_OPTIONS.map(({ tee, label, yards }) => (
+            <button
+              key={tee}
+              className="border rounded-xl p-4 text-left hover:bg-muted transition-colors"
+              onClick={() => setSelectedTee(tee)}
+            >
+              <p className="font-medium">{label} Tees</p>
+              <p className="text-sm text-muted-foreground">
+                {yards.toLocaleString()} yds · CR {TEE_RATINGS[tee].courseRating} / Slope {TEE_RATINGS[tee].slopeRating}
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 flex flex-col gap-4">
       <h2 className="text-xl font-semibold">Ball Draw</h2>
       <p className="text-sm text-muted-foreground">
         Group {group.groupNumber} · {localPlayers.map((p) => p.name).join(', ') || 'No players yet'}
+        {selectedTee && (
+          <span className="ml-2 capitalize">· {selectedTee} tees</span>
+        )}
       </p>
 
       {/* Guest player form — casual rounds only, when < 4 players and no batting order set */}
       {isCasual && localPlayers.length < 4 && (
         <div className="flex flex-col gap-3 border rounded-xl p-4">
           <p className="text-sm font-medium">
-            Add Guest Player ({localPlayers.length}/4)
+            Add Player ({localPlayers.length}/4)
           </p>
-          <input
-            type="text"
-            placeholder="Guest name"
-            value={guestName}
-            onChange={(e) => setGuestName(e.target.value)}
-            className="border rounded-lg p-2 min-h-12 bg-background text-sm"
-          />
-          <input
-            type="number"
-            placeholder="Handicap index (e.g. 12.4)"
-            min={0}
-            max={54}
-            step={0.1}
-            value={guestHandicap}
-            onChange={(e) => setGuestHandicap(e.target.value)}
-            className="border rounded-lg p-2 min-h-12 bg-background text-sm"
-          />
+
+          {/* Roster dropdown */}
+          <select
+            className="border rounded-lg p-3 min-h-12 bg-background text-sm"
+            value={selectedRosterId}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedRosterId(val);
+              if (val !== 'guest' && val !== '') {
+                const rp = rosterPlayers.find((p) => p.id === Number(val));
+                if (rp) {
+                  setGuestHandicap(rp.handicapIndex != null ? String(rp.handicapIndex) : '');
+                }
+              } else {
+                setGuestHandicap('');
+                setGuestName('');
+              }
+            }}
+          >
+            <option value="">— Select player —</option>
+            {rosterPlayers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}{p.handicapIndex != null ? ` (HI ${p.handicapIndex})` : ''}
+              </option>
+            ))}
+            <option value="guest">New guest…</option>
+          </select>
+
+          {/* Free-text name input — only shown for "New guest…" */}
+          {selectedRosterId === 'guest' && (
+            <input
+              type="text"
+              placeholder="Guest name"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+              className="border rounded-lg p-2 min-h-12 bg-background text-sm"
+            />
+          )}
+
+          {/* HI input */}
+          {(selectedRosterId !== '') && (
+            <div className="flex flex-col gap-1">
+              <input
+                type="number"
+                placeholder="Handicap index (e.g. 12.4)"
+                min={0}
+                max={54}
+                step={0.1}
+                value={guestHandicap}
+                onChange={(e) => setGuestHandicap(e.target.value)}
+                className="border rounded-lg p-2 min-h-12 bg-background text-sm"
+              />
+              {/* Course HC preview */}
+              {courseHC !== null && selectedTee && (
+                <p className="text-sm text-muted-foreground pl-1">
+                  Course HC: <span className="font-semibold text-foreground">{courseHC}</span>{' '}
+                  <span className="capitalize">({selectedTee} tees)</span>
+                </p>
+              )}
+            </div>
+          )}
+
           {guestError && (
             <div className="flex items-center gap-2 text-destructive text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {guestError}
             </div>
           )}
+
           <Button
             variant="outline"
             className="min-h-12 w-full"
-            disabled={!guestName.trim() || !guestHandicap || guestMutation.isPending}
+            disabled={
+              selectedRosterId === '' ||
+              (selectedRosterId === 'guest' && !guestName.trim()) ||
+              !guestHandicap ||
+              guestMutation.isPending
+            }
             onClick={() =>
               guestMutation.mutate({
-                name: guestName.trim(),
+                name: resolvedName.trim(),
                 handicapIndex: Number(guestHandicap),
               })
             }
@@ -356,9 +473,31 @@ function BallDrawPage() {
                 Adding…
               </>
             ) : (
-              'Add Guest'
+              'Add Player'
             )}
           </Button>
+        </div>
+      )}
+
+      {/* Player list with course HC */}
+      {localPlayers.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {localPlayers.map((p) => {
+            const hc = selectedTee ? calcCourseHandicap(p.handicapIndex, selectedTee) : null;
+            return (
+              <div key={p.id} className="flex justify-between items-center text-sm border rounded-lg px-3 py-2">
+                <span className="font-medium">{p.name}</span>
+                <span className="text-muted-foreground">
+                  HI: {p.handicapIndex}
+                  {hc !== null && (
+                    <span className="ml-2 text-foreground font-medium">
+                      → HC: {hc}
+                    </span>
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -368,7 +507,7 @@ function BallDrawPage() {
           <BattingOrderForm
             players={localPlayers}
             isPending={submitMutation.isPending}
-            onSubmit={(order) => submitMutation.mutate({ groupId: group.id, order })}
+            onSubmit={(order) => submitMutation.mutate({ groupId: group.id, order, tee: selectedTee })}
           />
           {error && (
             <div className="flex items-center gap-2 text-destructive text-sm">

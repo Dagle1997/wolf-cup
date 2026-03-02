@@ -34,6 +34,7 @@ export const addGroupPlayerSchema = z.object({
 
 export const battingOrderSchema = z.object({
   order: z.array(z.number().int().positive()),
+  tee: z.enum(['black', 'blue', 'white']).optional(),
 });
 
 export const submitHoleScoresSchema = z.object({
