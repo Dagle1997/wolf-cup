@@ -180,10 +180,11 @@ function ScorecardPanel({
   const tdTot = 'text-center py-[3px] text-[10px] font-bold';
 
   return (
-    <div className="overflow-x-auto py-2 px-1 space-y-2">
+    <div className="overflow-x-auto py-2 px-1">
+      <div className="min-w-max space-y-2">
 
       {/* ── Front 9 ── */}
-      <table className="border-collapse min-w-max">
+      <table className="w-full border-collapse">
         <thead>
           <tr className="bg-green-700 text-white">
             <th className="pl-2 pr-1 py-1 text-[10px] font-semibold text-left w-10">Hole</th>
@@ -261,7 +262,7 @@ function ScorecardPanel({
 
       {/* ── Back 9 (only if any back-9 scores) ── */}
       {back9.length > 0 && (
-        <table className="border-collapse min-w-max">
+        <table className="w-full border-collapse">
           <thead>
             <tr className="bg-green-700 text-white">
               <th className="pl-2 pr-1 py-1 text-[10px] font-semibold text-left w-10">Hole</th>
@@ -345,6 +346,7 @@ function ScorecardPanel({
           </tbody>
         </table>
       )}
+      </div>
     </div>
   );
 }
