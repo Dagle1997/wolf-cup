@@ -20,6 +20,7 @@ type StandingsPlayer = {
   combinedTotal: number;
   avgPerRound: number;
   lowRound: number;
+  highRound: number;
   rank: number;
   isPlayoffEligible: boolean;
 };
@@ -150,6 +151,7 @@ app.get('/standings', async (c) => {
         ? Math.round((roundCombined.reduce((s, v) => s + v, 0) / roundCombined.length) * 10) / 10
         : 0;
       const lowRound = roundCombined.length > 0 ? Math.min(...roundCombined) : 0;
+      const highRound = roundCombined.length > 0 ? Math.max(...roundCombined) : 0;
       return {
         playerId: pid,
         name: nameMap.get(pid) ?? 'Unknown',
@@ -160,6 +162,7 @@ app.get('/standings', async (c) => {
         combinedTotal: totals.stableford + totals.money,
         avgPerRound,
         lowRound,
+        highRound,
         isSub: subStatusByPlayer.get(pid) ?? true,
       };
     });
@@ -185,6 +188,7 @@ app.get('/standings', async (c) => {
         combinedTotal: p.combinedTotal,
         avgPerRound: p.avgPerRound,
         lowRound: p.lowRound,
+        highRound: p.highRound,
         rank: fullMemberRanks.get(p.playerId) ?? fullMemberRows.length,
         isPlayoffEligible: (fullMemberRanks.get(p.playerId) ?? 999) <= 8,
       }))
@@ -201,6 +205,7 @@ app.get('/standings', async (c) => {
         combinedTotal: p.combinedTotal,
         avgPerRound: p.avgPerRound,
         lowRound: p.lowRound,
+        highRound: p.highRound,
         rank: subRanks.get(p.playerId) ?? subRows.length,
         isPlayoffEligible: false,
       }))

@@ -21,6 +21,14 @@ function RootComponent() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground">
+      {/* Faint watermark — behind all content */}
+      <div
+        className="fixed inset-0 flex items-center justify-center pointer-events-none select-none z-0"
+        aria-hidden="true"
+      >
+        <span className="text-[35vw] opacity-[0.025]">🍑</span>
+      </div>
+
       {/* App header */}
       <header className="sticky top-0 z-50 bg-background border-b px-4 py-3">
         <div className="flex items-center justify-between">
@@ -34,19 +42,23 @@ function RootComponent() {
                 </span>
               )}
             </div>
-            <span className="text-xs font-black tracking-widest text-muted-foreground/50 select-none">📺 AssTV</span>
+            {/* AssTV logo */}
+            <span className="text-xs font-black select-none leading-none">
+              <span className="text-foreground/70">Ass</span><span className="text-red-600/80">TV</span>
+              <span className="ml-0.5 text-[11px]">🍑</span>
+            </span>
           </div>
         </div>
       </header>
 
       {/* Page content */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="relative z-10 flex-1 overflow-y-auto">
         <Outlet />
       </main>
 
-      {/* AssTV watermark */}
-      <div className="text-center py-0.5 text-[10px] text-muted-foreground/30 select-none tracking-wide">
-        ® Registered Product of AssTV™
+      {/* AssTV watermark footer */}
+      <div className="relative z-10 text-center py-0.5 text-[10px] text-muted-foreground/25 select-none tracking-wide">
+        ® Registered Product of Appalachian Sports Station
       </div>
 
       {/* Mobile bottom nav */}

@@ -18,6 +18,7 @@ type StandingsPlayer = {
   combinedTotal: number;
   avgPerRound: number;
   lowRound: number;
+  highRound: number;
   rank: number;
   isPlayoffEligible: boolean;
 };
@@ -38,7 +39,7 @@ type StandingsResponse = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatHarvey(points: number): string {
+function fmt(points: number): string {
   return Number.isInteger(points) ? String(points) : points.toFixed(1);
 }
 
@@ -85,9 +86,14 @@ function StandingsPage() {
             <p className="text-muted-foreground">No season data available</p>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground mb-4">
-                Round {data.season.roundsCompleted} of {data.season.totalRounds}
-              </p>
+              <div className="flex items-baseline justify-between mb-1">
+                <p className="text-sm text-muted-foreground">
+                  Round {data.season.roundsCompleted} of {data.season.totalRounds}
+                </p>
+                <p className="text-xs text-muted-foreground/60">
+                  All values in Harvey Cup pts · best 10 rounds count
+                </p>
+              </div>
               <StandingsTable players={data.fullMembers} showPlayoff />
               {data.subs.length > 0 && (
                 <div className="mt-6">
@@ -104,7 +110,7 @@ function StandingsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// StandingsTable
 // ---------------------------------------------------------------------------
 
 function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; showPlayoff: boolean }) {
@@ -120,11 +126,12 @@ function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; 
             <th className="py-2 px-3 text-left font-medium w-10">#</th>
             <th className="py-2 px-3 text-left font-medium">Player</th>
             <th className="py-2 px-3 text-center font-medium">Rds</th>
-            <th className="py-2 px-3 text-right font-medium">Stab</th>
-            <th className="py-2 px-3 text-right font-medium">Money</th>
-            <th className="py-2 px-3 text-right font-medium">Total</th>
             <th className="py-2 px-3 text-right font-medium">Avg</th>
-            <th className="py-2 px-3 text-right font-medium">Low Rnd</th>
+            <th className="py-2 px-3 text-right font-medium">Worst</th>
+            <th className="py-2 px-3 text-right font-medium">Best</th>
+            <th className="py-2 px-3 text-right font-medium">Stab</th>
+            <th className="py-2 px-3 text-right font-medium">$</th>
+            <th className="py-2 px-3 text-right font-medium">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -146,11 +153,18 @@ function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; 
                   <span className="text-xs text-amber-600 ml-1">(−{player.roundsDropped})</span>
                 )}
               </td>
-              <td className="py-2 px-3 text-right tabular-nums">{formatHarvey(player.stablefordTotal)}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{formatHarvey(player.moneyTotal)}</td>
-              <td className="py-2 px-3 text-right tabular-nums font-semibold">{formatHarvey(player.combinedTotal)}</td>
-              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatHarvey(player.avgPerRound)}</td>
-              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatHarvey(player.lowRound)}</td>
+              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+                {fmt(player.avgPerRound)}
+              </td>
+              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+                {player.roundsPlayed > 0 ? fmt(player.lowRound) : '—'}
+              </td>
+              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+                {player.roundsPlayed > 0 ? fmt(player.highRound) : '—'}
+              </td>
+              <td className="py-2 px-3 text-right tabular-nums">{fmt(player.stablefordTotal)}</td>
+              <td className="py-2 px-3 text-right tabular-nums">{fmt(player.moneyTotal)}</td>
+              <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(player.combinedTotal)}</td>
             </tr>
           ))}
         </tbody>
@@ -169,7 +183,7 @@ function LoadingSkeleton() {
           <div className="flex-1">
             <div className="h-4 w-32 bg-muted rounded" />
           </div>
-          {[1, 2, 3, 4, 5, 6, 7].map((j) => (
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
             <div key={j} className="h-4 w-10 bg-muted rounded" />
           ))}
         </div>

@@ -175,9 +175,15 @@ function RoundsPage() {
   const seasons = seasonsQuery.data?.items ?? [];
   const rounds = roundsQuery.data?.items ?? [];
 
+  const currentSeason = [...seasons].sort((a, b) => b.id - a.id)[0] ?? null;
+
   return (
     <div className="p-4 max-w-2xl mx-auto">
       <h2 className="text-xl font-semibold mb-4">Rounds</h2>
+
+      {currentSeason && (
+        <HarveyLiveToggle season={currentSeason} />
+      )}
 
       <CreateRoundForm seasons={seasons} isLoading={isLoading} />
 
@@ -190,6 +196,52 @@ function RoundsPage() {
           <RoundsTable rounds={rounds} />
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Harvey Live Toggle
+// ---------------------------------------------------------------------------
+
+function HarveyLiveToggle({ season }: { season: Season }) {
+  const navigate = useNavigate();
+  const enabled = season.harveyLiveEnabled === 1;
+
+  const toggleMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ season: Season }>(`/admin/seasons/${season.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ harveyLiveEnabled: !enabled }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-seasons'] });
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
+  return (
+    <div className="flex items-center justify-between rounded-md border px-3 py-2 mb-4 bg-muted/20">
+      <div>
+        <p className="text-sm font-medium">Harvey Live Points</p>
+        <p className="text-xs text-muted-foreground">
+          Show projected Harvey pts on leaderboard · {season.name}
+        </p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        onClick={() => toggleMutation.mutate()}
+        disabled={toggleMutation.isPending}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none disabled:opacity-50 ${enabled ? 'bg-primary' : 'bg-input'}`}
+      >
+        <span
+          className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-background shadow-sm transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`}
+        />
+      </button>
     </div>
   );
 }
