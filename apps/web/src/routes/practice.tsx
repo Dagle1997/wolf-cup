@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { setSession } from '@/lib/session-store';
 

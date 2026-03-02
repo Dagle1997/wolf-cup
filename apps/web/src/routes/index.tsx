@@ -122,7 +122,7 @@ function renderGolfNotation(grossScore: number, netScore: number, par: number) {
 function ScorecardPanel({
   roundId,
   playerId,
-  autoCalculateMoney,
+  autoCalculateMoney: _autoCalculateMoney,
 }: {
   roundId: number;
   playerId: number;
