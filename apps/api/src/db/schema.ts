@@ -62,6 +62,7 @@ export const players = sqliteTable('players', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull(),
   ghinNumber: text('ghin_number'),
+  handicapIndex: real('handicap_index'), // last-known HI from GHIN; updated via roster admin
   isActive: integer('is_active').notNull().default(1), // boolean 0/1
   isGuest: integer('is_guest').notNull().default(0), // boolean 0/1; guests are round-only, not roster
   createdAt: integer('created_at').notNull(),

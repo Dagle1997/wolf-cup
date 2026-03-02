@@ -14,6 +14,7 @@ type Player = {
   id: number;
   name: string;
   ghinNumber: string | null;
+  handicapIndex: number | null;
   isActive: number;
   isGuest: number;
   createdAt: number;
@@ -279,34 +280,24 @@ function PlayerRow({
   onDelete: () => void;
 }) {
   const inactive = player.isActive === 0;
-  const [hiState, setHiState] = useState<
-    | { status: 'idle' }
-    | { status: 'loading' }
-    | { status: 'ok'; hi: number | null; date: string }
-    | { status: 'error'; msg: string }
-  >({ status: 'idle' });
+  const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'error'>('idle');
 
   async function handleFetchHI() {
     if (!player.ghinNumber) return;
-    setHiState({ status: 'loading' });
+    setFetchState('loading');
     try {
-      const result = await apiFetch<{ handicapIndex: number | null; retrievedAt: string }>(
+      const result = await apiFetch<{ handicapIndex: number | null }>(
         `/admin/ghin/${player.ghinNumber}`,
       );
-      const date = new Date(result.retrievedAt).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
+      // Save the fetched HI back to the player record
+      await apiFetch<{ player: Player }>(`/admin/players/${player.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ handicapIndex: result.handicapIndex }),
       });
-      setHiState({ status: 'ok', hi: result.handicapIndex, date });
-    } catch (err) {
-      const code = (err as Error).message;
-      const msg =
-        code === 'NOT_FOUND'
-          ? 'GHIN # not found'
-          : code === 'GHIN_NOT_CONFIGURED'
-            ? 'GHIN not configured'
-            : 'Lookup failed';
-      setHiState({ status: 'error', msg });
+      void queryClient.invalidateQueries({ queryKey: ['admin-roster'] });
+      setFetchState('idle');
+    } catch {
+      setFetchState('error');
     }
   }
 
@@ -314,43 +305,34 @@ function PlayerRow({
     <tr className="border-b last:border-0">
       <td className={`py-2 px-3 font-medium ${inactive ? 'text-muted-foreground' : ''}`}>
         {player.name}
+        {player.handicapIndex !== null && player.handicapIndex !== undefined && (
+          <span className="ml-1.5 text-xs text-muted-foreground font-normal">
+            HI: {player.handicapIndex}
+          </span>
+        )}
       </td>
       <td className={`py-2 px-3 ${inactive ? 'text-muted-foreground' : ''}`}>
         <div className="flex items-center gap-1.5 flex-wrap">
           <span>{player.ghinNumber ?? <span className="text-muted-foreground/50">—</span>}</span>
-          {player.ghinNumber && hiState.status === 'idle' && (
+          {player.ghinNumber && fetchState === 'idle' && (
             <button
               type="button"
               onClick={() => void handleFetchHI()}
               className="text-xs text-primary underline underline-offset-2 hover:no-underline"
-              title="Fetch current handicap index from GHIN"
+              title="Fetch & save current handicap index from GHIN"
             >
-              Fetch HI
+              {player.handicapIndex !== null && player.handicapIndex !== undefined ? 'Refresh HI' : 'Fetch HI'}
             </button>
           )}
-          {player.ghinNumber && hiState.status === 'loading' && (
+          {fetchState === 'loading' && (
             <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
           )}
-          {hiState.status === 'ok' && (
-            <span className="flex items-center gap-1 text-xs text-green-700 dark:text-green-400">
-              <CheckCircle2 className="h-3 w-3" />
-              HI: {hiState.hi ?? '—'} ({hiState.date})
-              <button
-                type="button"
-                onClick={() => setHiState({ status: 'idle' })}
-                className="ml-0.5 text-muted-foreground hover:text-foreground"
-                aria-label="Dismiss"
-              >
-                <ChevronDown className="h-3 w-3" />
-              </button>
-            </span>
-          )}
-          {hiState.status === 'error' && (
+          {fetchState === 'error' && (
             <span className="text-xs text-destructive">
-              {hiState.msg}
+              Failed
               <button
                 type="button"
-                onClick={() => setHiState({ status: 'idle' })}
+                onClick={() => setFetchState('idle')}
                 className="ml-1 underline underline-offset-2"
               >
                 retry
@@ -416,6 +398,7 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
   const navigate = useNavigate();
   const [name, setName] = useState(player.name);
   const [ghin, setGhin] = useState(player.ghinNumber ?? '');
+  const [pendingHi, setPendingHi] = useState<number | null | undefined>(undefined); // undefined = no change
   const [editError, setEditError] = useState<string | null>(null);
   const [searchState, setSearchState] = useState<
     | { status: 'idle' }
@@ -425,7 +408,7 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
   >({ status: 'idle' });
 
   const editMutation = useMutation({
-    mutationFn: (body: { name: string; ghinNumber: string | null }) =>
+    mutationFn: (body: { name: string; ghinNumber: string | null; handicapIndex?: number | null }) =>
       apiFetch<{ player: Player }>(`/admin/players/${player.id}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
@@ -451,7 +434,12 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
       return;
     }
     setEditError(null);
-    editMutation.mutate({ name: name.trim(), ghinNumber: ghin.trim() || null });
+    const body: { name: string; ghinNumber: string | null; handicapIndex?: number | null } = {
+      name: name.trim(),
+      ghinNumber: ghin.trim() || null,
+    };
+    if (pendingHi !== undefined) body.handicapIndex = pendingHi;
+    editMutation.mutate(body);
   }
 
   async function handleGhinSearch() {
@@ -492,7 +480,7 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
               type="text"
               placeholder="GHIN # (optional)"
               value={ghin}
-              onChange={(e) => { setGhin(e.target.value); setSearchState({ status: 'idle' }); }}
+              onChange={(e) => { setGhin(e.target.value); setSearchState({ status: 'idle' }); setPendingHi(undefined); }}
               className="w-32 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               disabled={editMutation.isPending}
             />
@@ -531,7 +519,7 @@ function EditRow({ player, onClose }: { player: Player; onClose: () => void }) {
                   key={r.ghinNumber}
                   type="button"
                   className="w-full text-left px-3 py-2 border-b last:border-0 hover:bg-muted/50 flex items-center gap-2 flex-wrap"
-                  onClick={() => { setGhin(String(r.ghinNumber)); setSearchState({ status: 'idle' }); }}
+                  onClick={() => { setGhin(String(r.ghinNumber)); setPendingHi(r.handicapIndex); setSearchState({ status: 'idle' }); }}
                 >
                   <span className="font-medium">{r.firstName} {r.lastName}</span>
                   <span className="text-muted-foreground text-xs">#{r.ghinNumber}</span>

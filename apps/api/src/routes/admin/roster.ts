@@ -129,6 +129,7 @@ app.patch('/players/:id', adminAuthMiddleware, async (c) => {
   if (result.data.name !== undefined) updates.name = result.data.name;
   if (result.data.ghinNumber !== undefined) updates.ghinNumber = result.data.ghinNumber;
   if (result.data.isActive !== undefined) updates.isActive = result.data.isActive;
+  if (result.data.handicapIndex !== undefined) updates.handicapIndex = result.data.handicapIndex;
 
   try {
     const updated = await db

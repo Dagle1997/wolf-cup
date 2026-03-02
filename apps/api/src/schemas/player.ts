@@ -12,6 +12,7 @@ export const updatePlayerSchema = z
     name: z.string().min(1).optional(),
     ghinNumber: z.string().nullable().optional(),
     isActive: z.literal(0).or(z.literal(1)).optional(),
+    handicapIndex: z.number().nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field required',
