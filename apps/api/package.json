@@ -16,6 +16,7 @@
   "dependencies": {
     "@hono/node-server": "^1.0.0",
     "@libsql/client": "^0.17.0",
+    "@spicygolf/ghin": "^0.8.8",
     "@wolf-cup/engine": "workspace:*",
     "bcrypt": "^5.1.1",
     "drizzle-orm": "^0.45.1",

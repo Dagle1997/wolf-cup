@@ -249,18 +249,18 @@ development_status:
   # Round finalization flow, expanded score corrections (greenie/polie/HI) with
   # full audit log, and GHIN handicap index lookup + per-round HI management.
   # ---------------------------------------------------------------------------
-  epic-8: in-progress
+  epic-8: done
 
   # POST /admin/rounds/:id/finalize endpoint; group completion progress in admin
   # rounds UI; scorer summary screen polls for finalization status.
-  8-1-round-finalization-flow: ready-for-dev
+  8-1-round-finalization-flow: done
 
   # Expand score corrections to greenie, polie, handicap index fields.
   # Full audit log with admin username, old→new values, player name resolution.
-  8-2-expanded-score-corrections-audit: ready-for-dev
+  8-2-expanded-score-corrections-audit: done
 
   # n8io/ghin package integration; GHIN lookup endpoint; per-round HI management
   # in admin rounds UI; Fetch HI button on roster page.
-  8-3-ghin-handicap-lookup: ready-for-dev
+  8-3-ghin-handicap-lookup: done
 
   epic-8-retrospective: optional
