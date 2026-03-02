@@ -24,27 +24,16 @@ app.get('/ghin/search', adminAuthMiddleware, async (c) => {
     );
   }
 
-  let golfers: Awaited<ReturnType<typeof ghinClient.golfers.search>>;
   try {
-    golfers = await ghinClient.golfers.search({
-      last_name: lastName,
-      ...(firstName ? { first_name: firstName } : {}),
-      status: 'Active',
-    });
-  } catch {
+    const results = await ghinClient.searchByName(lastName, firstName);
+    return c.json({ results }, 200);
+  } catch (err) {
+    const code = (err as Error).message;
+    if (code === 'GHIN_AUTH_FAILED') {
+      return c.json({ error: 'GHIN credentials invalid', code: 'GHIN_AUTH_FAILED' }, 503);
+    }
     return c.json({ error: 'GHIN API unavailable', code: 'GHIN_UNAVAILABLE' }, 503);
   }
-
-  const results = golfers.slice(0, 20).map((g) => ({
-    ghinNumber: g.ghin,
-    firstName: g.first_name,
-    lastName: g.last_name,
-    handicapIndex: g.handicap_index !== null ? Number(g.handicap_index) : null,
-    club: g.club_name ?? null,
-    state: g.state ?? null,
-  }));
-
-  return c.json({ results }, 200);
 });
 
 // ---------------------------------------------------------------------------
@@ -65,37 +54,22 @@ app.get('/ghin/:ghinNumber', adminAuthMiddleware, async (c) => {
     );
   }
 
-  // Check if golfer exists (returns undefined when not found)
-  let golfer: unknown;
   try {
-    golfer = await ghinClient.golfers.getOne(ghinNumber);
-  } catch {
+    const { handicapIndex } = await ghinClient.getHandicap(ghinNumber);
+    return c.json(
+      { ghinNumber, handicapIndex, retrievedAt: new Date().toISOString() },
+      200,
+    );
+  } catch (err) {
+    const code = (err as Error).message;
+    if (code === 'NOT_FOUND') {
+      return c.json({ error: 'GHIN number not found', code: 'NOT_FOUND' }, 404);
+    }
+    if (code === 'GHIN_AUTH_FAILED') {
+      return c.json({ error: 'GHIN credentials invalid', code: 'GHIN_AUTH_FAILED' }, 503);
+    }
     return c.json({ error: 'GHIN API unavailable', code: 'GHIN_UNAVAILABLE' }, 503);
   }
-
-  if (!golfer) {
-    return c.json({ error: 'GHIN number not found', code: 'NOT_FOUND' }, 404);
-  }
-
-  // Fetch handicap index
-  let handicapRaw: string | number | null;
-  try {
-    const result = await ghinClient.handicaps.getOne(ghinNumber);
-    handicapRaw = result.handicap_index;
-  } catch {
-    return c.json({ error: 'GHIN API unavailable', code: 'GHIN_UNAVAILABLE' }, 503);
-  }
-
-  const handicapIndex = handicapRaw !== null ? Number(handicapRaw) : null;
-
-  return c.json(
-    {
-      ghinNumber,
-      handicapIndex,
-      retrievedAt: new Date().toISOString(),
-    },
-    200,
-  );
 });
 
 export default app;
