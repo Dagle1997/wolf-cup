@@ -86,7 +86,7 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
     );
   }
 
-  const { seasonId, type, scheduledDate, entryCode } = result.data;
+  const { seasonId, type, scheduledDate, entryCode, tee } = result.data;
 
   // Verify season exists
   let season: { id: number } | undefined;
@@ -123,6 +123,7 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
         scheduledDate,
         status: 'scheduled',
         entryCodeHash,
+        tee: tee ?? null,
         autoCalculateMoney: 1,
         createdAt: Date.now(),
       })
@@ -187,6 +188,7 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
   if (result.data.headcount !== undefined) updates.headcount = result.data.headcount;
   if (result.data.scheduledDate !== undefined) updates.scheduledDate = result.data.scheduledDate;
   if (result.data.autoCalculateMoney !== undefined) updates.autoCalculateMoney = result.data.autoCalculateMoney ? 1 : 0;
+  if (result.data.tee !== undefined) updates.tee = result.data.tee;
 
   // Hash new entry code if provided
   if (result.data.entryCode !== undefined) {

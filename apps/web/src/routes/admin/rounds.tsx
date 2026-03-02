@@ -42,6 +42,7 @@ type Round = {
   type: 'official' | 'casual';
   status: 'scheduled' | 'active' | 'finalized' | 'cancelled';
   scheduledDate: string;
+  tee: 'black' | 'blue' | 'white' | null;
   autoCalculateMoney: number; // 0 | 1
   headcount: number | null;
   createdAt: number;
@@ -203,6 +204,7 @@ function CreateRoundForm({ seasons, isLoading }: { seasons: Season[]; isLoading:
   const [roundType, setRoundType] = useState<'official' | 'casual'>('official');
   const [scheduledDate, setScheduledDate] = useState('');
   const [entryCode, setEntryCode] = useState('');
+  const [tee, setTee] = useState<'black' | 'blue' | 'white' | ''>('');
   const [formError, setFormError] = useState<string | null>(null);
 
   const noSeasons = !isLoading && seasons.length === 0;
@@ -213,6 +215,7 @@ function CreateRoundForm({ seasons, isLoading }: { seasons: Season[]; isLoading:
       type: 'official' | 'casual';
       scheduledDate: string;
       entryCode?: string;
+      tee?: 'black' | 'blue' | 'white';
     }) =>
       apiFetch<{ round: Round }>('/admin/rounds', {
         method: 'POST',
@@ -224,6 +227,7 @@ function CreateRoundForm({ seasons, isLoading }: { seasons: Season[]; isLoading:
       setRoundType('official');
       setScheduledDate('');
       setEntryCode('');
+      setTee('');
       setFormError(null);
     },
     onError: (err: Error) => {
@@ -249,6 +253,7 @@ function CreateRoundForm({ seasons, isLoading }: { seasons: Season[]; isLoading:
       type: roundType,
       scheduledDate,
       ...(roundType === 'official' && entryCode.trim() ? { entryCode: entryCode.trim() } : {}),
+      ...(tee ? { tee } : {}),
     });
   }
 
@@ -306,6 +311,19 @@ function CreateRoundForm({ seasons, isLoading }: { seasons: Season[]; isLoading:
                 </button>
               ))}
             </div>
+
+            {/* Tee selection */}
+            <select
+              value={tee}
+              onChange={(e) => setTee(e.target.value as 'black' | 'blue' | 'white' | '')}
+              disabled={addMutation.isPending}
+              className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="">Tees (optional)</option>
+              <option value="black">Black</option>
+              <option value="blue">Blue</option>
+              <option value="white">White</option>
+            </select>
 
             {/* Entry code — official only */}
             {roundType === 'official' && (
@@ -469,6 +487,9 @@ function RoundRow({
           <CalendarDays className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           {formatDate(round.scheduledDate)}
         </span>
+        {round.tee && (
+          <span className="text-xs mt-0.5 block text-muted-foreground capitalize">{round.tee} tees</span>
+        )}
         {round.status === 'active' && round.type === 'official' && total > 0 && (
           <span className={`text-xs mt-0.5 block ${allComplete ? 'text-green-600' : 'text-muted-foreground'}`}>
             {complete}/{total} groups complete
@@ -572,6 +593,7 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
   const [date, setDate] = useState(round.scheduledDate);
   const [headcount, setHeadcount] = useState(String(round.headcount ?? ''));
   const [entryCode, setEntryCode] = useState('');
+  const [tee, setTee] = useState<'black' | 'blue' | 'white' | ''>(round.tee ?? '');
   const [autoMoney, setAutoMoney] = useState(round.autoCalculateMoney === 1);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -603,6 +625,8 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
     }
     if (entryCode.trim() && round.type === 'official') patch['entryCode'] = entryCode.trim();
     if (autoMoney !== (round.autoCalculateMoney === 1)) patch['autoCalculateMoney'] = autoMoney;
+    const resolvedTee = tee || null;
+    if (resolvedTee !== round.tee) patch['tee'] = resolvedTee;
 
     if (Object.keys(patch).length === 0) {
       onClose();
@@ -641,6 +665,22 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
                 disabled={editMutation.isPending}
                 className="w-28 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
+            </div>
+
+            {/* Tee */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Tees</label>
+              <select
+                value={tee}
+                onChange={(e) => setTee(e.target.value as 'black' | 'blue' | 'white' | '')}
+                disabled={editMutation.isPending}
+                className="rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">— none —</option>
+                <option value="black">Black</option>
+                <option value="blue">Blue</option>
+                <option value="white">White</option>
+              </select>
             </div>
 
             {/* Entry code — official only */}

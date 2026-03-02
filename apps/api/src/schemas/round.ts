@@ -9,6 +9,7 @@ export const createRoundSchema = z.object({
   type: z.enum(['official', 'casual']),
   scheduledDate: z.string().regex(dateRegex),
   entryCode: z.string().min(1).optional(),
+  tee: z.enum(['black', 'blue', 'white']).optional(),
 });
 
 export const updateRoundSchema = z
@@ -18,6 +19,7 @@ export const updateRoundSchema = z
     entryCode: z.string().min(1).optional(),
     scheduledDate: z.string().regex(dateRegex).optional(),
     autoCalculateMoney: z.boolean().optional(),
+    tee: z.enum(['black', 'blue', 'white']).nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field required',
