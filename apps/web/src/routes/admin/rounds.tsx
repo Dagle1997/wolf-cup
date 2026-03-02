@@ -516,7 +516,11 @@ function RoundRow({
               aria-label="Toggle groups panel"
               title="Manage groups and player assignments"
             >
-              <Users className="h-3 w-3" />
+              {groupsExpanded ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <Users className="h-3 w-3" />
+              )}
               <span className="ml-1 hidden sm:inline">Groups</span>
             </Button>
             <Button
