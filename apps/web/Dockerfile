@@ -6,7 +6,6 @@ RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 WORKDIR /app
 
 # Copy workspace manifest files for layer-cache
-# Engine package.json needed for pnpm workspace resolution (not imported by web)
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml .npmrc ./
 COPY packages/engine/package.json ./packages/engine/
 COPY apps/web/package.json ./apps/web/
@@ -14,8 +13,11 @@ COPY apps/web/package.json ./apps/web/
 RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json ./
+COPY packages/engine/ ./packages/engine/
 COPY apps/web/ ./apps/web/
 
+# Build engine first so its dist/ is available to the web bundler
+RUN pnpm --filter @wolf-cup/engine build
 RUN pnpm --filter @wolf-cup/web build
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
