@@ -16,6 +16,8 @@ type StandingsPlayer = {
   stablefordTotal: number;
   moneyTotal: number;
   combinedTotal: number;
+  avgPerRound: number;
+  lowRound: number;
   rank: number;
   isPlayoffEligible: boolean;
 };
@@ -55,7 +57,7 @@ function StandingsPage() {
   });
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
+    <div className="p-4 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">
           {data?.season ? `${data.season.name} Standings` : 'Season Standings'}
@@ -111,15 +113,18 @@ function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; 
   }
 
   return (
-    <div className="rounded-md border overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="rounded-md border overflow-x-auto">
+      <table className="w-full text-sm min-w-[600px]">
         <thead>
-          <tr className="border-b bg-muted/50">
-            <th className="py-2 px-3 text-left font-medium text-muted-foreground w-10">Rank</th>
-            <th className="py-2 px-3 text-left font-medium text-muted-foreground">Player</th>
-            <th className="py-2 px-3 text-right font-medium text-muted-foreground">Stab</th>
-            <th className="py-2 px-3 text-right font-medium text-muted-foreground">Money</th>
-            <th className="py-2 px-3 text-right font-medium text-muted-foreground">Total</th>
+          <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
+            <th className="py-2 px-3 text-left font-medium w-10">#</th>
+            <th className="py-2 px-3 text-left font-medium">Player</th>
+            <th className="py-2 px-3 text-center font-medium">Rds</th>
+            <th className="py-2 px-3 text-right font-medium">Stab</th>
+            <th className="py-2 px-3 text-right font-medium">Money</th>
+            <th className="py-2 px-3 text-right font-medium">Total</th>
+            <th className="py-2 px-3 text-right font-medium">Avg</th>
+            <th className="py-2 px-3 text-right font-medium">Low Rnd</th>
           </tr>
         </thead>
         <tbody>
@@ -134,15 +139,18 @@ function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; 
                   <span className="ml-1 text-green-600 text-xs">✓</span>
                 )}
               </td>
-              <td className="py-2 px-3">
-                <div className="font-medium">{player.name}</div>
-                <div className="text-xs text-muted-foreground">
-                  Rnd {player.roundsPlayed} (−{player.roundsDropped})
-                </div>
+              <td className="py-2 px-3 font-medium">{player.name}</td>
+              <td className="py-2 px-3 text-center tabular-nums text-muted-foreground">
+                {player.roundsPlayed}
+                {player.roundsDropped > 0 && (
+                  <span className="text-xs text-amber-600 ml-1">(−{player.roundsDropped})</span>
+                )}
               </td>
               <td className="py-2 px-3 text-right tabular-nums">{formatHarvey(player.stablefordTotal)}</td>
               <td className="py-2 px-3 text-right tabular-nums">{formatHarvey(player.moneyTotal)}</td>
-              <td className="py-2 px-3 text-right tabular-nums font-medium">{formatHarvey(player.combinedTotal)}</td>
+              <td className="py-2 px-3 text-right tabular-nums font-semibold">{formatHarvey(player.combinedTotal)}</td>
+              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatHarvey(player.avgPerRound)}</td>
+              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{formatHarvey(player.lowRound)}</td>
             </tr>
           ))}
         </tbody>
@@ -158,13 +166,12 @@ function LoadingSkeleton() {
       {[1, 2, 3].map((i) => (
         <div key={i} className="flex gap-3 px-3 py-3 border-b last:border-0">
           <div className="h-4 w-6 bg-muted rounded" />
-          <div className="flex-1 space-y-1">
+          <div className="flex-1">
             <div className="h-4 w-32 bg-muted rounded" />
-            <div className="h-3 w-20 bg-muted rounded" />
           </div>
-          <div className="h-4 w-8 bg-muted rounded" />
-          <div className="h-4 w-8 bg-muted rounded" />
-          <div className="h-4 w-8 bg-muted rounded" />
+          {[1, 2, 3, 4, 5, 6, 7].map((j) => (
+            <div key={j} className="h-4 w-10 bg-muted rounded" />
+          ))}
         </div>
       ))}
     </div>

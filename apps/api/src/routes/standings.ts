@@ -18,6 +18,8 @@ type StandingsPlayer = {
   stablefordTotal: number;
   moneyTotal: number;
   combinedTotal: number;
+  avgPerRound: number;
+  lowRound: number;
   rank: number;
   isPlayoffEligible: boolean;
 };
@@ -143,6 +145,11 @@ app.get('/standings', async (c) => {
     const playerStandings = playerIds.map((pid) => {
       const playerRounds = harveyByPlayer.get(pid) ?? [];
       const totals = calculateSeasonTotal(playerRounds, []);
+      const roundCombined = playerRounds.map(r => r.stablefordPoints + r.moneyPoints);
+      const avgPerRound = roundCombined.length > 0
+        ? Math.round((roundCombined.reduce((s, v) => s + v, 0) / roundCombined.length) * 10) / 10
+        : 0;
+      const lowRound = roundCombined.length > 0 ? Math.min(...roundCombined) : 0;
       return {
         playerId: pid,
         name: nameMap.get(pid) ?? 'Unknown',
@@ -151,6 +158,8 @@ app.get('/standings', async (c) => {
         stablefordTotal: totals.stableford,
         moneyTotal: totals.money,
         combinedTotal: totals.stableford + totals.money,
+        avgPerRound,
+        lowRound,
         isSub: subStatusByPlayer.get(pid) ?? true,
       };
     });
@@ -174,6 +183,8 @@ app.get('/standings', async (c) => {
         stablefordTotal: p.stablefordTotal,
         moneyTotal: p.moneyTotal,
         combinedTotal: p.combinedTotal,
+        avgPerRound: p.avgPerRound,
+        lowRound: p.lowRound,
         rank: fullMemberRanks.get(p.playerId) ?? fullMemberRows.length,
         isPlayoffEligible: (fullMemberRanks.get(p.playerId) ?? 999) <= 8,
       }))
@@ -188,6 +199,8 @@ app.get('/standings', async (c) => {
         stablefordTotal: p.stablefordTotal,
         moneyTotal: p.moneyTotal,
         combinedTotal: p.combinedTotal,
+        avgPerRound: p.avgPerRound,
+        lowRound: p.lowRound,
         rank: subRanks.get(p.playerId) ?? subRows.length,
         isPlayoffEligible: false,
       }))
