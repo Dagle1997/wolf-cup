@@ -13,6 +13,8 @@ services:
       - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET}
       - ADMIN_JASON_PASSWORD=${ADMIN_JASON_PASSWORD:-changeme-jason}
       - ADMIN_JOSH_PASSWORD=${ADMIN_JOSH_PASSWORD:-changeme-josh}
+      - GHIN_USERNAME=${GHIN_USERNAME:-}
+      - GHIN_PASSWORD=${GHIN_PASSWORD:-}
     volumes:
       - sqlite_data:/app/data
     networks:
