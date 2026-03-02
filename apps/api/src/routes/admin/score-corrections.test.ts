@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import type { Context, Next } from 'hono';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
@@ -30,6 +30,7 @@ import {
   rounds,
   groups,
   players,
+  roundPlayers,
   holeScores,
   wolfDecisions,
   scoreCorrections,
@@ -614,6 +615,28 @@ describe('GET /rounds/:roundId/corrections', () => {
     expect(body.items[0]!.correctedAt).toBeGreaterThan(body.items[1]!.correctedAt);
   });
 
+  it('returns adminUsername and playerName in each item', async () => {
+    await db.insert(scoreCorrections).values({
+      adminUserId: 1,
+      roundId: testRoundId,
+      holeNumber: 5,
+      playerId: testPlayerId,
+      fieldName: 'grossScore',
+      oldValue: '5',
+      newValue: '4',
+      correctedAt: Date.now(),
+    });
+
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'GET',
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as { items: { adminUsername: string; playerName: string | null }[] };
+    expect(body.items[0]!.adminUsername).toBe('test-admin-sc');
+    expect(body.items[0]!.playerName).toBe('Test Player SC');
+  });
+
   it('returns 404 NOT_FOUND for unknown round', async () => {
     const res = await scoreCorrectionsApp.request('/rounds/99999/corrections', {
       method: 'GET',
@@ -622,5 +645,229 @@ describe('GET /rounds/:roundId/corrections', () => {
     expect(res.status).toBe(404);
     const body = await res.json() as { code: string };
     expect(body.code).toBe('NOT_FOUND');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:roundId/corrections — greenie
+// ---------------------------------------------------------------------------
+
+describe('POST /rounds/:roundId/corrections — greenie', () => {
+  // Seed a wolf decision on par-3 hole 6 for greenie tests
+  let greenieWolfDecisionId: number;
+  beforeAll(async () => {
+    const [wd] = await db
+      .insert(wolfDecisions)
+      .values({
+        roundId: testRoundId,
+        groupId: testGroupId,
+        holeNumber: 6,
+        wolfPlayerId: testPlayerId,
+        decision: 'alone',
+        partnerPlayerId: null,
+        bonusesJson: null,
+        createdAt: Date.now(),
+      })
+      .returning();
+    greenieWolfDecisionId = wd!.id;
+  });
+
+  afterAll(async () => {
+    await db.delete(wolfDecisions).where(eq(wolfDecisions.id, greenieWolfDecisionId));
+  });
+
+  it('adds a greenie and returns 201', async () => {
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holeNumber: 6,
+        fieldName: 'greenie',
+        groupId: testGroupId,
+        playerId: testPlayerId,
+        newValue: 'add',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json() as { correction: { fieldName: string; newValue: string } };
+    expect(body.correction.fieldName).toBe('greenie');
+    // newValue in audit log is the resulting array, not 'add'
+    expect(body.correction.newValue).toBe(JSON.stringify([testPlayerId]));
+
+    // Verify DB updated
+    const wd = await db.select({ bonusesJson: wolfDecisions.bonusesJson }).from(wolfDecisions).where(eq(wolfDecisions.id, greenieWolfDecisionId)).get();
+    const bonuses = JSON.parse(wd!.bonusesJson!) as { greenies: number[] };
+    expect(bonuses.greenies).toContain(testPlayerId);
+  });
+
+  it('removes a greenie and returns 201', async () => {
+    // First add
+    await db.update(wolfDecisions).set({ bonusesJson: JSON.stringify({ greenies: [testPlayerId], polies: [] }) }).where(eq(wolfDecisions.id, greenieWolfDecisionId));
+
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holeNumber: 6,
+        fieldName: 'greenie',
+        groupId: testGroupId,
+        playerId: testPlayerId,
+        newValue: 'remove',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json() as { correction: { newValue: string } };
+    expect(body.correction.newValue).toBe(JSON.stringify([]));
+  });
+
+  it('returns 422 VALIDATION_ERROR for greenie on non-par-3 hole', async () => {
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holeNumber: 5,
+        fieldName: 'greenie',
+        groupId: testGroupId,
+        playerId: testPlayerId,
+        newValue: 'add',
+      }),
+    });
+
+    expect(res.status).toBe(422);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:roundId/corrections — polie
+// ---------------------------------------------------------------------------
+
+describe('POST /rounds/:roundId/corrections — polie', () => {
+  it('adds a polie on any hole and returns 201', async () => {
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holeNumber: 5,
+        fieldName: 'polie',
+        groupId: testGroupId,
+        playerId: testPlayerId,
+        newValue: 'add',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json() as { correction: { fieldName: string; newValue: string } };
+    expect(body.correction.fieldName).toBe('polie');
+    expect(body.correction.newValue).toBe(JSON.stringify([testPlayerId]));
+
+    const wd = await db.select({ bonusesJson: wolfDecisions.bonusesJson }).from(wolfDecisions).where(eq(wolfDecisions.id, testWolfDecisionId)).get();
+    const bonuses = JSON.parse(wd!.bonusesJson!) as { polies: number[] };
+    expect(bonuses.polies).toContain(testPlayerId);
+  });
+
+  it('returns 400 VALIDATION_ERROR for invalid newValue', async () => {
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holeNumber: 5,
+        fieldName: 'polie',
+        groupId: testGroupId,
+        playerId: testPlayerId,
+        newValue: 'toggle',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:roundId/corrections — handicapIndex
+// ---------------------------------------------------------------------------
+
+describe('POST /rounds/:roundId/corrections — handicapIndex', () => {
+  let hiPlayerId: number;
+
+  beforeAll(async () => {
+    const [p] = await db.insert(players).values({ name: 'HI Player', createdAt: Date.now() }).returning();
+    hiPlayerId = p!.id;
+    await db.insert(roundPlayers).values({
+      roundId: testRoundId,
+      groupId: testGroupId,
+      playerId: hiPlayerId,
+      handicapIndex: 14.2,
+      isSub: 0,
+    });
+  });
+
+  afterAll(async () => {
+    await db.delete(roundPlayers).where(eq(roundPlayers.playerId, hiPlayerId));
+    await db.delete(players).where(eq(players.id, hiPlayerId));
+  });
+
+  it('updates handicap index and returns 201', async () => {
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holeNumber: 0,
+        fieldName: 'handicapIndex',
+        playerId: hiPlayerId,
+        newValue: '12.8',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = await res.json() as { correction: { fieldName: string; oldValue: string; newValue: string; holeNumber: number } };
+    expect(body.correction.fieldName).toBe('handicapIndex');
+    expect(body.correction.oldValue).toBe('14.2');
+    expect(body.correction.newValue).toBe('12.8');
+    expect(body.correction.holeNumber).toBe(0);
+
+    // Verify DB updated
+    const rp = await db.select({ handicapIndex: roundPlayers.handicapIndex })
+      .from(roundPlayers)
+      .where(eq(roundPlayers.playerId, hiPlayerId))
+      .get();
+    expect(rp?.handicapIndex).toBe(12.8);
+  });
+
+  it('returns 400 VALIDATION_ERROR for out-of-range HI', async () => {
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holeNumber: 0,
+        fieldName: 'handicapIndex',
+        playerId: hiPlayerId,
+        newValue: '55.0',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 VALIDATION_ERROR when holeNumber is not 0', async () => {
+    const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        holeNumber: 5,
+        fieldName: 'handicapIndex',
+        playerId: hiPlayerId,
+        newValue: '12.0',
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe('VALIDATION_ERROR');
   });
 });

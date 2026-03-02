@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, desc, count, countDistinct } from 'drizzle-orm';
+import { eq, and, desc, countDistinct } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
 import { seasons, rounds, groups, roundPlayers, players, holeScores } from '../../db/schema.js';

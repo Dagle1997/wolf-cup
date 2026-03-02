@@ -45,16 +45,24 @@ type Group = {
 type ScoreCorrection = {
   id: number;
   adminUserId: number;
+  adminUsername: string | null;
   roundId: number;
   holeNumber: number;
   playerId: number | null;
+  playerName: string | null;
   fieldName: string;
   oldValue: string;
   newValue: string;
   correctedAt: number;
 };
 
-type FieldName = 'grossScore' | 'wolfDecision' | 'wolfPartnerId';
+type FieldName = 'grossScore' | 'wolfDecision' | 'wolfPartnerId' | 'greenie' | 'polie' | 'handicapIndex';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const PAR3_HOLES = [6, 7, 12, 15];
 
 // ---------------------------------------------------------------------------
 // Route
@@ -92,6 +100,9 @@ const FIELD_LABELS: Record<string, string> = {
   grossScore: 'Gross Score',
   wolfDecision: 'Wolf Decision',
   wolfPartnerId: 'Wolf Partner',
+  greenie: 'Greenie',
+  polie: 'Polie',
+  handicapIndex: 'Handicap Index',
 };
 
 // ---------------------------------------------------------------------------
@@ -295,6 +306,8 @@ function CorrectionForm({
   const [groupId, setGroupId] = useState<string>('');
   const [wolfDecision, setWolfDecision] = useState<string>('alone');
   const [wolfPartnerId, setWolfPartnerId] = useState<string>('null');
+  const [bonusAction, setBonusAction] = useState<'add' | 'remove'>('add');
+  const [handicapIndex, setHandicapIndex] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState('');
   const [submitError, setSubmitError] = useState('');
 
@@ -313,6 +326,8 @@ function CorrectionForm({
       setGroupId('');
       setWolfDecision('alone');
       setWolfPartnerId('null');
+      setBonusAction('add');
+      setHandicapIndex('');
       setSubmitError('');
       setSuccessMsg('Correction recorded.');
     },
@@ -337,15 +352,10 @@ function CorrectionForm({
     setSubmitError('');
     setSuccessMsg('');
     const body: Record<string, unknown> = { holeNumber, fieldName };
+
     if (fieldName === 'grossScore') {
-      if (!playerId) {
-        setSubmitError('Player is required.');
-        return;
-      }
-      if (!grossScore) {
-        setSubmitError('Gross score is required.');
-        return;
-      }
+      if (!playerId) { setSubmitError('Player is required.'); return; }
+      if (!grossScore) { setSubmitError('Gross score is required.'); return; }
       const scoreNum = Number(grossScore);
       if (!Number.isInteger(scoreNum) || scoreNum < 1 || scoreNum > 20) {
         setSubmitError('Gross score must be a whole number between 1 and 20.');
@@ -353,85 +363,111 @@ function CorrectionForm({
       }
       body['playerId'] = Number(playerId);
       body['newValue'] = grossScore;
+
     } else if (fieldName === 'wolfDecision') {
-      if (!groupId) {
-        setSubmitError('Group is required.');
-        return;
-      }
+      if (!groupId) { setSubmitError('Group is required.'); return; }
       body['groupId'] = Number(groupId);
       body['newValue'] = wolfDecision;
-    } else {
-      // wolfPartnerId
-      if (!groupId) {
-        setSubmitError('Group is required.');
-        return;
-      }
+
+    } else if (fieldName === 'wolfPartnerId') {
+      if (!groupId) { setSubmitError('Group is required.'); return; }
       body['groupId'] = Number(groupId);
       body['newValue'] = wolfPartnerId;
+
+    } else if (fieldName === 'greenie') {
+      if (!playerId) { setSubmitError('Player is required.'); return; }
+      if (!groupId) { setSubmitError('Group is required.'); return; }
+      body['playerId'] = Number(playerId);
+      body['groupId'] = Number(groupId);
+      body['newValue'] = bonusAction;
+
+    } else if (fieldName === 'polie') {
+      if (!playerId) { setSubmitError('Player is required.'); return; }
+      if (!groupId) { setSubmitError('Group is required.'); return; }
+      body['playerId'] = Number(playerId);
+      body['groupId'] = Number(groupId);
+      body['newValue'] = bonusAction;
+
+    } else {
+      // handicapIndex — holeNumber must be 0 (round-wide sentinel)
+      if (!playerId) { setSubmitError('Player is required.'); return; }
+      if (!handicapIndex) { setSubmitError('Handicap index is required.'); return; }
+      const hiNum = Number(handicapIndex);
+      if (isNaN(hiNum) || hiNum < 0 || hiNum > 54) {
+        setSubmitError('Handicap index must be between 0 and 54.');
+        return;
+      }
+      body['holeNumber'] = 0;
+      body['playerId'] = Number(playerId);
+      body['newValue'] = handicapIndex;
     }
+
     addMutation.mutate(body);
   }
 
+  function handleFieldChange(f: FieldName) {
+    setFieldName(f);
+    setSubmitError('');
+    setSuccessMsg('');
+    // Reset greenie hole to a par-3 when switching to greenie
+    if (f === 'greenie') setHoleNumber(6);
+    else if (f !== 'handicapIndex') setHoleNumber(1);
+  }
+
   const isPending = addMutation.isPending;
+
+  // Par-3-only holes for greenie
+  const holeOptions = fieldName === 'greenie'
+    ? PAR3_HOLES
+    : Array.from({ length: 18 }, (_, i) => i + 1);
 
   return (
     <form onSubmit={handleSubmit} className="rounded-md border p-4 bg-muted/20">
       <h3 className="text-sm font-semibold mb-4">Submit Correction</h3>
 
-      {/* Hole selector */}
-      <div className="mb-3">
-        <label className="text-xs font-medium text-muted-foreground mb-1 block">
-          Hole Number
-        </label>
-        <select
-          className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          value={holeNumber}
-          onChange={(e) => setHoleNumber(Number(e.target.value))}
-          disabled={isPending}
-        >
-          {Array.from({ length: 18 }, (_, i) => i + 1).map((n) => (
-            <option key={n} value={n}>
-              Hole {n}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Field type toggle */}
+      {/* Field type selector */}
       <div className="mb-4">
         <label className="text-xs font-medium text-muted-foreground mb-1 block">
           Field to Correct
         </label>
-        <div className="flex rounded-md border overflow-hidden w-fit">
-          {(['grossScore', 'wolfDecision', 'wolfPartnerId'] as FieldName[]).map((f) => (
-            <button
-              key={f}
-              type="button"
-              className={`px-3 py-1.5 text-xs font-medium transition-colors border-r last:border-r-0 ${
-                fieldName === f
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-background hover:bg-muted'
-              }`}
-              onClick={() => {
-                setFieldName(f);
-                setSubmitError('');
-                setSuccessMsg('');
-              }}
-              disabled={isPending}
-            >
-              {FIELD_LABELS[f]}
-            </button>
+        <select
+          className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          value={fieldName}
+          onChange={(e) => handleFieldChange(e.target.value as FieldName)}
+          disabled={isPending}
+        >
+          {(Object.keys(FIELD_LABELS) as FieldName[]).map((f) => (
+            <option key={f} value={f}>{FIELD_LABELS[f]}</option>
           ))}
-        </div>
+        </select>
       </div>
 
-      {/* Conditional: grossScore */}
+      {/* Hole selector — hidden for handicapIndex (round-wide) */}
+      {fieldName !== 'handicapIndex' && (
+        <div className="mb-3">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">
+            Hole Number{fieldName === 'greenie' ? ' (par-3 only)' : ''}
+          </label>
+          <select
+            className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            value={holeNumber}
+            onChange={(e) => setHoleNumber(Number(e.target.value))}
+            disabled={isPending}
+          >
+            {holeOptions.map((n) => (
+              <option key={n} value={n}>Hole {n}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Conditional fields */}
+
+      {/* grossScore */}
       {fieldName === 'grossScore' && (
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div className="flex-1">
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              Player
-            </label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Player</label>
             <select
               className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={playerId}
@@ -440,9 +476,7 @@ function CorrectionForm({
             >
               <option value="">— select player —</option>
               {activePlayers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
@@ -463,13 +497,11 @@ function CorrectionForm({
         </div>
       )}
 
-      {/* Conditional: wolfDecision */}
+      {/* wolfDecision */}
       {fieldName === 'wolfDecision' && (
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              Group
-            </label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Group</label>
             <select
               className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={groupId}
@@ -478,16 +510,12 @@ function CorrectionForm({
             >
               <option value="">— select group —</option>
               {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  Group {g.groupNumber}
-                </option>
+                <option key={g.id} value={g.id}>Group {g.groupNumber}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              New Decision
-            </label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">New Decision</label>
             <select
               className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={wolfDecision}
@@ -502,13 +530,11 @@ function CorrectionForm({
         </div>
       )}
 
-      {/* Conditional: wolfPartnerId */}
+      {/* wolfPartnerId */}
       {fieldName === 'wolfPartnerId' && (
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              Group
-            </label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Group</label>
             <select
               className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={groupId}
@@ -517,16 +543,12 @@ function CorrectionForm({
             >
               <option value="">— select group —</option>
               {groups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  Group {g.groupNumber}
-                </option>
+                <option key={g.id} value={g.id}>Group {g.groupNumber}</option>
               ))}
             </select>
           </div>
           <div className="flex-1">
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              New Partner
-            </label>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">New Partner</label>
             <select
               className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={wolfPartnerId}
@@ -535,11 +557,98 @@ function CorrectionForm({
             >
               <option value="null">None (clear partner)</option>
               {activePlayers.map((p) => (
-                <option key={p.id} value={String(p.id)}>
-                  {p.name}
-                </option>
+                <option key={p.id} value={String(p.id)}>{p.name}</option>
               ))}
             </select>
+          </div>
+        </div>
+      )}
+
+      {/* greenie / polie */}
+      {(fieldName === 'greenie' || fieldName === 'polie') && (
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="flex-1">
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Player</label>
+            <select
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={playerId}
+              onChange={(e) => setPlayerId(e.target.value)}
+              disabled={isPending}
+            >
+              <option value="">— select player —</option>
+              {activePlayers.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Group</label>
+            <select
+              className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              disabled={isPending}
+            >
+              <option value="">— select group —</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>Group {g.groupNumber}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Action</label>
+            <div className="flex rounded-md border overflow-hidden">
+              {(['add', 'remove'] as const).map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  className={`px-3 py-2 text-xs font-medium transition-colors border-r last:border-r-0 ${
+                    bonusAction === a
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-background hover:bg-muted'
+                  }`}
+                  onClick={() => setBonusAction(a)}
+                  disabled={isPending}
+                >
+                  {a === 'add' ? 'Add' : 'Remove'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* handicapIndex */}
+      {fieldName === 'handicapIndex' && (
+        <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="flex-1">
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Player</label>
+            <select
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={playerId}
+              onChange={(e) => setPlayerId(e.target.value)}
+              disabled={isPending}
+            >
+              <option value="">— select player —</option>
+              {activePlayers.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">
+              New Handicap Index (0–54)
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={54}
+              step={0.1}
+              className="w-28 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              value={handicapIndex}
+              onChange={(e) => setHandicapIndex(e.target.value)}
+              disabled={isPending}
+            />
           </div>
         </div>
       )}
@@ -582,29 +691,34 @@ function AuditLog({ corrections }: { corrections: ScoreCorrection[] }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="py-2 px-3 text-left font-medium text-muted-foreground">
-                  When
-                </th>
-                <th className="py-2 px-3 text-left font-medium text-muted-foreground">
-                  Hole
-                </th>
-                <th className="py-2 px-3 text-left font-medium text-muted-foreground">
-                  Field
-                </th>
-                <th className="py-2 px-3 text-left font-medium text-muted-foreground">
-                  Change
-                </th>
+                <th className="py-2 px-3 text-left font-medium text-muted-foreground">When</th>
+                <th className="py-2 px-3 text-left font-medium text-muted-foreground">Admin</th>
+                <th className="py-2 px-3 text-left font-medium text-muted-foreground">Hole</th>
+                <th className="py-2 px-3 text-left font-medium text-muted-foreground">Field</th>
+                <th className="py-2 px-3 text-left font-medium text-muted-foreground">Change</th>
               </tr>
             </thead>
             <tbody>
               {corrections.map((c) => (
                 <tr key={c.id} className="border-b last:border-0">
-                  <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                  <td className="py-2 px-3 text-muted-foreground whitespace-nowrap text-xs">
                     {formatTimestamp(c.correctedAt)}
                   </td>
-                  <td className="py-2 px-3">#{c.holeNumber}</td>
-                  <td className="py-2 px-3">
-                    {FIELD_LABELS[c.fieldName] ?? c.fieldName}
+                  <td className="py-2 px-3 text-xs">
+                    {c.adminUsername ?? `#${c.adminUserId}`}
+                  </td>
+                  <td className="py-2 px-3 text-xs">
+                    {c.holeNumber === 0 ? 'Round' : `#${c.holeNumber}`}
+                  </td>
+                  <td className="py-2 px-3 text-xs">
+                    {c.playerName ? (
+                      <span>
+                        <span className="text-muted-foreground">{c.playerName} — </span>
+                        {FIELD_LABELS[c.fieldName] ?? c.fieldName}
+                      </span>
+                    ) : (
+                      FIELD_LABELS[c.fieldName] ?? c.fieldName
+                    )}
                   </td>
                   <td className="py-2 px-3 font-mono text-xs">
                     {c.oldValue} → {c.newValue}

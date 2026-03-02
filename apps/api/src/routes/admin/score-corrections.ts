@@ -1,10 +1,22 @@
 import { Hono } from 'hono';
 import { eq, and, desc } from 'drizzle-orm';
+import {
+  getCourseHole,
+  calculateStablefordPoints,
+  calculateHoleMoney,
+  applyBonusModifiers,
+  getHandicapStrokes,
+} from '@wolf-cup/engine';
+import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
 import { db } from '../../db/index.js';
 import {
+  admins,
   rounds,
+  groups,
   players,
+  roundPlayers,
   holeScores,
+  roundResults,
   wolfDecisions,
   scoreCorrections,
 } from '../../db/schema.js';
@@ -13,6 +25,151 @@ import { createScoreCorrectionSchema } from '../../schemas/score-correction.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
+
+const PAR3_HOLES = new Set([6, 7, 12, 15]);
+
+// ---------------------------------------------------------------------------
+// Scoring helpers (mirrored from rounds.ts)
+// ---------------------------------------------------------------------------
+
+function buildWolfDecision(
+  decision: string,
+  partnerPlayerId: number | null,
+  battingOrder: number[],
+): WolfDecision {
+  if (decision === 'alone') return { type: 'alone' };
+  if (decision === 'blind_wolf') return { type: 'blind_wolf' };
+  const partnerBatterIndex = battingOrder.indexOf(partnerPlayerId!) as BattingPosition;
+  return { type: 'partner', partnerBatterIndex };
+}
+
+function buildHoleAssignment(holeNumber: number): HoleAssignment {
+  if (holeNumber <= 2) return { type: 'skins' };
+  const wolfBatterIndex = ((holeNumber - 3) % 4) as BattingPosition;
+  return { type: 'wolf', wolfBatterIndex };
+}
+
+function buildBonusInput(bonusesJson: string | null, battingOrder: number[]): BonusInput {
+  if (!bonusesJson) return { greenies: [], polies: [] };
+  const { greenies = [], polies = [] } = JSON.parse(bonusesJson) as {
+    greenies?: number[];
+    polies?: number[];
+  };
+  return {
+    greenies: greenies.map((id) => battingOrder.indexOf(id) as BattingPosition).filter((p) => p >= 0),
+    polies: polies.map((id) => battingOrder.indexOf(id) as BattingPosition).filter((p) => p >= 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// rescoreGroup — recalculate Stableford + money and write to round_results
+// ---------------------------------------------------------------------------
+
+async function rescoreGroup(roundId: number, groupId: number): Promise<void> {
+  const group = await db
+    .select({ battingOrder: groups.battingOrder })
+    .from(groups)
+    .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
+    .get();
+  if (!group?.battingOrder) return;
+  const battingOrder = JSON.parse(group.battingOrder) as number[];
+
+  const [allScoresRows, allDecisionRows, handicapRows] = await Promise.all([
+    db
+      .select({ playerId: holeScores.playerId, holeNumber: holeScores.holeNumber, grossScore: holeScores.grossScore })
+      .from(holeScores)
+      .where(and(eq(holeScores.roundId, roundId), eq(holeScores.groupId, groupId))),
+    db
+      .select({
+        holeNumber: wolfDecisions.holeNumber,
+        decision: wolfDecisions.decision,
+        partnerPlayerId: wolfDecisions.partnerPlayerId,
+        bonusesJson: wolfDecisions.bonusesJson,
+      })
+      .from(wolfDecisions)
+      .where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId))),
+    db
+      .select({ playerId: roundPlayers.playerId, handicapIndex: roundPlayers.handicapIndex })
+      .from(roundPlayers)
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId))),
+  ]);
+
+  const handicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex]));
+
+  // Recalculate Stableford
+  const stablefordTotals = new Map<number, number>();
+  for (const row of allScoresRows) {
+    const hi = handicapMap.get(row.playerId) ?? 0;
+    const courseHole = getCourseHole(row.holeNumber as HoleNumber);
+    const points = calculateStablefordPoints(row.grossScore, hi, courseHole.par, courseHole.strokeIndex);
+    stablefordTotals.set(row.playerId, (stablefordTotals.get(row.playerId) ?? 0) + points);
+  }
+
+  // Recalculate money
+  const scoresByHole = new Map<number, Map<number, number>>();
+  for (const row of allScoresRows) {
+    if (!scoresByHole.has(row.holeNumber)) scoresByHole.set(row.holeNumber, new Map());
+    scoresByHole.get(row.holeNumber)!.set(row.playerId, row.grossScore);
+  }
+  const decisionByHole = new Map(allDecisionRows.map((r) => [r.holeNumber, r]));
+  const moneyTotals = new Map<number, number>();
+
+  for (let holeNum = 1; holeNum <= 18; holeNum++) {
+    const holeMap = scoresByHole.get(holeNum);
+    if (!holeMap || holeMap.size < 4) continue;
+
+    const courseHole = getCourseHole(holeNum as HoleNumber);
+    const grossScores = battingOrder.map((pid) => holeMap.get(pid) ?? 0) as [number, number, number, number];
+    const netScores = battingOrder.map((pid, i) => {
+      const strokes = getHandicapStrokes(handicapMap.get(pid) ?? 0, courseHole.strokeIndex);
+      return grossScores[i]! - strokes;
+    }) as [number, number, number, number];
+
+    const holeAssignment = buildHoleAssignment(holeNum);
+    const decisionRecord = decisionByHole.get(holeNum);
+
+    let wolfDecision: WolfDecision | null = null;
+    if (holeNum > 2) {
+      if (!decisionRecord?.decision) continue;
+      wolfDecision = buildWolfDecision(decisionRecord.decision, decisionRecord.partnerPlayerId, battingOrder);
+    }
+
+    const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
+    const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
+    const result =
+      bonusInput.greenies.length > 0 || bonusInput.polies.length > 0
+        ? applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par)
+        : base;
+
+    for (let pos = 0; pos < 4; pos++) {
+      const pid = battingOrder[pos]!;
+      moneyTotals.set(pid, (moneyTotals.get(pid) ?? 0) + result[pos]!.total);
+    }
+  }
+
+  // Upsert round_results
+  const now = Date.now();
+  const allPlayerIds = new Set([...stablefordTotals.keys(), ...moneyTotals.keys()]);
+  for (const pid of allPlayerIds) {
+    await db
+      .insert(roundResults)
+      .values({
+        roundId,
+        playerId: pid,
+        stablefordTotal: stablefordTotals.get(pid) ?? 0,
+        moneyTotal: moneyTotals.get(pid) ?? 0,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [roundResults.roundId, roundResults.playerId],
+        set: {
+          stablefordTotal: stablefordTotals.get(pid) ?? 0,
+          moneyTotal: moneyTotals.get(pid) ?? 0,
+          updatedAt: now,
+        },
+      });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // POST /rounds/:roundId/corrections
@@ -24,7 +181,6 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
     return c.json({ error: 'Invalid round ID', code: 'VALIDATION_ERROR' }, 400);
   }
 
-  // Validate body
   const body = await c.req.json().catch(() => null);
   const result = createScoreCorrectionSchema.safeParse(body);
   if (!result.success) {
@@ -34,30 +190,26 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
     );
   }
 
-  // Check round exists
   const round = await db
     .select({ id: rounds.id, status: rounds.status })
     .from(rounds)
     .where(eq(rounds.id, roundId))
     .get();
-  if (!round) {
-    return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-  }
-
-  // Check round is finalized
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
   if (round.status !== 'finalized') {
     return c.json({ error: 'Round is not finalized', code: 'ROUND_NOT_FINALIZED' }, 422);
   }
 
   const { holeNumber, fieldName, playerId, groupId, newValue } = result.data;
   const adminUserId = c.get('adminId' as never) as number;
-
   let oldValue: string;
+  let rescoreGroupId: number | null = null;
+  let auditNewValue = newValue;
 
+  // -------------------------------------------------------------------------
   if (fieldName === 'grossScore') {
-    // Read current gross score
     const row = await db
-      .select({ grossScore: holeScores.grossScore, id: holeScores.id })
+      .select({ grossScore: holeScores.grossScore, id: holeScores.id, groupId: holeScores.groupId })
       .from(holeScores)
       .where(
         and(
@@ -67,34 +219,24 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
         ),
       )
       .get();
-    if (!row) {
-      return c.json({ error: 'Score not found', code: 'NOT_FOUND' }, 404);
-    }
+    if (!row) return c.json({ error: 'Score not found', code: 'NOT_FOUND' }, 404);
 
-    // Validate new value — use Number() so "4abc" is rejected (parseInt would silently parse it as 4)
     const parsed = Number(newValue);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) {
-      return c.json(
-        {
-          error: 'Validation error',
-          code: 'VALIDATION_ERROR',
-          issues: [{ message: 'grossScore must be an integer 1–20' }],
-        },
-        400,
-      );
+      return c.json({
+        error: 'Validation error', code: 'VALIDATION_ERROR',
+        issues: [{ message: 'grossScore must be an integer 1–20' }],
+      }, 400);
     }
 
     oldValue = String(row.grossScore);
+    await db.update(holeScores).set({ grossScore: parsed, updatedAt: Date.now() }).where(eq(holeScores.id, row.id));
+    rescoreGroupId = row.groupId;
 
-    // Update hole_scores
-    await db
-      .update(holeScores)
-      .set({ grossScore: parsed, updatedAt: Date.now() })
-      .where(eq(holeScores.id, row.id));
+  // -------------------------------------------------------------------------
   } else if (fieldName === 'wolfDecision') {
-    // Read current wolf decision
     const row = await db
-      .select({ decision: wolfDecisions.decision, id: wolfDecisions.id })
+      .select({ decision: wolfDecisions.decision, id: wolfDecisions.id, groupId: wolfDecisions.groupId })
       .from(wolfDecisions)
       .where(
         and(
@@ -104,34 +246,24 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
         ),
       )
       .get();
-    if (!row) {
-      return c.json({ error: 'Wolf decision not found', code: 'NOT_FOUND' }, 404);
-    }
+    if (!row) return c.json({ error: 'Wolf decision not found', code: 'NOT_FOUND' }, 404);
 
-    // Validate new value
     const validDecisions = ['alone', 'partner', 'blind_wolf'];
     if (!validDecisions.includes(newValue)) {
-      return c.json(
-        {
-          error: 'Validation error',
-          code: 'VALIDATION_ERROR',
-          issues: [{ message: 'wolfDecision must be alone, partner, or blind_wolf' }],
-        },
-        400,
-      );
+      return c.json({
+        error: 'Validation error', code: 'VALIDATION_ERROR',
+        issues: [{ message: 'wolfDecision must be alone, partner, or blind_wolf' }],
+      }, 400);
     }
 
     oldValue = row.decision ?? '';
+    await db.update(wolfDecisions).set({ decision: newValue }).where(eq(wolfDecisions.id, row.id));
+    rescoreGroupId = row.groupId;
 
-    // Update wolf_decisions
-    await db
-      .update(wolfDecisions)
-      .set({ decision: newValue })
-      .where(eq(wolfDecisions.id, row.id));
-  } else {
-    // wolfPartnerId
+  // -------------------------------------------------------------------------
+  } else if (fieldName === 'wolfPartnerId') {
     const row = await db
-      .select({ partnerPlayerId: wolfDecisions.partnerPlayerId, id: wolfDecisions.id })
+      .select({ partnerPlayerId: wolfDecisions.partnerPlayerId, id: wolfDecisions.id, groupId: wolfDecisions.groupId })
       .from(wolfDecisions)
       .where(
         and(
@@ -141,49 +273,102 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
         ),
       )
       .get();
-    if (!row) {
-      return c.json({ error: 'Wolf decision not found', code: 'NOT_FOUND' }, 404);
-    }
+    if (!row) return c.json({ error: 'Wolf decision not found', code: 'NOT_FOUND' }, 404);
 
-    // Validate new value: stringified positive int or 'null'
     let newPartnerId: number | null;
     if (newValue === 'null') {
       newPartnerId = null;
     } else {
-      // Use Number() so "42abc" is rejected (parseInt would silently parse it as 42)
       const parsed = Number(newValue);
       if (!Number.isInteger(parsed) || parsed <= 0) {
-        return c.json(
-          {
-            error: 'Validation error',
-            code: 'VALIDATION_ERROR',
-            issues: [{ message: 'wolfPartnerId must be a positive integer or null' }],
-          },
-          400,
-        );
+        return c.json({
+          error: 'Validation error', code: 'VALIDATION_ERROR',
+          issues: [{ message: 'wolfPartnerId must be a positive integer or null' }],
+        }, 400);
       }
-      // Verify player exists
-      const playerRow = await db
-        .select({ id: players.id })
-        .from(players)
-        .where(eq(players.id, parsed))
-        .get();
-      if (!playerRow) {
-        return c.json({ error: 'Player not found', code: 'NOT_FOUND' }, 404);
-      }
+      const playerRow = await db.select({ id: players.id }).from(players).where(eq(players.id, parsed)).get();
+      if (!playerRow) return c.json({ error: 'Player not found', code: 'NOT_FOUND' }, 404);
       newPartnerId = parsed;
     }
 
     oldValue = row.partnerPlayerId !== null ? String(row.partnerPlayerId) : 'null';
+    await db.update(wolfDecisions).set({ partnerPlayerId: newPartnerId }).where(eq(wolfDecisions.id, row.id));
+    rescoreGroupId = row.groupId;
 
-    // Update wolf_decisions
+  // -------------------------------------------------------------------------
+  } else if (fieldName === 'greenie' || fieldName === 'polie') {
+    if (fieldName === 'greenie' && !PAR3_HOLES.has(holeNumber)) {
+      return c.json({ error: 'Greenie only valid on par-3 holes (6, 7, 12, 15)', code: 'VALIDATION_ERROR' }, 422);
+    }
+    if (newValue !== 'add' && newValue !== 'remove') {
+      return c.json({
+        error: 'Validation error', code: 'VALIDATION_ERROR',
+        issues: [{ message: 'newValue must be "add" or "remove"' }],
+      }, 400);
+    }
+
+    const row = await db
+      .select({ id: wolfDecisions.id, bonusesJson: wolfDecisions.bonusesJson, groupId: wolfDecisions.groupId })
+      .from(wolfDecisions)
+      .where(
+        and(
+          eq(wolfDecisions.roundId, roundId),
+          eq(wolfDecisions.groupId, groupId!),
+          eq(wolfDecisions.holeNumber, holeNumber),
+        ),
+      )
+      .get();
+    if (!row) return c.json({ error: 'Wolf decision not found for this hole/group', code: 'NOT_FOUND' }, 404);
+
+    const bonuses = row.bonusesJson
+      ? (JSON.parse(row.bonusesJson) as { greenies?: number[]; polies?: number[] })
+      : { greenies: [], polies: [] };
+    const arr = fieldName === 'greenie' ? (bonuses.greenies ?? []) : (bonuses.polies ?? []);
+    oldValue = JSON.stringify(arr);
+
+    const newArr = newValue === 'add'
+      ? (arr.includes(playerId!) ? arr : [...arr, playerId!])
+      : arr.filter((id) => id !== playerId!);
+
+    if (fieldName === 'greenie') bonuses.greenies = newArr;
+    else bonuses.polies = newArr;
+
+    const newBonusesJson = ((bonuses.greenies?.length ?? 0) > 0 || (bonuses.polies?.length ?? 0) > 0)
+      ? JSON.stringify(bonuses)
+      : null;
+
+    await db.update(wolfDecisions).set({ bonusesJson: newBonusesJson }).where(eq(wolfDecisions.id, row.id));
+    auditNewValue = JSON.stringify(newArr);
+    rescoreGroupId = row.groupId;
+
+  // -------------------------------------------------------------------------
+  } else {
+    // handicapIndex — holeNumber is 0 (round-wide sentinel)
+    const rpRow = await db
+      .select({ handicapIndex: roundPlayers.handicapIndex, groupId: roundPlayers.groupId })
+      .from(roundPlayers)
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId!)))
+      .get();
+    if (!rpRow) return c.json({ error: 'Player not in this round', code: 'NOT_FOUND' }, 404);
+
+    const newHI = Number(newValue);
+    if (isNaN(newHI) || newHI < 0 || newHI > 54) {
+      return c.json({
+        error: 'Validation error', code: 'VALIDATION_ERROR',
+        issues: [{ message: 'handicapIndex must be between 0 and 54' }],
+      }, 400);
+    }
+
+    oldValue = String(rpRow.handicapIndex);
     await db
-      .update(wolfDecisions)
-      .set({ partnerPlayerId: newPartnerId })
-      .where(eq(wolfDecisions.id, row.id));
+      .update(roundPlayers)
+      .set({ handicapIndex: newHI })
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId!)));
+    rescoreGroupId = rpRow.groupId;
   }
 
-  // Insert audit log
+  // Rescore the affected group then write audit log
+  await rescoreGroup(roundId, rescoreGroupId!);
   const [correction] = await db
     .insert(scoreCorrections)
     .values({
@@ -193,7 +378,7 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
       playerId: playerId ?? null,
       fieldName,
       oldValue,
-      newValue,
+      newValue: auditNewValue,
       correctedAt: Date.now(),
     })
     .returning();
@@ -202,7 +387,7 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /rounds/:roundId/corrections
+// GET /rounds/:roundId/corrections — enriched with adminUsername + playerName
 // ---------------------------------------------------------------------------
 
 app.get('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
@@ -211,21 +396,42 @@ app.get('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
     return c.json({ error: 'Invalid round ID', code: 'VALIDATION_ERROR' }, 400);
   }
 
-  // Check round exists
   const round = await db
     .select({ id: rounds.id })
     .from(rounds)
     .where(eq(rounds.id, roundId))
     .get();
-  if (!round) {
-    return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-  }
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
 
-  const items = await db
+  const rawItems = await db
     .select()
     .from(scoreCorrections)
     .where(eq(scoreCorrections.roundId, roundId))
     .orderBy(desc(scoreCorrections.correctedAt));
+
+  if (rawItems.length === 0) return c.json({ items: [] }, 200);
+
+  // Resolve admin usernames
+  const adminIds = [...new Set(rawItems.map((r) => r.adminUserId))];
+  const adminMap = new Map<number, string>();
+  for (const adminId of adminIds) {
+    const row = await db.select({ username: admins.username }).from(admins).where(eq(admins.id, adminId)).get();
+    if (row) adminMap.set(adminId, row.username);
+  }
+
+  // Resolve player names
+  const playerIds = [...new Set(rawItems.filter((r) => r.playerId !== null).map((r) => r.playerId!))];
+  const playerMap = new Map<number, string>();
+  for (const pid of playerIds) {
+    const row = await db.select({ name: players.name }).from(players).where(eq(players.id, pid)).get();
+    if (row) playerMap.set(pid, row.name);
+  }
+
+  const items = rawItems.map((r) => ({
+    ...r,
+    adminUsername: adminMap.get(r.adminUserId) ?? 'unknown',
+    playerName: r.playerId !== null ? (playerMap.get(r.playerId) ?? null) : null,
+  }));
 
   return c.json({ items }, 200);
 });
