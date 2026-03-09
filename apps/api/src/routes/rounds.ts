@@ -1519,6 +1519,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     moneyNet: number;
     hasGreenie: boolean;
     hasPolie: boolean;
+    relativeStrokes: number;
   }[] = [];
 
   for (let holeNum = 1; holeNum <= 18; holeNum++) {
@@ -1529,6 +1530,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     const courseHole = getCourseHole(holeNum as HoleNumber);
     const strokes = getHandicapStrokes(handicapIndex, courseHole.strokeIndex);
     const netScore = grossScore - strokes;
+    const relStrokes = getHandicapStrokes(relativeHI, courseHole.strokeIndex);
     const stablefordPoints = calculateStablefordPoints(
       grossScore,
       handicapIndex,
@@ -1559,7 +1561,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       if (holeNum > 2) {
         if (!decisionRecord?.decision) {
           // Wolf hole with no decision recorded yet — push hole with $0 and move on
-          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false });
+          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes });
           continue;
         }
         wolfDecision = buildWolfDecision(
@@ -1585,7 +1587,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     const hasGreenie = bonuses?.greenies?.includes(playerId) ?? false;
     const hasPolie = bonuses?.polies?.includes(playerId) ?? false;
 
-    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie });
+    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes });
   }
 
   return c.json({

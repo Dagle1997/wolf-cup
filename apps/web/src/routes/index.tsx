@@ -50,6 +50,7 @@ type ScorecardHole = {
   moneyNet: number;
   hasGreenie?: boolean;
   hasPolie?: boolean;
+  relativeStrokes?: number;
 };
 
 type ScorecardResponse = {
@@ -86,46 +87,58 @@ function formatThru(thruHole: number): string {
 // HoleBadge — compact golf notation for horizontal scorecard
 // ---------------------------------------------------------------------------
 
-function HoleBadge({ gross, net, par, hasGreenie, hasPolie }: { gross: number; net: number; par: number; hasGreenie?: boolean | undefined; hasPolie?: boolean | undefined }) {
-  const d = net - par;
-  const dots = (hasGreenie || hasPolie) ? (
+function HoleBadge({ gross, par, hasGreenie, hasPolie, relativeStrokes }: {
+  gross: number; par: number;
+  hasGreenie?: boolean | undefined; hasPolie?: boolean | undefined;
+  relativeStrokes?: number | undefined;
+}) {
+  const d = gross - par; // gross-based styling
+  const bonusDots = (hasGreenie || hasPolie) ? (
     <span className="absolute -bottom-[2px] left-1/2 -translate-x-1/2 flex gap-[1px]">
       {hasGreenie && <span className="w-[4px] h-[4px] rounded-full bg-emerald-500" />}
       {hasPolie && <span className="w-[4px] h-[4px] rounded-full bg-amber-400" />}
     </span>
   ) : null;
+  const strokeDot = relativeStrokes ? (
+    <span className="absolute -top-[2px] -right-[2px] w-[4px] h-[4px] rounded-full bg-foreground/50" />
+  ) : null;
 
   if (d <= -2) {
+    // Eagle or better: filled blue circle
     return (
       <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-blue-600 text-white text-[9px] font-black leading-none">
-        {gross}{dots}
+        {gross}{bonusDots}{strokeDot}
       </span>
     );
   }
   if (d === -1) {
+    // Birdie: blue circle outline
     return (
       <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.5px] border-blue-600 text-blue-600 text-[9px] font-bold leading-none">
-        {gross}{dots}
+        {gross}{bonusDots}{strokeDot}
       </span>
     );
   }
   if (d === 1) {
+    // Bogey: amber square outline
     return (
       <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] border-[1.5px] border-amber-500 text-amber-600 text-[9px] font-medium leading-none">
-        {gross}{dots}
+        {gross}{bonusDots}{strokeDot}
       </span>
     );
   }
   if (d >= 2) {
+    // Double bogey+: red text
     return (
       <span className="relative inline-block text-[10px] font-medium text-destructive">
-        {gross}{dots}
+        {gross}{bonusDots}{strokeDot}
       </span>
     );
   }
+  // Par
   return (
     <span className="relative inline-block text-[10px] font-medium">
-      {gross}{dots}
+      {gross}{bonusDots}{strokeDot}
     </span>
   );
 }
@@ -222,7 +235,7 @@ function ScorecardPanel({
               return (
                 <td key={n} className={tdC}>
                   {h
-                    ? <HoleBadge gross={h.grossScore} net={h.netScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} />
+                    ? <HoleBadge gross={h.grossScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} relativeStrokes={h.relativeStrokes} />
                     : <span className="text-muted-foreground/50 text-[10px]">—</span>
                   }
                 </td>
@@ -302,7 +315,7 @@ function ScorecardPanel({
                 return (
                   <td key={n} className={tdC}>
                     {h
-                      ? <HoleBadge gross={h.grossScore} net={h.netScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} />
+                      ? <HoleBadge gross={h.grossScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} relativeStrokes={h.relativeStrokes} />
                       : <span className="text-muted-foreground/50 text-[10px]">—</span>
                     }
                   </td>
