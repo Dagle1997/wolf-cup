@@ -19,11 +19,11 @@ const ALL_POSITIONS: readonly BattingPosition[] = [0, 1, 2, 3];
 // ---------------------------------------------------------------------------
 
 /**
- * Auto-detects bonus level from a net score vs par.
+ * Auto-detects bonus level from a gross score vs par.
  * Returns null if par or worse (no bonus).
  */
-export function detectBonusLevel(netScore: number, par: number): BonusLevel | null {
-  const diff = par - netScore;
+export function detectBonusLevel(grossScore: number, par: number): BonusLevel | null {
+  const diff = par - grossScore;
   if (diff >= 3) return 'double_eagle';
   if (diff === 2) return 'eagle';
   if (diff === 1) return 'birdie';
@@ -88,10 +88,11 @@ function competitiveScoreSkins(
   teamB: readonly [BattingPosition, BattingPosition],
   par: number,
 ): number {
-  const bestNetA = Math.min(netScores[teamA[0]], netScores[teamA[1]]);
-  const bestNetB = Math.min(netScores[teamB[0]], netScores[teamB[1]]);
-  const levelA = skinCount(detectBonusLevel(bestNetA, par));
-  const levelB = skinCount(detectBonusLevel(bestNetB, par));
+  // Bonus levels based on GROSS scores (actual strokes, not handicap-adjusted)
+  const bestGrossA = Math.min(grossScores[teamA[0]], grossScores[teamA[1]]);
+  const bestGrossB = Math.min(grossScores[teamB[0]], grossScores[teamB[1]]);
+  const levelA = skinCount(detectBonusLevel(bestGrossA, par));
+  const levelB = skinCount(detectBonusLevel(bestGrossB, par));
 
   if (levelA === 0 && levelB === 0) return 0;
   if (levelA === levelB) return 0; // tie — no blood
@@ -102,12 +103,11 @@ function competitiveScoreSkins(
 
   let skins = winLevel;
 
-  // Double birdie bonus: both winning team members must have birdie-level AND ≥1 natural birdie
-  const w0HasBirdie = skinCount(detectBonusLevel(netScores[w0], par)) > 0;
-  const w1HasBirdie = skinCount(detectBonusLevel(netScores[w1], par)) > 0;
+  // Double birdie bonus: both winning team members must have gross birdie or better
+  const w0HasBirdie = grossScores[w0] <= par - 1;
+  const w1HasBirdie = grossScores[w1] <= par - 1;
   if (w0HasBirdie && w1HasBirdie) {
-    const hasNatural = grossScores[w0] <= par - 1 || grossScores[w1] <= par - 1;
-    if (hasNatural) skins += 1;
+    skins += 1;
   }
 
   return winnerIsA ? skins : -skins;
@@ -157,7 +157,7 @@ function apply2v2(
 
 function apply1v3(
   bonusSkins: [number, number, number, number],
-  netScores: readonly [number, number, number, number],
+  grossScores: readonly [number, number, number, number],
   bonusInput: BonusInput,
   wolfIdx: BattingPosition,
   par: number,
@@ -165,15 +165,15 @@ function apply1v3(
   const opps = ALL_POSITIONS.filter((i): i is BattingPosition => i !== wolfIdx) as
     [BattingPosition, BattingPosition, BattingPosition];
 
-  // Wolf bonus events
-  let W = skinCount(detectBonusLevel(netScores[wolfIdx], par));
+  // Wolf bonus events — birdie/eagle based on GROSS score
+  let W = skinCount(detectBonusLevel(grossScores[wolfIdx], par));
   if (bonusInput.polies.includes(wolfIdx)) W += 1;
   if (bonusInput.greenies.includes(wolfIdx)) W += 1;
 
   // Opponent bonus events (each counted individually; no double bonus in 1v3)
   let O = 0;
   for (const opp of opps) {
-    O += skinCount(detectBonusLevel(netScores[opp], par));
+    O += skinCount(detectBonusLevel(grossScores[opp], par));
     if (bonusInput.polies.includes(opp)) O += 1;
     if (bonusInput.greenies.includes(opp)) O += 1;
   }
@@ -222,7 +222,7 @@ export function applyBonusModifiers(
       par,
     );
   } else {
-    apply1v3(bonusSkins, netScores, bonusInput, holeAssignment.wolfBatterIndex, par);
+    apply1v3(bonusSkins, grossScores, bonusInput, holeAssignment.wolfBatterIndex, par);
   }
 
   const result: HoleMoneyResult = [
