@@ -64,6 +64,13 @@
       "when": 1772727600000,
       "tag": "0008_round_tee",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1772814000000,
+      "tag": "0009_pairing_history",
+      "breakpoints": true
     }
   ]
 }

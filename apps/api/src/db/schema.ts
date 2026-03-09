@@ -314,6 +314,31 @@ export const sideGameResults = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// pairing_history  (tracks who played with whom per season for group suggestions)
+// ---------------------------------------------------------------------------
+
+export const pairingHistory = sqliteTable(
+  'pairing_history',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    seasonId: integer('season_id')
+      .notNull()
+      .references(() => seasons.id),
+    playerAId: integer('player_a_id')
+      .notNull()
+      .references(() => players.id),
+    playerBId: integer('player_b_id')
+      .notNull()
+      .references(() => players.id),
+    pairCount: integer('pair_count').notNull().default(0),
+  },
+  (t) => ({
+    pairUniq: uniqueIndex('uniq_pairing_history').on(t.seasonId, t.playerAId, t.playerBId),
+    seasonIdx: index('idx_pairing_history_season_id').on(t.seasonId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // score_corrections  (immutable audit log for post-round corrections — FR64)
 // ---------------------------------------------------------------------------
 

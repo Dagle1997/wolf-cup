@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { eq, and, desc, countDistinct } from 'drizzle-orm';
+import { eq, and, desc, countDistinct, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import {
   createRoundSchema,
@@ -19,6 +19,37 @@ const app = new Hono<{ Variables: Variables }>();
 function toRoundResponse(row: typeof rounds.$inferSelect) {
   const { entryCodeHash: _hash, ...roundData } = row;
   return roundData;
+}
+
+// Helper: record all C(n,2) pairings for each group in a finalized round
+async function recordPairings(seasonId: number, roundId: number): Promise<void> {
+  const allGroups = await db
+    .select({ id: groups.id })
+    .from(groups)
+    .where(eq(groups.roundId, roundId));
+
+  for (const group of allGroups) {
+    const groupPlayerRows = await db
+      .select({ playerId: roundPlayers.playerId })
+      .from(roundPlayers)
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, group.id)));
+
+    const playerIds = groupPlayerRows.map((r) => r.playerId);
+
+    for (let i = 0; i < playerIds.length; i++) {
+      for (let j = i + 1; j < playerIds.length; j++) {
+        const a = Math.min(playerIds[i]!, playerIds[j]!);
+        const b = Math.max(playerIds[i]!, playerIds[j]!);
+        await db
+          .insert(pairingHistory)
+          .values({ seasonId, playerAId: a, playerBId: b, pairCount: 1 })
+          .onConflictDoUpdate({
+            target: [pairingHistory.seasonId, pairingHistory.playerAId, pairingHistory.playerBId],
+            set: { pairCount: sql`${pairingHistory.pairCount} + 1` },
+          });
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -359,7 +390,7 @@ app.post('/rounds/:roundId/groups/:groupId/players', adminAuthMiddleware, async 
     );
   }
 
-  const { playerId, handicapIndex } = result.data;
+  const { playerId, handicapIndex, isSub } = result.data;
 
   // Verify round exists
   let round: { id: number } | undefined;
@@ -423,12 +454,12 @@ app.post('/rounds/:roundId/groups/:groupId/players', adminAuthMiddleware, async 
 
   // Insert round_players row
   try {
-    await db.insert(roundPlayers).values({ roundId, groupId, playerId, handicapIndex, isSub: 0 });
+    await db.insert(roundPlayers).values({ roundId, groupId, playerId, handicapIndex, isSub: isSub ? 1 : 0 });
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
 
-  return c.json({ roundPlayer: { roundId, groupId, playerId, handicapIndex, isSub: 0 } }, 201);
+  return c.json({ roundPlayer: { roundId, groupId, playerId, handicapIndex, isSub: isSub ? 1 : 0 } }, 201);
 });
 
 // ---------------------------------------------------------------------------
@@ -484,10 +515,10 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
   }
 
-  let round: { id: number; type: string; status: string } | undefined;
+  let round: { id: number; seasonId: number; type: string; status: string } | undefined;
   try {
     round = await db
-      .select({ id: rounds.id, type: rounds.type, status: rounds.status })
+      .select({ id: rounds.id, seasonId: rounds.seasonId, type: rounds.type, status: rounds.status })
       .from(rounds)
       .where(eq(rounds.id, id))
       .get();
@@ -507,6 +538,13 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, id));
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  // Record pairings for group suggestion history
+  try {
+    await recordPairings(round.seasonId, id);
+  } catch (err) {
+    console.error('Failed to record pairings (non-fatal):', err);
   }
 
   return c.json({ id, status: 'finalized' }, 200);

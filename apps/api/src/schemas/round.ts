@@ -32,6 +32,7 @@ export const createGroupSchema = z.object({
 export const addGroupPlayerSchema = z.object({
   playerId: z.number().int().positive(),
   handicapIndex: z.number().min(0).max(54),
+  isSub: z.boolean().optional().default(false),
 });
 
 export const battingOrderSchema = z.object({

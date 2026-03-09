@@ -15,6 +15,7 @@ import adminRoundsRouter from './routes/admin/rounds.js';
 import adminSideGamesRouter from './routes/admin/side-games.js';
 import adminScoreCorrectionsRouter from './routes/admin/score-corrections.js';
 import adminGhinRouter from './routes/admin/ghin.js';
+import adminPairingRouter from './routes/admin/pairing.js';
 
 export const app = new Hono<{ Variables: Variables }>();
 
@@ -46,6 +47,7 @@ app.route('/api/admin', adminRoundsRouter);
 app.route('/api/admin', adminSideGamesRouter);
 app.route('/api/admin', adminScoreCorrectionsRouter);
 app.route('/api/admin', adminGhinRouter);
+app.route('/api/admin', adminPairingRouter);
 
 // ---------------------------------------------------------------------------
 // Startup cleanup — delete cancelled casual rounds older than 24 hours

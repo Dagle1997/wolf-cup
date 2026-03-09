@@ -6,3 +6,4 @@ export * from './harvey.js';
 export * from './validation.js';
 export * from './bonuses.js';
 export * from './course.js';
+export * from './pairing.js';

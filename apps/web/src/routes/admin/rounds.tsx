@@ -14,6 +14,8 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Shuffle,
+  UserPlus,
   Users,
   X,
 } from 'lucide-react';
@@ -69,6 +71,7 @@ type RosterPlayer = {
   id: number;
   name: string;
   ghinNumber: string | null;
+  handicapIndex: number | null;
   isActive: number;
   isGuest: number;
 };
@@ -462,7 +465,7 @@ function RoundsTable({ rounds }: { rounds: Round[] }) {
               {groupsExpandedId === r.id && editingId !== r.id && (
                 <tr className="border-b bg-muted/10">
                   <td colSpan={5} className="p-0">
-                    <GroupsPanel roundId={r.id} />
+                    <GroupsPanel roundId={r.id} seasonId={r.seasonId} />
                   </td>
                 </tr>
               )}
@@ -785,8 +788,23 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
 // Groups Panel
 // ---------------------------------------------------------------------------
 
-function GroupsPanel({ roundId }: { roundId: number }) {
+type SuggestedGroup = { groupNumber: number; playerIds: number[] };
+type SuggestResponse = { groups: SuggestedGroup[]; remainder: number[]; totalCost: number };
+type SubEntry = { id: number; name: string; hi: number; isNew: boolean };
+
+let nextTempId = -1;
+
+function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; seasonId: number }) {
   const navigate = useNavigate();
+  const [suggestions, setSuggestions] = useState<SuggestResponse | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<Set<number> | null>(null); // null = not yet initialized
+  const [subs, setSubs] = useState<SubEntry[]>([]);
+  const [addingSubMode, setAddingSubMode] = useState<'none' | 'existing' | 'new'>('none');
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubHI, setNewSubHI] = useState('');
+  const [existingSubId, setExistingSubId] = useState('');
 
   const groupsQuery = useQuery({
     queryKey: ['admin-round-groups', roundId],
@@ -820,6 +838,20 @@ function GroupsPanel({ roundId }: { roundId: number }) {
     },
   });
 
+  const suggestMutation = useMutation({
+    mutationFn: (playerIds: number[]) =>
+      apiFetch<SuggestResponse>(`/admin/rounds/${roundId}/suggest-groups`, {
+        method: 'POST',
+        body: JSON.stringify({ playerIds }),
+      }),
+    onSuccess: (data) => setSuggestions(data),
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
+  const [applying, setApplying] = useState(false);
+
   for (const q of [groupsQuery, playersQuery, rosterQuery]) {
     if ((q.error as Error | null)?.message === 'UNAUTHORIZED') {
       void navigate({ to: '/admin/login' });
@@ -841,37 +873,452 @@ function GroupsPanel({ roundId }: { roundId: number }) {
 
   const groupList = groupsQuery.data?.items ?? [];
   const roundPlayerList = playersQuery.data?.items ?? [];
-  const roster = (rosterQuery.data?.items ?? []).filter(
-    (p) => p.isActive === 1 && p.isGuest === 0,
-  );
+  const allRoster = rosterQuery.data?.items ?? [];
+  const roster = allRoster.filter((p) => p.isActive === 1 && p.isGuest === 0);
+  const guests = allRoster.filter((p) => p.isGuest === 1);
   const assignedPlayerIds = new Set(roundPlayerList.map((p) => p.playerId));
   const nextGroupNumber = groupList.length + 1;
 
+  // Initialize checkedIds from roster on first load (all active non-guest checked)
+  if (checkedIds === null && roster.length > 0) {
+    // Use a microtask to avoid setting state during render
+    const initialIds = new Set(roster.map((p) => p.id));
+    // We use a ref-like pattern: set immediately since this is the init path
+    queueMicrotask(() => setCheckedIds(initialIds));
+  }
+
+  const effectiveCheckedIds = checkedIds ?? new Set(roster.map((p) => p.id));
+
+  // Pool = checked roster players + subs
+  const totalPlayers = effectiveCheckedIds.size + subs.length;
+  const numGroups = Math.ceil(totalPlayers / 4);
+  const needed = numGroups > 0 ? (numGroups * 4) - totalPlayers : 4 - totalPlayers;
+  const isFull = totalPlayers >= 4 && totalPlayers % 4 === 0;
+
+  const suggestionPool = [
+    ...Array.from(effectiveCheckedIds),
+    ...subs.map((s) => s.id),
+  ];
+  const canSuggest = suggestionPool.length >= 4;
+
+  // Build HI lookup: assigned players keep their round HI, roster players use stored HI, subs use entered HI
+  function getHI(playerId: number): number {
+    const rp = roundPlayerList.find((p) => p.playerId === playerId);
+    if (rp) return rp.handicapIndex;
+    const sub = subs.find((s) => s.id === playerId);
+    if (sub) return sub.hi;
+    const rosterP = roster.find((p) => p.id === playerId);
+    return rosterP?.handicapIndex ?? 0;
+  }
+
+  function handleSuggest() {
+    suggestMutation.mutate(suggestionPool);
+  }
+
+  // Existing guests that aren't already added as subs
+  const subIds = new Set(subs.map((s) => s.id));
+  const availableGuests = guests.filter((g) => !subIds.has(g.id) && !effectiveCheckedIds.has(g.id));
+
+  function handleAddExistingSub() {
+    const id = Number(existingSubId);
+    const guest = guests.find((g) => g.id === id);
+    if (!guest) return;
+    setSubs((prev) => [...prev, { id: guest.id, name: guest.name, hi: guest.handicapIndex ?? 0, isNew: false }]);
+    setExistingSubId('');
+    setAddingSubMode('none');
+  }
+
+  function handleAddNewSub() {
+    const name = newSubName.trim();
+    const hi = Number(newSubHI);
+    if (!name || isNaN(hi) || hi < 0 || hi > 54) return;
+    const tempId = nextTempId--;
+    setSubs((prev) => [...prev, { id: tempId, name, hi, isNew: true }]);
+    setNewSubName('');
+    setNewSubHI('');
+    setAddingSubMode('none');
+  }
+
+  function removeSub(id: number) {
+    setSubs((prev) => prev.filter((s) => s.id !== id));
+    // Also clear suggestions if they included this sub
+    if (suggestions) setSuggestions(null);
+  }
+
+  function toggleChecked(playerId: number) {
+    setCheckedIds((prev) => {
+      const next = new Set(prev ?? roster.map((p) => p.id));
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+    // Clear suggestions when pool changes
+    if (suggestions) setSuggestions(null);
+  }
+
+  async function handleApply() {
+    if (!suggestions) return;
+    setApplying(true);
+    setApplyError(null);
+    try {
+      // 1. Create new sub players and map temp IDs to real IDs
+      const tempToReal = new Map<number, number>();
+      for (const sub of subs) {
+        if (sub.isNew) {
+          const result = await apiFetch<{ player: { id: number } }>('/admin/players', {
+            method: 'POST',
+            body: JSON.stringify({ name: sub.name }),
+          });
+          tempToReal.set(sub.id, result.player.id);
+        }
+      }
+
+      // 2. Resolve all player IDs (replace temps with real IDs)
+      function resolveId(id: number): number {
+        return tempToReal.get(id) ?? id;
+      }
+
+      // 3. Remove all currently-assigned players from their groups
+      for (const rp of roundPlayerList) {
+        await apiFetch(
+          `/admin/rounds/${roundId}/groups/${rp.groupId}/players/${rp.playerId}`,
+          { method: 'DELETE' },
+        );
+      }
+
+      // 4. Delete existing empty groups
+      // (Groups are re-created by apply, but we can't delete groups with the current API.
+      //  Instead, create new groups with correct numbers.)
+
+      // 5. Create new groups and add suggested players
+      const subIdSet = new Set(subs.map((s) => s.id));
+      for (const sg of suggestions.groups) {
+        const created = await apiFetch<{ group: GroupDetail }>(
+          `/admin/rounds/${roundId}/groups`,
+          { method: 'POST', body: JSON.stringify({ groupNumber: sg.groupNumber }) },
+        );
+        for (const pid of sg.playerIds) {
+          const realId = resolveId(pid);
+          const isSub = subIdSet.has(pid);
+          await apiFetch(`/admin/rounds/${roundId}/groups/${created.group.id}/players`, {
+            method: 'POST',
+            body: JSON.stringify({ playerId: realId, handicapIndex: getHI(pid), isSub }),
+          });
+        }
+      }
+
+      setSuggestions(null);
+      setSubs([]);
+      void queryClient.invalidateQueries({ queryKey: ['admin-round-groups', roundId] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-round-players', roundId] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-roster'] });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      if (msg === 'UNAUTHORIZED') { void navigate({ to: '/admin/login' }); return; }
+      setApplyError(`Failed to apply: ${msg}`);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  // Heat color for a group's pairing cost
+  function heatColor(cost: number): string {
+    if (cost === 0) return 'text-green-600';
+    if (cost <= 2) return 'text-yellow-600';
+    return 'text-red-600';
+  }
+
+  function playerName(id: number): string {
+    const sub = subs.find((s) => s.id === id);
+    if (sub) return sub.name;
+    return roster.find((p) => p.id === id)?.name
+      ?? roundPlayerList.find((p) => p.playerId === id)?.name
+      ?? `Player ${id}`;
+  }
+
   return (
     <div className="p-3">
+      {/* Who's Playing? checklist */}
+      <div className="mb-3">
+        <button
+          type="button"
+          onClick={() => setShowChecklist((v) => !v)}
+          className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors"
+        >
+          {showChecklist ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          Who&apos;s Playing?
+          <span className="normal-case font-normal">({effectiveCheckedIds.size + subs.length} players)</span>
+        </button>
+
+        {showChecklist && (
+          <div className="mt-2 rounded-md border p-3 bg-muted/10">
+            {/* Roster checklist */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              {roster.map((p) => (
+                <label key={p.id} className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
+                  <input
+                    type="checkbox"
+                    checked={effectiveCheckedIds.has(p.id)}
+                    onChange={() => toggleChecked(p.id)}
+                    className="rounded"
+                  />
+                  <span className={effectiveCheckedIds.has(p.id) ? 'font-medium' : 'text-muted-foreground line-through'}>
+                    {p.name}
+                  </span>
+                  <span className="text-muted-foreground">({p.handicapIndex ?? '?'})</span>
+                </label>
+              ))}
+            </div>
+
+            {/* Gap indicator */}
+            <div className="mt-3 flex items-center gap-2">
+              {isFull ? (
+                <p className="text-xs font-medium text-green-600">
+                  {totalPlayers} players — {numGroups} group{numGroups !== 1 ? 's' : ''} of 4
+                </p>
+              ) : totalPlayers >= 4 ? (
+                <p className="text-xs font-medium text-yellow-600">
+                  {totalPlayers} players — need {needed} more for {numGroups} group{numGroups !== 1 ? 's' : ''}
+                </p>
+              ) : (
+                <p className="text-xs font-medium text-yellow-600">
+                  {totalPlayers} player{totalPlayers !== 1 ? 's' : ''} — need {4 - totalPlayers} more for 1 group
+                </p>
+              )}
+            </div>
+
+            {/* Subs chips */}
+            {subs.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs text-muted-foreground mb-1">Subs:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {subs.map((s) => (
+                    <span
+                      key={s.id}
+                      className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 text-xs"
+                    >
+                      {s.name} ({s.hi})
+                      <button
+                        type="button"
+                        onClick={() => removeSub(s.id)}
+                        className="hover:text-destructive transition-colors"
+                        aria-label={`Remove ${s.name}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add Sub controls */}
+            {addingSubMode === 'none' && (
+              <div className="mt-2 flex gap-1.5">
+                {availableGuests.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setAddingSubMode('existing')}
+                  >
+                    <UserPlus className="h-3 w-3" />
+                    <span className="ml-1">Past Sub</span>
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => setAddingSubMode('new')}
+                >
+                  <Plus className="h-3 w-3" />
+                  <span className="ml-1">New Sub</span>
+                </Button>
+              </div>
+            )}
+
+            {addingSubMode === 'existing' && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <select
+                  value={existingSubId}
+                  onChange={(e) => setExistingSubId(e.target.value)}
+                  className="rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Select past sub...</option>
+                  {availableGuests.map((g) => (
+                    <option key={g.id} value={g.id}>{g.name} ({g.handicapIndex ?? '?'})</option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={handleAddExistingSub}
+                  disabled={!existingSubId}
+                >
+                  Add
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => { setAddingSubMode('none'); setExistingSubId(''); }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+
+            {addingSubMode === 'new' && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={newSubName}
+                  onChange={(e) => setNewSubName(e.target.value)}
+                  className="w-32 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <input
+                  type="number"
+                  placeholder="HI"
+                  min={0}
+                  max={54}
+                  step={0.1}
+                  value={newSubHI}
+                  onChange={(e) => setNewSubHI(e.target.value)}
+                  className="w-16 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <Button
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={handleAddNewSub}
+                  disabled={!newSubName.trim() || !newSubHI || isNaN(Number(newSubHI)) || Number(newSubHI) < 0 || Number(newSubHI) > 54}
+                >
+                  Add
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => { setAddingSubMode('none'); setNewSubName(''); setNewSubHI(''); }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           Group Assignments
         </p>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-6 px-2 text-xs"
-          onClick={() => addGroupMutation.mutate(nextGroupNumber)}
-          disabled={addGroupMutation.isPending || groupList.length >= 4}
-          title={groupList.length >= 4 ? 'Max 4 groups' : 'Add a new group'}
-        >
-          {addGroupMutation.isPending ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Plus className="h-3 w-3" />
+        <div className="flex gap-1.5">
+          {canSuggest && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-xs"
+              onClick={handleSuggest}
+              disabled={suggestMutation.isPending || applying}
+              title="Auto-suggest groups to minimize repeat pairings"
+            >
+              {suggestMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Shuffle className="h-3 w-3" />
+              )}
+              <span className="ml-1">Suggest</span>
+            </Button>
           )}
-          <span className="ml-1">Add Group</span>
-        </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-xs"
+            onClick={() => addGroupMutation.mutate(nextGroupNumber)}
+            disabled={addGroupMutation.isPending || groupList.length >= 4}
+            title={groupList.length >= 4 ? 'Max 4 groups' : 'Add a new group'}
+          >
+            {addGroupMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Plus className="h-3 w-3" />
+            )}
+            <span className="ml-1">Add Group</span>
+          </Button>
+        </div>
       </div>
 
-      {groupList.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No groups yet — add one above.</p>
+      {suggestions && (
+        <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold">Suggested Groups</p>
+            <div className="flex gap-1.5">
+              <Button
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => void handleApply()}
+                disabled={applying}
+              >
+                {applying ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                <span className="ml-1">Apply</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-xs"
+                onClick={handleSuggest}
+                disabled={suggestMutation.isPending || applying}
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span className="ml-1">Re-roll</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs"
+                onClick={() => setSuggestions(null)}
+                disabled={applying}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {suggestions.groups.map((sg) => (
+                <div key={sg.groupNumber} className="rounded border bg-background px-2 py-1.5">
+                  <p className="text-xs font-medium mb-1">Group {sg.groupNumber}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {sg.playerIds.map((pid) => {
+                      const isSub = subs.some((s) => s.id === pid);
+                      return (
+                        <span
+                          key={pid}
+                          className={`text-xs px-1.5 py-0.5 rounded ${isSub ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-muted'}`}
+                        >
+                          {playerName(pid)}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+            ))}
+            {suggestions.remainder.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Unassigned: {suggestions.remainder.map((id) => playerName(id)).join(', ')}
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground">
+              Repeat pairing cost: <span className={heatColor(suggestions.totalCost)}>{suggestions.totalCost}</span>
+            </div>
+          </div>
+          {applyError && <p className="text-xs text-destructive mt-1">{applyError}</p>}
+        </div>
+      )}
+
+      {groupList.length === 0 && !suggestions ? (
+        <p className="text-xs text-muted-foreground">No groups yet — add one above or use Suggest.</p>
       ) : (
         <div className="flex flex-col gap-3">
           {groupList.map((group) => {

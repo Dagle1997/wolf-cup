@@ -264,3 +264,18 @@ development_status:
   8-3-ghin-handicap-lookup: done
 
   epic-8-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic 9: Weighted Average Pairing — Group Assignment Optimization
+  # Automated group suggestions based on pairing history so players rotate
+  # through the entire league over the course of a season. Admin override
+  # before locking. Season-scoped history (resets each year). v2+ feature.
+  # ---------------------------------------------------------------------------
+  epic-9: in-progress
+
+  # Pairing history tracking, N×N matrix API, greedy suggestion algorithm
+  # (pure engine function), suggestion API endpoint, admin UI panel with
+  # pin/override/commit workflow. Season-scoped, resets each year.
+  9-1-weighted-average-pairing: ready-for-dev
+
+  epic-9-retrospective: optional
