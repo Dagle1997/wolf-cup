@@ -139,11 +139,14 @@ async function recalculateMoney(roundId: number, groupId: number): Promise<Map<n
       wolfDecision = buildWolfDecision(decisionRecord.decision, decisionRecord.partnerPlayerId, battingOrder);
     }
 
-    const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
     const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
-    // Always apply bonus modifiers — birdie/eagle/double-birdie are score-detected,
-    // not just greenie/polie input-based.
-    const result = applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par);
+    // Skins holes (1-2): no bonus modifiers — just the base individual skin ($3/-$1 or $0).
+    // Wolf holes (3+): always apply bonus modifiers (birdie/eagle/double-birdie are score-detected).
+    let result = base;
+    if (holeNum >= 3) {
+      const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
+      result = applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par);
+    }
 
     for (let pos = 0; pos < 4; pos++) {
       const playerId = battingOrder[pos]!;
