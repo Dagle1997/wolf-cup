@@ -1517,6 +1517,8 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     netScore: number;
     stablefordPoints: number;
     moneyNet: number;
+    hasGreenie: boolean;
+    hasPolie: boolean;
   }[] = [];
 
   for (let holeNum = 1; holeNum <= 18; holeNum++) {
@@ -1557,7 +1559,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       if (holeNum > 2) {
         if (!decisionRecord?.decision) {
           // Wolf hole with no decision recorded yet — push hole with $0 and move on
-          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0 });
+          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false });
           continue;
         }
         wolfDecision = buildWolfDecision(
@@ -1577,7 +1579,13 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       moneyNet = result[playerPos]!.total;
     }
 
-    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet });
+    // Check if this player has a greenie or polie on this hole
+    const decRecord = decisionByHole.get(holeNum);
+    const bonuses = decRecord?.bonusesJson ? JSON.parse(decRecord.bonusesJson) as { greenies?: number[]; polies?: number[] } : null;
+    const hasGreenie = bonuses?.greenies?.includes(playerId) ?? false;
+    const hasPolie = bonuses?.polies?.includes(playerId) ?? false;
+
+    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie });
   }
 
   return c.json({
