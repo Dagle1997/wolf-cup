@@ -658,7 +658,7 @@ function ScoreEntryHolePage() {
         {roundData.autoCalculateMoney && currentHole >= 3 && (
           <div className="border rounded-xl p-3 mb-3">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
-              🐺 Wolf: {wolfHole.wolfPlayerName} — Pick Partner or Go Alone
+              🐺 Wolf: {wolfHole.wolfPlayerName}
             </p>
             {/* Player list — tap a non-wolf player to pick as partner */}
             <div className="flex flex-col gap-1.5 mb-2">
@@ -719,7 +719,7 @@ function ScoreEntryHolePage() {
                     : 'border-border text-muted-foreground hover:border-foreground/40',
                 )}
               >
-                Wolf Alone
+                Wolf
               </button>
               <button
                 type="button"
