@@ -100,10 +100,9 @@ function ScoreEntryPage() {
   if (joined) {
     const round = data?.items.find((r) => r.id === joined.roundId);
     const hasGroup = joined.groupId != null;
-    // For official rounds, groupId being set guarantees ball draw is complete — safe to resume directly.
-    // For casual rounds, groupId is set immediately by the practice route before ball draw is done,
-    // so always route through ball-draw (which shows wolf schedule if done, guest form if not).
-    const canResumeDirectly = round?.type === 'official' && hasGroup;
+    // If groupId is set, route to score-entry-hole which auto-redirects to ball-draw
+    // if batting order isn't set yet. This avoids an extra tap-through for returning users.
+    const canResumeDirectly = hasGroup;
     return (
       <div className="p-4 flex flex-col items-center gap-4 pt-8">
         <CheckCircle2 className="w-12 h-12 text-green-600" />
