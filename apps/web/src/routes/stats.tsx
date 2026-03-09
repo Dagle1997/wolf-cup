@@ -36,12 +36,12 @@ type StatsResponse = {
 // ---------------------------------------------------------------------------
 
 function wolfRecord(p: PlayerStats): string {
-  return `${p.wolfWins}−${p.wolfLosses}−${p.wolfPushes}`;
+  return `${p.wolfWins}-${p.wolfLosses}-${p.wolfPushes}`;
 }
 
 function formatMoney(n: number): string {
   if (n === 0) return '$0';
-  return n > 0 ? `+$${n}` : `−$${Math.abs(n)}`;
+  return n > 0 ? `+$${n}` : `-$${Math.abs(n)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,11 +59,11 @@ function StatsPage() {
   });
 
   return (
-    <div className="p-4 max-w-4xl mx-auto">
+    <div className="p-4 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">Player Statistics</h2>
-        <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching}>
-          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+        <h2 className="text-xl font-bold tracking-tight">Player Statistics</h2>
+        <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching} className="h-8 px-2">
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
         </Button>
       </div>
 
@@ -82,9 +82,17 @@ function StatsPage() {
       {!isLoading && !isError && data && (
         <>
           {data.players.length === 0 ? (
-            <p className="text-muted-foreground">No statistics available yet.</p>
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <span className="text-5xl">📈</span>
+              <p className="text-muted-foreground">No statistics available yet.</p>
+              <p className="text-xs text-muted-foreground/60">Stats populate after finalized rounds.</p>
+            </div>
           ) : (
-            <StatsTable players={data.players} />
+            <div className="flex flex-col gap-3">
+              {data.players.map((p, i) => (
+                <PlayerCard key={p.playerId} player={p} rank={i + 1} />
+              ))}
+            </div>
           )}
         </>
       )}
@@ -93,70 +101,81 @@ function StatsPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Player Card — mobile-optimized
 // ---------------------------------------------------------------------------
 
-function StatsTable({ players }: { players: PlayerStats[] }) {
+function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) {
+  const moneyColor = p.totalMoney > 0
+    ? 'text-green-600'
+    : p.totalMoney < 0
+      ? 'text-destructive'
+      : '';
+
   return (
-    <div className="rounded-md border overflow-x-auto">
-      <table className="w-full text-sm min-w-[780px]">
-        <thead>
-          <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
-            <th className="py-2 px-2 text-left font-medium">Player</th>
-            <th className="py-2 px-2 text-center font-medium">
-              Wolf
-              <br />
-              <span className="font-normal">W-L-P</span>
-            </th>
-            <th className="py-2 px-2 text-center font-medium">Wolf</th>
-            <th className="py-2 px-2 text-center font-medium">Blind Wolf</th>
-            <th className="py-2 px-2 text-center font-medium">Birdies</th>
-            <th className="py-2 px-2 text-center font-medium">Eagles</th>
-            <th className="py-2 px-2 text-center font-medium">Greenies</th>
-            <th className="py-2 px-2 text-center font-medium">Polies</th>
-            <th className="py-2 px-2 text-right font-medium">Total $</th>
-            <th className="py-2 px-2 text-right font-medium">High $</th>
-            <th className="py-2 px-2 text-right font-medium">Low $</th>
-          </tr>
-        </thead>
-        <tbody>
-          {players.map((p) => (
-            <tr key={p.playerId} className="border-b last:border-0">
-              <td className="py-2 px-2 font-medium">{p.name}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{wolfRecord(p)}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{p.wolfCallsWolf}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{p.wolfCallsBlindWolf}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{p.netBirdies}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{p.netEagles}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{p.greenies}</td>
-              <td className="py-2 px-2 text-center tabular-nums">{p.polies}</td>
-              <td className={`py-2 px-2 text-right tabular-nums ${p.totalMoney >= 0 ? 'text-green-600' : 'text-destructive'}`}>
-                {formatMoney(p.totalMoney)}
-              </td>
-              <td className="py-2 px-2 text-right tabular-nums text-green-600">
-                {formatMoney(p.biggestRoundWin)}
-              </td>
-              <td className="py-2 px-2 text-right tabular-nums text-destructive">
-                {formatMoney(p.biggestRoundLoss)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="rounded-xl border overflow-hidden shadow-sm">
+      {/* Header — player name + total money */}
+      <div className="flex items-center justify-between px-4 py-3 bg-muted/40 border-b">
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-bold text-muted-foreground w-5 text-center">{rank}</span>
+          <span className="font-semibold">{p.name}</span>
+        </div>
+        <span className={`text-base font-bold tabular-nums ${moneyColor}`}>
+          {formatMoney(p.totalMoney)}
+        </span>
+      </div>
+
+      {/* Stats grid — 2 rows of data */}
+      <div className="px-4 py-3">
+        <div className="grid grid-cols-4 gap-y-3 gap-x-2 text-center">
+          <StatCell label="Wolf" value={wolfRecord(p)} />
+          <StatCell label="Calls" value={String(p.wolfCallsWolf)} />
+          <StatCell label="Blind" value={String(p.wolfCallsBlindWolf)} />
+          <StatCell label="Birdies" value={String(p.netBirdies)} highlight={p.netBirdies > 0} />
+
+          <StatCell label="Eagles" value={String(p.netEagles)} highlight={p.netEagles > 0} />
+          <StatCell label="Greenies" value={String(p.greenies)} />
+          <StatCell label="Polies" value={String(p.polies)} />
+          <StatCell
+            label="Best Rd"
+            value={formatMoney(p.biggestRoundWin)}
+            className="text-green-600"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCell({
+  label,
+  value,
+  highlight,
+  className,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  className?: string;
+}) {
+  return (
+    <div>
+      <div className={`text-sm font-semibold tabular-nums ${className ?? ''} ${highlight ? 'text-green-600' : ''}`}>
+        {value}
+      </div>
+      <div className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">{label}</div>
     </div>
   );
 }
 
 function LoadingSkeleton() {
   return (
-    <div className="rounded-md border overflow-hidden animate-pulse">
-      <div className="h-9 bg-muted/50" />
+    <div className="flex flex-col gap-3">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="flex gap-3 px-3 py-3 border-b last:border-0">
-          <div className="h-4 w-24 bg-muted rounded" />
-          <div className="flex-1 flex gap-2">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((j) => (
-              <div key={j} className="h-4 w-8 bg-muted rounded" />
+        <div key={i} className="rounded-xl border overflow-hidden animate-pulse">
+          <div className="h-12 bg-muted/40" />
+          <div className="p-4 grid grid-cols-4 gap-3">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
+              <div key={j} className="h-8 bg-muted rounded" />
             ))}
           </div>
         </div>

@@ -59,12 +59,19 @@ function StandingsPage() {
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">
-          {data?.season ? `${data.season.name} Standings` : 'Season Standings'}
-        </h2>
-        <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching}>
-          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight">
+            {data?.season ? `${data.season.name}` : 'Season Standings'}
+          </h2>
+          {data?.season && (
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Round {data.season.roundsCompleted} of {data.season.totalRounds} · Best 10 count
+            </p>
+          )}
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching} className="h-8 px-2">
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
         </Button>
       </div>
 
@@ -83,23 +90,27 @@ function StandingsPage() {
       {!isLoading && !isError && data && (
         <>
           {data.season === null ? (
-            <p className="text-muted-foreground">No season data available</p>
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <span className="text-5xl">📊</span>
+              <p className="text-muted-foreground">No season data available</p>
+            </div>
           ) : (
             <>
-              <div className="flex items-baseline justify-between mb-1">
-                <p className="text-sm text-muted-foreground">
-                  Round {data.season.roundsCompleted} of {data.season.totalRounds}
-                </p>
-                <p className="text-xs text-muted-foreground/60">
-                  All values in Harvey Cup pts · best 10 rounds count
-                </p>
-              </div>
-              <StandingsTable players={data.fullMembers} showPlayoff />
-              {data.subs.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-base font-semibold mb-2">Substitutes</h3>
-                  <StandingsTable players={data.subs} showPlayoff={false} />
+              {data.fullMembers.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <span className="text-5xl">🏆</span>
+                  <p className="text-muted-foreground">No standings yet — play some rounds!</p>
                 </div>
+              ) : (
+                <>
+                  <StandingsTable players={data.fullMembers} showPlayoff />
+                  {data.subs.length > 0 && (
+                    <div className="mt-6">
+                      <h3 className="text-base font-semibold mb-2">Substitutes</h3>
+                      <StandingsTable players={data.subs} showPlayoff={false} />
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
@@ -113,24 +124,41 @@ function StandingsPage() {
 // StandingsTable
 // ---------------------------------------------------------------------------
 
+function rankRowStyle(rank: number, isPlayoffEligible: boolean, showPlayoff: boolean): string {
+  const base = 'border-b last:border-0';
+  const playoff = showPlayoff && isPlayoffEligible ? ' bg-green-50/50 dark:bg-green-950/15' : '';
+  if (rank === 1) return `${base} border-l-2 border-l-amber-400${playoff}`;
+  if (rank === 2) return `${base} border-l-2 border-l-slate-400${playoff}`;
+  if (rank === 3) return `${base} border-l-2 border-l-orange-500${playoff}`;
+  return `${base} border-l-2 border-l-transparent${playoff}`;
+}
+
+function RankBadge({ rank, isPlayoffEligible, showPlayoff }: { rank: number; isPlayoffEligible: boolean; showPlayoff: boolean }) {
+  const badge = showPlayoff && isPlayoffEligible ? <span className="ml-1 text-green-500 text-[10px]">✓</span> : null;
+  if (rank === 1) return <><span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-400 text-amber-900 text-xs font-black">1</span>{badge}</>;
+  if (rank === 2) return <><span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-300 text-slate-700 dark:bg-slate-600 dark:text-slate-100 text-xs font-black">2</span>{badge}</>;
+  if (rank === 3) return <><span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange-400 text-orange-900 text-xs font-black">3</span>{badge}</>;
+  return <><span className="text-sm font-medium text-muted-foreground">{rank}</span>{badge}</>;
+}
+
 function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; showPlayoff: boolean }) {
   if (players.length === 0) {
     return <p className="text-muted-foreground text-sm">No results yet.</p>;
   }
 
   return (
-    <div className="rounded-md border overflow-x-auto">
+    <div className="rounded-xl border overflow-x-auto shadow-sm">
       <table className="w-full text-sm min-w-[600px]">
         <thead>
-          <tr className="border-b bg-muted/50 text-xs text-muted-foreground">
-            <th className="py-2 px-3 text-left font-medium w-10">#</th>
-            <th className="py-2 px-3 text-left font-medium">Player</th>
-            <th className="py-2 px-3 text-center font-medium">Rds</th>
-            <th className="py-2 px-3 text-right font-medium">Avg</th>
-            <th className="py-2 px-3 text-right font-medium">Worst</th>
-            <th className="py-2 px-3 text-right font-medium">Best</th>
-            <th className="py-2 px-3 text-right font-medium">Stab</th>
-            <th className="py-2 px-3 text-right font-medium">$</th>
+          <tr className="border-b bg-muted/60 text-[11px] text-muted-foreground">
+            <th className="py-2 pl-3 pr-1 text-center font-medium w-12">#</th>
+            <th className="py-2 px-2 text-left font-medium">Player</th>
+            <th className="py-2 px-2 text-center font-medium">Rds</th>
+            <th className="py-2 px-2 text-right font-medium">Avg</th>
+            <th className="py-2 px-2 text-right font-medium">Low</th>
+            <th className="py-2 px-2 text-right font-medium">High</th>
+            <th className="py-2 px-2 text-right font-medium">Stab</th>
+            <th className="py-2 px-2 text-right font-medium">$</th>
             <th className="py-2 px-3 text-right font-medium">Total</th>
           </tr>
         </thead>
@@ -138,33 +166,30 @@ function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; 
           {players.map((player) => (
             <tr
               key={player.playerId}
-              className={`border-b last:border-0 ${showPlayoff && player.isPlayoffEligible ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
+              className={rankRowStyle(player.rank, player.isPlayoffEligible, showPlayoff)}
             >
-              <td className="py-2 px-3 font-medium text-muted-foreground">
-                {player.rank}
-                {showPlayoff && player.isPlayoffEligible && (
-                  <span className="ml-1 text-green-600 text-xs">✓</span>
-                )}
+              <td className="py-2.5 pl-3 pr-1 text-center">
+                <RankBadge rank={player.rank} isPlayoffEligible={player.isPlayoffEligible} showPlayoff={showPlayoff} />
               </td>
-              <td className="py-2 px-3 font-medium">{player.name}</td>
-              <td className="py-2 px-3 text-center tabular-nums text-muted-foreground">
+              <td className="py-2.5 px-2 font-semibold">{player.name}</td>
+              <td className="py-2.5 px-2 text-center tabular-nums text-muted-foreground">
                 {player.roundsPlayed}
                 {player.roundsDropped > 0 && (
-                  <span className="text-xs text-amber-600 ml-1">(−{player.roundsDropped})</span>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-0.5">(-{player.roundsDropped})</span>
                 )}
               </td>
-              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+              <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
                 {fmt(player.avgPerRound)}
               </td>
-              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+              <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
                 {player.roundsPlayed > 0 ? fmt(player.lowRound) : '—'}
               </td>
-              <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">
+              <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
                 {player.roundsPlayed > 0 ? fmt(player.highRound) : '—'}
               </td>
-              <td className="py-2 px-3 text-right tabular-nums">{fmt(player.stablefordTotal)}</td>
-              <td className="py-2 px-3 text-right tabular-nums">{fmt(player.moneyTotal)}</td>
-              <td className="py-2 px-3 text-right tabular-nums font-semibold">{fmt(player.combinedTotal)}</td>
+              <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.stablefordTotal)}</td>
+              <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.moneyTotal)}</td>
+              <td className="py-2.5 px-3 text-right tabular-nums font-bold text-base">{fmt(player.combinedTotal)}</td>
             </tr>
           ))}
         </tbody>

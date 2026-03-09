@@ -270,31 +270,62 @@ function BallDrawPage() {
   if (wolfSchedule) {
     return (
       <div className="p-4 flex flex-col gap-4">
-        <h2 className="text-xl font-semibold">Wolf Assignments</h2>
-        <div className="overflow-x-auto">
+        <h2 className="text-xl font-bold tracking-tight">Wolf Assignments</h2>
+        <div className="rounded-xl border overflow-hidden shadow-sm">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 pr-4">Hole</th>
-                <th className="text-left py-2 pr-4">Par</th>
-                <th className="text-left py-2 pr-4">Type</th>
-                <th className="text-left py-2">Wolf</th>
+              <tr className="bg-green-700 text-white text-xs">
+                <th className="text-center py-2 px-2 w-12 font-semibold">Hole</th>
+                <th className="text-center py-2 px-1 w-10 font-semibold">Par</th>
+                <th className="text-left py-2 px-2 font-semibold">Type</th>
+                <th className="text-left py-2 px-2 font-semibold">Wolf</th>
               </tr>
             </thead>
             <tbody>
-              {wolfSchedule.map((hole) => (
-                <tr key={hole.holeNumber} className="border-b last:border-0">
-                  <td className="py-2 pr-4">{hole.holeNumber}</td>
-                  <td className="py-2 pr-4">{HOLE_PARS[hole.holeNumber - 1]}</td>
-                  <td className="py-2 pr-4">{hole.type === 'skins' ? 'Skins' : 'Wolf'}</td>
-                  <td className="py-2">{hole.wolfPlayerName ?? '—'}</td>
-                </tr>
-              ))}
+              {wolfSchedule.map((hole) => {
+                const par = HOLE_PARS[hole.holeNumber - 1]!;
+                const isSkins = hole.type === 'skins';
+                const isPar3 = par === 3;
+                return (
+                  <tr
+                    key={hole.holeNumber}
+                    className={[
+                      'border-b last:border-0 transition-colors',
+                      isSkins
+                        ? 'bg-amber-50/60 dark:bg-amber-950/20'
+                        : hole.holeNumber % 2 === 0
+                          ? 'bg-muted/20'
+                          : '',
+                      // Turn marker between front/back 9
+                      hole.holeNumber === 10 ? 'border-t-2 border-t-green-600' : '',
+                    ].join(' ')}
+                  >
+                    <td className="text-center py-2.5 px-2 font-bold tabular-nums">
+                      {hole.holeNumber}
+                    </td>
+                    <td className={`text-center py-2.5 px-1 tabular-nums ${isPar3 ? 'text-blue-600 font-semibold' : 'text-muted-foreground'}`}>
+                      {par}
+                    </td>
+                    <td className="py-2.5 px-2">
+                      {isSkins ? (
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                          Skins
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-muted-foreground">Wolf</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-2 font-semibold">
+                      {hole.wolfPlayerName ?? '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
         <Link to="/score-entry-hole" className="w-full">
-          <Button className="min-h-12 w-full mt-2">Begin Score Entry</Button>
+          <Button className="min-h-12 w-full text-base font-semibold">Begin Score Entry</Button>
         </Link>
       </div>
     );

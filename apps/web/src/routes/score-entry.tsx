@@ -281,8 +281,8 @@ function RoundCard({
           <span
             className={`text-xs font-medium px-2 py-0.5 rounded-full ${
               round.type === 'official'
-                ? 'bg-blue-100 text-blue-800'
-                : 'bg-gray-100 text-gray-700'
+                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300'
+                : 'bg-muted text-muted-foreground'
             }`}
           >
             {round.type === 'official' ? 'Official' : 'Casual'}
@@ -290,8 +290,8 @@ function RoundCard({
           <span
             className={`text-xs font-medium px-2 py-0.5 rounded-full ${
               round.status === 'active'
-                ? 'bg-green-100 text-green-800'
-                : 'bg-yellow-100 text-yellow-800'
+                ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300'
+                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
             }`}
           >
             {round.status === 'active' ? 'Active' : 'Scheduled'}
