@@ -1496,6 +1496,11 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
 
   const handicapMap = new Map(allHandicaps.map((r) => [r.playerId, r.handicapIndex]));
 
+  // Relative handicaps for money calculations ("play off the low man")
+  const minHI = allHandicaps.length > 0 ? Math.min(...allHandicaps.map((r) => r.handicapIndex)) : 0;
+  const relativeHandicapMap = new Map(allHandicaps.map((r) => [r.playerId, r.handicapIndex - minHI]));
+  const relativeHI = handicapIndex - minHI;
+
   const scoresByHole = new Map<number, Map<number, number>>();
   for (const row of allScores) {
     if (!scoresByHole.has(row.holeNumber)) scoresByHole.set(row.holeNumber, new Map());
@@ -1540,9 +1545,10 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
         number,
         number,
       ];
+      // Use relative handicaps for money net scores ("play off the low man")
+      const relativeStrokes = getHandicapStrokes(relativeHI, courseHole.strokeIndex);
       const netScores = battingOrder.map((pid, i) => {
-        // Reuse already-computed strokes for the target player; compute for all others
-        const s = pid === playerId ? strokes : getHandicapStrokes(handicapMap.get(pid) ?? 0, courseHole.strokeIndex);
+        const s = pid === playerId ? relativeStrokes : getHandicapStrokes(relativeHandicapMap.get(pid) ?? 0, courseHole.strokeIndex);
         return grossScores[i]! - s;
       }) as [number, number, number, number];
 
@@ -1563,20 +1569,13 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
         );
       }
 
-      const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
       const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
-      const result =
-        bonusInput.greenies.length > 0 || bonusInput.polies.length > 0
-          ? applyBonusModifiers(
-              base,
-              netScores,
-              grossScores,
-              bonusInput,
-              holeAssignment,
-              wolfDecision,
-              courseHole.par,
-            )
-          : base;
+      // Skins holes (1-2): no bonus modifiers. Wolf holes (3+): always apply.
+      let result = base;
+      if (holeNum >= 3) {
+        const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
+        result = applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par);
+      }
       moneyNet = result[playerPos]!.total;
     }
 
