@@ -40,36 +40,36 @@ const NO_BONUS_GROSS: readonly [number, number, number, number] = [9, 9, 9, 9];
 // detectBonusLevel — AC: 1
 // ---------------------------------------------------------------------------
 describe('detectBonusLevel', () => {
-  it('gross par−1 → birdie (par 3, 4, 5)', () => {
+  it('par−1 → birdie (par 3, 4, 5)', () => {
     expect(detectBonusLevel(2, 3)).toBe('birdie');
     expect(detectBonusLevel(3, 4)).toBe('birdie');
     expect(detectBonusLevel(4, 5)).toBe('birdie');
   });
 
-  it('gross par−2 → eagle', () => {
+  it('par−2 → eagle', () => {
     expect(detectBonusLevel(1, 3)).toBe('eagle');
     expect(detectBonusLevel(2, 4)).toBe('eagle');
     expect(detectBonusLevel(3, 5)).toBe('eagle');
   });
 
-  it('gross par−3 → double_eagle', () => {
+  it('par−3 → double_eagle', () => {
     expect(detectBonusLevel(0, 3)).toBe('double_eagle');
     expect(detectBonusLevel(1, 4)).toBe('double_eagle');
     expect(detectBonusLevel(2, 5)).toBe('double_eagle');
   });
 
-  it('gross ≤ par−3 still returns double_eagle', () => {
+  it('≤ par−3 still returns double_eagle', () => {
     expect(detectBonusLevel(-1, 3)).toBe('double_eagle');
     expect(detectBonusLevel(0, 4)).toBe('double_eagle');
   });
 
-  it('gross par → null', () => {
+  it('par → null', () => {
     expect(detectBonusLevel(3, 3)).toBeNull();
     expect(detectBonusLevel(4, 4)).toBeNull();
     expect(detectBonusLevel(5, 5)).toBeNull();
   });
 
-  it('gross bogey or worse → null', () => {
+  it('bogey or worse → null', () => {
     expect(detectBonusLevel(5, 4)).toBeNull();
     expect(detectBonusLevel(6, 4)).toBeNull();
     expect(detectBonusLevel(4, 3)).toBeNull();
@@ -79,7 +79,7 @@ describe('detectBonusLevel', () => {
 // ---------------------------------------------------------------------------
 // applyBonusModifiers — 2v2 wolf holes (wolf=pos0, partner=pos1)
 // AC: 2–6, 8–9, 11
-// Bonus detection now uses GROSS scores.
+// Bonus detection uses NET scores; double bonuses require ≥1 NATURAL.
 // ---------------------------------------------------------------------------
 describe('applyBonusModifiers — 2v2 (wolf=0, partner=1)', () => {
   const par = 4;
@@ -90,40 +90,63 @@ describe('applyBonusModifiers — 2v2 (wolf=0, partner=1)', () => {
     expect(tots(r)).toEqual([0, 0, 0, 0]);
   });
 
-  it('gross birdie on wolf team (pos0) → +1/+1/−1/−1 bonus skin', () => {
-    // pos0 gross 3 = birdie on par 4
+  it('net birdie on wolf team (pos0) → +1/+1/−1/−1 bonus skin', () => {
     const r = applyBonusModifiers(zeroBase(), [3, 5, 5, 5], [3, 5, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([1, 1, -1, -1]);
     expect(tots(r)).toEqual([1, 1, -1, -1]);
   });
 
-  it('gross birdie on opponent team (pos2) → −1/−1/+1/+1 bonus skin', () => {
+  it('net birdie on opponent team (pos2) → −1/−1/+1/+1 bonus skin', () => {
     const r = applyBonusModifiers(zeroBase(), [5, 5, 3, 5], [5, 5, 3, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([-1, -1, 1, 1]);
   });
 
-  it('gross eagle on wolf team (pos0) → 2 bonus skins (+2/+2/−2/−2)', () => {
+  it('net eagle on wolf team (pos0) → 2 bonus skins (+2/+2/−2/−2)', () => {
     const r = applyBonusModifiers(zeroBase(), [2, 5, 5, 5], [2, 5, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
 
-  it('gross double eagle on wolf team (pos0) → 3 bonus skins (+3/+3/−3/−3)', () => {
+  it('net double eagle on wolf team (pos0) → 3 bonus skins (+3/+3/−3/−3)', () => {
     const r = applyBonusModifiers(zeroBase(), [1, 5, 5, 5], [1, 5, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([3, 3, -3, -3]);
   });
 
-  it('double birdie bonus: both team members gross birdie → 2 birdie skins', () => {
-    // pos0 gross 3, pos1 gross 3 — both gross birdies on par 4
+  it('double birdie bonus: both team members net+natural birdie → 2 birdie skins', () => {
+    // pos0 net 3 + gross 3, pos1 net 3 + gross 3 — both natural birdies
     const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [3, 3, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
 
-  it('one team member gross birdie, other only net birdie (gross bogey) → 1 birdie skin (no double bonus)', () => {
-    // pos0 gross 3 = birdie, pos1 gross 9 with net 3 = net birdie only; gross 9 is NOT birdie
-    // Team best gross = 3 (birdie level 1), opp best gross = 9 (no bonus) → team wins 1 skin
-    // Double birdie: pos0 gross 3 ≤ 3 yes, pos1 gross 9 ≤ 3 no → no double bonus
-    const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [3, 9, 9, 9], NO_BONUS, WOLF(0), PARTNER(1), par);
+  it('double birdie bonus: both net birdies, one natural → 2 birdie skins', () => {
+    // pos0: net 3 (birdie), gross 3 (natural). pos1: net 3 (birdie), gross 5 (not natural).
+    const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [3, 5, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([2, 2, -2, -2]);
+  });
+
+  it('both net birdies but neither natural → 1 birdie skin (no double bonus)', () => {
+    // pos0: net 3 (birdie), gross 5. pos1: net 3 (birdie), gross 6.
+    const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [5, 6, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([1, 1, -1, -1]);
+  });
+
+  it('net eagle + natural birdie → eagle (2) + double birdie (+1) = 3 skins', () => {
+    // pos0: net 2 (eagle), gross 4 (not natural birdie). pos1: net 3 (birdie), gross 3 (natural birdie).
+    const r = applyBonusModifiers(zeroBase(), [2, 3, 5, 5], [4, 3, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([3, 3, -3, -3]);
+  });
+
+  it('double eagle bonus: both net eagles, one natural eagle → eagle (2) + dbl birdie (+1) + dbl eagle (+1) = 4', () => {
+    // pos0: net 2 (eagle), gross 2 (natural eagle). pos1: net 2 (eagle), gross 4 (not natural).
+    const r = applyBonusModifiers(zeroBase(), [2, 2, 5, 5], [2, 4, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([4, 4, -4, -4]);
+  });
+
+  it('both net eagles but neither natural eagle → eagle (2) + dbl birdie (+1) = 3 (no dbl eagle)', () => {
+    // pos0: net 2, gross 5. pos1: net 2, gross 5. Both have net birdie+, but no natural birdie either...
+    // Actually gross 5 is NOT ≤ par-1 (3), so no natural birdie → no double birdie either.
+    // Just eagle level (2 skins), no doubles.
+    const r = applyBonusModifiers(zeroBase(), [2, 2, 5, 5], [5, 5, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
 
   it('greenie on wolf team (pos0) → +1/+1/−1/−1 bonus skin', () => {
@@ -156,8 +179,7 @@ describe('applyBonusModifiers — 2v2 (wolf=0, partner=1)', () => {
     expect(bs(r)).toEqual([0, 0, 0, 0]);
   });
 
-  it('multiple bonuses stack: gross birdie + polie on wolf team → 2 skins', () => {
-    // pos0: gross birdie (1 skin) + polie (1 skin) → 2 skins for team A
+  it('multiple bonuses stack: net birdie + polie on wolf team → 2 skins', () => {
     const r = applyBonusModifiers(zeroBase(), [3, 5, 5, 5], [3, 5, 5, 5], { greenies: [], polies: [0] }, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
@@ -176,12 +198,12 @@ describe('applyBonusModifiers — 2v2 (wolf=0, partner=1)', () => {
     }
   });
 
-  it('gross eagle (wolf team) vs gross birdie (opp team) → wolf team wins 2 skins; birdie team earns $0', () => {
+  it('net eagle (wolf team) vs net birdie (opp team) → wolf team wins 2 skins; birdie team earns $0', () => {
     const r = applyBonusModifiers(zeroBase(), [2, 5, 3, 5], [2, 5, 3, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
 
-  it('tie on bonus level (each team has one gross birdie) → no blood', () => {
+  it('tie on bonus level (each team has one net birdie) → no blood', () => {
     const r = applyBonusModifiers(zeroBase(), [3, 5, 3, 5], [3, 5, 3, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([0, 0, 0, 0]);
   });
@@ -204,27 +226,27 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
     expect(bs(r)).toEqual([0, 0, 0, 0]);
   });
 
-  it('wolf gross birdies → wolf +3, each opp −1 bonus skin', () => {
+  it('wolf net birdie → wolf +3, each opp −1 bonus skin', () => {
     const r = applyBonusModifiers(zeroBase(), [3, 5, 5, 5], [3, 5, 5, 5], NO_BONUS, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([3, -1, -1, -1]);
   });
 
-  it('wolf gross eagles → wolf +6, each opp −2 (birdie + eagle = 2 skins)', () => {
+  it('wolf net eagle → wolf +6, each opp −2 (birdie + eagle = 2 skins)', () => {
     const r = applyBonusModifiers(zeroBase(), [2, 5, 5, 5], [2, 5, 5, 5], NO_BONUS, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([6, -2, -2, -2]);
   });
 
-  it('wolf gross double eagle → wolf +9, each opp −3 (3 skins)', () => {
+  it('wolf net double eagle → wolf +9, each opp −3 (3 skins)', () => {
     const r = applyBonusModifiers(zeroBase(), [1, 5, 5, 5], [1, 5, 5, 5], NO_BONUS, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([9, -3, -3, -3]);
   });
 
-  it('opponent (pos1) gross birdies → wolf −3, each opp +1 bonus skin', () => {
+  it('opponent (pos1) net birdie → wolf −3, each opp +1 bonus skin', () => {
     const r = applyBonusModifiers(zeroBase(), [5, 3, 5, 5], [5, 3, 5, 5], NO_BONUS, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([-3, 1, 1, 1]);
   });
 
-  it('opponent (pos1) gross eagles → wolf −6, each opp +2', () => {
+  it('opponent (pos1) net eagle → wolf −6, each opp +2', () => {
     const r = applyBonusModifiers(zeroBase(), [5, 2, 5, 5], [5, 2, 5, 5], NO_BONUS, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([-6, 2, 2, 2]);
   });
@@ -234,13 +256,12 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
     expect(bs(r)).toEqual([-6, 2, 2, 2]);
   });
 
-  it('opponent gross eagle (opp1) + polie → 3 group skins (wolf −9, each opp +3)', () => {
-    // opp1: gross eagle (2 skins) + polie (1 skin) = 3 opp skins
+  it('opponent net eagle (opp1) + polie → 3 group skins (wolf −9, each opp +3)', () => {
     const r = applyBonusModifiers(zeroBase(), [5, 2, 5, 5], [5, 2, 5, 5], { greenies: [], polies: [1] }, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([-9, 3, 3, 3]);
   });
 
-  it('two opponents gross birdie → 2 separate group skins (no double birdie bonus in 1v3)', () => {
+  it('two opponents net birdie → 2 separate group skins (no double birdie bonus in 1v3)', () => {
     const r = applyBonusModifiers(zeroBase(), [5, 3, 3, 5], [5, 3, 3, 5], NO_BONUS, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([-6, 2, 2, 2]);
   });
@@ -274,12 +295,12 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
 describe('applyBonusModifiers — skins holes (individual structure)', () => {
   const par = 4;
 
-  it('gross birdie on skins hole → winner +3, others −1', () => {
+  it('net birdie on skins hole → winner +3, others −1', () => {
     const r = applyBonusModifiers(zeroBase(), [3, 5, 5, 5], [3, 5, 5, 5], NO_BONUS, SKINS, null, par);
     expect(bs(r)).toEqual([3, -1, -1, -1]);
   });
 
-  it('gross eagle on skins hole → 2 skins: winner +6, others −2', () => {
+  it('net eagle on skins hole → 2 skins: winner +6, others −2', () => {
     const r = applyBonusModifiers(zeroBase(), [2, 5, 5, 5], [2, 5, 5, 5], NO_BONUS, SKINS, null, par);
     expect(bs(r)).toEqual([6, -2, -2, -2]);
   });
@@ -311,32 +332,27 @@ describe('applyBonusModifiers — skins holes (individual structure)', () => {
 // ---------------------------------------------------------------------------
 describe('applyBonusModifiers — $21 wolf loss verification', () => {
   it('wolf alone loses 3 base skins + chip-in eagle (opp1) + separate polie (opp2) = −21 total', () => {
-    // opp1 has gross eagle (gross 2 on par 4) + chip-in polie → 3 opp events
-    // opp2 has separate polie → 1 opp event
-    // Total opp events (O) = 4; wolf events (W) = 0
-    // bonusSkins: wolf = -3*4 = -12; each opp = +4
     const net: readonly [number, number, number, number] = [7, 2, 5, 5];
     const gross: readonly [number, number, number, number] = [7, 2, 5, 5];
     const base = calculateHoleMoney(net, WOLF(0), ALONE, 4);
-    expect(base[0].total).toBe(-9); // wolf loses all 3 base components
+    expect(base[0].total).toBe(-9);
 
     const r = applyBonusModifiers(
       base, net, gross,
-      { greenies: [], polies: [1, 2] }, // opp1 chip-in + opp2 separate polie
+      { greenies: [], polies: [1, 2] },
       WOLF(0), ALONE, 4,
     );
 
-    expect(r[0].bonusSkins).toBe(-12); // wolf: -3 × 4 opp events
-    expect(r[1].bonusSkins).toBe(4);   // each opp: +4
+    expect(r[0].bonusSkins).toBe(-12);
+    expect(r[1].bonusSkins).toBe(4);
     expect(r[2].bonusSkins).toBe(4);
     expect(r[3].bonusSkins).toBe(4);
 
-    expect(r[0].total).toBe(-21); // -9 base + -12 bonus
-    expect(r[1].total).toBe(7);   // +3 base + +4 bonus
+    expect(r[0].total).toBe(-21);
+    expect(r[1].total).toBe(7);
     expect(r[2].total).toBe(7);
     expect(r[3].total).toBe(7);
 
-    // Zero-sum verification
     const totalSum = r[0].total + r[1].total + r[2].total + r[3].total;
     expect(totalSum).toBe(0);
   });

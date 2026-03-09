@@ -107,7 +107,9 @@ async function recalculateMoney(roundId: number, groupId: number): Promise<Map<n
     decisionByHole.set(row.holeNumber, row);
   }
 
-  const handicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex]));
+  // Relative handicaps: subtract group's lowest HI ("play off the low man")
+  const minHI = Math.min(...handicapRows.map((r) => r.handicapIndex));
+  const handicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex - minHI]));
 
   const playerMoneyTotals = new Map<number, number>();
 
