@@ -658,43 +658,89 @@ function ScoreEntryHolePage() {
         {roundData.autoCalculateMoney && currentHole >= 3 && (
           <div className="border rounded-xl p-3 mb-3">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
-              🐺 Wolf Decision
+              🐺 Wolf: {wolfHole.wolfPlayerName} — Pick Partner or Go Alone
             </p>
-            <div className="flex gap-2 mb-2">
-              {(['alone', 'partner', 'blind_wolf'] as const).map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => setCurrentDecision(d)}
-                  className={cn(
-                    'flex-1 py-2 text-xs font-semibold rounded-lg border transition-colors',
-                    currentDecision === d
-                      ? 'bg-foreground text-background border-foreground'
-                      : 'border-border text-muted-foreground hover:border-foreground/40',
-                  )}
-                >
-                  {d === 'alone' ? 'Wolf' : d === 'partner' ? 'Partner' : 'Blind Wolf'}
-                </button>
-              ))}
+            {/* Player list — tap a non-wolf player to pick as partner */}
+            <div className="flex flex-col gap-1.5 mb-2">
+              {orderedPlayers.map((p) => {
+                const isWolf = p.id === wolfHole.wolfPlayerId;
+                const isPartner = currentDecision === 'partner' && currentPartnerId === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    disabled={isWolf}
+                    onClick={() => {
+                      if (isPartner) {
+                        // Deselect partner
+                        setCurrentDecision(null);
+                        setCurrentPartnerId(null);
+                      } else {
+                        setCurrentDecision('partner');
+                        setCurrentPartnerId(p.id);
+                      }
+                    }}
+                    className={cn(
+                      'flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
+                      isWolf
+                        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 cursor-default'
+                        : isPartner
+                          ? 'bg-green-600 text-white border-green-600'
+                          : 'border-border text-foreground hover:border-foreground/40',
+                    )}
+                  >
+                    <span>{p.name}</span>
+                    {isWolf && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Wolf</span>
+                    )}
+                    {isPartner && (
+                      <span className="text-xs font-bold">Partner ✓</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-            {currentDecision === 'partner' && (
-              <select
-                className="w-full border rounded-lg p-2 bg-background text-sm"
-                value={currentPartnerId ?? ''}
-                onChange={(e) =>
-                  setCurrentPartnerId(e.target.value ? Number(e.target.value) : null)
-                }
+            {/* Alone / Blind Wolf buttons */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (currentDecision === 'alone') {
+                    setCurrentDecision(null);
+                  } else {
+                    setCurrentDecision('alone');
+                    setCurrentPartnerId(null);
+                  }
+                }}
+                className={cn(
+                  'flex-1 py-2.5 text-xs font-bold rounded-lg border transition-colors',
+                  currentDecision === 'alone'
+                    ? 'bg-foreground text-background border-foreground'
+                    : 'border-border text-muted-foreground hover:border-foreground/40',
+                )}
               >
-                <option value="">— select partner —</option>
-                {orderedPlayers
-                  .filter((p) => p.id !== wolfHole.wolfPlayerId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-              </select>
-            )}
+                Wolf Alone
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (currentDecision === 'blind_wolf') {
+                    setCurrentDecision(null);
+                  } else {
+                    setCurrentDecision('blind_wolf');
+                    setCurrentPartnerId(null);
+                  }
+                }}
+                className={cn(
+                  'flex-1 py-2.5 text-xs font-bold rounded-lg border transition-colors',
+                  currentDecision === 'blind_wolf'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'border-border text-muted-foreground hover:border-foreground/40',
+                )}
+              >
+                Blind Wolf
+              </button>
+            </div>
           </div>
         )}
 

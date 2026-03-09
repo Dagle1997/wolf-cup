@@ -141,10 +141,9 @@ async function recalculateMoney(roundId: number, groupId: number): Promise<Map<n
 
     const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
     const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
-    const result =
-      bonusInput.greenies.length > 0 || bonusInput.polies.length > 0
-        ? applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par)
-        : base;
+    // Always apply bonus modifiers — birdie/eagle/double-birdie are score-detected,
+    // not just greenie/polie input-based.
+    const result = applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par);
 
     for (let pos = 0; pos < 4; pos++) {
       const playerId = battingOrder[pos]!;
