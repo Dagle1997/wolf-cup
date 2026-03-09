@@ -352,6 +352,25 @@ function ScorecardPanel({
 }
 
 // ---------------------------------------------------------------------------
+// Rank medal helpers
+// ---------------------------------------------------------------------------
+
+function rankRowClass(rank: number, isSelected: boolean): string {
+  const base = 'border-b last:border-0 cursor-pointer transition-colors';
+  if (rank === 1) return `${base} border-l-2 border-l-amber-400 ${isSelected ? 'bg-amber-50/80 dark:bg-amber-950/30' : 'hover:bg-amber-50/60 dark:hover:bg-amber-950/20'}`;
+  if (rank === 2) return `${base} border-l-2 border-l-slate-400 ${isSelected ? 'bg-slate-50/80 dark:bg-slate-900/20' : 'hover:bg-muted/30'}`;
+  if (rank === 3) return `${base} border-l-2 border-l-orange-500 ${isSelected ? 'bg-orange-50/60 dark:bg-orange-950/20' : 'hover:bg-muted/30'}`;
+  return `${base} border-l-2 border-l-transparent ${isSelected ? 'bg-muted/20' : 'hover:bg-muted/30'}`;
+}
+
+function RankCell({ rank }: { rank: number }) {
+  if (rank === 1) return <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-400 text-amber-900 text-xs font-black">1</span>;
+  if (rank === 2) return <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-300 text-slate-700 text-xs font-black dark:bg-slate-600 dark:text-slate-100">2</span>;
+  if (rank === 3) return <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange-400 text-orange-900 text-xs font-black">3</span>;
+  return <span className="text-sm font-medium text-muted-foreground">{rank}</span>;
+}
+
+// ---------------------------------------------------------------------------
 // LeaderboardPage
 // ---------------------------------------------------------------------------
 
@@ -384,27 +403,29 @@ function LeaderboardPage() {
   return (
     <div className="p-4 max-w-2xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold">Live Leaderboard</h1>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight">Live Leaderboard</h1>
+          {data?.lastUpdated && (
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {isFetching ? 'Updating…' : `Updated ${secondsAgo}s ago`}
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2">
-          <Link to="/practice" className="text-xs text-muted-foreground hover:underline">
-            Practice round
+          <Link to="/practice" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Practice
           </Link>
-          <Button variant="ghost" size="sm" onClick={() => void refetch()} className="gap-1">
-            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Refresh
+          <Button variant="ghost" size="sm" onClick={() => void refetch()} className="gap-1 h-8 px-2">
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
 
-      {data?.lastUpdated && (
-        <p className="text-xs text-muted-foreground mb-3">Updated {secondsAgo}s ago</p>
-      )}
-
       {isLoading && (
-        <div className="flex flex-col gap-3">
-          {[1, 2, 3].map((n) => (
-            <div key={n} className="h-12 rounded-xl bg-muted animate-pulse" />
+        <div className="flex flex-col gap-2">
+          {[1, 2, 3, 4].map((n) => (
+            <div key={n} className="h-14 rounded-xl bg-muted animate-pulse" />
           ))}
         </div>
       )}
@@ -418,7 +439,8 @@ function LeaderboardPage() {
       )}
 
       {data && data.round === null && (
-        <div className="flex flex-col items-center gap-4 py-8 text-center">
+        <div className="flex flex-col items-center gap-4 py-10 text-center">
+          <span className="text-5xl">⛳</span>
           <p className="text-muted-foreground">No official round today</p>
           <div className="flex flex-col gap-3 w-full max-w-xs">
             <Link to="/practice">
@@ -434,18 +456,18 @@ function LeaderboardPage() {
       {data && currentRound && (
         <>
           {data.sideGame && (
-            <div className="rounded-xl border bg-card p-3 mb-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Side Game</p>
-              <p className="font-medium">{data.sideGame.name}</p>
+            <div className="rounded-xl border bg-card p-3 mb-3">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
+              <p className="font-semibold">{data.sideGame.name}</p>
               <p className="text-sm text-muted-foreground">{data.sideGame.format}</p>
             </div>
           )}
 
-          <div className="rounded-xl border overflow-hidden">
+          <div className="rounded-xl border overflow-hidden shadow-sm">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-muted/50 text-muted-foreground text-xs">
-                  <th className="text-left py-2 px-3 w-8">#</th>
+                <tr className="border-b bg-muted/60 text-muted-foreground text-[11px]">
+                  <th className="text-center py-2 pl-2 pr-1 w-10">#</th>
                   <th className="text-left py-2 pr-2">Player</th>
                   <th className="text-right py-2 pr-2 w-14">To Par</th>
                   <th className="text-right py-2 pr-2 w-12">Pts</th>
@@ -456,6 +478,7 @@ function LeaderboardPage() {
               </thead>
               <tbody>
                 {data.leaderboard.map((player) => {
+                  const isSelected = selectedPlayerId === player.playerId;
                   const toParColor =
                     player.netToPar < 0
                       ? 'text-green-600 font-bold'
@@ -467,32 +490,34 @@ function LeaderboardPage() {
                     <Fragment key={player.playerId}>
                       <tr
                         role="button"
-                        aria-expanded={selectedPlayerId === player.playerId}
+                        aria-expanded={isSelected}
                         onClick={() =>
                           setSelectedPlayerId((prev) =>
                             prev === player.playerId ? null : player.playerId,
                           )
                         }
-                        className={`border-b last:border-0 cursor-pointer hover:bg-muted/30 transition-colors ${selectedPlayerId === player.playerId ? 'bg-muted/20' : ''}`}
+                        className={rankRowClass(player.rank, isSelected)}
                       >
-                        <td className="py-2 px-3 font-medium text-muted-foreground">{player.rank}</td>
-                        <td className="py-2 pr-2">
-                          <div className="font-medium">{player.name}</div>
-                          <div className="text-xs text-muted-foreground">
+                        <td className="py-2.5 pl-2 pr-1 text-center">
+                          <RankCell rank={player.rank} />
+                        </td>
+                        <td className="py-2.5 pr-2">
+                          <div className="font-semibold leading-tight">{player.name}</div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">
                             HCP {Math.round(player.handicapIndex * 10) / 10} · {formatThru(player.thruHole)}
                           </div>
                         </td>
-                        <td className={`py-2 pr-2 text-right tabular-nums ${toParColor}`}>
+                        <td className={`py-2.5 pr-2 text-right tabular-nums text-base ${toParColor}`}>
                           {player.thruHole === 0 ? '—' : formatNetToPar(player.netToPar)}
                         </td>
-                        <td className="py-2 pr-2 text-right tabular-nums text-sm">
+                        <td className="py-2.5 pr-2 text-right tabular-nums font-medium">
                           {player.stablefordTotal}
                         </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-sm">
+                        <td className={`py-2.5 pr-3 text-right tabular-nums font-medium ${player.moneyTotal > 0 ? 'text-green-600' : player.moneyTotal < 0 ? 'text-destructive' : ''}`}>
                           {formatMoney(player.moneyTotal)}
                         </td>
                         {data.harveyLiveEnabled && (
-                          <td className="py-2 pr-2 text-right tabular-nums">
+                          <td className="py-2.5 pr-2 text-right tabular-nums">
                             {player.harveyStableford !== null
                               ? (typeof player.harveyStableford === 'number' && !Number.isInteger(player.harveyStableford)
                                   ? player.harveyStableford.toFixed(1)
@@ -501,7 +526,7 @@ function LeaderboardPage() {
                           </td>
                         )}
                         {data.harveyLiveEnabled && (
-                          <td className="py-2 pr-3 text-right tabular-nums">
+                          <td className="py-2.5 pr-3 text-right tabular-nums">
                             {player.harveyMoney !== null
                               ? (typeof player.harveyMoney === 'number' && !Number.isInteger(player.harveyMoney)
                                   ? player.harveyMoney.toFixed(1)
@@ -510,8 +535,8 @@ function LeaderboardPage() {
                           </td>
                         )}
                       </tr>
-                      {selectedPlayerId === player.playerId && (
-                        <tr className="border-b bg-muted/10">
+                      {isSelected && (
+                        <tr className="border-b bg-muted/5">
                           <td colSpan={colCount} className="p-0">
                             <ScorecardPanel
                               roundId={currentRound.id}
@@ -526,7 +551,7 @@ function LeaderboardPage() {
                 })}
                 {data.leaderboard.length === 0 && (
                   <tr>
-                    <td colSpan={colCount} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={colCount} className="py-10 text-center text-muted-foreground">
                       No players in this round yet
                     </td>
                   </tr>

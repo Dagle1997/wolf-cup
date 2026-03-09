@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api';
 import { getSession, clearSession } from '@/lib/session-store';
 import { enqueueScore } from '@/lib/offline-queue';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Constants (from packages/engine/src/course.ts)
@@ -600,247 +601,265 @@ function ScoreEntryHolePage() {
   const isPending = submitMutation.isPending || wolfDecisionMutation.isPending;
 
   return (
-    <div className="p-4 flex flex-col gap-4">
-      {pendingCount > 0 && (
-        <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-800 text-sm px-3 py-2">
-          <WifiOff className="w-4 h-4 shrink-0" />
-          {pendingCount} score{pendingCount !== 1 ? 's' : ''} pending sync
-          {isDraining && <Loader2 className="w-4 h-4 ml-1 animate-spin" />}
-        </div>
-      )}
-      {drainError && (
-        <div className="flex items-center gap-2 text-amber-700 text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          {drainError}
-        </div>
-      )}
+    <div className="flex flex-col h-full">
+      {/* Scrollable content area — padded bottom so sticky footer doesn't cover */}
+      <div className="flex-1 overflow-y-auto px-4 pt-3 pb-36">
 
-      {/* Hole header */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Hole {currentHole}</h2>
-        <span className="text-sm text-muted-foreground">
-          {submittedScores.size} / 18 saved
-        </span>
-      </div>
-
-      <div className="flex gap-4 text-sm text-muted-foreground">
-        <span>Par {par}</span>
-        <span>SI {si}</span>
-        <span>
-          {wolfHole.type === 'skins' ? 'Skins' : `Wolf: ${wolfHole.wolfPlayerName ?? '—'}`}
-        </span>
-      </div>
-
-      {/* Score inputs */}
-      <div className="flex flex-col gap-3">
-        {orderedPlayers.map((player) => (
-          <div key={player.id} className="flex items-center gap-3">
-            <label className="flex-1 font-medium text-sm">{player.name}</label>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              className="w-20 border rounded-lg p-2 text-center text-base bg-background"
-              value={currentInputs[player.id] ?? ''}
-              onChange={(e) => {
-                setCurrentInputs((prev) => ({ ...prev, [player.id]: e.target.value }));
-              }}
-            />
+        {/* Offline/sync banner */}
+        {pendingCount > 0 && (
+          <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm px-3 py-2 mb-3">
+            <WifiOff className="w-4 h-4 shrink-0" />
+            {pendingCount} score{pendingCount !== 1 ? 's' : ''} pending sync
+            {isDraining && <Loader2 className="w-4 h-4 ml-1 animate-spin" />}
           </div>
-        ))}
-      </div>
-
-      {/* Wolf decision (holes 3-18, autoCalculateMoney=true) */}
-      {roundData.autoCalculateMoney && currentHole >= 3 && (
-        <div className="flex flex-col gap-2 border rounded-lg p-3">
-          <p className="text-sm font-medium">
-            Wolf: {wolfHole.wolfPlayerName ?? '—'}
-          </p>
-          <div className="flex gap-2">
-            {(['alone', 'partner', 'blind_wolf'] as const).map((d) => (
-              <Button
-                key={d}
-                variant={currentDecision === d ? 'default' : 'outline'}
-                className="flex-1 text-xs"
-                onClick={() => setCurrentDecision(d)}
-              >
-                {d === 'alone' ? 'Wolf' : d === 'partner' ? 'Partner' : 'Blind Wolf'}
-              </Button>
-            ))}
-          </div>
-          {currentDecision === 'partner' && (
-            <select
-              className="border rounded-lg p-2 bg-background text-sm"
-              value={currentPartnerId ?? ''}
-              onChange={(e) =>
-                setCurrentPartnerId(e.target.value ? Number(e.target.value) : null)
-              }
-            >
-              <option value="">— select partner —</option>
-              {orderedPlayers
-                .filter((p) => p.id !== wolfHole.wolfPlayerId)
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-            </select>
-          )}
-        </div>
-      )}
-
-      {/* Greenie (par-3 holes only, autoCalculateMoney=true) */}
-      {roundData.autoCalculateMoney && PAR3_HOLES.has(currentHole) && (
-        <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium text-muted-foreground">Greenie</p>
-          {orderedPlayers.map((p) => (
-            <label key={p.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={currentGreenies.has(p.id)}
-                onChange={(e) => {
-                  const s = new Set(currentGreenies);
-                  if (e.target.checked) s.add(p.id);
-                  else s.delete(p.id);
-                  setCurrentGreenies(s);
-                }}
-              />
-              {p.name}
-            </label>
-          ))}
-        </div>
-      )}
-
-      {/* Polie (any hole) */}
-      {roundData.autoCalculateMoney && (
-        <div className="flex flex-col gap-1">
-          <p className="text-sm font-medium text-muted-foreground">Polie</p>
-          {orderedPlayers.map((p) => (
-            <label key={p.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={currentPolies.has(p.id)}
-                onChange={(e) => {
-                  const s = new Set(currentPolies);
-                  if (e.target.checked) s.add(p.id);
-                  else s.delete(p.id);
-                  setCurrentPolies(s);
-                }}
-              />
-              {p.name}
-            </label>
-          ))}
-        </div>
-      )}
-
-      {/* Errors */}
-      {submitError && (
-        <div className="flex items-center gap-2 text-destructive text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          {submitError}
-        </div>
-      )}
-      {wolfError && (
-        <div className="flex items-center gap-2 text-destructive text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          {wolfError}
-        </div>
-      )}
-
-      {/* Save button */}
-      <Button
-        className="min-h-12 w-full"
-        disabled={!allValid || isPending}
-        onClick={() => {
-          setSubmitError(null);
-          setWolfError(null);
-          submitMutation.mutate({ holeNum: currentHole, inputs: currentInputs });
-        }}
-      >
-        {isPending ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Saving…
-          </>
-        ) : (
-          `Save Hole ${currentHole}`
         )}
-      </Button>
+        {drainError && (
+          <div className="flex items-center gap-2 text-amber-700 text-sm mb-3">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {drainError}
+          </div>
+        )}
 
-      {/* Navigation — Prev always enabled (unless hole 1); Next enabled up to firstUnscoredHole */}
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          className="flex-1 min-h-11"
-          disabled={currentHole === 1}
-          onClick={() => setCurrentHole((h) => h - 1)}
-        >
-          <ChevronLeft className="w-4 h-4 mr-1" />
-          Prev
-        </Button>
-        <Button
-          variant="outline"
-          className="flex-1 min-h-11"
-          disabled={currentHole + 1 > firstUnscoredHole}
-          onClick={() => setCurrentHole((h) => h + 1)}
-        >
-          Next
-          <ChevronRight className="w-4 h-4 ml-1" />
-        </Button>
+        {/* Hole header bar */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-2xl font-black">Hole {currentHole}</h2>
+            <span className="text-sm text-muted-foreground">Par {par} · SI {si}</span>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-muted-foreground">{submittedScores.size} / 18</div>
+            <div className="text-xs font-medium text-muted-foreground">
+              {wolfHole.type === 'skins' ? '⛳ Skins' : `🐺 ${wolfHole.wolfPlayerName ?? '—'}`}
+            </div>
+          </div>
+        </div>
+
+        {/* Score inputs — compact card per player */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {orderedPlayers.map((player) => (
+            <div key={player.id} className="border rounded-xl p-3 bg-card">
+              <div className="text-xs font-semibold text-muted-foreground mb-2 truncate">{player.name}</div>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={20}
+                className="w-full border rounded-lg p-2 text-center text-xl font-bold bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                value={currentInputs[player.id] ?? ''}
+                onChange={(e) => {
+                  setCurrentInputs((prev) => ({ ...prev, [player.id]: e.target.value }));
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* Wolf decision (holes 3-18, autoCalculateMoney=true) */}
+        {roundData.autoCalculateMoney && currentHole >= 3 && (
+          <div className="border rounded-xl p-3 mb-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
+              🐺 Wolf Decision
+            </p>
+            <div className="flex gap-2 mb-2">
+              {(['alone', 'partner', 'blind_wolf'] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setCurrentDecision(d)}
+                  className={cn(
+                    'flex-1 py-2 text-xs font-semibold rounded-lg border transition-colors',
+                    currentDecision === d
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'border-border text-muted-foreground hover:border-foreground/40',
+                  )}
+                >
+                  {d === 'alone' ? 'Wolf' : d === 'partner' ? 'Partner' : 'Blind Wolf'}
+                </button>
+              ))}
+            </div>
+            {currentDecision === 'partner' && (
+              <select
+                className="w-full border rounded-lg p-2 bg-background text-sm"
+                value={currentPartnerId ?? ''}
+                onChange={(e) =>
+                  setCurrentPartnerId(e.target.value ? Number(e.target.value) : null)
+                }
+              >
+                <option value="">— select partner —</option>
+                {orderedPlayers
+                  .filter((p) => p.id !== wolfHole.wolfPlayerId)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* Bonuses — compact chip grid (Greenie on par-3s, Polie on any hole) */}
+        {roundData.autoCalculateMoney && (
+          <div className="border rounded-xl p-3 mb-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
+              Bonuses
+            </p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+              {orderedPlayers.map((p) => (
+                <div key={p.id} className="flex items-center gap-2">
+                  <span className="flex-1 text-sm font-medium truncate min-w-0">
+                    {p.name.split(' ')[0]}
+                  </span>
+                  {PAR3_HOLES.has(currentHole) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const s = new Set(currentGreenies);
+                        if (s.has(p.id)) s.delete(p.id);
+                        else s.add(p.id);
+                        setCurrentGreenies(s);
+                      }}
+                      className={cn(
+                        'w-8 h-8 rounded-lg text-xs font-bold border transition-colors',
+                        currentGreenies.has(p.id)
+                          ? 'bg-green-600 text-white border-green-600'
+                          : 'border-border text-muted-foreground hover:border-green-400',
+                      )}
+                      title={`Greenie — ${p.name}`}
+                    >
+                      G
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const s = new Set(currentPolies);
+                      if (s.has(p.id)) s.delete(p.id);
+                      else s.add(p.id);
+                      setCurrentPolies(s);
+                    }}
+                    className={cn(
+                      'w-8 h-8 rounded-lg text-xs font-bold border transition-colors',
+                      currentPolies.has(p.id)
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'border-border text-muted-foreground hover:border-blue-400',
+                    )}
+                    title={`Polie — ${p.name}`}
+                  >
+                    P
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/50 mt-2">
+              {PAR3_HOLES.has(currentHole) ? 'G = Greenie · ' : ''}P = Polie
+            </p>
+          </div>
+        )}
+
+        {/* Errors */}
+        {(submitError || wolfError) && (
+          <div className="flex items-center gap-2 text-destructive text-sm mb-3">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {submitError ?? wolfError}
+          </div>
+        )}
+
+        {/* End Round — casual rounds only */}
+        {roundData.type === 'casual' && !showEndRoundConfirm && (
+          <button
+            type="button"
+            className="text-xs text-muted-foreground/50 hover:text-muted-foreground mt-2 w-full text-center py-2"
+            onClick={() => setShowEndRoundConfirm(true)}
+          >
+            End Round
+          </button>
+        )}
+
+        {roundData.type === 'casual' && showEndRoundConfirm && (
+          <div className="flex flex-col gap-3 border border-destructive rounded-xl p-4 mt-2">
+            <div className="flex items-start gap-2">
+              <TriangleAlert className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-sm text-destructive">End this round?</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  All scores for your group will be permanently deleted. Other groups (if any) will not be affected.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 min-h-11"
+                disabled={quitMutation.isPending}
+                onClick={() => setShowEndRoundConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1 min-h-11"
+                disabled={quitMutation.isPending}
+                onClick={() => quitMutation.mutate()}
+              >
+                {quitMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  'Yes, End Round'
+                )}
+              </Button>
+            </div>
+            {quitMutation.isError && (
+              <div className="flex items-center gap-2 text-destructive text-xs">
+                <AlertCircle className="w-3 h-3 shrink-0" />
+                Could not end round — please try again.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* End Round — casual rounds only */}
-      {roundData.type === 'casual' && !showEndRoundConfirm && (
+      {/* Sticky footer — Save + Prev/Next always visible */}
+      <div className="shrink-0 border-t bg-background/95 backdrop-blur-sm px-4 pt-3 pb-4 flex flex-col gap-2">
         <Button
-          variant="ghost"
-          className="text-xs text-muted-foreground mt-2"
-          onClick={() => setShowEndRoundConfirm(true)}
+          className="min-h-12 w-full text-base font-semibold"
+          disabled={!allValid || isPending}
+          onClick={() => {
+            setSubmitError(null);
+            setWolfError(null);
+            submitMutation.mutate({ holeNum: currentHole, inputs: currentInputs });
+          }}
         >
-          End Round
-        </Button>
-      )}
-
-      {roundData.type === 'casual' && showEndRoundConfirm && (
-        <div className="flex flex-col gap-3 border border-destructive rounded-xl p-4 mt-2">
-          <div className="flex items-start gap-2">
-            <TriangleAlert className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-sm text-destructive">End this round?</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                All scores for your group will be permanently deleted. Other groups (if any) will not be affected.
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1 min-h-11"
-              disabled={quitMutation.isPending}
-              onClick={() => setShowEndRoundConfirm(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              className="flex-1 min-h-11"
-              disabled={quitMutation.isPending}
-              onClick={() => quitMutation.mutate()}
-            >
-              {quitMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                'Yes, End Round'
-              )}
-            </Button>
-          </div>
-          {quitMutation.isError && (
-            <div className="flex items-center gap-2 text-destructive text-xs">
-              <AlertCircle className="w-3 h-3 shrink-0" />
-              Could not end round — please try again.
-            </div>
+          {isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            `Save Hole ${currentHole}`
           )}
+        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex-1 min-h-10"
+            disabled={currentHole === 1}
+            onClick={() => setCurrentHole((h) => h - 1)}
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 min-h-10"
+            disabled={currentHole + 1 > firstUnscoredHole}
+            onClick={() => setCurrentHole((h) => h + 1)}
+          >
+            Next
+            <ChevronRight className="w-4 h-4 ml-1" />
+          </Button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -9,44 +9,74 @@ function RootComponent() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
 
   useEffect(() => {
+    // Online / offline
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    // Auto dark mode — follow OS preference
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const applyDark = (e: MediaQueryList | MediaQueryListEvent) => {
+      document.documentElement.classList.toggle('dark', e.matches);
+    };
+    applyDark(mq);
+    mq.addEventListener('change', applyDark);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      mq.removeEventListener('change', applyDark);
     };
   }, []);
 
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground">
-      {/* Faint watermark — behind all content */}
+    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
+      {/* Faint watermark */}
       <div
         className="fixed inset-0 flex items-center justify-center pointer-events-none select-none z-0"
         aria-hidden="true"
       >
-        <span className="text-[35vw] opacity-[0.025]">🍑</span>
+        <span className="text-[35vw] opacity-[0.02]">🍑</span>
       </div>
 
+      {/* Green broadcast accent bar */}
+      <div className="h-[3px] shrink-0 bg-gradient-to-r from-green-800 via-green-500 to-green-800" />
+
       {/* App header */}
-      <header className="sticky top-0 z-50 bg-background border-b px-4 py-3">
+      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border/60 px-4 py-2">
         <div className="flex items-center justify-between">
-          <Link to="/" className="text-lg font-bold">🐺 Wolf Cup</Link>
-          <div className="flex items-center gap-3">
-            <div aria-live="assertive" aria-atomic="true">
-              {!isOnline && (
-                <span className="flex items-center gap-1 text-xs text-destructive font-medium">
-                  <span className="h-2 w-2 rounded-full bg-destructive inline-block" />
-                  Offline
-                </span>
-              )}
+          {/* Brand */}
+          <Link to="/" className="flex items-center gap-2 group">
+            <span className="text-xl leading-none group-hover:scale-110 transition-transform">🐺</span>
+            <div className="leading-tight">
+              <span className="text-base font-black tracking-tight">Wolf Cup</span>
             </div>
-            {/* AssTV logo */}
-            <span className="text-xs font-black select-none leading-none">
-              <span className="text-foreground/70">Ass</span><span className="text-red-600/80">TV</span>
-              <span className="ml-0.5 text-[11px]">🍑</span>
-            </span>
+          </Link>
+
+          {/* Right side: offline + AssTV */}
+          <div className="flex items-center gap-3">
+            {!isOnline && (
+              <span
+                aria-live="assertive"
+                aria-atomic="true"
+                className="flex items-center gap-1 text-xs text-destructive font-semibold"
+              >
+                <span className="h-2 w-2 rounded-full bg-destructive inline-block animate-pulse" />
+                Offline
+              </span>
+            )}
+            {/* AssTV logo block */}
+            <div className="flex flex-col items-end select-none leading-none">
+              <span className="text-sm font-black tracking-tight">
+                <span className="text-foreground/60">Ass</span>
+                <span className="text-red-500">TV</span>
+                <span className="ml-0.5 text-sm">🍑</span>
+              </span>
+              <span className="text-[8px] text-muted-foreground/40 font-semibold tracking-[0.15em] uppercase">
+                Network
+              </span>
+            </div>
           </div>
         </div>
       </header>
@@ -56,25 +86,39 @@ function RootComponent() {
         <Outlet />
       </main>
 
-      {/* AssTV watermark footer */}
-      <div className="relative z-10 text-center py-0.5 text-[10px] text-muted-foreground/25 select-none tracking-wide">
-        ® Registered Product of Appalachian Sports Station
+      {/* AssTV footer watermark */}
+      <div className="relative z-10 text-center py-0.5 text-[9px] text-muted-foreground/20 select-none tracking-widest uppercase">
+        ® Appalachian Sports Station
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="sticky bottom-0 border-t bg-background grid grid-cols-4 divide-x">
-        <Link to="/" className="flex flex-col items-center py-3 text-xs [&.active]:font-bold">
-          <span>🏆</span>Leaderboard
-        </Link>
-        <Link to="/standings" className="flex flex-col items-center py-3 text-xs [&.active]:font-bold">
-          <span>📊</span>Standings
-        </Link>
-        <Link to="/score-entry" className="flex flex-col items-center py-3 text-xs [&.active]:font-bold">
-          <span>⛳</span>Score
-        </Link>
-        <Link to="/stats" className="flex flex-col items-center py-3 text-xs [&.active]:font-bold">
-          <span>📈</span>Stats
-        </Link>
+      <nav className="shrink-0 border-t border-border/60 bg-background/95 backdrop-blur-sm grid grid-cols-4">
+        {(
+          [
+            { to: '/' as const, icon: '🏆', label: 'Leaderboard' },
+            { to: '/standings' as const, icon: '📊', label: 'Standings' },
+            { to: '/score-entry' as const, icon: '⛳', label: 'Score' },
+            { to: '/stats' as const, icon: '📈', label: 'Stats' },
+          ] as const
+        ).map(({ to, icon, label }) => (
+          <Link
+            key={to}
+            to={to}
+            className={[
+              'relative flex flex-col items-center pt-2 pb-3 text-[11px] font-medium',
+              'text-muted-foreground transition-colors',
+              '[&.active]:text-green-600',
+              // Top indicator bar
+              'after:absolute after:top-0 after:left-4 after:right-4 after:h-[2px]',
+              'after:rounded-b-full after:bg-green-500',
+              'after:scale-x-0 [&.active]:after:scale-x-100',
+              'after:transition-transform after:duration-200',
+            ].join(' ')}
+          >
+            <span className="text-[18px] mb-0.5 leading-none">{icon}</span>
+            {label}
+          </Link>
+        ))}
       </nav>
     </div>
   );
