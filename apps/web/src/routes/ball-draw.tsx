@@ -156,12 +156,16 @@ function BallDrawPage() {
     }
   }, [data, selectedGroupId]);
 
-  // Restore wolf schedule from existing batting order when a group is selected
+  // Restore wolf schedule from existing batting order when a group is selected.
+  // Also patch session.groupId if it was lost (e.g., PWA relaunch).
   useEffect(() => {
     if (!data || selectedGroupId === null || wolfSchedule !== null) return;
     const group = data.groups.find((g) => g.id === selectedGroupId);
     if (group?.battingOrder) {
       setWolfSchedule(buildWolfScheduleFromOrder(group.battingOrder, group.players));
+      if (session && session.groupId !== selectedGroupId) {
+        setSession({ ...session, groupId: selectedGroupId });
+      }
     }
   }, [data, selectedGroupId, wolfSchedule]);
 
