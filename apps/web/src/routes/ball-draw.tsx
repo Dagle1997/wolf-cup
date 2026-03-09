@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter, Link } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { getSession, setSession } from '@/lib/session-store';
@@ -205,6 +205,17 @@ function BallDrawPage() {
       } else {
         setGuestError('Could not add guest — please try again.');
       }
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: ({ playerId }: { playerId: number }) =>
+      apiFetch<{ ok: boolean }>(
+        `/rounds/${session!.roundId}/groups/${selectedGroupId!}/players/${playerId}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: (_, variables) => {
+      setLocalPlayers((prev) => prev.filter((p) => p.id !== variables.playerId));
     },
   });
 
@@ -516,8 +527,18 @@ function BallDrawPage() {
           {localPlayers.map((p) => {
             const hc = selectedTee ? calcCourseHandicap(p.handicapIndex, selectedTee) : null;
             return (
-              <div key={p.id} className="flex justify-between items-center text-sm border rounded-lg px-3 py-2">
-                <span className="font-medium">{p.name}</span>
+              <div key={p.id} className="flex items-center gap-2 text-sm border rounded-lg px-3 py-2">
+                {isCasual && (
+                  <button
+                    className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors disabled:opacity-40"
+                    disabled={removeMutation.isPending}
+                    onClick={() => removeMutation.mutate({ playerId: p.id })}
+                    aria-label={`Remove ${p.name}`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <span className="font-medium flex-1">{p.name}</span>
                 <span className="text-muted-foreground">
                   HI: {p.handicapIndex}
                   {hc !== null && (

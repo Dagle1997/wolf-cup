@@ -1332,6 +1332,100 @@ app.post('/rounds/:roundId/groups/:groupId/guests', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /rounds/:roundId/groups/:groupId/players/:playerId — remove player
+// Casual rounds only, before batting order is set. Removes roundPlayers row
+// and deletes guest player rows entirely.
+// ---------------------------------------------------------------------------
+
+app.delete('/rounds/:roundId/groups/:groupId/players/:playerId', async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  const groupId = Number(c.req.param('groupId'));
+  const playerId = Number(c.req.param('playerId'));
+
+  if (
+    !Number.isInteger(roundId) || roundId <= 0 ||
+    !Number.isInteger(groupId) || groupId <= 0 ||
+    !Number.isInteger(playerId) || playerId <= 0
+  ) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  // Fetch round — must be casual and active/scheduled
+  let round: { id: number; type: string; status: string } | undefined;
+  try {
+    round = await db
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status })
+      .from(rounds)
+      .where(eq(rounds.id, roundId))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  if (round.type === 'official') {
+    return c.json({ error: 'Can only remove players from casual rounds', code: 'CASUAL_ONLY' }, 422);
+  }
+  if (round.status === 'finalized' || round.status === 'cancelled') {
+    return c.json({ error: 'Round not active', code: 'ROUND_NOT_ACTIVE' }, 422);
+  }
+
+  // Fetch group — must belong to round and not have batting order set
+  let group: { id: number; battingOrder: string | null } | undefined;
+  try {
+    group = await db
+      .select({ id: groups.id, battingOrder: groups.battingOrder })
+      .from(groups)
+      .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!group) return c.json({ error: 'Group not found', code: 'NOT_FOUND' }, 404);
+  if (group.battingOrder) {
+    return c.json({ error: 'Cannot remove player after ball draw', code: 'BATTING_ORDER_SET' }, 422);
+  }
+
+  // Remove player from group in a transaction
+  try {
+    await db.transaction(async (tx) => {
+      // Verify the player is in this group
+      const rp = await tx
+        .select({ id: roundPlayers.id })
+        .from(roundPlayers)
+        .where(and(
+          eq(roundPlayers.roundId, roundId),
+          eq(roundPlayers.groupId, groupId),
+          eq(roundPlayers.playerId, playerId),
+        ))
+        .get();
+      if (!rp) throw new Error('PLAYER_NOT_IN_GROUP');
+
+      // Delete round_players row
+      await tx
+        .delete(roundPlayers)
+        .where(eq(roundPlayers.id, rp.id));
+
+      // If guest player, delete player row too
+      const player = await tx
+        .select({ isGuest: players.isGuest })
+        .from(players)
+        .where(eq(players.id, playerId))
+        .get();
+      if (player?.isGuest) {
+        await tx.delete(players).where(eq(players.id, playerId));
+      }
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'PLAYER_NOT_IN_GROUP') {
+      return c.json({ error: 'Player not in group', code: 'NOT_FOUND' }, 404);
+    }
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ ok: true }, 200);
+});
+
+// ---------------------------------------------------------------------------
 // GET /rounds/:roundId/players/:playerId/scorecard — public
 // Per-hole scorecard: gross, net, stableford, money for a single player.
 // ---------------------------------------------------------------------------
