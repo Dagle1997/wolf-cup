@@ -1494,8 +1494,6 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     db.select({ name: players.name }).from(players).where(eq(players.id, playerId)).get(),
   ]);
 
-  const handicapMap = new Map(allHandicaps.map((r) => [r.playerId, r.handicapIndex]));
-
   // Relative handicaps for money calculations ("play off the low man")
   const minHI = allHandicaps.length > 0 ? Math.min(...allHandicaps.map((r) => r.handicapIndex)) : 0;
   const relativeHandicapMap = new Map(allHandicaps.map((r) => [r.playerId, r.handicapIndex - minHI]));
