@@ -111,42 +111,40 @@ describe('applyBonusModifiers — 2v2 (wolf=0, partner=1)', () => {
     expect(bs(r)).toEqual([3, 3, -3, -3]);
   });
 
-  it('double birdie bonus: both team members net+natural birdie → 2 birdie skins', () => {
+  it('double birdie bonus: both team members net+natural birdie → 3 skins (1+1 per-player + 1 dbl bonus)', () => {
     // pos0 net 3 + gross 3, pos1 net 3 + gross 3 — both natural birdies
     const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [3, 3, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
-    expect(bs(r)).toEqual([2, 2, -2, -2]);
-  });
-
-  it('double birdie bonus: both net birdies, one natural → 2 birdie skins', () => {
-    // pos0: net 3 (birdie), gross 3 (natural). pos1: net 3 (birdie), gross 5 (not natural).
-    const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [3, 5, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
-    expect(bs(r)).toEqual([2, 2, -2, -2]);
-  });
-
-  it('both net birdies but neither natural → 1 birdie skin (no double bonus)', () => {
-    // pos0: net 3 (birdie), gross 5. pos1: net 3 (birdie), gross 6.
-    const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [5, 6, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
-    expect(bs(r)).toEqual([1, 1, -1, -1]);
-  });
-
-  it('net eagle + natural birdie → eagle (2) + double birdie (+1) = 3 skins', () => {
-    // pos0: net 2 (eagle), gross 4 (not natural birdie). pos1: net 3 (birdie), gross 3 (natural birdie).
-    const r = applyBonusModifiers(zeroBase(), [2, 3, 5, 5], [4, 3, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([3, 3, -3, -3]);
   });
 
-  it('double eagle bonus: both net eagles, one natural eagle → eagle (2) + dbl birdie (+1) + dbl eagle (+1) = 4', () => {
-    // pos0: net 2 (eagle), gross 2 (natural eagle). pos1: net 2 (eagle), gross 4 (not natural).
-    const r = applyBonusModifiers(zeroBase(), [2, 2, 5, 5], [2, 4, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+  it('double birdie bonus: both net birdies, one natural → 3 skins (1+1 per-player + 1 dbl bonus)', () => {
+    // pos0: net 3 (birdie), gross 3 (natural). pos1: net 3 (birdie), gross 5 (not natural).
+    const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [3, 5, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([3, 3, -3, -3]);
+  });
+
+  it('both net birdies but neither natural → 2 skins per-player (no double bonus)', () => {
+    // pos0: net 3 (birdie), gross 5. pos1: net 3 (birdie), gross 6.
+    const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [5, 6, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([2, 2, -2, -2]);
+  });
+
+  it('net eagle + net birdie → eagle(2) + birdie(1) + dbl birdie(+1) = 4 skins', () => {
+    // pos0: net 2 (eagle), gross 4 (not natural birdie). pos1: net 3 (birdie), gross 3 (natural birdie).
+    const r = applyBonusModifiers(zeroBase(), [2, 3, 5, 5], [4, 3, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([4, 4, -4, -4]);
   });
 
-  it('both net eagles but neither natural eagle → eagle (2) + dbl birdie (+1) = 3 (no dbl eagle)', () => {
-    // pos0: net 2, gross 5. pos1: net 2, gross 5. Both have net birdie+, but no natural birdie either...
-    // Actually gross 5 is NOT ≤ par-1 (3), so no natural birdie → no double birdie either.
-    // Just eagle level (2 skins), no doubles.
+  it('double eagle bonus: both net eagles, one natural eagle → eagle(2)+eagle(2) + dbl birdie(+1) + dbl eagle(+1) = 6', () => {
+    // pos0: net 2 (eagle), gross 2 (natural eagle). pos1: net 2 (eagle), gross 4 (not natural).
+    const r = applyBonusModifiers(zeroBase(), [2, 2, 5, 5], [2, 4, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([6, 6, -6, -6]);
+  });
+
+  it('both net eagles but neither natural → 4 skins per-player (no double bonuses)', () => {
+    // pos0: net 2, gross 5. pos1: net 2, gross 5. No natural birdie or eagle.
     const r = applyBonusModifiers(zeroBase(), [2, 2, 5, 5], [5, 5, 5, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
-    expect(bs(r)).toEqual([2, 2, -2, -2]);
+    expect(bs(r)).toEqual([4, 4, -4, -4]);
   });
 
   it('greenie on wolf team (pos0) → +1/+1/−1/−1 bonus skin', () => {

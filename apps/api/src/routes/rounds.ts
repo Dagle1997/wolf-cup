@@ -1568,9 +1568,9 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
   const holes: {
     holeNumber: number;
     par: number;
-    grossScore: number;
-    netScore: number;
-    stablefordPoints: number;
+    grossScore: number | null;
+    netScore: number | null;
+    stablefordPoints: number | null;
     moneyNet: number;
     hasGreenie: boolean;
     hasPolie: boolean;
@@ -1579,13 +1579,19 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
 
   for (let holeNum = 1; holeNum <= 18; holeNum++) {
     const holeMap = scoresByHole.get(holeNum);
-    const grossScore = holeMap?.get(playerId);
-    if (grossScore === undefined) continue; // hole not yet played
+    const grossScore = holeMap?.get(playerId) ?? null;
 
     const courseHole = getCourseHole(holeNum as HoleNumber);
+    const relStrokes = getHandicapStrokes(relativeHI, courseHole.strokeIndex);
+
+    // Unplayed hole — still include par + stroke dots
+    if (grossScore === null) {
+      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes });
+      continue;
+    }
+
     const strokes = getHandicapStrokes(handicapIndex, courseHole.strokeIndex);
     const netScore = grossScore - strokes;
-    const relStrokes = getHandicapStrokes(relativeHI, courseHole.strokeIndex);
     const stablefordPoints = calculateStablefordPoints(
       grossScore,
       handicapIndex,

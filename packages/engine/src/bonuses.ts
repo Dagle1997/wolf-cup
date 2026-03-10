@@ -73,13 +73,15 @@ function applyIndividual(
 /**
  * Score-based bonus skin result for a 2v2 hole — winner-takes-all competitive.
  *
- * Each team's "bonus level" = their best player's level (min net score).
- * Only the team with the higher bonus level earns skins; ties → no blood (0).
+ * Winner determined by comparing each team's best bonus LEVEL (birdie < eagle < double_eagle).
+ * Same level → tie → no blood.
+ *
+ * Winning team's skins are counted PER PLAYER: each player contributes skinCount
+ * based on their individual net score (birdie=1, eagle=2, double_eagle=3).
+ *
+ * Double birdie/eagle bonuses apply to the WINNING team only.
  *
  * Returns: positive = team A wins N skins, negative = team B wins N skins, 0 = no blood.
- *
- * Double birdie bonus applies to the WINNING team only:
- * if both winning team members have birdie-level or better AND ≥1 natural birdie → +1 extra skin.
  */
 function competitiveScoreSkins(
   netScores: readonly [number, number, number, number],
@@ -88,20 +90,25 @@ function competitiveScoreSkins(
   teamB: readonly [BattingPosition, BattingPosition],
   par: number,
 ): number {
-  // Bonus levels based on NET scores (handicap-adjusted)
-  const bestNetA = Math.min(netScores[teamA[0]], netScores[teamA[1]]);
-  const bestNetB = Math.min(netScores[teamB[0]], netScores[teamB[1]]);
-  const levelA = skinCount(detectBonusLevel(bestNetA, par));
-  const levelB = skinCount(detectBonusLevel(bestNetB, par));
+  // Determine winner by comparing each team's best bonus level
+  const bestLevelA = Math.max(
+    skinCount(detectBonusLevel(netScores[teamA[0]], par)),
+    skinCount(detectBonusLevel(netScores[teamA[1]], par)),
+  );
+  const bestLevelB = Math.max(
+    skinCount(detectBonusLevel(netScores[teamB[0]], par)),
+    skinCount(detectBonusLevel(netScores[teamB[1]], par)),
+  );
 
-  if (levelA === 0 && levelB === 0) return 0;
-  if (levelA === levelB) return 0; // tie — no blood
+  if (bestLevelA === 0 && bestLevelB === 0) return 0;
+  if (bestLevelA === bestLevelB) return 0; // same level — no blood
 
-  const winnerIsA = levelA > levelB;
-  const winLevel = winnerIsA ? levelA : levelB;
+  const winnerIsA = bestLevelA > bestLevelB;
   const [w0, w1] = winnerIsA ? teamA : teamB;
 
-  let skins = winLevel;
+  // Count skins per player on winning team
+  let skins = skinCount(detectBonusLevel(netScores[w0], par))
+            + skinCount(detectBonusLevel(netScores[w1], par));
 
   // Double birdie bonus: both NET birdie+, ≥1 NATURAL (gross) birdie
   if (netScores[w0] <= par - 1 && netScores[w1] <= par - 1 &&

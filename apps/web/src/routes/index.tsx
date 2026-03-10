@@ -44,9 +44,9 @@ type LeaderboardResponse = {
 type ScorecardHole = {
   holeNumber: number;
   par: number;
-  grossScore: number;
-  netScore: number;
-  stablefordPoints: number;
+  grossScore: number | null;
+  netScore: number | null;
+  stablefordPoints: number | null;
   moneyNet: number;
   hasGreenie?: boolean;
   hasPolie?: boolean;
@@ -175,30 +175,35 @@ function ScorecardPanel({
     return <div className="p-3 text-center text-muted-foreground text-xs">No scores yet</div>;
   }
 
+  const playedHoles = data.holes.filter((h) => h.grossScore !== null);
+  if (playedHoles.length === 0) {
+    return <div className="p-3 text-center text-muted-foreground text-xs">No scores yet</div>;
+  }
+
   const holeMap = new Map(data.holes.map((h) => [h.holeNumber, h]));
   const g = (n: number) => holeMap.get(n) ?? null;
 
   const FRONT = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
   const BACK = [10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
 
-  const front9 = data.holes.filter((h) => h.holeNumber <= 9);
-  const back9 = data.holes.filter((h) => h.holeNumber > 9);
+  const front9played = playedHoles.filter((h) => h.holeNumber <= 9);
+  const back9played = playedHoles.filter((h) => h.holeNumber > 9);
   const showMoney = data.autoCalculateMoney;
 
-  const sum = <K extends keyof ScorecardHole>(holes: ScorecardHole[], key: K) =>
-    holes.reduce((s, h) => s + (h[key] as number), 0);
+  const sum = (holes: ScorecardHole[], key: 'par' | 'grossScore' | 'netScore' | 'stablefordPoints' | 'moneyNet') =>
+    holes.reduce((s, h) => s + ((h[key] as number | null) ?? 0), 0);
 
-  const fPar = sum(front9, 'par');
-  const fGross = sum(front9, 'grossScore');
-  const fNet = sum(front9, 'netScore');
-  const fStab = sum(front9, 'stablefordPoints');
-  const fMoney = sum(front9, 'moneyNet');
+  const fPar = sum(front9played, 'par');
+  const fGross = sum(front9played, 'grossScore');
+  const fNet = sum(front9played, 'netScore');
+  const fStab = sum(front9played, 'stablefordPoints');
+  const fMoney = sum(front9played, 'moneyNet');
 
-  const bPar = sum(back9, 'par');
-  const bGross = sum(back9, 'grossScore');
-  const bNet = sum(back9, 'netScore');
-  const bStab = sum(back9, 'stablefordPoints');
-  const bMoney = sum(back9, 'moneyNet');
+  const bPar = sum(back9played, 'par');
+  const bGross = sum(back9played, 'grossScore');
+  const bNet = sum(back9played, 'netScore');
+  const bStab = sum(back9played, 'stablefordPoints');
+  const bMoney = sum(back9played, 'moneyNet');
 
   const tdC = 'text-center py-[3px] text-[10px]';
   const tdL = 'pl-2 pr-1 py-[3px] text-[10px] font-semibold text-muted-foreground whitespace-nowrap';
@@ -224,9 +229,9 @@ function ScorecardPanel({
             <td className={tdL}>Par</td>
             {FRONT.map((n) => {
               const h = g(n);
-              return <td key={n} className={`${tdC} text-muted-foreground`}>{h ? h.par : '—'}</td>;
+              return <td key={n} className={`${tdC} text-muted-foreground`}>{h?.par ?? '—'}</td>;
             })}
-            <td className={`${tdTot} text-muted-foreground`}>{front9.length > 0 ? fPar : '—'}</td>
+            <td className={`${tdTot} text-muted-foreground`}>{front9played.length > 0 ? fPar : '—'}</td>
           </tr>
           <tr className="border-t border-border/30">
             <td className={tdL}>Score</td>
@@ -234,59 +239,63 @@ function ScorecardPanel({
               const h = g(n);
               return (
                 <td key={n} className={tdC}>
-                  {h
+                  {h?.grossScore != null
                     ? <HoleBadge gross={h.grossScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} relativeStrokes={h.relativeStrokes} />
-                    : <span className="text-muted-foreground/50 text-[10px]">—</span>
+                    : <span className="relative inline-block text-muted-foreground/50 text-[10px]">
+                        —
+                        {h?.relativeStrokes ? <span className="absolute -top-[2px] -right-[4px] w-[4px] h-[4px] rounded-full bg-foreground/50" /> : null}
+                      </span>
                   }
                 </td>
               );
             })}
-            <td className={tdTot}>{front9.length > 0 ? fGross : '—'}</td>
+            <td className={tdTot}>{front9played.length > 0 ? fGross : '—'}</td>
           </tr>
           <tr className="border-t border-border/30 bg-muted/30">
             <td className={tdL}>Net</td>
             {FRONT.map((n) => {
               const h = g(n);
-              return <td key={n} className={`${tdC} text-muted-foreground`}>{h ? h.netScore : '—'}</td>;
+              return <td key={n} className={`${tdC} text-muted-foreground`}>{h?.netScore ?? '—'}</td>;
             })}
-            <td className={`${tdTot} text-muted-foreground`}>{front9.length > 0 ? fNet : '—'}</td>
+            <td className={`${tdTot} text-muted-foreground`}>{front9played.length > 0 ? fNet : '—'}</td>
           </tr>
           <tr className="border-t border-border/30">
             <td className={tdL}>Stab</td>
             {FRONT.map((n) => {
               const h = g(n);
               const pts = h?.stablefordPoints;
-              const color = pts !== undefined
+              const color = pts != null
                 ? pts >= 3 ? 'text-green-600 font-semibold' : pts === 0 ? 'text-destructive/60' : ''
                 : '';
-              return <td key={n} className={`${tdC} ${color}`}>{h ? h.stablefordPoints : '—'}</td>;
+              return <td key={n} className={`${tdC} ${color}`}>{h?.stablefordPoints ?? '—'}</td>;
             })}
-            <td className={`${tdTot} text-green-700`}>{front9.length > 0 ? fStab : '—'}</td>
+            <td className={`${tdTot} text-green-700`}>{front9played.length > 0 ? fStab : '—'}</td>
           </tr>
           {showMoney && (
             <tr className="border-t border-border/30 bg-muted/30">
               <td className={tdL}>$</td>
               {FRONT.map((n) => {
                 const h = g(n);
-                const color = h
-                  ? h.moneyNet > 0 ? 'text-green-600' : h.moneyNet < 0 ? 'text-destructive' : 'text-muted-foreground'
+                const hasScore = h?.grossScore != null;
+                const color = hasScore
+                  ? h!.moneyNet > 0 ? 'text-green-600' : h!.moneyNet < 0 ? 'text-destructive' : 'text-muted-foreground'
                   : '';
                 return (
                   <td key={n} className={`${tdC} ${color}`}>
-                    {h ? (h.moneyNet === 0 ? '0' : formatMoney(h.moneyNet)) : '—'}
+                    {hasScore ? (h!.moneyNet === 0 ? '0' : formatMoney(h!.moneyNet)) : '—'}
                   </td>
                 );
               })}
               <td className={`${tdTot} ${fMoney > 0 ? 'text-green-600' : fMoney < 0 ? 'text-destructive' : ''}`}>
-                {front9.length > 0 ? formatMoney(fMoney) : '—'}
+                {front9played.length > 0 ? formatMoney(fMoney) : '—'}
               </td>
             </tr>
           )}
         </tbody>
       </table>
 
-      {/* ── Back 9 (only if any back-9 scores) ── */}
-      {back9.length > 0 && (
+      {/* ── Back 9 (show once any back-9 hole has been played) ── */}
+      {back9played.length > 0 && (
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-green-700 text-white">
@@ -303,9 +312,9 @@ function ScorecardPanel({
               <td className={tdL}>Par</td>
               {BACK.map((n) => {
                 const h = g(n);
-                return <td key={n} className={`${tdC} text-muted-foreground`}>{h ? h.par : '—'}</td>;
+                return <td key={n} className={`${tdC} text-muted-foreground`}>{h?.par ?? '—'}</td>;
               })}
-              <td className={`${tdTot} text-muted-foreground`}>{bPar}</td>
+              <td className={`${tdTot} text-muted-foreground`}>{back9played.length > 0 ? bPar : '—'}</td>
               <td className={`${tdTot} text-muted-foreground`}>{fPar + bPar}</td>
             </tr>
             <tr className="border-t border-border/30">
@@ -314,23 +323,26 @@ function ScorecardPanel({
                 const h = g(n);
                 return (
                   <td key={n} className={tdC}>
-                    {h
+                    {h?.grossScore != null
                       ? <HoleBadge gross={h.grossScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} relativeStrokes={h.relativeStrokes} />
-                      : <span className="text-muted-foreground/50 text-[10px]">—</span>
+                      : <span className="relative inline-block text-muted-foreground/50 text-[10px]">
+                          —
+                          {h?.relativeStrokes ? <span className="absolute -top-[2px] -right-[4px] w-[4px] h-[4px] rounded-full bg-foreground/50" /> : null}
+                        </span>
                     }
                   </td>
                 );
               })}
-              <td className={tdTot}>{bGross}</td>
+              <td className={tdTot}>{back9played.length > 0 ? bGross : '—'}</td>
               <td className={tdTot}>{fGross + bGross}</td>
             </tr>
             <tr className="border-t border-border/30 bg-muted/30">
               <td className={tdL}>Net</td>
               {BACK.map((n) => {
                 const h = g(n);
-                return <td key={n} className={`${tdC} text-muted-foreground`}>{h ? h.netScore : '—'}</td>;
+                return <td key={n} className={`${tdC} text-muted-foreground`}>{h?.netScore ?? '—'}</td>;
               })}
-              <td className={`${tdTot} text-muted-foreground`}>{bNet}</td>
+              <td className={`${tdTot} text-muted-foreground`}>{back9played.length > 0 ? bNet : '—'}</td>
               <td className={`${tdTot} text-muted-foreground`}>{fNet + bNet}</td>
             </tr>
             <tr className="border-t border-border/30">
@@ -338,12 +350,12 @@ function ScorecardPanel({
               {BACK.map((n) => {
                 const h = g(n);
                 const pts = h?.stablefordPoints;
-                const color = pts !== undefined
+                const color = pts != null
                   ? pts >= 3 ? 'text-green-600 font-semibold' : pts === 0 ? 'text-destructive/60' : ''
                   : '';
-                return <td key={n} className={`${tdC} ${color}`}>{h ? h.stablefordPoints : '—'}</td>;
+                return <td key={n} className={`${tdC} ${color}`}>{h?.stablefordPoints ?? '—'}</td>;
               })}
-              <td className={`${tdTot} text-green-700`}>{bStab}</td>
+              <td className={`${tdTot} text-green-700`}>{back9played.length > 0 ? bStab : '—'}</td>
               <td className={`${tdTot} text-green-700`}>{fStab + bStab}</td>
             </tr>
             {showMoney && (
@@ -351,17 +363,18 @@ function ScorecardPanel({
                 <td className={tdL}>$</td>
                 {BACK.map((n) => {
                   const h = g(n);
-                  const color = h
-                    ? h.moneyNet > 0 ? 'text-green-600' : h.moneyNet < 0 ? 'text-destructive' : 'text-muted-foreground'
+                  const hasScore = h?.grossScore != null;
+                  const color = hasScore
+                    ? h!.moneyNet > 0 ? 'text-green-600' : h!.moneyNet < 0 ? 'text-destructive' : 'text-muted-foreground'
                     : '';
                   return (
                     <td key={n} className={`${tdC} ${color}`}>
-                      {h ? (h.moneyNet === 0 ? '0' : formatMoney(h.moneyNet)) : '—'}
+                      {hasScore ? (h!.moneyNet === 0 ? '0' : formatMoney(h!.moneyNet)) : '—'}
                     </td>
                   );
                 })}
                 <td className={`${tdTot} ${bMoney > 0 ? 'text-green-600' : bMoney < 0 ? 'text-destructive' : ''}`}>
-                  {formatMoney(bMoney)}
+                  {back9played.length > 0 ? formatMoney(bMoney) : '—'}
                 </td>
                 <td className={`${tdTot} ${(fMoney + bMoney) > 0 ? 'text-green-600' : (fMoney + bMoney) < 0 ? 'text-destructive' : ''}`}>
                   {formatMoney(fMoney + bMoney)}

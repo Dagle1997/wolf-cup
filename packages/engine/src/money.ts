@@ -46,7 +46,8 @@ function skinIndividual(
 /**
  * Resolve skin as a TEAM point (2v2).
  * Follows the low-ball result: winning team each +1, losing team each -1.
- * Only awarded if the absolute low ball is unique AND ≤ par.
+ * Gated by the winning team's low ball being ≤ par.
+ * Same-team ties for absolute low are fine — the team still won low ball.
  */
 function skinTeam(
   netScores: readonly [number, number, number, number],
@@ -56,10 +57,11 @@ function skinTeam(
   teamB: readonly [BattingPosition, BattingPosition],
 ): readonly [number, number, number, number] {
   if (lbResult === 0) return [0, 0, 0, 0];
-  const min = Math.min(netScores[0], netScores[1], netScores[2], netScores[3]);
-  if (min > par) return [0, 0, 0, 0];
-  const count = netScores.filter(s => s === min).length;
-  if (count !== 1) return [0, 0, 0, 0];
+  // Winning team's low ball must be ≤ par
+  const winLow = lbResult === 1
+    ? Math.min(netScores[teamA[0]], netScores[teamA[1]])
+    : Math.min(netScores[teamB[0]], netScores[teamB[1]]);
+  if (winLow > par) return [0, 0, 0, 0];
   const result: [number, number, number, number] = [0, 0, 0, 0];
   result[teamA[0]] = lbResult;
   result[teamA[1]] = lbResult;
