@@ -1,6 +1,6 @@
 import { createFileRoute, useRouter, Link } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
@@ -129,6 +129,7 @@ function ScoreEntryHolePage() {
   const [moneyTotals, setMoneyTotals] = useState<Map<number, number>>(new Map());
   const [holeDecisions, setHoleDecisions] = useState<Map<number, StoredWolfDecision>>(new Map());
   const [currentInputs, setCurrentInputs] = useState<Record<number, string>>({});
+  const scoreInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [currentDecision, setCurrentDecision] = useState<'alone' | 'partner' | 'blind_wolf' | null>(null);
   const [currentPartnerId, setCurrentPartnerId] = useState<number | null>(null);
   const [currentGreenies, setCurrentGreenies] = useState<Set<number>>(new Set());
@@ -634,20 +635,28 @@ function ScoreEntryHolePage() {
           </div>
         </div>
 
-        {/* Score inputs — compact card per player */}
+        {/* Score inputs — compact card per player, auto-advance on digit entry */}
         <div className="grid grid-cols-2 gap-2 mb-3">
-          {orderedPlayers.map((player) => (
+          {orderedPlayers.map((player, idx) => (
             <div key={player.id} className="border rounded-xl p-3 bg-card">
               <div className="text-xs font-semibold text-muted-foreground mb-2 truncate">{player.name}</div>
               <input
-                type="number"
+                ref={(el) => { scoreInputRefs.current[idx] = el; }}
+                type="text"
                 inputMode="numeric"
-                min={1}
-                max={20}
+                pattern="[0-9]*"
+                maxLength={1}
                 className="w-full border rounded-lg p-2 text-center text-xl font-bold bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                 value={currentInputs[player.id] ?? ''}
                 onChange={(e) => {
-                  setCurrentInputs((prev) => ({ ...prev, [player.id]: e.target.value }));
+                  const raw = e.target.value;
+                  // Only accept single digits 1-9
+                  if (raw !== '' && !/^[1-9]$/.test(raw)) return;
+                  setCurrentInputs((prev) => ({ ...prev, [player.id]: raw }));
+                  // Auto-advance to next player input
+                  if (raw && idx < orderedPlayers.length - 1) {
+                    scoreInputRefs.current[idx + 1]?.focus();
+                  }
                 }}
               />
             </div>
