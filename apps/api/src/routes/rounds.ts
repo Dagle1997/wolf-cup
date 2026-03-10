@@ -13,6 +13,7 @@ import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosit
 import { db } from '../db/index.js';
 import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults } from '../db/schema.js';
 import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema, createPracticeRoundSchema } from '../schemas/round.js';
+import { ghinClient } from '../lib/ghin-client.js';
 
 const app = new Hono();
 
@@ -670,10 +671,10 @@ app.put('/rounds/:roundId/groups/:groupId/batting-order', async (c) => {
   }
 
   // Validate: all players in order must be in this group
-  let groupPlayerRows: Array<{ playerId: number; name: string }>;
+  let groupPlayerRows: Array<{ playerId: number; name: string; ghinNumber: string | null; handicapIndex: number }>;
   try {
     groupPlayerRows = await db
-      .select({ playerId: roundPlayers.playerId, name: players.name })
+      .select({ playerId: roundPlayers.playerId, name: players.name, ghinNumber: players.ghinNumber, handicapIndex: roundPlayers.handicapIndex })
       .from(roundPlayers)
       .innerJoin(players, eq(roundPlayers.playerId, players.id))
       .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId)));
@@ -685,6 +686,34 @@ app.put('/rounds/:roundId/groups/:groupId/batting-order', async (c) => {
   for (const pid of order) {
     if (!validPlayerIds.has(pid)) {
       return c.json({ error: 'Invalid batting order', code: 'INVALID_BATTING_ORDER' }, 422);
+    }
+  }
+
+  // Refresh handicaps from GHIN for players with a GHIN number (best-effort, non-blocking)
+  if (ghinClient) {
+    const client = ghinClient; // narrow for closure
+    const ghinPlayers = groupPlayerRows.filter((p) => p.ghinNumber);
+    const results = await Promise.allSettled(
+      ghinPlayers.map(async (p) => {
+        const { handicapIndex } = await client.getHandicap(Number(p.ghinNumber));
+        return { playerId: p.playerId, handicapIndex };
+      }),
+    );
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value.handicapIndex !== null) {
+        const { playerId, handicapIndex } = result.value;
+        try {
+          await db
+            .update(roundPlayers)
+            .set({ handicapIndex })
+            .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId)));
+          // Update local row so the response reflects the fresh HI
+          const row = groupPlayerRows.find((r) => r.playerId === playerId);
+          if (row) row.handicapIndex = handicapIndex;
+        } catch {
+          // Non-fatal — keep existing HI
+        }
+      }
     }
   }
 
