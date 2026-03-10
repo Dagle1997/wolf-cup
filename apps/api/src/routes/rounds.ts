@@ -368,6 +368,60 @@ app.get('/players/active', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /players/refresh-handicaps — bulk-fetch fresh GHIN HIs for all active roster players
+// ---------------------------------------------------------------------------
+
+app.post('/players/refresh-handicaps', async (c) => {
+  if (!ghinClient) {
+    return c.json({ error: 'GHIN not configured', code: 'GHIN_NOT_CONFIGURED' }, 503);
+  }
+  const client = ghinClient;
+
+  let activePlayers: Array<{ id: number; name: string; ghinNumber: string | null; handicapIndex: number | null }>;
+  try {
+    activePlayers = await db
+      .select({ id: players.id, name: players.name, ghinNumber: players.ghinNumber, handicapIndex: players.handicapIndex })
+      .from(players)
+      .where(and(eq(players.isActive, 1), eq(players.isGuest, 0)));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  const ghinPlayers = activePlayers.filter((p) => p.ghinNumber);
+  const results = await Promise.allSettled(
+    ghinPlayers.map(async (p) => {
+      const { handicapIndex } = await client.getHandicap(Number(p.ghinNumber));
+      return { playerId: p.id, handicapIndex };
+    }),
+  );
+
+  let updated = 0;
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value.handicapIndex !== null) {
+      const { playerId, handicapIndex } = result.value;
+      try {
+        await db.update(players).set({ handicapIndex }).where(eq(players.id, playerId));
+        updated++;
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
+
+  // Return the refreshed roster
+  try {
+    const rows = await db
+      .select({ id: players.id, name: players.name, handicapIndex: players.handicapIndex })
+      .from(players)
+      .where(and(eq(players.isActive, 1), eq(players.isGuest, 0)))
+      .orderBy(asc(players.name));
+    return c.json({ players: rows, updated }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /rounds — list scheduled/active rounds within ±1-day window of today
 // ---------------------------------------------------------------------------
 
@@ -671,10 +725,10 @@ app.put('/rounds/:roundId/groups/:groupId/batting-order', async (c) => {
   }
 
   // Validate: all players in order must be in this group
-  let groupPlayerRows: Array<{ playerId: number; name: string; ghinNumber: string | null; handicapIndex: number }>;
+  let groupPlayerRows: Array<{ playerId: number; name: string }>;
   try {
     groupPlayerRows = await db
-      .select({ playerId: roundPlayers.playerId, name: players.name, ghinNumber: players.ghinNumber, handicapIndex: roundPlayers.handicapIndex })
+      .select({ playerId: roundPlayers.playerId, name: players.name })
       .from(roundPlayers)
       .innerJoin(players, eq(roundPlayers.playerId, players.id))
       .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId)));
@@ -686,34 +740,6 @@ app.put('/rounds/:roundId/groups/:groupId/batting-order', async (c) => {
   for (const pid of order) {
     if (!validPlayerIds.has(pid)) {
       return c.json({ error: 'Invalid batting order', code: 'INVALID_BATTING_ORDER' }, 422);
-    }
-  }
-
-  // Refresh handicaps from GHIN for players with a GHIN number (best-effort, non-blocking)
-  if (ghinClient) {
-    const client = ghinClient; // narrow for closure
-    const ghinPlayers = groupPlayerRows.filter((p) => p.ghinNumber);
-    const results = await Promise.allSettled(
-      ghinPlayers.map(async (p) => {
-        const { handicapIndex } = await client.getHandicap(Number(p.ghinNumber));
-        return { playerId: p.playerId, handicapIndex };
-      }),
-    );
-    for (const result of results) {
-      if (result.status === 'fulfilled' && result.value.handicapIndex !== null) {
-        const { playerId, handicapIndex } = result.value;
-        try {
-          await db
-            .update(roundPlayers)
-            .set({ handicapIndex })
-            .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId)));
-          // Update local row so the response reflects the fresh HI
-          const row = groupPlayerRows.find((r) => r.playerId === playerId);
-          if (row) row.handicapIndex = handicapIndex;
-        } catch {
-          // Non-fatal — keep existing HI
-        }
-      }
     }
   }
 

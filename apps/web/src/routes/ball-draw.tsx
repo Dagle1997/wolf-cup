@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Loader2, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
-import { getSession, setSession } from '@/lib/session-store';
+import { getSession, setSession, clearSession } from '@/lib/session-store';
 import { calcCourseHandicap, TEE_RATINGS } from '@wolf-cup/engine';
 import type { Tee } from '@wolf-cup/engine';
 
@@ -129,12 +129,38 @@ function BallDrawPage() {
   });
 
   // Fetch active roster players for the dropdown
-  const { data: rosterData } = useQuery({
+  const { data: rosterData, refetch: refetchRoster } = useQuery({
     queryKey: ['active-players'],
     queryFn: () => apiFetch<{ players: RosterPlayer[] }>('/players/active').then((d) => d.players),
     staleTime: 60_000,
   });
   const rosterPlayers = rosterData ?? [];
+
+  // Refresh GHIN handicaps on mount, then update roster dropdown
+  const [hiRefreshing, setHiRefreshing] = useState(true);
+  const hiRefreshedRef = useRef(false);
+  useEffect(() => {
+    if (hiRefreshedRef.current) return;
+    hiRefreshedRef.current = true;
+    apiFetch<{ players: RosterPlayer[]; updated: number }>('/players/refresh-handicaps', { method: 'POST' })
+      .then(() => refetchRoster())
+      .catch(() => { /* best-effort */ })
+      .finally(() => setHiRefreshing(false));
+  }, []);
+
+  // Cancel / abandon round mutation
+  const cancelMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ success: boolean }>(
+        `/rounds/${session!.roundId}/groups/${selectedGroupId!}/quit`,
+        { method: 'POST' },
+      ),
+    onSuccess: () => {
+      clearSession();
+      void router.navigate({ to: '/practice' });
+    },
+  });
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Auto-select group when data arrives (single-group fast path)
   useEffect(() => {
@@ -368,6 +394,16 @@ function BallDrawPage() {
             </button>
           ))}
         </div>
+        <Button
+          variant="ghost"
+          className="text-sm text-muted-foreground"
+          onClick={() => {
+            clearSession();
+            void router.navigate({ to: '/practice' });
+          }}
+        >
+          Start Over
+        </Button>
       </div>
     );
   }
@@ -408,6 +444,16 @@ function BallDrawPage() {
             </button>
           ))}
         </div>
+        <Button
+          variant="ghost"
+          className="text-sm text-muted-foreground"
+          onClick={() => {
+            clearSession();
+            void router.navigate({ to: '/practice' });
+          }}
+        >
+          Start Over
+        </Button>
       </div>
     );
   }
@@ -415,6 +461,12 @@ function BallDrawPage() {
   return (
     <div className="p-4 flex flex-col gap-4">
       <h2 className="text-xl font-semibold">Ball Draw</h2>
+      {hiRefreshing && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Pulling updated handicaps…
+        </div>
+      )}
       <p className="text-sm text-muted-foreground">
         Group {group.groupNumber} · {localPlayers.map((p) => p.name).join(', ') || 'No players yet'}
         {selectedTee && (
@@ -580,6 +632,49 @@ function BallDrawPage() {
           Add {4 - localPlayers.length} more player{4 - localPlayers.length !== 1 ? 's' : ''} to continue.
         </p>
       )}
+
+      {/* Cancel / abandon round */}
+      {isCasual && (
+        <div className="mt-4 pt-4 border-t">
+          {!showCancelConfirm ? (
+            <Button
+              variant="ghost"
+              className="w-full text-sm text-muted-foreground"
+              onClick={() => setShowCancelConfirm(true)}
+            >
+              Cancel Round
+            </Button>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-center text-destructive font-medium">Abandon this round?</p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowCancelConfirm(false)}
+                >
+                  Go Back
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1"
+                  disabled={cancelMutation.isPending}
+                  onClick={() => cancelMutation.mutate()}
+                >
+                  {cancelMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Cancelling…
+                    </>
+                  ) : (
+                    'Yes, Cancel'
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -635,7 +730,7 @@ function BattingOrderForm({
         {isPending ? (
           <>
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Pulling updated handicaps…
+            Saving…
           </>
         ) : (
           'Confirm Ball Draw'
