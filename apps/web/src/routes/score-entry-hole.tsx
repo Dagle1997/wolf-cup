@@ -150,6 +150,13 @@ function ScoreEntryHolePage() {
     }
   }, []);
 
+  // Auto-focus first score input when hole changes
+  useEffect(() => {
+    // Small delay to let inputs render after hole transition
+    const t = setTimeout(() => scoreInputRefs.current[0]?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [currentHole]);
+
   const { data: roundData, isLoading: roundLoading, isError: roundError } = useQuery({
     queryKey: ['round', session?.roundId ?? 0],
     queryFn: () =>
