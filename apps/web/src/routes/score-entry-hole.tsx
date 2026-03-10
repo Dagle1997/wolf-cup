@@ -653,9 +653,13 @@ function ScoreEntryHolePage() {
                   // Only accept single digits 1-9
                   if (raw !== '' && !/^[1-9]$/.test(raw)) return;
                   setCurrentInputs((prev) => ({ ...prev, [player.id]: raw }));
-                  // Auto-advance to next player input
-                  if (raw && idx < orderedPlayers.length - 1) {
-                    scoreInputRefs.current[idx + 1]?.focus();
+                  // Auto-advance to next player, blur on last to dismiss keyboard
+                  if (raw) {
+                    if (idx < orderedPlayers.length - 1) {
+                      scoreInputRefs.current[idx + 1]?.focus();
+                    } else {
+                      scoreInputRefs.current[idx]?.blur();
+                    }
                   }
                 }}
               />
