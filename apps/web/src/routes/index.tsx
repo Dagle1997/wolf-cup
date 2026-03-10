@@ -58,6 +58,8 @@ type ScorecardResponse = {
   playerName: string;
   groupId: number;
   autoCalculateMoney: boolean;
+  battingPosition: number | null;
+  wolfHoles: number[];
   holes: ScorecardHole[];
 };
 
@@ -182,6 +184,7 @@ function ScorecardPanel({
 
   const holeMap = new Map(data.holes.map((h) => [h.holeNumber, h]));
   const g = (n: number) => holeMap.get(n) ?? null;
+  const wolfSet = new Set(data.wolfHoles);
 
   const FRONT = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
   const BACK = [10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
@@ -219,7 +222,11 @@ function ScorecardPanel({
           <tr className="bg-green-700 text-white">
             <th className="pl-2 pr-1 py-1 text-[10px] font-semibold text-left w-10">Hole</th>
             {FRONT.map((n) => (
-              <th key={n} className="w-[22px] text-center py-1 text-[10px] font-semibold">{n}</th>
+              <th key={n} className="w-[22px] text-center py-1 text-[10px] font-semibold">
+                {wolfSet.has(n)
+                  ? <span className="inline-flex items-center justify-center w-[16px] h-[16px] border border-white/80 rounded-sm text-[10px] font-bold">{n}</span>
+                  : n}
+              </th>
             ))}
             <th className="w-[28px] text-center py-1 text-[10px] font-bold">Out</th>
           </tr>
@@ -229,7 +236,7 @@ function ScorecardPanel({
             <td className={tdL}>Par</td>
             {FRONT.map((n) => {
               const h = g(n);
-              return <td key={n} className={`${tdC} text-muted-foreground`}>{h?.par ?? '—'}</td>;
+              return <td key={n} className={`${tdC} text-muted-foreground`}>{h?.grossScore != null ? h.par : '—'}</td>;
             })}
             <td className={`${tdTot} text-muted-foreground`}>{front9played.length > 0 ? fPar : '—'}</td>
           </tr>
@@ -301,7 +308,11 @@ function ScorecardPanel({
             <tr className="bg-green-700 text-white">
               <th className="pl-2 pr-1 py-1 text-[10px] font-semibold text-left w-10">Hole</th>
               {BACK.map((n) => (
-                <th key={n} className="w-[22px] text-center py-1 text-[10px] font-semibold">{n}</th>
+                <th key={n} className="w-[22px] text-center py-1 text-[10px] font-semibold">
+                  {wolfSet.has(n)
+                    ? <span className="inline-flex items-center justify-center w-[16px] h-[16px] border border-white/80 rounded-sm text-[10px] font-bold">{n}</span>
+                    : n}
+                </th>
               ))}
               <th className="w-[28px] text-center py-1 text-[10px] font-bold">In</th>
               <th className="w-[28px] text-center py-1 text-[10px] font-bold">Tot</th>
@@ -312,7 +323,7 @@ function ScorecardPanel({
               <td className={tdL}>Par</td>
               {BACK.map((n) => {
                 const h = g(n);
-                return <td key={n} className={`${tdC} text-muted-foreground`}>{h?.par ?? '—'}</td>;
+                return <td key={n} className={`${tdC} text-muted-foreground`}>{h?.grossScore != null ? h.par : '—'}</td>;
               })}
               <td className={`${tdTot} text-muted-foreground`}>{back9played.length > 0 ? bPar : '—'}</td>
               <td className={`${tdTot} text-muted-foreground`}>{fPar + bPar}</td>

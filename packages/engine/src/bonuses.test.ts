@@ -206,6 +206,68 @@ describe('applyBonusModifiers — 2v2 (wolf=0, partner=1)', () => {
     expect(bs(r)).toEqual([0, 0, 0, 0]);
   });
 
+  it('double birdie cancelled when opponent has net birdie (eagle+birdie vs birdie) → 3 skins not 4', () => {
+    // Team A (wolf=0, partner=1): pos0 net eagle (2), pos1 net birdie (3)
+    // Team B: pos2 net birdie (3), pos3 bogey (5)
+    // Winner: Team A (eagle level > birdie level). Per-player: eagle(2) + birdie(1) = 3.
+    // Double birdie would normally fire (both ≤ par-1) but opponent birdie cancels it.
+    const r = applyBonusModifiers(zeroBase(), [2, 3, 3, 5], [2, 3, 3, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([3, 3, -3, -3]);
+  });
+
+  it('double birdie cancelled when opponent has net eagle → 3 skins', () => {
+    // Team A: both net birdie (3). Team B: one net eagle (2), one bogey (5).
+    // Team B wins (eagle > birdie). Per-player: eagle(2) + 0 = 2.
+    // Double birdie doesn't apply to Team B (only one member has birdie+).
+    // But let's test where BOTH Team B members are birdie+ with opponent also birdie+.
+    // Team A: pos0 eagle (2), pos1 birdie (3). Team B: pos2 birdie (3), pos3 birdie (3).
+    // Winner: Team A (eagle > birdie). Per-player: 2+1 = 3.
+    // Double birdie: both Team A members ≤ par-1 ✓, but opponent has birdie → cancelled.
+    const r = applyBonusModifiers(zeroBase(), [2, 3, 3, 3], [2, 3, 3, 3], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([3, 3, -3, -3]);
+  });
+
+  it('double eagle cancelled when opponent has net eagle', () => {
+    // Team A: both net eagle (2). Team B: one net eagle (2), one bogey (5).
+    // bestLevelA = 2 (eagle), bestLevelB = 2 (eagle) → same level → no blood.
+    // Actually this is a tie, so skins = 0. Let me use a better scenario:
+    // Team A: both net eagle (2). Team B: one net eagle (2), one double bogey (6).
+    // Still a tie. Need: Team A better level.
+    // Team A: pos0 double eagle (1), pos1 eagle (2). Team B: pos2 eagle (2), pos3 bogey (5).
+    // bestLevelA = 3 (double eagle), bestLevelB = 2 (eagle). Winner: A.
+    // Per-player: double_eagle(3) + eagle(2) = 5.
+    // Double birdie: both ≤ par-1 ✓, but opponent has eagle (≤ par-1) → cancelled.
+    // Double eagle: both ≤ par-2 ✓, but opponent has eagle (≤ par-2) → cancelled.
+    const r = applyBonusModifiers(zeroBase(), [1, 2, 2, 5], [1, 2, 2, 5], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([5, 5, -5, -5]);
+  });
+
+  it('double bonuses apply when no opponent has birdie+', () => {
+    // Verify double bonuses still work when opponents have par or worse
+    // Team A: both net birdie (3), both natural. Team B: both par (4).
+    const r = applyBonusModifiers(zeroBase(), [3, 3, 4, 4], [3, 3, 4, 4], NO_BONUS, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([3, 3, -3, -3]); // 1+1+1(dbl) = 3
+  });
+
+  it('both teams birdie + wolf team polies → only polies and team total count ($3 each)', () => {
+    // Exact scenario: wolf=0, partner=1 both net birdie (3) with polies.
+    // Opponent pos2 also net birdie (3), pos3 bogey (5).
+    // Low ball: 3 vs 3 → tie ($0). Skin: follows LB tie → $0.
+    // Team total: 6 vs 8 → Team A wins (+1/+1/-1/-1).
+    // Competitive score skins: birdie level tie → no blood ($0).
+    // Polies: 2 on Team A → +2/+2/-2/-2.
+    // Total: +3/+3/-3/-3.
+    const base = calculateHoleMoney([3, 3, 3, 5], WOLF(0), PARTNER(1), 4);
+    const r = applyBonusModifiers(base, [3, 3, 3, 5], [3, 3, 3, 5], { greenies: [], polies: [0, 1] }, WOLF(0), PARTNER(1), par);
+    expect([r[0].total, r[1].total, r[2].total, r[3].total]).toEqual([3, 3, -3, -3]);
+    // Base: LB=0, skin=0, TT=+1 each on Team A
+    expect(r[0].lowBall).toBe(0);
+    expect(r[0].skin).toBe(0);
+    expect(r[0].teamTotalOrBonus).toBe(1);
+    // Bonus: polies only, no competitive score skins
+    expect(bs(r)).toEqual([2, 2, -2, -2]);
+  });
+
   it('wolf at non-zero batting position (wolf=2, partner=3) resolves team correctly', () => {
     const r = applyBonusModifiers(zeroBase(), [5, 5, 3, 5], [5, 5, 3, 5], NO_BONUS, WOLF(2), PARTNER(3), par);
     expect(bs(r)).toEqual([-1, -1, 1, 1]);

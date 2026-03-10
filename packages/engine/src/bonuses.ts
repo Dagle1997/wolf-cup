@@ -105,19 +105,26 @@ function competitiveScoreSkins(
 
   const winnerIsA = bestLevelA > bestLevelB;
   const [w0, w1] = winnerIsA ? teamA : teamB;
+  const [l0, l1] = winnerIsA ? teamB : teamA;
 
   // Count skins per player on winning team
   let skins = skinCount(detectBonusLevel(netScores[w0], par))
             + skinCount(detectBonusLevel(netScores[w1], par));
 
-  // Double birdie bonus: both NET birdie+, ≥1 NATURAL (gross) birdie
-  if (netScores[w0] <= par - 1 && netScores[w1] <= par - 1 &&
+  // Double birdie bonus: both NET birdie+, ≥1 NATURAL (gross) birdie,
+  // AND no opponent has net birdie+ (opponent birdie cancels the bonus)
+  const oppHasBirdie = netScores[l0] <= par - 1 || netScores[l1] <= par - 1;
+  if (!oppHasBirdie &&
+      netScores[w0] <= par - 1 && netScores[w1] <= par - 1 &&
       (grossScores[w0] <= par - 1 || grossScores[w1] <= par - 1)) {
     skins += 1;
   }
 
-  // Double eagle bonus: both NET eagle+, ≥1 NATURAL (gross) eagle
-  if (netScores[w0] <= par - 2 && netScores[w1] <= par - 2 &&
+  // Double eagle bonus: both NET eagle+, ≥1 NATURAL (gross) eagle,
+  // AND no opponent has net eagle+ (opponent eagle cancels the bonus)
+  const oppHasEagle = netScores[l0] <= par - 2 || netScores[l1] <= par - 2;
+  if (!oppHasEagle &&
+      netScores[w0] <= par - 2 && netScores[w1] <= par - 2 &&
       (grossScores[w0] <= par - 2 || grossScores[w1] <= par - 2)) {
     skins += 1;
   }

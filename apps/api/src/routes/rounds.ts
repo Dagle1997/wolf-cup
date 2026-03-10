@@ -39,9 +39,7 @@ function buildWolfDecision(
 }
 
 function buildHoleAssignment(holeNumber: number): HoleAssignment {
-  if (holeNumber <= 2) return { type: 'skins' };
-  const wolfBatterIndex = ((holeNumber - 3) % 4) as BattingPosition;
-  return { type: 'wolf', wolfBatterIndex };
+  return getWolfAssignment([0, 1, 2, 3], holeNumber as HoleNumber);
 }
 
 function buildBonusInput(bonusesJson: string | null, battingOrder: number[]): BonusInput {
@@ -1651,11 +1649,24 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes });
   }
 
+  // Compute which holes are this player's wolf holes
+  const wolfHoles: number[] = [];
+  if (playerPos >= 0) {
+    for (let h = 3; h <= 18; h++) {
+      const assignment = buildHoleAssignment(h);
+      if (assignment.type === 'wolf' && assignment.wolfBatterIndex === playerPos) {
+        wolfHoles.push(h);
+      }
+    }
+  }
+
   return c.json({
     playerId,
     playerName: playerRow?.name ?? 'Unknown',
     groupId,
     autoCalculateMoney: Boolean(round.autoCalculateMoney),
+    battingPosition: playerPos >= 0 ? playerPos + 1 : null,
+    wolfHoles,
     holes,
   });
 });
