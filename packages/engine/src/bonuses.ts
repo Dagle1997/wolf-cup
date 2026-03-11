@@ -107,17 +107,23 @@ function competitiveScoreSkins(
   const [w0, w1] = winnerIsA ? teamA : teamB;
   const [l0, l1] = winnerIsA ? teamB : teamA;
 
-  // Count skins per player on winning team
-  let skins = skinCount(detectBonusLevel(netScores[w0], par))
-            + skinCount(detectBonusLevel(netScores[w1], par));
+  // Base: team's best player's level (second birdie/eagle doesn't count on its own)
+  let skins = Math.max(
+    skinCount(detectBonusLevel(netScores[w0], par)),
+    skinCount(detectBonusLevel(netScores[w1], par)),
+  );
 
   // Double birdie bonus: both NET birdie+, ≥1 NATURAL (gross) birdie,
-  // AND no opponent has net birdie+ (opponent birdie cancels the bonus)
+  // AND no opponent has net birdie+ (opponent birdie cancels the bonus).
+  // When this fires, BOTH players' contributions count (per-player) + 1 bonus.
   const oppHasBirdie = netScores[l0] <= par - 1 || netScores[l1] <= par - 1;
   if (!oppHasBirdie &&
       netScores[w0] <= par - 1 && netScores[w1] <= par - 1 &&
       (grossScores[w0] <= par - 1 || grossScores[w1] <= par - 1)) {
-    skins += 1;
+    // Switch to per-player counting (both players' birdie/eagle levels)
+    skins = skinCount(detectBonusLevel(netScores[w0], par))
+          + skinCount(detectBonusLevel(netScores[w1], par));
+    skins += 1; // double birdie bonus
   }
 
   // Double eagle bonus: both NET eagle+, ≥1 NATURAL (gross) eagle,

@@ -30,6 +30,10 @@ export default defineConfig({
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
           { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
+        shortcuts: [
+          { name: 'Admin Panel', url: '/admin', description: 'Manage rounds, roster, and scores' },
+          { name: 'Practice Round', url: '/practice', description: 'Start a practice round' },
+        ],
       },
       workbox: {
         clientsClaim: true,

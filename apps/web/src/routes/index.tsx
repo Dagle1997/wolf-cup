@@ -51,6 +51,7 @@ type ScorecardHole = {
   hasGreenie?: boolean;
   hasPolie?: boolean;
   relativeStrokes?: number;
+  wolfDecision?: string | null;
 };
 
 type ScorecardResponse = {
@@ -258,6 +259,28 @@ function ScorecardPanel({
             })}
             <td className={tdTot}>{front9played.length > 0 ? fGross : '—'}</td>
           </tr>
+          {/* Wolf decision row — only show if any wolf hole has a decision */}
+          {data.wolfHoles.length > 0 && (
+            <tr className="border-t border-border/30 bg-muted/30">
+              <td className={tdL}>Wolf</td>
+              {FRONT.map((n) => {
+                const h = g(n);
+                const isMyWolf = wolfSet.has(n);
+                const dec = h?.wolfDecision;
+                return (
+                  <td key={n} className={`${tdC} text-[9px]`}>
+                    {isMyWolf
+                      ? dec === 'alone' ? <span className="font-bold text-foreground">W</span>
+                        : dec === 'blind_wolf' ? <span className="font-bold text-red-500">B</span>
+                        : dec === 'partner' ? <span className="font-bold text-green-600">2v2</span>
+                        : <span className="text-amber-500">🐺</span>
+                      : ''}
+                  </td>
+                );
+              })}
+              <td className={tdTot} />
+            </tr>
+          )}
           <tr className="border-t border-border/30 bg-muted/30">
             <td className={tdL}>Net</td>
             {FRONT.map((n) => {
@@ -347,6 +370,29 @@ function ScorecardPanel({
               <td className={tdTot}>{back9played.length > 0 ? bGross : '—'}</td>
               <td className={tdTot}>{fGross + bGross}</td>
             </tr>
+            {/* Wolf decision row — back 9 */}
+            {data.wolfHoles.length > 0 && (
+              <tr className="border-t border-border/30 bg-muted/30">
+                <td className={tdL}>Wolf</td>
+                {BACK.map((n) => {
+                  const h = g(n);
+                  const isMyWolf = wolfSet.has(n);
+                  const dec = h?.wolfDecision;
+                  return (
+                    <td key={n} className={`${tdC} text-[9px]`}>
+                      {isMyWolf
+                        ? dec === 'alone' ? <span className="font-bold text-foreground">W</span>
+                          : dec === 'blind_wolf' ? <span className="font-bold text-red-500">B</span>
+                          : dec === 'partner' ? <span className="font-bold text-green-600">2v2</span>
+                          : <span className="text-amber-500">🐺</span>
+                        : ''}
+                    </td>
+                  );
+                })}
+                <td className={tdTot} />
+                <td className={tdTot} />
+              </tr>
+            )}
             <tr className="border-t border-border/30 bg-muted/30">
               <td className={tdL}>Net</td>
               {BACK.map((n) => {
@@ -462,6 +508,9 @@ function LeaderboardPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Link to="/admin" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Admin
+          </Link>
           <Link to="/practice" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
             Practice
           </Link>

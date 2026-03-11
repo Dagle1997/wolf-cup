@@ -89,6 +89,14 @@ function isNetworkError(err: Error): boolean {
   return !navigator.onLine || err instanceof TypeError || err.message === 'Failed to fetch';
 }
 
+// Fixed wolf hole assignment table (matches packages/engine/src/wolf.ts WOLF_TABLE)
+const WOLF_TABLE: ReadonlyMap<number, number> = new Map([
+  [3, 0], [6, 0], [9, 0], [14, 0],
+  [4, 1], [7, 1], [10, 1], [16, 1],
+  [5, 2], [11, 2], [12, 2], [17, 2],
+  [8, 3], [13, 3], [15, 3], [18, 3],
+]);
+
 function buildWolfScheduleFromOrder(battingOrder: number[], players: Player[]): WolfHole[] {
   const nameMap = new Map(players.map((p) => [p.id, p.name]));
   return Array.from({ length: 18 }, (_, i) => {
@@ -96,7 +104,8 @@ function buildWolfScheduleFromOrder(battingOrder: number[], players: Player[]): 
     if (holeNumber <= 2) {
       return { holeNumber, type: 'skins' as const, wolfPlayerId: null, wolfPlayerName: null };
     }
-    const wolfPlayerId = battingOrder[(holeNumber - 3) % 4]!;
+    const batterIndex = WOLF_TABLE.get(holeNumber) ?? 0;
+    const wolfPlayerId = battingOrder[batterIndex]!;
     return {
       holeNumber,
       type: 'wolf' as const,
@@ -537,6 +546,11 @@ function ScoreEntryHolePage() {
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             Round Finalized — scores are locked.
           </div>
+        ) : roundData?.type === 'casual' ? (
+          <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-300 text-green-800 text-sm px-3 py-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Practice round complete.
+          </div>
         ) : (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin shrink-0" />
@@ -582,11 +596,19 @@ function ScoreEntryHolePage() {
             </tbody>
           </table>
         </div>
-        <Link to="/ball-draw">
-          <Button variant="outline" className="w-full min-h-12">
-            Back to Wolf Schedule
-          </Button>
-        </Link>
+        <div className="flex flex-col gap-2">
+          {roundData?.status !== 'finalized' && (
+            <Button variant="outline" className="w-full min-h-11" onClick={() => setCurrentHole(18)}>
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Back to Hole 18
+            </Button>
+          )}
+          <Link to="/">
+            <Button variant={roundData?.type === 'casual' ? 'default' : 'outline'} className="w-full min-h-12">
+              {roundData?.type === 'casual' ? 'Done — Back to Leaderboard' : 'View Leaderboard'}
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -598,6 +620,30 @@ function ScoreEntryHolePage() {
   const wolfHole = wolfSchedule[currentHole - 1]!;
   const par = HOLE_PARS[currentHole - 1]!;
   const si = HOLE_STROKE_INDEXES[currentHole - 1]!;
+
+  // Determine if wolf decision is required and if this is a forced-wolf hole
+  const isWolfHole = currentHole >= 3 && roundData.autoCalculateMoney;
+  const currentWolfPlayerId = wolfHole.wolfPlayerId;
+
+  // Find all wolf holes for the current wolf player
+  const wolfPlayerHoles = isWolfHole && currentWolfPlayerId != null
+    ? wolfSchedule.filter((w) => w.wolfPlayerId === currentWolfPlayerId && w.type === 'wolf').map((w) => w.holeNumber)
+    : [];
+  const isLastWolfHole = wolfPlayerHoles.length > 0 && wolfPlayerHoles[wolfPlayerHoles.length - 1] === currentHole;
+
+  // Check if the wolf player has already gone alone/blind on a previous hole
+  const hasGoneWolfBefore = wolfPlayerHoles.some((h) => {
+    if (h >= currentHole) return false;
+    const dec = holeDecisions.get(h);
+    return dec?.decision === 'alone' || dec?.decision === 'blind_wolf';
+  });
+
+  // On last wolf hole, if they haven't gone wolf before, force wolf (no partner allowed)
+  // Blind wolf on last hole requires pre-declaring it (handled by scorer manually calling it before last hole)
+  const forceWolf = isLastWolfHole && !hasGoneWolfBefore;
+
+  // Wolf decision is required on wolf holes
+  const wolfDecisionValid = !isWolfHole || currentDecision !== null;
 
   const allValid = orderedPlayers.every((p) => {
     const val = currentInputs[p.id];
@@ -675,21 +721,26 @@ function ScoreEntryHolePage() {
         </div>
 
         {/* Wolf decision (holes 3-18, autoCalculateMoney=true) */}
-        {roundData.autoCalculateMoney && currentHole >= 3 && (
-          <div className="border rounded-xl p-3 mb-3">
+        {isWolfHole && (
+          <div className={cn('border rounded-xl p-3 mb-3', !wolfDecisionValid && 'border-amber-400')}>
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
               🐺 Wolf: {wolfHole.wolfPlayerName}
+              {forceWolf && <span className="ml-2 text-amber-600 normal-case">(must go wolf)</span>}
             </p>
+            {!wolfDecisionValid && (
+              <p className="text-xs text-amber-600 mb-2">Pick partner, wolf, or blind wolf to save</p>
+            )}
             {/* Player list — tap a non-wolf player to pick as partner */}
             <div className="flex flex-col gap-1.5 mb-2">
               {orderedPlayers.map((p) => {
                 const isWolf = p.id === wolfHole.wolfPlayerId;
                 const isPartner = currentDecision === 'partner' && currentPartnerId === p.id;
+                const partnerDisabled = isWolf || forceWolf;
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    disabled={isWolf}
+                    disabled={partnerDisabled}
                     onClick={() => {
                       if (isPartner) {
                         // Deselect partner
@@ -704,9 +755,11 @@ function ScoreEntryHolePage() {
                       'flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
                       isWolf
                         ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 cursor-default'
-                        : isPartner
-                          ? 'bg-green-600 text-white border-green-600'
-                          : 'border-border text-foreground hover:border-foreground/40',
+                        : partnerDisabled
+                          ? 'border-border text-muted-foreground/40 cursor-not-allowed'
+                          : isPartner
+                            ? 'bg-green-600 text-white border-green-600'
+                            : 'border-border text-foreground hover:border-foreground/40',
                     )}
                   >
                     <span>{p.name}</span>
@@ -889,7 +942,7 @@ function ScoreEntryHolePage() {
       <div className="shrink-0 border-t bg-background/95 backdrop-blur-sm px-4 pt-3 pb-4 flex flex-col gap-2">
         <Button
           className="min-h-12 w-full text-base font-semibold"
-          disabled={!allValid || isPending}
+          disabled={!allValid || !wolfDecisionValid || isPending}
           onClick={() => {
             setSubmitError(null);
             setWolfError(null);

@@ -1573,6 +1573,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     hasGreenie: boolean;
     hasPolie: boolean;
     relativeStrokes: number;
+    wolfDecision: string | null;
   }[] = [];
 
   for (let holeNum = 1; holeNum <= 18; holeNum++) {
@@ -1584,7 +1585,8 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
 
     // Unplayed hole — still include par + stroke dots
     if (grossScore === null) {
-      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes });
+      const dec = decisionByHole.get(holeNum);
+      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: dec?.decision ?? null });
       continue;
     }
 
@@ -1620,7 +1622,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       if (holeNum > 2) {
         if (!decisionRecord?.decision) {
           // Wolf hole with no decision recorded yet — push hole with $0 and move on
-          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes });
+          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: null });
           continue;
         }
         wolfDecision = buildWolfDecision(
@@ -1646,7 +1648,8 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     const hasGreenie = bonuses?.greenies?.includes(playerId) ?? false;
     const hasPolie = bonuses?.polies?.includes(playerId) ?? false;
 
-    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes });
+    const decForHole = decisionByHole.get(holeNum);
+    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes, wolfDecision: decForHole?.decision ?? null });
   }
 
   // Compute which holes are this player's wolf holes
