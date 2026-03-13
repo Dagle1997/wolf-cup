@@ -5,8 +5,8 @@ import { Loader2, AlertCircle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { getSession, setSession, clearSession } from '@/lib/session-store';
-import { calcCourseHandicap, TEE_RATINGS } from '@wolf-cup/engine';
-import type { Tee } from '@wolf-cup/engine';
+import { calcCourseHandicap, TEE_RATINGS, getWolfAssignment } from '@wolf-cup/engine';
+import type { Tee, HoleNumber } from '@wolf-cup/engine';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -71,11 +71,12 @@ export const Route = createFileRoute('/ball-draw')({
 function buildWolfScheduleFromOrder(battingOrder: number[], players: Player[]): WolfHole[] {
   const nameMap = new Map(players.map((p) => [p.id, p.name]));
   return Array.from({ length: 18 }, (_, i) => {
-    const holeNumber = i + 1;
-    if (holeNumber <= 2) {
+    const holeNumber = (i + 1) as HoleNumber;
+    const assignment = getWolfAssignment([0, 1, 2, 3], holeNumber);
+    if (assignment.type === 'skins') {
       return { holeNumber, type: 'skins' as const, wolfPlayerId: null, wolfPlayerName: null };
     }
-    const wolfPlayerId = battingOrder[(holeNumber - 3) % 4]!;
+    const wolfPlayerId = battingOrder[assignment.wolfBatterIndex]!;
     return {
       holeNumber,
       type: 'wolf' as const,

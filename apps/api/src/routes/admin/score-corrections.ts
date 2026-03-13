@@ -6,6 +6,7 @@ import {
   calculateHoleMoney,
   applyBonusModifiers,
   getHandicapStrokes,
+  getWolfAssignment,
 } from '@wolf-cup/engine';
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
 import { db } from '../../db/index.js';
@@ -44,9 +45,7 @@ function buildWolfDecision(
 }
 
 function buildHoleAssignment(holeNumber: number): HoleAssignment {
-  if (holeNumber <= 2) return { type: 'skins' };
-  const wolfBatterIndex = ((holeNumber - 3) % 4) as BattingPosition;
-  return { type: 'wolf', wolfBatterIndex };
+  return getWolfAssignment([0, 1, 2, 3], holeNumber as HoleNumber);
 }
 
 function buildBonusInput(bonusesJson: string | null, battingOrder: number[]): BonusInput {
@@ -94,12 +93,15 @@ async function rescoreGroup(roundId: number, groupId: number): Promise<void> {
       .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId))),
   ]);
 
-  const handicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex]));
+  // Stableford uses full HI; money uses relative ("play off the low man")
+  const fullHandicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex]));
+  const minHI = Math.min(...handicapRows.map((r) => r.handicapIndex));
+  const handicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex - minHI]));
 
   // Recalculate Stableford
   const stablefordTotals = new Map<number, number>();
   for (const row of allScoresRows) {
-    const hi = handicapMap.get(row.playerId) ?? 0;
+    const hi = fullHandicapMap.get(row.playerId) ?? 0;
     const courseHole = getCourseHole(row.holeNumber as HoleNumber);
     const points = calculateStablefordPoints(row.grossScore, hi, courseHole.par, courseHole.strokeIndex);
     stablefordTotals.set(row.playerId, (stablefordTotals.get(row.playerId) ?? 0) + points);
@@ -134,12 +136,13 @@ async function rescoreGroup(roundId: number, groupId: number): Promise<void> {
       wolfDecision = buildWolfDecision(decisionRecord.decision, decisionRecord.partnerPlayerId, battingOrder);
     }
 
-    const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
     const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
-    const result =
-      bonusInput.greenies.length > 0 || bonusInput.polies.length > 0
-        ? applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par)
-        : base;
+    // Wolf holes (3+): always apply bonus modifiers (birdie/eagle/double-birdie are score-detected)
+    let result = base;
+    if (holeNum >= 3) {
+      const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
+      result = applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par);
+    }
 
     for (let pos = 0; pos < 4; pos++) {
       const pid = battingOrder[pos]!;

@@ -1123,7 +1123,8 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
   // Partner decision: partnerPlayerId required and must be a non-wolf group member
   let wolfPlayerId: number | null = null;
   if (!isSkinHole) {
-    const wolfBatterIndex = (holeNumber - 3) % 4;
+    const wolfAssignment = getWolfAssignment([0, 1, 2, 3], holeNumber as HoleNumber);
+    const wolfBatterIndex = wolfAssignment.type === 'wolf' ? wolfAssignment.wolfBatterIndex : 0;
     wolfPlayerId = battingOrder[wolfBatterIndex]!;
 
     if (decision === 'partner') {
