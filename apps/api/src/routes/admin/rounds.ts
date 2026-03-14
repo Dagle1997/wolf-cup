@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import { eq, and, desc, countDistinct, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
@@ -661,6 +662,112 @@ app.patch('/rounds/:roundId/players/:playerId/handicap', adminAuthMiddleware, as
   }
 
   return c.json({ playerId, roundId, handicapIndex: result.data.handicapIndex }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:roundId/groups/:groupId/swap — swap a player in a group
+// ---------------------------------------------------------------------------
+
+const swapPlayerSchema = z.object({
+  removePlayerId: z.number().int().positive(),
+  addPlayerId: z.number().int().positive(),
+  handicapIndex: z.number().min(0).max(54),
+  isSub: z.boolean().optional(),
+});
+
+app.post('/rounds/:roundId/groups/:groupId/swap', adminAuthMiddleware, async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  const groupId = Number(c.req.param('groupId'));
+  if (!Number.isInteger(roundId) || roundId <= 0 || !Number.isInteger(groupId) || groupId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
+  }
+
+  const parsed = swapPlayerSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
+  }
+
+  const { removePlayerId, addPlayerId, handicapIndex, isSub } = parsed.data;
+
+  try {
+    // Verify round and group exist
+    const round = await db.select({ id: rounds.id, seasonId: rounds.seasonId, scheduledDate: rounds.scheduledDate })
+      .from(rounds).where(eq(rounds.id, roundId)).get();
+    if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+
+    const group = await db.select({ id: groups.id }).from(groups)
+      .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId))).get();
+    if (!group) return c.json({ error: 'Group not found', code: 'NOT_FOUND' }, 404);
+
+    // Verify player to remove is in this group
+    const existing = await db.select().from(roundPlayers)
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, removePlayerId), eq(roundPlayers.groupId, groupId))).get();
+    if (!existing) return c.json({ error: 'Player not in this group', code: 'NOT_FOUND' }, 404);
+
+    // Check replacement not already in round
+    const duplicate = await db.select({ id: roundPlayers.id }).from(roundPlayers)
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, addPlayerId))).get();
+    if (duplicate) return c.json({ error: 'Replacement already in round', code: 'VALIDATION_ERROR', issues: [{ message: 'Player is already in this round' }] }, 400);
+
+    // Determine isSub if not explicitly provided
+    let subFlag = isSub ?? false;
+    if (isSub === undefined) {
+      const benchEntry = await db.select({ id: subBench.id }).from(subBench)
+        .where(and(eq(subBench.seasonId, round.seasonId), eq(subBench.playerId, addPlayerId))).get();
+      subFlag = !!benchEntry;
+    }
+
+    await db.transaction(async (tx) => {
+      // Remove old player
+      await tx.delete(roundPlayers).where(
+        and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, removePlayerId)),
+      );
+
+      // Add replacement to same group
+      await tx.insert(roundPlayers).values({
+        roundId,
+        playerId: addPlayerId,
+        groupId,
+        handicapIndex,
+        isSub: subFlag ? 1 : 0,
+      });
+
+      // Update attendance if we can find the season week
+      const week = await tx.select({ id: seasonWeeks.id }).from(seasonWeeks)
+        .where(and(eq(seasonWeeks.seasonId, round.seasonId), eq(seasonWeeks.friday, round.scheduledDate))).get();
+
+      if (week) {
+        // Mark removed player as 'out'
+        await tx.insert(attendance).values({ seasonWeekId: week.id, playerId: removePlayerId, status: 'out', updatedAt: Date.now() })
+          .onConflictDoUpdate({ target: [attendance.seasonWeekId, attendance.playerId], set: { status: 'out', updatedAt: Date.now() } });
+
+        // Mark added player as 'in'
+        await tx.insert(attendance).values({ seasonWeekId: week.id, playerId: addPlayerId, status: 'in', updatedAt: Date.now() })
+          .onConflictDoUpdate({ target: [attendance.seasonWeekId, attendance.playerId], set: { status: 'in', updatedAt: Date.now() } });
+      }
+    });
+
+    // Return updated group
+    const updatedPlayers = await db.select({
+      playerId: roundPlayers.playerId,
+      handicapIndex: roundPlayers.handicapIndex,
+      isSub: roundPlayers.isSub,
+      name: players.name,
+    }).from(roundPlayers)
+      .innerJoin(players, eq(roundPlayers.playerId, players.id))
+      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId)));
+
+    return c.json({ players: updatedPlayers }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
 });
 
 // ---------------------------------------------------------------------------

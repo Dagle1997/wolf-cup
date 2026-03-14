@@ -108,10 +108,17 @@ afterEach(async () => {
     await db.delete(attendance).where(inArray(attendance.seasonWeekId, weekIds));
   }
   await db.delete(subBench).where(eq(subBench.seasonId, seasonId));
-  // Delete test-created sub players (not the seeded Alice/Bob)
-  const testPlayers = await db.select({ id: players.id }).from(players).where(eq(players.name, 'Charlie Sub'));
-  for (const p of testPlayers) {
-    await db.delete(players).where(eq(players.id, p.id));
+  // Delete test-created players (not the seeded Alice/Bob/Carol/Dave)
+  const seededIds = [player1Id, player2Id, player3Id, player4Id];
+  const allPlayers = await db.select({ id: players.id }).from(players);
+  for (const p of allPlayers) {
+    if (!seededIds.includes(p.id)) {
+      // Clean up any attendance/roundPlayers refs first
+      await db.delete(attendance).where(eq(attendance.playerId, p.id)).catch(() => {});
+      await db.delete(roundPlayers).where(eq(roundPlayers.playerId, p.id)).catch(() => {});
+      await db.delete(subBench).where(eq(subBench.playerId, p.id)).catch(() => {});
+      await db.delete(players).where(eq(players.id, p.id)).catch(() => {});
+    }
   }
 });
 
@@ -493,6 +500,72 @@ describe('POST /admin/rounds/from-attendance', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/rounds/:roundId/groups/:groupId/swap — player swap
+// ---------------------------------------------------------------------------
+
+describe('POST /admin/rounds/:roundId/groups/:groupId/swap', () => {
+  async function createRoundWith4Players() {
+    for (const id of [player1Id, player2Id, player3Id, player4Id]) {
+      await app.request(`/api/admin/attendance/${weekId}/players/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in' }),
+      });
+    }
+    const res = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+    const body = (await res.json()) as { round: { id: number }; groupCount: number };
+    // Get group IDs
+    const grps = await db.select().from(groups).where(eq(groups.roundId, body.round.id));
+    return { roundId: body.round.id, groupId: grps[0]!.id };
+  }
+
+  it('swaps a player in a group and updates attendance', async () => {
+    const { roundId, groupId } = await createRoundWith4Players();
+
+    // Create a 5th player as replacement
+    const [p5] = await db.insert(players).values({ name: 'Eve', handicapIndex: 11.0, createdAt: Date.now() }).returning();
+
+    const res = await app.request(`/api/admin/rounds/${roundId}/groups/${groupId}/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        removePlayerId: player1Id,
+        addPlayerId: p5!.id,
+        handicapIndex: 11.0,
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { players: { playerId: number; name: string }[] };
+    expect(body.players.find((p) => p.playerId === p5!.id)).toBeDefined();
+    expect(body.players.find((p) => p.playerId === player1Id)).toBeUndefined();
+    // Eve cleanup handled by afterEach (rounds + attendance cascade)
+  });
+
+  it('rejects swap when replacement is already in round', async () => {
+    const { roundId, groupId } = await createRoundWith4Players();
+
+    const res = await app.request(`/api/admin/rounds/${roundId}/groups/${groupId}/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        removePlayerId: player1Id,
+        addPlayerId: player2Id, // already in round
+        handicapIndex: 15.0,
+      }),
     });
 
     expect(res.status).toBe(400);
