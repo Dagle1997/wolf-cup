@@ -186,6 +186,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [playoffFormat, setPlayoffFormat] = useState('Round of 8 \u2192 Round of 4');
+  const [harveyLive, setHarveyLive] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
 
   const addMutation = useMutation({
@@ -194,6 +195,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
       startDate: string;
       endDate: string;
       playoffFormat: string;
+      harveyLiveEnabled: boolean;
     }) =>
       apiFetch<{ season: Season }>('/admin/seasons', {
         method: 'POST',
@@ -206,6 +208,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
       setStartDate('');
       setEndDate('');
       setPlayoffFormat('Round of 8 \u2192 Round of 4');
+      setHarveyLive(true);
       setFormError(null);
     },
     onError: (err: Error) => {
@@ -236,6 +239,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
       startDate,
       endDate,
       playoffFormat: playoffFormat.trim(),
+      harveyLiveEnabled: harveyLive,
     });
   }
 
@@ -273,7 +277,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
             />
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 items-center">
           <input
             type="text"
             placeholder="Playoff Format *"
@@ -282,6 +286,16 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
             disabled={addMutation.isPending}
             className="flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
+          <label className="flex items-center gap-2 cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={harveyLive}
+              onChange={(e) => setHarveyLive(e.target.checked)}
+              disabled={addMutation.isPending}
+              className="rounded"
+            />
+            <span className="text-sm">Harvey Live</span>
+          </label>
           <Button type="submit" size="sm" disabled={addMutation.isPending} className="shrink-0">
             {addMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -379,6 +393,49 @@ function EditSeasonPanel({ season, onClose }: { season: Season; onClose: () => v
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ deleted: boolean }>(`/admin/seasons/${season.id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-seasons'] });
+      onClose();
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') {
+        void navigate({ to: '/admin/login' });
+        return;
+      }
+      setEditError('Could not delete — try again.');
+    },
+  });
+
+  async function handleDelete() {
+    try {
+      const stats = await apiFetch<{
+        seasonName: string;
+        roundCount: number;
+        playerCount: number;
+      }>(`/admin/seasons/${season.id}/stats`);
+
+      const details =
+        stats.roundCount > 0
+          ? `This will permanently delete "${stats.seasonName}" including ${stats.roundCount} round${stats.roundCount !== 1 ? 's' : ''} and data for ${stats.playerCount} player${stats.playerCount !== 1 ? 's' : ''}. This cannot be undone.`
+          : `This will permanently delete "${stats.seasonName}". This cannot be undone.`;
+
+      if (window.confirm(details)) {
+        deleteMutation.mutate();
+      }
+    } catch (err) {
+      if ((err as Error).message === 'UNAUTHORIZED') {
+        void navigate({ to: '/admin/login' });
+        return;
+      }
+      setEditError('Could not load season info — try again.');
+    }
+  }
+
   function handleSave() {
     if (name.trim() === '') { setEditError('Name is required.'); return; }
     if (playoffFormat.trim() === '') { setEditError('Playoff format is required.'); return; }
@@ -453,16 +510,25 @@ function EditSeasonPanel({ season, onClose }: { season: Season; onClose: () => v
           )}
         </label>
         <div className="flex gap-1 mt-1">
-          <Button size="sm" onClick={handleSave} disabled={editMutation.isPending}>
+          <Button size="sm" onClick={handleSave} disabled={editMutation.isPending || deleteMutation.isPending}>
             {editMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            disabled={editMutation.isPending}
+            disabled={editMutation.isPending || deleteMutation.isPending}
           >
             Cancel
+          </Button>
+          <div className="flex-1" />
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => void handleDelete()}
+            disabled={editMutation.isPending || deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Delete'}
           </Button>
         </div>
         {editError && <p className="text-sm text-destructive">{editError}</p>}

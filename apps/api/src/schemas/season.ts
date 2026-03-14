@@ -18,6 +18,7 @@ export const createSeasonSchema = z
       .regex(dateRegex)
       .refine(isFriday, { message: 'End date must be a Friday' }),
     playoffFormat: z.string().min(1),
+    harveyLiveEnabled: z.boolean().optional().default(true),
   })
   .refine((d) => d.startDate <= d.endDate, {
     message: 'Start date must be before or equal to end date',

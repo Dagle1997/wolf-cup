@@ -24,7 +24,12 @@ vi.mock('../../middleware/admin-auth.js', () => ({
 
 import seasonApp from './season.js';
 import { db } from '../../db/index.js';
-import { seasons, seasonWeeks, rounds } from '../../db/schema.js';
+import {
+  seasons, seasonWeeks, rounds, groups, roundPlayers, players,
+  holeScores, roundResults, harveyResults, wolfDecisions, scoreCorrections,
+  sideGames, sideGameResults, pairingHistory,
+} from '../../db/schema.js';
+import { inArray } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -34,6 +39,12 @@ let testSeasonId: number;
 
 beforeAll(async () => {
   await migrate(db, { migrationsFolder });
+
+  // Seed test players (needed for roundPlayers FK)
+  await db.insert(players).values([
+    { id: 1, name: 'Player A', createdAt: Date.now() },
+    { id: 2, name: 'Player B', createdAt: Date.now() },
+  ]).onConflictDoNothing();
 
   // Seed a baseline season
   const rows = await db
@@ -51,15 +62,32 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  // Delete test-created seasons and their weeks (cascade)
+  // Cascade-delete test-created seasons (same logic as DELETE endpoint)
   const testSeasons = await db
     .select({ id: seasons.id })
     .from(seasons)
     .where(eq(seasons.name, 'Test Season'));
+
   for (const s of testSeasons) {
+    const seasonRounds = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.seasonId, s.id));
+    const roundIds = seasonRounds.map((r) => r.id);
+    if (roundIds.length > 0) {
+      await db.delete(scoreCorrections).where(inArray(scoreCorrections.roundId, roundIds));
+      await db.delete(wolfDecisions).where(inArray(wolfDecisions.roundId, roundIds));
+      await db.delete(harveyResults).where(inArray(harveyResults.roundId, roundIds));
+      await db.delete(roundResults).where(inArray(roundResults.roundId, roundIds));
+      await db.delete(holeScores).where(inArray(holeScores.roundId, roundIds));
+      await db.delete(roundPlayers).where(inArray(roundPlayers.roundId, roundIds));
+      await db.delete(groups).where(inArray(groups.roundId, roundIds));
+      await db.delete(sideGameResults).where(inArray(sideGameResults.roundId, roundIds));
+      await db.delete(rounds).where(eq(rounds.seasonId, s.id));
+    }
+    await db.delete(sideGames).where(eq(sideGames.seasonId, s.id));
+    await db.delete(pairingHistory).where(eq(pairingHistory.seasonId, s.id));
     await db.delete(seasonWeeks).where(eq(seasonWeeks.seasonId, s.id));
     await db.delete(seasons).where(eq(seasons.id, s.id));
   }
+
   // Reset baseline season to known state
   await db
     .update(seasons)
@@ -793,5 +821,248 @@ describe('Tee rotation', () => {
     };
     expect(body.week.isActive).toBe(0);
     expect(body.week.tee).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Harvey live default
+// ---------------------------------------------------------------------------
+
+describe('Harvey live default', () => {
+  it('POST /seasons defaults harveyLiveEnabled to 1 (ON)', async () => {
+    const res = await seasonApp.request('/seasons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Test Season',
+        startDate: '2026-04-10',
+        endDate: '2026-04-10',
+        playoffFormat: 'top4',
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { season: { harveyLiveEnabled: number } };
+    expect(body.season.harveyLiveEnabled).toBe(1);
+  });
+
+  it('POST /seasons with harveyLiveEnabled: false → stored as 0', async () => {
+    const res = await seasonApp.request('/seasons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Test Season',
+        startDate: '2026-04-10',
+        endDate: '2026-04-10',
+        playoffFormat: 'top4',
+        harveyLiveEnabled: false,
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { season: { harveyLiveEnabled: number } };
+    expect(body.season.harveyLiveEnabled).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /seasons/:id — cascading delete
+// ---------------------------------------------------------------------------
+
+describe('DELETE /seasons/:id', () => {
+  it('deletes an empty season (no rounds)', async () => {
+    const createRes = await seasonApp.request('/seasons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Test Season',
+        startDate: '2026-04-10',
+        endDate: '2026-04-10',
+        playoffFormat: 'top4',
+      }),
+    });
+    const { season } = (await createRes.json()) as { season: { id: number } };
+
+    const res = await seasonApp.request(`/seasons/${season.id}`, {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { deleted: boolean; seasonName: string };
+    expect(body.deleted).toBe(true);
+    expect(body.seasonName).toBe('Test Season');
+
+    // Verify season is gone
+    const checkRes = await seasonApp.request(`/seasons/${season.id}/weeks`, {
+      method: 'GET',
+    });
+    expect(checkRes.status).toBe(404);
+  });
+
+  it('deletes a season with rounds and all dependent data', async () => {
+    // Create season
+    const createRes = await seasonApp.request('/seasons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Test Season',
+        startDate: '2026-04-10',
+        endDate: '2026-04-10',
+        playoffFormat: 'top4',
+      }),
+    });
+    const { season } = (await createRes.json()) as { season: { id: number } };
+
+    // Insert a round with dependent data
+    const [round] = await db
+      .insert(rounds)
+      .values({
+        seasonId: season.id,
+        type: 'official',
+        status: 'scheduled',
+        scheduledDate: '2026-04-10',
+        createdAt: Date.now(),
+      })
+      .returning();
+
+    const [group] = await db
+      .insert(groups)
+      .values({ roundId: round!.id, groupNumber: 1 })
+      .returning();
+
+    await db.insert(roundPlayers).values({
+      roundId: round!.id,
+      playerId: 1,
+      groupId: group!.id,
+      handicapIndex: 10.0,
+    });
+
+    // Add side game + pairing history
+    await db.insert(sideGames).values({
+      seasonId: season.id,
+      name: 'Closest to Pin',
+      format: 'weekly',
+      createdAt: Date.now(),
+    });
+
+    await db.insert(pairingHistory).values({
+      seasonId: season.id,
+      playerAId: 1,
+      playerBId: 2,
+      pairCount: 3,
+    });
+
+    // Delete season
+    const res = await seasonApp.request(`/seasons/${season.id}`, {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { deleted: boolean };
+    expect(body.deleted).toBe(true);
+
+    // Verify round is gone
+    const roundCheck = await db
+      .select()
+      .from(rounds)
+      .where(eq(rounds.seasonId, season.id));
+    expect(roundCheck.length).toBe(0);
+
+    // Verify weeks are gone
+    const weekCheck = await db
+      .select()
+      .from(seasonWeeks)
+      .where(eq(seasonWeeks.seasonId, season.id));
+    expect(weekCheck.length).toBe(0);
+
+    // Verify side games are gone
+    const sideGameCheck = await db
+      .select()
+      .from(sideGames)
+      .where(eq(sideGames.seasonId, season.id));
+    expect(sideGameCheck.length).toBe(0);
+
+    // Verify pairing history is gone
+    const pairingCheck = await db
+      .select()
+      .from(pairingHistory)
+      .where(eq(pairingHistory.seasonId, season.id));
+    expect(pairingCheck.length).toBe(0);
+  });
+
+  it('returns 404 for non-existent season', async () => {
+    const res = await seasonApp.request('/seasons/99999', {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('NOT_FOUND');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /seasons/:id/stats
+// ---------------------------------------------------------------------------
+
+describe('GET /seasons/:id/stats', () => {
+  it('returns correct round and player counts', async () => {
+    const createRes = await seasonApp.request('/seasons', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Test Season',
+        startDate: '2026-04-10',
+        endDate: '2026-04-10',
+        playoffFormat: 'top4',
+      }),
+    });
+    const { season } = (await createRes.json()) as { season: { id: number } };
+
+    // Add a round with 2 players
+    const [round] = await db
+      .insert(rounds)
+      .values({
+        seasonId: season.id,
+        type: 'official',
+        status: 'finalized',
+        scheduledDate: '2026-04-10',
+        createdAt: Date.now(),
+      })
+      .returning();
+
+    const [group] = await db
+      .insert(groups)
+      .values({ roundId: round!.id, groupNumber: 1 })
+      .returning();
+
+    await db.insert(roundPlayers).values([
+      { roundId: round!.id, playerId: 1, groupId: group!.id, handicapIndex: 10.0 },
+      { roundId: round!.id, playerId: 2, groupId: group!.id, handicapIndex: 15.0 },
+    ]);
+
+    const res = await seasonApp.request(`/seasons/${season.id}/stats`, {
+      method: 'GET',
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      seasonName: string;
+      roundCount: number;
+      playerCount: number;
+      hasFinalized: boolean;
+    };
+    expect(body.seasonName).toBe('Test Season');
+    expect(body.roundCount).toBe(1);
+    expect(body.playerCount).toBe(2);
+    expect(body.hasFinalized).toBe(true);
+  });
+
+  it('returns 404 for non-existent season', async () => {
+    const res = await seasonApp.request('/seasons/99999/stats', {
+      method: 'GET',
+    });
+
+    expect(res.status).toBe(404);
   });
 });

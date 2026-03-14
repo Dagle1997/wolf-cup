@@ -1,7 +1,21 @@
 import { Hono } from 'hono';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray, countDistinct, count } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { seasons, seasonWeeks, rounds } from '../../db/schema.js';
+import {
+  seasons,
+  seasonWeeks,
+  rounds,
+  groups,
+  roundPlayers,
+  holeScores,
+  roundResults,
+  harveyResults,
+  wolfDecisions,
+  scoreCorrections,
+  sideGames,
+  sideGameResults,
+  pairingHistory,
+} from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import {
   createSeasonSchema,
@@ -58,7 +72,15 @@ app.post('/seasons', adminAuthMiddleware, async (c) => {
     const txResult = await db.transaction(async (tx) => {
       const inserted = await tx
         .insert(seasons)
-        .values({ ...result.data, totalRounds: fridays.length, createdAt: now })
+        .values({
+          name: result.data.name,
+          startDate: result.data.startDate,
+          endDate: result.data.endDate,
+          playoffFormat: result.data.playoffFormat,
+          harveyLiveEnabled: result.data.harveyLiveEnabled ? 1 : 0,
+          totalRounds: fridays.length,
+          createdAt: now,
+        })
         .returning();
 
       const season = inserted[0];
@@ -317,6 +339,114 @@ app.patch('/seasons/:seasonId/weeks/:weekId', adminAuthMiddleware, async (c) => 
     }
 
     return c.json(response, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /seasons/:id/stats — season impact stats for delete confirmation
+// ---------------------------------------------------------------------------
+
+app.get('/seasons/:id/stats', adminAuthMiddleware, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  try {
+    const season = await db
+      .select({ id: seasons.id, name: seasons.name })
+      .from(seasons)
+      .where(eq(seasons.id, id))
+      .get();
+
+    if (!season) {
+      return c.json({ error: 'Season not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    const [roundCountResult] = await db
+      .select({ value: count() })
+      .from(rounds)
+      .where(eq(rounds.seasonId, id));
+
+    const [playerCountResult] = await db
+      .select({ value: countDistinct(roundPlayers.playerId) })
+      .from(roundPlayers)
+      .innerJoin(rounds, eq(roundPlayers.roundId, rounds.id))
+      .where(eq(rounds.seasonId, id));
+
+    const [finalizedResult] = await db
+      .select({ value: count() })
+      .from(rounds)
+      .where(and(eq(rounds.seasonId, id), eq(rounds.status, 'finalized')));
+
+    return c.json(
+      {
+        seasonName: season.name,
+        roundCount: roundCountResult?.value ?? 0,
+        playerCount: playerCountResult?.value ?? 0,
+        hasFinalized: (finalizedResult?.value ?? 0) > 0,
+      },
+      200,
+    );
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /seasons/:id — delete season with all associated data
+// ---------------------------------------------------------------------------
+
+app.delete('/seasons/:id', adminAuthMiddleware, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  try {
+    const season = await db
+      .select({ id: seasons.id, name: seasons.name })
+      .from(seasons)
+      .where(eq(seasons.id, id))
+      .get();
+
+    if (!season) {
+      return c.json({ error: 'Season not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    await db.transaction(async (tx) => {
+      // Get all round IDs for this season
+      const seasonRounds = await tx
+        .select({ id: rounds.id })
+        .from(rounds)
+        .where(eq(rounds.seasonId, id));
+      const roundIds = seasonRounds.map((r) => r.id);
+
+      if (roundIds.length > 0) {
+        // Delete round-dependent leaf tables
+        await tx.delete(scoreCorrections).where(inArray(scoreCorrections.roundId, roundIds));
+        await tx.delete(wolfDecisions).where(inArray(wolfDecisions.roundId, roundIds));
+        await tx.delete(harveyResults).where(inArray(harveyResults.roundId, roundIds));
+        await tx.delete(roundResults).where(inArray(roundResults.roundId, roundIds));
+        await tx.delete(holeScores).where(inArray(holeScores.roundId, roundIds));
+        await tx.delete(roundPlayers).where(inArray(roundPlayers.roundId, roundIds));
+        await tx.delete(groups).where(inArray(groups.roundId, roundIds));
+        await tx.delete(sideGameResults).where(inArray(sideGameResults.roundId, roundIds));
+        await tx.delete(rounds).where(eq(rounds.seasonId, id));
+      }
+
+      // Delete season-level dependent tables
+      await tx.delete(sideGames).where(eq(sideGames.seasonId, id));
+      await tx.delete(pairingHistory).where(eq(pairingHistory.seasonId, id));
+      await tx.delete(seasonWeeks).where(eq(seasonWeeks.seasonId, id));
+
+      // Delete the season
+      await tx.delete(seasons).where(eq(seasons.id, id));
+    });
+
+    return c.json({ deleted: true, seasonName: season.name }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
