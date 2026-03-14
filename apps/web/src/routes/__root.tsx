@@ -92,11 +92,12 @@ function RootComponent() {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="shrink-0 border-t border-border/60 bg-background/95 backdrop-blur-sm grid grid-cols-4">
+      <nav className="shrink-0 border-t border-border/60 bg-background/95 backdrop-blur-sm grid grid-cols-5">
         {(
           [
-            { to: '/' as const, icon: '🏆', label: 'Leaderboard' },
+            { to: '/' as const, icon: '🏆', label: 'Board' },
             { to: '/standings' as const, icon: '📊', label: 'Standings' },
+            { to: '/attendance' as const, icon: '📋', label: 'Attend' },
             { to: '/score-entry' as const, icon: '⛳', label: 'Score' },
             { to: '/stats' as const, icon: '📈', label: 'Stats' },
           ] as const

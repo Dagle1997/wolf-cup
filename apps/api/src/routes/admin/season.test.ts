@@ -27,7 +27,7 @@ import { db } from '../../db/index.js';
 import {
   seasons, seasonWeeks, rounds, groups, roundPlayers, players,
   holeScores, roundResults, harveyResults, wolfDecisions, scoreCorrections,
-  sideGames, sideGameResults, pairingHistory,
+  sideGames, sideGameResults, pairingHistory, attendance,
 } from '../../db/schema.js';
 import { inArray } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/libsql/migrator';
@@ -84,6 +84,11 @@ afterEach(async () => {
     }
     await db.delete(sideGames).where(eq(sideGames.seasonId, s.id));
     await db.delete(pairingHistory).where(eq(pairingHistory.seasonId, s.id));
+    // Delete attendance before season_weeks (FK dependency)
+    const weekIds = (await db.select({ id: seasonWeeks.id }).from(seasonWeeks).where(eq(seasonWeeks.seasonId, s.id))).map((w) => w.id);
+    if (weekIds.length > 0) {
+      await db.delete(attendance).where(inArray(attendance.seasonWeekId, weekIds));
+    }
     await db.delete(seasonWeeks).where(eq(seasonWeeks.seasonId, s.id));
     await db.delete(seasons).where(eq(seasons.id, s.id));
   }

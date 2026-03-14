@@ -98,6 +98,14 @@ app.post('/login', async (c) => {
   return c.json({ adminId: admin.id, username: admin.username }, 200);
 });
 
+// ---------------------------------------------------------------------------
+// GET /auth/check — lightweight session check (returns 200 or 401)
+// ---------------------------------------------------------------------------
+
+app.get('/auth/check', adminAuthMiddleware, (c) => {
+  return c.json({ authenticated: true }, 200);
+});
+
 app.post('/logout', adminAuthMiddleware, async (c) => {
   const sessionId = getCookie(c, 'session');
 

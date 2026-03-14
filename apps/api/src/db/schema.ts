@@ -361,6 +361,29 @@ export const pairingHistory = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// attendance  (weekly in/out tracking, independent of round existence)
+// ---------------------------------------------------------------------------
+
+export const attendance = sqliteTable(
+  'attendance',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    seasonWeekId: integer('season_week_id')
+      .notNull()
+      .references(() => seasonWeeks.id, { onDelete: 'cascade' }),
+    playerId: integer('player_id')
+      .notNull()
+      .references(() => players.id),
+    status: text('status').notNull(), // 'in' | 'out'
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    weekPlayerUniq: uniqueIndex('uniq_attendance_week_player').on(t.seasonWeekId, t.playerId),
+    weekIdx: index('idx_attendance_season_week').on(t.seasonWeekId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // score_corrections  (immutable audit log for post-round corrections — FR64)
 // ---------------------------------------------------------------------------
 

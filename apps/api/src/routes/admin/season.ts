@@ -15,6 +15,7 @@ import {
   sideGames,
   sideGameResults,
   pairingHistory,
+  attendance,
 } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import {
@@ -440,6 +441,12 @@ app.delete('/seasons/:id', adminAuthMiddleware, async (c) => {
       // Delete season-level dependent tables
       await tx.delete(sideGames).where(eq(sideGames.seasonId, id));
       await tx.delete(pairingHistory).where(eq(pairingHistory.seasonId, id));
+
+      // Delete attendance before season_weeks (attendance FK → season_weeks)
+      const weekIds = (await tx.select({ id: seasonWeeks.id }).from(seasonWeeks).where(eq(seasonWeeks.seasonId, id))).map((w) => w.id);
+      if (weekIds.length > 0) {
+        await tx.delete(attendance).where(inArray(attendance.seasonWeekId, weekIds));
+      }
       await tx.delete(seasonWeeks).where(eq(seasonWeeks.seasonId, id));
 
       // Delete the season
