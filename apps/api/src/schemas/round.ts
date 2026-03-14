@@ -20,10 +20,15 @@ export const updateRoundSchema = z
     scheduledDate: z.string().regex(dateRegex).optional(),
     autoCalculateMoney: z.boolean().optional(),
     tee: z.enum(['black', 'blue', 'white']).nullable().optional(),
+    cancellationReason: z.string().min(1).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field required',
-  });
+  })
+  .refine(
+    (data) => data.status !== 'cancelled' || !!data.cancellationReason,
+    { message: 'Cancellation reason is required when cancelling a round' },
+  );
 
 export const createGroupSchema = z.object({
   groupNumber: z.number().int().positive(),

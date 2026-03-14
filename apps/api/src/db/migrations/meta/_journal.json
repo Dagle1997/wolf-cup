@@ -106,6 +106,13 @@
       "when": 1773530900796,
       "tag": "0014_old_gertrude_yorkes",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1773531485886,
+      "tag": "0015_oval_star_brand",
+      "breakpoints": true
     }
   ]
 }

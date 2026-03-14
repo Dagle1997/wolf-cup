@@ -224,6 +224,7 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
   if (result.data.scheduledDate !== undefined) updates.scheduledDate = result.data.scheduledDate;
   if (result.data.autoCalculateMoney !== undefined) updates.autoCalculateMoney = result.data.autoCalculateMoney ? 1 : 0;
   if (result.data.tee !== undefined) updates.tee = result.data.tee;
+  if (result.data.cancellationReason !== undefined) updates.cancellationReason = result.data.cancellationReason;
 
   // Hash new entry code if provided
   if (result.data.entryCode !== undefined) {
