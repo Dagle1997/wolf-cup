@@ -26,7 +26,7 @@ import { Hono } from 'hono';
 import attendanceRouter from './attendance.js';
 import adminAttendanceRouter from './admin/attendance.js';
 import { db } from '../db/index.js';
-import { seasons, seasonWeeks, players, attendance } from '../db/schema.js';
+import { seasons, seasonWeeks, players, attendance, subBench } from '../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -83,10 +83,16 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  // Clean up attendance records
+  // Clean up attendance + sub bench + test-created players
   const weekIds = (await db.select({ id: seasonWeeks.id }).from(seasonWeeks).where(eq(seasonWeeks.seasonId, seasonId))).map((w) => w.id);
   if (weekIds.length > 0) {
     await db.delete(attendance).where(inArray(attendance.seasonWeekId, weekIds));
+  }
+  await db.delete(subBench).where(eq(subBench.seasonId, seasonId));
+  // Delete test-created sub players (not the seeded Alice/Bob)
+  const testPlayers = await db.select({ id: players.id }).from(players).where(eq(players.name, 'Charlie Sub'));
+  for (const p of testPlayers) {
+    await db.delete(players).where(eq(players.id, p.id));
   }
 });
 
@@ -257,6 +263,118 @@ describe('GET /admin/attendance/:weekId', () => {
       method: 'GET',
     });
     expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub bench endpoints
+// ---------------------------------------------------------------------------
+
+describe('Sub bench', () => {
+  it('POST /admin/seasons/:id/subs creates new sub + bench + attendance', async () => {
+    const res = await app.request(`/api/admin/seasons/${seasonId}/subs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Charlie Sub',
+        ghinNumber: '9999999',
+        handicapIndex: 20.5,
+        seasonWeekId: weekId,
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { sub: { name: string; ghinNumber: string; handicapIndex: number } };
+    expect(body.sub.name).toBe('Charlie Sub');
+    expect(body.sub.ghinNumber).toBe('9999999');
+    expect(body.sub.handicapIndex).toBe(20.5);
+
+    // Verify sub appears in attendance as 'in'
+    const attRes = await app.request(`/api/admin/attendance/${weekId}`, { method: 'GET' });
+    const attBody = (await attRes.json()) as AttendanceResponse;
+    const charlie = attBody.players.find((p) => p.name === 'Charlie Sub');
+    expect(charlie?.status).toBe('in');
+  });
+
+  it('GET /admin/seasons/:id/subs returns bench subs', async () => {
+    // First add a sub
+    await app.request(`/api/admin/seasons/${seasonId}/subs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Charlie Sub',
+        ghinNumber: '9999999',
+        handicapIndex: 20.5,
+        seasonWeekId: weekId,
+      }),
+    });
+
+    const res = await app.request(`/api/admin/seasons/${seasonId}/subs`, { method: 'GET' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { items: { name: string; roundCount: number }[] };
+    expect(body.items.length).toBeGreaterThanOrEqual(1);
+    const charlie = body.items.find((s) => s.name === 'Charlie Sub');
+    expect(charlie).toBeDefined();
+    expect(charlie!.roundCount).toBe(0);
+  });
+
+  it('POST /admin/seasons/:id/subs/:subId/add-to-week marks sub in on week', async () => {
+    // Add a sub first
+    await app.request(`/api/admin/seasons/${seasonId}/subs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Charlie Sub',
+        ghinNumber: '9999999',
+        handicapIndex: 20.5,
+        seasonWeekId: weekId,
+      }),
+    });
+
+    // Get bench sub id
+    const benchRes = await app.request(`/api/admin/seasons/${seasonId}/subs`, { method: 'GET' });
+    const benchBody = (await benchRes.json()) as { items: { id: number; name: string }[] };
+    const charlie = benchBody.items.find((s) => s.name === 'Charlie Sub');
+
+    // Get a different week
+    const allWeeks = await db.select().from(seasonWeeks).where(eq(seasonWeeks.seasonId, seasonId)).orderBy(seasonWeeks.friday);
+    const week2Id = allWeeks[1]!.id;
+
+    // Add to week 2
+    const res = await app.request(
+      `/api/admin/seasons/${seasonId}/subs/${charlie!.id}/add-to-week`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seasonWeekId: week2Id }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { added: boolean };
+    expect(body.added).toBe(true);
+  });
+
+  it('duplicate sub creation upserts bench entry', async () => {
+    // Add same sub twice
+    await app.request(`/api/admin/seasons/${seasonId}/subs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Charlie Sub', ghinNumber: '9999999', handicapIndex: 20.5, seasonWeekId: weekId }),
+    });
+    const res = await app.request(`/api/admin/seasons/${seasonId}/subs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Charlie Sub', ghinNumber: '9999999', handicapIndex: 21.0, seasonWeekId: weekId }),
+    });
+
+    expect(res.status).toBe(201);
+
+    // Should still be just one bench entry
+    const benchRes = await app.request(`/api/admin/seasons/${seasonId}/subs`, { method: 'GET' });
+    const benchBody = (await benchRes.json()) as { items: { name: string }[] };
+    const charlies = benchBody.items.filter((s) => s.name === 'Charlie Sub');
+    expect(charlies.length).toBe(1);
   });
 });
 

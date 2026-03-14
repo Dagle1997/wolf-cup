@@ -6,7 +6,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Plus,
   RefreshCw,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
@@ -42,6 +44,23 @@ type SeasonWeek = {
   friday: string;
   isActive: number;
   weekNumber: number;
+};
+
+type BenchSub = {
+  id: number;
+  playerId: number;
+  name: string;
+  ghinNumber: string | null;
+  handicapIndex: number | null;
+  roundCount: number;
+};
+
+type GhinResult = {
+  ghinNumber: number;
+  firstName: string;
+  lastName: string;
+  handicapIndex: number | null;
+  club: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -92,14 +111,15 @@ function AttendancePage() {
     queryFn: () => apiFetch<AttendanceResponse>('/attendance'),
   });
 
-  // Load all weeks for week picker
+  // Load all weeks for week picker + track seasonId
+  const [latestSeasonId, setLatestSeasonId] = useState<number | null>(null);
   const weeksQuery = useQuery({
     queryKey: ['attendance-weeks'],
     queryFn: async () => {
-      // Get latest season's weeks via admin or guess from default
-      const seasons = await apiFetch<{ items: { id: number }[] }>('/admin/seasons').catch(() => null);
-      if (!seasons || seasons.items.length === 0) return [];
-      const latestId = seasons.items[seasons.items.length - 1]!.id;
+      const seasonsRes = await apiFetch<{ items: { id: number }[] }>('/admin/seasons').catch(() => null);
+      if (!seasonsRes || seasonsRes.items.length === 0) return [];
+      const latestId = seasonsRes.items[seasonsRes.items.length - 1]!.id;
+      setLatestSeasonId(latestId);
       const data = await apiFetch<{ items: SeasonWeek[] }>(`/admin/seasons/${latestId}/weeks`).catch(() => null);
       return data?.items.filter((w) => w.isActive === 1) ?? [];
     },
@@ -239,6 +259,18 @@ function AttendancePage() {
               />
             ))}
           </div>
+
+          {/* Add Sub section (admin only) */}
+          {isAdmin && activeData.week && latestSeasonId && (
+            <AddSubSection
+              seasonId={latestSeasonId}
+              weekId={activeData.week.id}
+              onAdded={() => {
+                void defaultQuery.refetch();
+                if (selectedWeekId) void weekQuery.refetch();
+              }}
+            />
+          )}
         </>
       )}
     </div>
@@ -306,5 +338,205 @@ function PlayerRow({
         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
       )}
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Add Sub Section
+// ---------------------------------------------------------------------------
+
+function AddSubSection({
+  seasonId,
+  weekId,
+  onAdded,
+}: {
+  seasonId: number;
+  weekId: number;
+  onAdded: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [subName, setSubName] = useState('');
+  const [searchResults, setSearchResults] = useState<GhinResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Bench subs query
+  const benchQuery = useQuery({
+    queryKey: ['admin-bench-subs', seasonId],
+    queryFn: () => apiFetch<{ items: BenchSub[] }>(`/admin/seasons/${seasonId}/subs`),
+    retry: false,
+  });
+
+  // Add new sub mutation
+  const addNewMutation = useMutation({
+    mutationFn: (body: { name: string; ghinNumber?: string; handicapIndex?: number; seasonWeekId: number }) =>
+      apiFetch<{ sub: Record<string, unknown> }>(`/admin/seasons/${seasonId}/subs`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-bench-subs', seasonId] });
+      onAdded();
+      setSubName('');
+      setSearchResults([]);
+      setShowForm(false);
+    },
+    onError: () => setFormError('Could not add sub — try again.'),
+  });
+
+  // Add bench sub to week mutation
+  const addBenchMutation = useMutation({
+    mutationFn: (subBenchId: number) =>
+      apiFetch<{ sub: Record<string, unknown> }>(`/admin/seasons/${seasonId}/subs/${subBenchId}/add-to-week`, {
+        method: 'POST',
+        body: JSON.stringify({ seasonWeekId: weekId }),
+      }),
+    onSuccess: () => {
+      onAdded();
+    },
+    onError: () => setFormError('Could not add sub — try again.'),
+  });
+
+  async function handleSearch() {
+    if (!subName.trim()) return;
+    setSearching(true);
+    setFormError(null);
+    try {
+      const parts = subName.trim().split(/\s+/);
+      const lastName = parts[parts.length - 1]!;
+      const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
+      const params = new URLSearchParams({ last_name: lastName });
+      if (firstName) params.set('first_name', firstName);
+      const res = await apiFetch<{ items: GhinResult[] }>(`/admin/ghin/search?${params}`);
+      setSearchResults(res.items ?? []);
+    } catch {
+      setFormError('GHIN search failed — add manually.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function handleSelectGhin(result: GhinResult) {
+    const body: { name: string; ghinNumber: string; handicapIndex?: number; seasonWeekId: number } = {
+      name: `${result.firstName} ${result.lastName}`,
+      ghinNumber: String(result.ghinNumber),
+      seasonWeekId: weekId,
+    };
+    if (result.handicapIndex !== null) body.handicapIndex = result.handicapIndex;
+    addNewMutation.mutate(body);
+  }
+
+  function handleAddManual() {
+    if (!subName.trim()) { setFormError('Name is required.'); return; }
+    addNewMutation.mutate({
+      name: subName.trim(),
+      seasonWeekId: weekId,
+    });
+  }
+
+  const benchSubs = benchQuery.data?.items ?? [];
+
+  return (
+    <div className="mt-4">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setShowForm(!showForm)}
+        className="w-full"
+      >
+        <Plus className="h-4 w-4 mr-1" />
+        Add Sub
+      </Button>
+
+      {showForm && (
+        <div className="mt-3 rounded-md border p-3 bg-muted/20">
+          {/* Returning subs */}
+          {benchSubs.length > 0 && (
+            <div className="mb-3">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                Returning Subs
+              </p>
+              <div className="rounded-md border overflow-hidden">
+                {benchSubs.map((sub) => (
+                  <button
+                    key={sub.id}
+                    type="button"
+                    onClick={() => addBenchMutation.mutate(sub.id)}
+                    disabled={addBenchMutation.isPending}
+                    className="w-full flex items-center justify-between px-3 py-2.5 border-b last:border-0 text-sm text-left hover:bg-muted/30"
+                  >
+                    <span>
+                      <span className="font-medium">{sub.name}</span>
+                      <span className="text-muted-foreground ml-2">
+                        {sub.roundCount} round{sub.roundCount !== 1 ? 's' : ''}
+                      </span>
+                    </span>
+                    <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* New sub */}
+          <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+            New Sub
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Name (Last or First Last)"
+              value={subName}
+              onChange={(e) => setSubName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleSearch(); } }}
+              className="flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <Button variant="outline" size="sm" onClick={() => void handleSearch()} disabled={searching}>
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            </Button>
+          </div>
+
+          {/* GHIN search results */}
+          {searchResults.length > 0 && (
+            <div className="mt-2 rounded-md border overflow-hidden">
+              {searchResults.map((r) => (
+                <button
+                  key={r.ghinNumber}
+                  type="button"
+                  onClick={() => handleSelectGhin(r)}
+                  disabled={addNewMutation.isPending}
+                  className="w-full flex items-center justify-between px-3 py-2.5 border-b last:border-0 text-sm text-left hover:bg-muted/30"
+                >
+                  <div>
+                    <p className="font-medium">{r.lastName}, {r.firstName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      #{r.ghinNumber} · {r.handicapIndex !== null ? `${r.handicapIndex} HI` : 'No HI'}
+                      {r.club && ` · ${r.club}`}
+                    </p>
+                  </div>
+                  <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Manual add (no GHIN) */}
+          {subName.trim() && searchResults.length === 0 && !searching && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-2"
+              onClick={handleAddManual}
+              disabled={addNewMutation.isPending}
+            >
+              {addNewMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}
+              Add "{subName.trim()}" without GHIN
+            </Button>
+          )}
+
+          {formError && <p className="mt-2 text-sm text-destructive">{formError}</p>}
+        </div>
+      )}
+    </div>
   );
 }

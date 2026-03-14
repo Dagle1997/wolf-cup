@@ -384,6 +384,30 @@ export const attendance = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// sub_bench  (season-scoped sub tracking for attendance board)
+// ---------------------------------------------------------------------------
+
+export const subBench = sqliteTable(
+  'sub_bench',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    seasonId: integer('season_id')
+      .notNull()
+      .references(() => seasons.id),
+    playerId: integer('player_id')
+      .notNull()
+      .references(() => players.id),
+    roundCount: integer('round_count').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    seasonPlayerUniq: uniqueIndex('uniq_sub_bench_season_player').on(t.seasonId, t.playerId),
+    seasonIdx: index('idx_sub_bench_season').on(t.seasonId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // score_corrections  (immutable audit log for post-round corrections — FR64)
 // ---------------------------------------------------------------------------
 
