@@ -13,6 +13,7 @@ import {
   fromAttendanceSchema,
 } from '../../schemas/round.js';
 import { updateHandicapSchema } from '../../schemas/handicap.js';
+import { ghinClient } from '../../lib/ghin-client.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -662,6 +663,60 @@ app.patch('/rounds/:roundId/players/:playerId/handicap', adminAuthMiddleware, as
   }
 
   return c.json({ playerId, roundId, handicapIndex: result.data.handicapIndex }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/:roundId/refresh-handicaps — bulk GHIN refresh
+// ---------------------------------------------------------------------------
+
+app.post('/rounds/:roundId/refresh-handicaps', adminAuthMiddleware, async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  if (!Number.isInteger(roundId) || roundId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  if (!ghinClient) {
+    return c.json({ error: 'GHIN not configured', code: 'GHIN_NOT_CONFIGURED' }, 503);
+  }
+
+  try {
+    const round = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.id, roundId)).get();
+    if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+
+    const rps = await db
+      .select({
+        rpId: roundPlayers.id,
+        playerId: roundPlayers.playerId,
+        ghinNumber: players.ghinNumber,
+      })
+      .from(roundPlayers)
+      .innerJoin(players, eq(roundPlayers.playerId, players.id))
+      .where(eq(roundPlayers.roundId, roundId));
+
+    let refreshed = 0;
+    let failed = 0;
+
+    for (const rp of rps) {
+      if (!rp.ghinNumber) continue;
+      try {
+        const { handicapIndex } = await ghinClient.getHandicap(Number(rp.ghinNumber));
+        if (handicapIndex !== null) {
+          await db.update(players).set({ handicapIndex }).where(eq(players.id, rp.playerId));
+          await db.update(roundPlayers).set({ handicapIndex }).where(eq(roundPlayers.id, rp.rpId));
+          refreshed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    const now = Date.now();
+    await db.update(rounds).set({ handicapUpdatedAt: now }).where(eq(rounds.id, roundId));
+
+    return c.json({ refreshed, failed, handicapUpdatedAt: now }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
 });
 
 // ---------------------------------------------------------------------------

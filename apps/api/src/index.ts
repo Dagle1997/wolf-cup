@@ -19,6 +19,10 @@ import adminPairingRouter from './routes/admin/pairing.js';
 import adminAttendanceRouter from './routes/admin/attendance.js';
 import attendanceRouter from './routes/attendance.js';
 import pairingsRouter from './routes/pairings.js';
+import cron from 'node-cron';
+import { ghinClient } from './lib/ghin-client.js';
+import { roundPlayers as roundPlayersTable } from './db/schema.js';
+import { eq as eqOp, and as andOp } from 'drizzle-orm';
 
 export const app = new Hono<{ Variables: Variables }>();
 
@@ -113,7 +117,67 @@ async function cleanupCancelledRounds(): Promise<void> {
 
 const port = Number(process.env['PORT'] ?? 3000);
 
+// ---------------------------------------------------------------------------
+// Friday 6am ET auto-refresh handicaps for today's scheduled round
+// ---------------------------------------------------------------------------
+
+async function autoRefreshHandicaps(): Promise<void> {
+  if (!ghinClient) {
+    console.log('GHIN not configured — skipping auto-refresh');
+    return;
+  }
+
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Find today's scheduled official round
+    const round = await db
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(andOp(eqOp(rounds.scheduledDate, today), eqOp(rounds.type, 'official'), eqOp(rounds.status, 'scheduled')))
+      .get();
+
+    if (!round) {
+      console.log(`No scheduled round for ${today} — skipping auto-refresh`);
+      return;
+    }
+
+    // Get round players with GHIN numbers
+    const rps = await db
+      .select({ rpId: roundPlayersTable.id, playerId: roundPlayersTable.playerId, ghinNumber: players.ghinNumber })
+      .from(roundPlayersTable)
+      .innerJoin(players, eqOp(roundPlayersTable.playerId, players.id))
+      .where(eqOp(roundPlayersTable.roundId, round.id));
+
+    let refreshed = 0;
+    for (const rp of rps) {
+      if (!rp.ghinNumber) continue;
+      try {
+        const { handicapIndex } = await ghinClient.getHandicap(Number(rp.ghinNumber));
+        if (handicapIndex !== null) {
+          await db.update(players).set({ handicapIndex }).where(eqOp(players.id, rp.playerId));
+          await db.update(roundPlayersTable).set({ handicapIndex }).where(eqOp(roundPlayersTable.id, rp.rpId));
+          refreshed++;
+        }
+      } catch {
+        // Individual player failure — continue with others
+      }
+    }
+
+    await db.update(rounds).set({ handicapUpdatedAt: Date.now() }).where(eqOp(rounds.id, round.id));
+    console.log(`Auto-refreshed ${refreshed}/${rps.length} handicaps for round ${round.id}`);
+  } catch (err) {
+    console.error('Auto-refresh failed (non-fatal):', err);
+  }
+}
+
 serve({ fetch: app.fetch, port }, async () => {
   console.log(`Wolf Cup API listening on port ${port}`);
   await cleanupCancelledRounds();
+
+  // Schedule Friday 6am ET auto-refresh
+  cron.schedule('0 6 * * 5', () => {
+    void autoRefreshHandicaps();
+  }, { timezone: 'America/New_York' });
+  console.log('Scheduled Friday 6am ET handicap auto-refresh');
 });
