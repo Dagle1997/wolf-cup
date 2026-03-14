@@ -71,6 +71,20 @@
       "when": 1772814000000,
       "tag": "0009_pairing_history",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1773526293525,
+      "tag": "0010_nasty_forge",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1773527909180,
+      "tag": "0011_complex_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

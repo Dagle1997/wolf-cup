@@ -3,6 +3,8 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
   AlertCircle,
+  AlertTriangle,
+  Calendar,
   Check,
   Loader2,
   Pencil,
@@ -27,6 +29,16 @@ type Season = {
   totalRounds: number;
   playoffFormat: string;
   harveyLiveEnabled: number; // 0 | 1
+  createdAt: number;
+};
+
+type SeasonWeek = {
+  id: number;
+  seasonId: number;
+  friday: string;
+  isActive: number; // 0 | 1
+  tee: string | null; // 'blue' | 'black' | 'white' | null
+  weekNumber: number;
   createdAt: number;
 };
 
@@ -60,6 +72,15 @@ function formatDate(iso: string): string {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+  });
+}
+
+function formatShortDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y!, m! - 1, d!).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
   });
 }
 
@@ -142,9 +163,14 @@ function SeasonPage() {
       </div>
 
       {selectedSeasonId !== null && (
-        <div className="mt-6">
-          <SideGamesSection seasonId={selectedSeasonId} rounds={seasonRounds} />
-        </div>
+        <>
+          <div className="mt-6">
+            <SeasonWeeksCalendar seasonId={selectedSeasonId} />
+          </div>
+          <div className="mt-6">
+            <SideGamesSection seasonId={selectedSeasonId} rounds={seasonRounds} />
+          </div>
+        </>
       )}
     </div>
   );
@@ -159,8 +185,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
   const [name, setName] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [totalRounds, setTotalRounds] = useState('');
-  const [playoffFormat, setPlayoffFormat] = useState('');
+  const [playoffFormat, setPlayoffFormat] = useState('Round of 8 \u2192 Round of 4');
   const [formError, setFormError] = useState<string | null>(null);
 
   const addMutation = useMutation({
@@ -168,7 +193,6 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
       name: string;
       startDate: string;
       endDate: string;
-      totalRounds: number;
       playoffFormat: string;
     }) =>
       apiFetch<{ season: Season }>('/admin/seasons', {
@@ -181,8 +205,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
       setName('');
       setStartDate('');
       setEndDate('');
-      setTotalRounds('');
-      setPlayoffFormat('');
+      setPlayoffFormat('Round of 8 \u2192 Round of 4');
       setFormError(null);
     },
     onError: (err: Error) => {
@@ -199,18 +222,19 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
     if (!name.trim()) { setFormError('Name is required.'); return; }
     if (!startDate) { setFormError('Start date is required.'); return; }
     if (!endDate) { setFormError('End date is required.'); return; }
-    const rounds = Number(totalRounds);
-    if (!totalRounds || !Number.isInteger(rounds) || rounds < 1) {
-      setFormError('Total rounds must be a positive integer.');
-      return;
-    }
+
+    // Client-side Friday validation
+    const startDay = new Date(startDate + 'T12:00:00').getDay();
+    const endDay = new Date(endDate + 'T12:00:00').getDay();
+    if (startDay !== 5) { setFormError('Start date must be a Friday.'); return; }
+    if (endDay !== 5) { setFormError('End date must be a Friday.'); return; }
+
     if (!playoffFormat.trim()) { setFormError('Playoff format is required.'); return; }
     setFormError(null);
     addMutation.mutate({
       name: name.trim(),
       startDate,
       endDate,
-      totalRounds: rounds,
       playoffFormat: playoffFormat.trim(),
     });
   }
@@ -229,7 +253,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
         />
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex flex-col gap-1 flex-1">
-            <label className="text-xs text-muted-foreground">Start Date *</label>
+            <label className="text-xs text-muted-foreground">Start Date (Friday) *</label>
             <input
               type="date"
               value={startDate}
@@ -239,7 +263,7 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
             />
           </div>
           <div className="flex flex-col gap-1 flex-1">
-            <label className="text-xs text-muted-foreground">End Date *</label>
+            <label className="text-xs text-muted-foreground">End Date (Friday) *</label>
             <input
               type="date"
               value={endDate}
@@ -248,23 +272,11 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
               className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">Total Rounds *</label>
-            <input
-              type="number"
-              placeholder="e.g. 15"
-              min={1}
-              value={totalRounds}
-              onChange={(e) => setTotalRounds(e.target.value)}
-              disabled={addMutation.isPending}
-              className="w-28 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
-            placeholder="Playoff Format * (e.g. Top 8)"
+            placeholder="Playoff Format *"
             value={playoffFormat}
             onChange={(e) => setPlayoffFormat(e.target.value)}
             disabled={addMutation.isPending}
@@ -344,7 +356,6 @@ function EditSeasonPanel({ season, onClose }: { season: Season; onClose: () => v
   const [name, setName] = useState(season.name);
   const [startDate, setStartDate] = useState(season.startDate);
   const [endDate, setEndDate] = useState(season.endDate);
-  const [totalRounds, setTotalRounds] = useState(String(season.totalRounds));
   const [playoffFormat, setPlayoffFormat] = useState(season.playoffFormat);
   const [harveyLive, setHarveyLive] = useState(season.harveyLiveEnabled === 1);
   const [editError, setEditError] = useState<string | null>(null);
@@ -375,10 +386,6 @@ function EditSeasonPanel({ season, onClose }: { season: Season; onClose: () => v
     if (name.trim() !== season.name) patch['name'] = name.trim();
     if (startDate !== season.startDate) patch['startDate'] = startDate;
     if (endDate !== season.endDate) patch['endDate'] = endDate;
-    const parsed = Number(totalRounds);
-    if (Number.isInteger(parsed) && parsed >= 1 && parsed !== season.totalRounds) {
-      patch['totalRounds'] = parsed;
-    }
     if (playoffFormat.trim() !== season.playoffFormat) patch['playoffFormat'] = playoffFormat.trim();
     if (harveyLive !== (season.harveyLiveEnabled === 1)) patch['harveyLiveEnabled'] = harveyLive;
     if (Object.keys(patch).length === 0) { onClose(); return; }
@@ -421,17 +428,6 @@ function EditSeasonPanel({ season, onClose }: { season: Season; onClose: () => v
               className="rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">Total Rounds</label>
-            <input
-              type="number"
-              min={1}
-              value={totalRounds}
-              onChange={(e) => setTotalRounds(e.target.value)}
-              disabled={editMutation.isPending}
-              className="w-24 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
         </div>
         <input
           type="text"
@@ -471,6 +467,185 @@ function EditSeasonPanel({ season, onClose }: { season: Season; onClose: () => v
         </div>
         {editError && <p className="text-sm text-destructive">{editError}</p>}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tee Badge
+// ---------------------------------------------------------------------------
+
+const TEE_STYLES: Record<string, string> = {
+  blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  black: 'bg-gray-800 text-white dark:bg-gray-700 dark:text-gray-100',
+  white: 'bg-gray-100 text-gray-700 border dark:bg-gray-200 dark:text-gray-800',
+};
+
+function TeeBadge({ tee }: { tee: string }) {
+  return (
+    <span
+      className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${TEE_STYLES[tee] ?? 'bg-muted text-muted-foreground'}`}
+    >
+      {tee}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Season Weeks Calendar
+// ---------------------------------------------------------------------------
+
+function SeasonWeeksCalendar({ seasonId }: { seasonId: number }) {
+  const navigate = useNavigate();
+  const [toggleWarning, setToggleWarning] = useState<string | null>(null);
+
+  const weeksQuery = useQuery({
+    queryKey: ['admin-season-weeks', seasonId],
+    queryFn: () =>
+      apiFetch<{ items: SeasonWeek[]; totalFridays: number; activeRounds: number }>(
+        `/admin/seasons/${seasonId}/weeks`,
+      ),
+    retry: false,
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ weekId, isActive }: { weekId: number; isActive: boolean }) =>
+      apiFetch<{
+        week: SeasonWeek;
+        activeRounds: number;
+        totalFridays: number;
+        hasRound?: boolean;
+        warning?: string;
+      }>(`/admin/seasons/${seasonId}/weeks/${weekId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isActive }),
+      }),
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-season-weeks', seasonId] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-seasons'] });
+
+      // Surface warnings from API response
+      if (data.hasRound) {
+        setToggleWarning(
+          `Week ${data.week.weekNumber} has an existing round — the round is preserved but this week is now ${data.week.isActive === 1 ? 'active' : 'skipped'}.`,
+        );
+      } else if (data.warning) {
+        setToggleWarning(data.warning);
+      } else {
+        setToggleWarning(null);
+      }
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') {
+        void navigate({ to: '/admin/login' });
+      }
+    },
+  });
+
+  if (weeksQuery.isError) {
+    if ((weeksQuery.error as Error).message === 'UNAUTHORIZED') {
+      void navigate({ to: '/admin/login' });
+      return null;
+    }
+    return (
+      <div className="flex flex-col items-center gap-2 py-4 text-center">
+        <AlertCircle className="h-6 w-6 text-destructive" />
+        <p className="text-sm text-muted-foreground">Could not load weeks</p>
+        <Button variant="outline" size="sm" onClick={() => void weeksQuery.refetch()}>
+          <RefreshCw className="h-4 w-4 mr-1" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (weeksQuery.isLoading) {
+    return (
+      <div className="animate-pulse space-y-2">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-8 bg-muted rounded-md" />
+        ))}
+      </div>
+    );
+  }
+
+  const items = weeksQuery.data?.items ?? [];
+  const totalFridays = weeksQuery.data?.totalFridays ?? 0;
+  const activeRounds = weeksQuery.data?.activeRounds ?? 0;
+  const skipped = totalFridays - activeRounds;
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <Calendar className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-base font-semibold">Season Calendar</h3>
+      </div>
+
+      {activeRounds === 0 && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          No active rounds remaining
+        </div>
+      )}
+
+      {toggleWarning && (
+        <div className="flex items-center justify-between gap-2 mb-3 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm">
+          <span className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {toggleWarning}
+          </span>
+          <button
+            type="button"
+            onClick={() => setToggleWarning(null)}
+            className="shrink-0 text-amber-500 hover:text-amber-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <div className="rounded-md border overflow-hidden">
+        {items.map((week) => (
+          <label
+            key={week.id}
+            className={`flex items-center gap-3 px-3 py-2 border-b last:border-0 text-sm cursor-pointer transition-colors ${
+              week.isActive === 0
+                ? 'bg-muted/30 text-muted-foreground'
+                : 'hover:bg-muted/20'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={week.isActive === 1}
+              onChange={() =>
+                toggleMutation.mutate({
+                  weekId: week.id,
+                  isActive: week.isActive === 0,
+                })
+              }
+              disabled={toggleMutation.isPending}
+              className="rounded"
+            />
+            <span className={`flex items-center gap-2 ${week.isActive === 0 ? 'line-through' : ''}`}>
+              <span className="font-medium">Week {week.weekNumber}</span>
+              {' — '}
+              {formatShortDate(week.friday)}
+              {week.tee && <TeeBadge tee={week.tee} />}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <p className="mt-2 text-sm text-muted-foreground">
+        <span className="font-semibold text-foreground">{activeRounds} active rounds</span>
+        {' of '}
+        {totalFridays} total Fridays
+        {skipped > 0 && ` (${skipped} skipped)`}
+      </p>
     </div>
   );
 }

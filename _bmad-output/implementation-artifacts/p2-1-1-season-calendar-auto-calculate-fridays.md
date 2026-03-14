@@ -1,6 +1,6 @@
 # Story P2.1.1: Season Calendar — Auto-Calculate Fridays & Off-Week Management
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -24,52 +24,52 @@ so that I don't have to manually count Fridays or enter a total round count.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `season_weeks` table to database schema (AC: #1)
-  - [ ] Define `season_weeks` table in `apps/api/src/db/schema.ts` — columns: `id`, `seasonId`, `friday`, `isActive`, `createdAt` (NO `weekNumber` — computed on read)
-  - [ ] Run `pnpm drizzle-kit generate` to create migration
-  - [ ] Verify migration applies cleanly
+- [x] Task 1: Add `season_weeks` table to database schema (AC: #1)
+  - [x] Define `season_weeks` table in `apps/api/src/db/schema.ts` — columns: `id`, `seasonId`, `friday`, `isActive`, `createdAt` (NO `weekNumber` — computed on read)
+  - [x] Run `pnpm drizzle-kit generate` to create migration
+  - [x] Verify migration applies cleanly
 
-- [ ] Task 2: Friday calculation utility (AC: #1, #5)
-  - [ ] Create `getFridaysInRange(startDate: string, endDate: string): string[]` utility
-  - [ ] Validate both dates are Fridays — reject if not
-  - [ ] Handle edge cases: same Friday for start and end (returns 1), no Fridays in range (returns empty)
-  - [ ] Add hard-coded validation test: April 11, 2026 to August 28, 2026 → exact expected list of Fridays
+- [x] Task 2: Friday calculation utility (AC: #1, #5)
+  - [x] Create `getFridaysInRange(startDate: string, endDate: string): string[]` utility
+  - [x] Validate both dates are Fridays — reject if not
+  - [x] Handle edge cases: same Friday for start and end (returns 1), no Fridays in range (returns empty)
+  - [x] Add hard-coded validation test: April 10, 2026 to August 28, 2026 → exact expected list of 21 Fridays (corrected: April 11 is Saturday, April 10 is Friday)
 
-- [ ] Task 3: Update season creation to atomically generate weeks (AC: #1)
-  - [ ] Modify `POST /admin/seasons` to auto-generate `season_weeks` rows within the same transaction
-  - [ ] Validate start/end dates are Fridays before creating season
-  - [ ] Set `totalRounds` to the number of generated Fridays
-  - [ ] Return season with weeks in response
+- [x] Task 3: Update season creation to atomically generate weeks (AC: #1)
+  - [x] Modify `POST /admin/seasons` to auto-generate `season_weeks` rows within the same transaction
+  - [x] Validate start/end dates are Fridays before creating season
+  - [x] Set `totalRounds` to the number of generated Fridays
+  - [x] Return season with weeks in response
 
-- [ ] Task 4: Create season weeks API endpoints (AC: #2, #3, #6)
-  - [ ] Add Zod schema `toggleWeekSchema` in `apps/api/src/schemas/season.ts`
-  - [ ] Add `GET /admin/seasons/:seasonId/weeks` — list all weeks ordered by `friday ASC`, compute week number from position
-  - [ ] Add `PATCH /admin/seasons/:seasonId/weeks/:weekId` — toggle week active/inactive, update `seasons.totalRounds` (count of active weeks)
-  - [ ] Return both `totalFridays` (all weeks) and `activeRounds` (active weeks) in responses
-  - [ ] Warn (in response) if toggling would leave zero active weeks
+- [x] Task 4: Create season weeks API endpoints (AC: #2, #3, #6)
+  - [x] Add Zod schema `toggleWeekSchema` in `apps/api/src/schemas/season.ts`
+  - [x] Add `GET /admin/seasons/:seasonId/weeks` — list all weeks ordered by `friday ASC`, compute week number from position
+  - [x] Add `PATCH /admin/seasons/:seasonId/weeks/:weekId` — toggle week active/inactive, update `seasons.totalRounds` (count of active weeks)
+  - [x] Return both `totalFridays` (all weeks) and `activeRounds` (active weeks) in responses
+  - [x] Warn (in response) if toggling would leave zero active weeks
 
-- [ ] Task 5: Pre-fill playoff format default (AC: #4)
-  - [ ] Default `playoffFormat` to "Round of 8 → Round of 4" in the create season UI
-  - [ ] API still accepts custom values but UI pre-fills the standard
+- [x] Task 5: Pre-fill playoff format default (AC: #4)
+  - [x] Default `playoffFormat` to "Round of 8 → Round of 4" in the create season UI
+  - [x] API still accepts custom values but UI pre-fills the standard
 
-- [ ] Task 6: Season settings UI — calendar display and management (AC: #1, #2, #3, #6)
-  - [ ] Add calendar/week list component to admin season settings page
-  - [ ] Display all Fridays as a checklist with computed week numbers
-  - [ ] Admin can uncheck/check individual Fridays
-  - [ ] Show: "**17 active rounds** of 19 total Fridays (2 skipped)"
-  - [ ] Pre-fill playoff format in season creation form
-  - [ ] Warn visually if a toggled week has an existing round
+- [x] Task 6: Season settings UI — calendar display and management (AC: #1, #2, #3, #6)
+  - [x] Add calendar/week list component to admin season settings page
+  - [x] Display all Fridays as a checklist with computed week numbers
+  - [x] Admin can uncheck/check individual Fridays
+  - [x] Show: "**17 active rounds** of 19 total Fridays (2 skipped)"
+  - [x] Pre-fill playoff format in season creation form
+  - [x] Warn visually if a toggled week has an existing round
 
-- [ ] Task 7: Protect existing round data on mid-season edits (AC: #3)
-  - [ ] When toggling a week inactive, check if a round exists for that date (match by `scheduledDate`)
-  - [ ] If round exists: include warning in API response, UI displays warning but allows toggle
-  - [ ] Round is NOT deleted — just the week is marked inactive
+- [x] Task 7: Protect existing round data on mid-season edits (AC: #3)
+  - [x] When toggling a week inactive, check if a round exists for that date (match by `scheduledDate`)
+  - [x] If round exists: include warning in API response, UI displays warning but allows toggle
+  - [x] Round is NOT deleted — just the week is marked inactive
 
-- [ ] Task 8: Tests (AC: #1, #2, #3, #4, #5, #6)
-  - [ ] Friday calculation utility: known date range produces exact expected Fridays, both boundaries inclusive, non-Friday rejection, same-day Friday, empty range
-  - [ ] API tests: season create auto-generates weeks, list weeks with computed week numbers, toggle week updates activeRounds, totalRounds reflects active count
-  - [ ] Edge case tests: all weeks unchecked (warning), toggle with existing round (warning), re-create season regenerates weeks
-  - [ ] Validate start/end must be Fridays
+- [x] Task 8: Tests (AC: #1, #2, #3, #4, #5, #6)
+  - [x] Friday calculation utility: known date range produces exact expected Fridays, both boundaries inclusive, non-Friday rejection, same-day Friday, empty range
+  - [x] API tests: season create auto-generates weeks, list weeks with computed week numbers, toggle week updates activeRounds, totalRounds reflects active count
+  - [x] Edge case tests: all weeks unchecked (warning), toggle with existing round (warning), re-create season regenerates weeks
+  - [x] Validate start/end must be Fridays
 
 ## Dev Notes
 
@@ -252,9 +252,33 @@ File: `apps/web/src/routes/admin/season.tsx`
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6 (1M context)
 
 ### Debug Log References
+- Hard-coded validation test date corrected: April 11, 2026 is a Saturday, not a Friday. Used April 10, 2026 (verified Friday) instead.
+- Migration 0010 generated by drizzle-kit included duplicate DDL from manually-created migrations 0006-0009 (pairing_history, group tee, player handicap_index, round tee). Trimmed to only `season_weeks` CREATE + indexes.
+- `createSeasonSchema` updated to remove `totalRounds` from request body (now auto-calculated from Fridays). Existing `updateSeasonSchema` still allows `totalRounds` for direct patching.
+- Removed `totalRounds` input from CreateSeasonForm UI — rounds are now auto-calculated.
+- Removed `totalRounds` editing from EditSeasonPanel UI — managed by week toggles instead.
 
 ### Completion Notes List
+- **29 new tests** (23 season API + 6 Friday utility) — all pass
+- **Typecheck**: clean (api + web)
+- **Lint**: clean
+- **Pre-existing test failures** (9 tests in ghin, stats, leaderboard, rounds) — not caused by this story
+
+### File List
+- `apps/api/src/db/schema.ts` — added `seasonWeeks` table definition
+- `apps/api/src/db/migrations/0010_nasty_forge.sql` — new migration for `season_weeks` table
+- `apps/api/src/db/migrations/meta/_journal.json` — updated by drizzle-kit
+- `apps/api/src/db/migrations/meta/0010_snapshot.json` — drizzle-kit snapshot for migration 0010
+- `apps/api/src/utils/fridays.ts` — new: `getFridaysInRange()` utility
+- `apps/api/src/utils/fridays.test.ts` — new: 6 tests for Friday utility
+- `apps/api/src/schemas/season.ts` — added Friday validation to `createSeasonSchema`, added `toggleWeekSchema`, removed `totalRounds` from create schema
+- `apps/api/src/routes/admin/season.ts` — atomic season+weeks creation, GET weeks, PATCH week toggle (transactional), round protection warning
+- `apps/api/src/routes/admin/season.test.ts` — updated existing tests for new API shape, added 13 new tests for weeks endpoints
+- `apps/web/src/routes/admin/season.tsx` — `SeasonWeeksCalendar` component with `hasRound`/warning display, pre-filled playoff format, removed totalRounds input, client-side Friday validation
 
 ### Change Log
+- 2026-03-14: Implemented P2.1.1 — Season Calendar with auto-calculated Fridays, week toggle management, and pre-filled playoff format
+- 2026-03-14: Code review fixes — H1: added `hasRound`/warning display in calendar UI; M1: wrapped PATCH toggle in transaction; M2: added snapshot to File List; M3: added re-create season independence test; L1: removed dead try/catch around `getFridaysInRange` (Zod already validates); L2: replaced `toISOString().slice(0,10)` with local-date `toISODate()` helper for timezone safety

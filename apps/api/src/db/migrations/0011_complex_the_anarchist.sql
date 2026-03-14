@@ -1,0 +1,1 @@
+ALTER TABLE `season_weeks` ADD `tee` text;

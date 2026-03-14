@@ -1,9 +1,15 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { seasons } from '../../db/schema.js';
+import { seasons, seasonWeeks, rounds } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
-import { createSeasonSchema, updateSeasonSchema } from '../../schemas/season.js';
+import {
+  createSeasonSchema,
+  updateSeasonSchema,
+  toggleWeekSchema,
+} from '../../schemas/season.js';
+import { getFridaysInRange } from '../../utils/fridays.js';
+import { calculateTeeRotation } from '../../utils/tee-rotation.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -44,17 +50,43 @@ app.post('/seasons', adminAuthMiddleware, async (c) => {
     );
   }
 
-  try {
-    const inserted = await db
-      .insert(seasons)
-      .values({ ...result.data, createdAt: Date.now() })
-      .returning();
+  // Zod already validated both dates are Fridays and start <= end
+  const fridays = getFridaysInRange(result.data.startDate, result.data.endDate);
 
-    const season = inserted[0];
-    if (!season) {
-      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-    }
-    return c.json({ season }, 201);
+  try {
+    const now = Date.now();
+    const txResult = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(seasons)
+        .values({ ...result.data, totalRounds: fridays.length, createdAt: now })
+        .returning();
+
+      const season = inserted[0];
+      if (!season) throw new Error('Insert failed');
+
+      // All weeks start active — calculate tees upfront for single INSERT
+      const teeCycle = ['blue', 'black', 'white'] as const;
+      const weekRows = fridays.map((friday, i) => ({
+        seasonId: season.id,
+        friday,
+        isActive: 1 as const,
+        tee: teeCycle[i % 3]!,
+        createdAt: now,
+      }));
+
+      const weeks = await tx.insert(seasonWeeks).values(weekRows).returning();
+
+      return { season, weeks };
+    });
+
+    return c.json(
+      {
+        season: txResult.season,
+        weeks: txResult.weeks,
+        totalFridays: txResult.weeks.length,
+      },
+      201,
+    );
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
@@ -124,6 +156,167 @@ app.patch('/seasons/:id', adminAuthMiddleware, async (c) => {
       return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
     }
     return c.json({ season }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /seasons/:seasonId/weeks — list all weeks for a season
+// ---------------------------------------------------------------------------
+
+app.get('/seasons/:seasonId/weeks', adminAuthMiddleware, async (c) => {
+  const seasonId = Number(c.req.param('seasonId'));
+  if (!Number.isInteger(seasonId) || seasonId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  try {
+    const season = await db
+      .select({ id: seasons.id })
+      .from(seasons)
+      .where(eq(seasons.id, seasonId))
+      .get();
+
+    if (!season) {
+      return c.json({ error: 'Season not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    const weeks = await db
+      .select()
+      .from(seasonWeeks)
+      .where(eq(seasonWeeks.seasonId, seasonId))
+      .orderBy(seasonWeeks.friday);
+
+    const items = weeks.map((w, i) => ({
+      ...w,
+      weekNumber: i + 1,
+    }));
+
+    const activeRounds = weeks.filter((w) => w.isActive === 1).length;
+
+    return c.json(
+      { items, totalFridays: weeks.length, activeRounds },
+      200,
+    );
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /seasons/:seasonId/weeks/:weekId — toggle week active/inactive
+// ---------------------------------------------------------------------------
+
+app.patch('/seasons/:seasonId/weeks/:weekId', adminAuthMiddleware, async (c) => {
+  const seasonId = Number(c.req.param('seasonId'));
+  const weekId = Number(c.req.param('weekId'));
+  if (!Number.isInteger(seasonId) || seasonId <= 0 || !Number.isInteger(weekId) || weekId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json(
+      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] },
+      400,
+    );
+  }
+
+  const result = toggleWeekSchema.safeParse(body);
+  if (!result.success) {
+    return c.json(
+      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: result.error.issues },
+      400,
+    );
+  }
+
+  try {
+    // Find the week and verify it belongs to the season (outside tx for early 404)
+    const week = await db
+      .select()
+      .from(seasonWeeks)
+      .where(and(eq(seasonWeeks.id, weekId), eq(seasonWeeks.seasonId, seasonId)))
+      .get();
+
+    if (!week) {
+      return c.json({ error: 'Week not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    const isActiveValue = result.data.isActive ? 1 : 0;
+
+    // Atomic: update week + recalculate season totalRounds
+    const txResult = await db.transaction(async (tx) => {
+      await tx
+        .update(seasonWeeks)
+        .set({ isActive: isActiveValue })
+        .where(eq(seasonWeeks.id, weekId));
+
+      const allWeeks = await tx
+        .select()
+        .from(seasonWeeks)
+        .where(eq(seasonWeeks.seasonId, seasonId))
+        .orderBy(seasonWeeks.friday);
+
+      const activeRounds = allWeeks.filter((w) => w.isActive === 1).length;
+      const totalFridays = allWeeks.length;
+
+      await tx
+        .update(seasons)
+        .set({ totalRounds: activeRounds })
+        .where(eq(seasons.id, seasonId));
+
+      // Recalculate tee rotation for all weeks
+      const teeAssignments = calculateTeeRotation(allWeeks);
+      for (const assignment of teeAssignments) {
+        const existingWeek = allWeeks.find((w) => w.id === assignment.weekId);
+        if (existingWeek && existingWeek.tee !== assignment.tee) {
+          await tx
+            .update(seasonWeeks)
+            .set({ tee: assignment.tee })
+            .where(eq(seasonWeeks.id, assignment.weekId));
+        }
+      }
+
+      // Re-fetch to get updated tee values
+      const refreshedWeeks = await tx
+        .select()
+        .from(seasonWeeks)
+        .where(eq(seasonWeeks.seasonId, seasonId))
+        .orderBy(seasonWeeks.friday);
+
+      const weekIndex = refreshedWeeks.findIndex((w) => w.id === weekId);
+      const refreshedWeek = refreshedWeeks.find((w) => w.id === weekId)!;
+
+      return { updatedWeek: refreshedWeek, allWeeks: refreshedWeeks, activeRounds, totalFridays, weekIndex };
+    });
+
+    // Check if a round exists for this Friday (read-only, outside tx is fine)
+    const existingRound = await db
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(and(eq(rounds.seasonId, seasonId), eq(rounds.scheduledDate, txResult.updatedWeek.friday)))
+      .get();
+
+    const weekWithNumber = { ...txResult.updatedWeek, weekNumber: txResult.weekIndex + 1 };
+
+    const response: Record<string, unknown> = {
+      week: weekWithNumber,
+      activeRounds: txResult.activeRounds,
+      totalFridays: txResult.totalFridays,
+    };
+
+    if (existingRound) {
+      response['hasRound'] = true;
+    }
+
+    if (txResult.activeRounds === 0) {
+      response['warning'] = 'No active rounds remaining';
+    }
+
+    return c.json(response, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }

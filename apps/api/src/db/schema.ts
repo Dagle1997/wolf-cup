@@ -55,6 +55,28 @@ export const seasons = sqliteTable('seasons', {
 });
 
 // ---------------------------------------------------------------------------
+// season_weeks
+// ---------------------------------------------------------------------------
+
+export const seasonWeeks = sqliteTable(
+  'season_weeks',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    seasonId: integer('season_id')
+      .notNull()
+      .references(() => seasons.id, { onDelete: 'cascade' }),
+    friday: text('friday').notNull(), // ISO YYYY-MM-DD, must be a Friday
+    isActive: integer('is_active').notNull().default(1), // 0=skipped, 1=active
+    tee: text('tee'), // 'blue' | 'black' | 'white' | null (null for skipped weeks)
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    seasonWeekUniq: uniqueIndex('uniq_season_week').on(t.seasonId, t.friday),
+    seasonIdx: index('idx_season_weeks_season').on(t.seasonId),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // players
 // ---------------------------------------------------------------------------
 
