@@ -2,13 +2,14 @@ import { Hono } from 'hono';
 import { eq, and, desc, countDistinct, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import {
   createRoundSchema,
   updateRoundSchema,
   createGroupSchema,
   addGroupPlayerSchema,
+  fromAttendanceSchema,
 } from '../../schemas/round.js';
 import { updateHandicapSchema } from '../../schemas/handicap.js';
 import type { Variables } from '../../types.js';
@@ -659,6 +660,143 @@ app.patch('/rounds/:roundId/players/:playerId/handicap', adminAuthMiddleware, as
   }
 
   return c.json({ playerId, roundId, handicapIndex: result.data.handicapIndex }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// POST /rounds/from-attendance — create round from confirmed attendance
+// ---------------------------------------------------------------------------
+
+app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
+  }
+
+  const parsed = fromAttendanceSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
+  }
+
+  const { seasonWeekId } = parsed.data;
+
+  try {
+    // Get week info
+    const week = await db.select().from(seasonWeeks).where(eq(seasonWeeks.id, seasonWeekId)).get();
+    if (!week) {
+      return c.json({ error: 'Week not found', code: 'NOT_FOUND' }, 404);
+    }
+    if (week.isActive === 0) {
+      return c.json({ error: 'Week is inactive', code: 'VALIDATION_ERROR', issues: [{ message: 'Cannot create round for inactive week' }] }, 400);
+    }
+
+    // Check if round already exists for this date/season
+    const existingRound = await db
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(and(eq(rounds.seasonId, week.seasonId), eq(rounds.scheduledDate, week.friday)))
+      .get();
+    if (existingRound) {
+      return c.json({ error: 'Round already exists for this date', code: 'VALIDATION_ERROR', issues: [{ message: 'A round already exists for this Friday' }] }, 400);
+    }
+
+    // Get confirmed players
+    const attendanceRows = await db
+      .select({ playerId: attendance.playerId })
+      .from(attendance)
+      .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.status, 'in')));
+
+    const confirmedIds = attendanceRows.map((a) => a.playerId);
+    if (confirmedIds.length === 0) {
+      return c.json({ error: 'No confirmed players', code: 'VALIDATION_ERROR', issues: [{ message: 'No players confirmed for this week' }] }, 400);
+    }
+    if (confirmedIds.length % 4 !== 0) {
+      const needed = 4 - (confirmedIds.length % 4);
+      return c.json({
+        error: 'Validation error',
+        code: 'VALIDATION_ERROR',
+        issues: [{ message: `${needed} more player${needed !== 1 ? 's' : ''} needed for groups of 4` }],
+      }, 400);
+    }
+
+    // Get player details
+    const playerRows = await db
+      .select({ id: players.id, handicapIndex: players.handicapIndex })
+      .from(players)
+      .where(sql`${players.id} IN (${sql.join(confirmedIds.map((id) => sql`${id}`), sql`, `)})`);
+
+    // Determine subs
+    const subRows = await db
+      .select({ playerId: subBench.playerId })
+      .from(subBench)
+      .where(eq(subBench.seasonId, week.seasonId));
+    const subIds = new Set(subRows.map((s) => s.playerId));
+
+    // Generate entry code
+    const entryCode = String(Math.floor(1000 + Math.random() * 9000));
+    const entryCodeHash = await bcrypt.hash(entryCode, 10);
+
+    const now = Date.now();
+    const groupCount = confirmedIds.length / 4;
+
+    const txResult = await db.transaction(async (tx) => {
+      // Create round
+      const [round] = await tx
+        .insert(rounds)
+        .values({
+          seasonId: week.seasonId,
+          type: 'official',
+          status: 'scheduled',
+          scheduledDate: week.friday,
+          entryCodeHash,
+          tee: week.tee,
+          headcount: confirmedIds.length,
+          createdAt: now,
+        })
+        .returning();
+
+      if (!round) throw new Error('Round insert failed');
+
+      // Create groups
+      const groupIds: number[] = [];
+      for (let i = 0; i < groupCount; i++) {
+        const [g] = await tx
+          .insert(groups)
+          .values({ roundId: round.id, groupNumber: i + 1 })
+          .returning();
+        groupIds.push(g!.id);
+      }
+
+      // Add players (round-robin across groups)
+      for (let i = 0; i < confirmedIds.length; i++) {
+        const pid = confirmedIds[i]!;
+        const player = playerRows.find((p) => p.id === pid);
+        const groupId = groupIds[i % groupCount]!;
+        await tx.insert(roundPlayers).values({
+          roundId: round.id,
+          playerId: pid,
+          groupId,
+          handicapIndex: player?.handicapIndex ?? 0,
+          isSub: subIds.has(pid) ? 1 : 0,
+        });
+      }
+
+      return round;
+    });
+
+    return c.json(
+      {
+        round: toRoundResponse(txResult),
+        entryCode,
+        groupCount,
+        playerCount: confirmedIds.length,
+      },
+      201,
+    );
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
 });
 
 export default app;

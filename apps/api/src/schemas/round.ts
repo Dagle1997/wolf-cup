@@ -70,6 +70,10 @@ export const createPracticeRoundSchema = z.object({
 });
 export type CreatePracticeRoundBody = z.infer<typeof createPracticeRoundSchema>;
 
+export const fromAttendanceSchema = z.object({
+  seasonWeekId: z.number().int().positive(),
+});
+
 export type CreateRoundBody = z.infer<typeof createRoundSchema>;
 export type UpdateRoundBody = z.infer<typeof updateRoundSchema>;
 export type CreateGroupBody = z.infer<typeof createGroupSchema>;

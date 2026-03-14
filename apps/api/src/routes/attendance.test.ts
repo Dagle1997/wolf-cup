@@ -25,8 +25,9 @@ vi.mock('../middleware/admin-auth.js', () => ({
 import { Hono } from 'hono';
 import attendanceRouter from './attendance.js';
 import adminAttendanceRouter from './admin/attendance.js';
+import adminRoundsRouter from './admin/rounds.js';
 import { db } from '../db/index.js';
-import { seasons, seasonWeeks, players, attendance, subBench } from '../db/schema.js';
+import { seasons, seasonWeeks, players, attendance, subBench, rounds, groups, roundPlayers } from '../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -36,11 +37,14 @@ const migrationsFolder = resolve(__dirname, '../db/migrations');
 const app = new Hono();
 app.route('/api', attendanceRouter);
 app.route('/api/admin', adminAttendanceRouter);
+app.route('/api/admin', adminRoundsRouter);
 
 let seasonId: number;
 let weekId: number;
 let player1Id: number;
 let player2Id: number;
+let player3Id: number;
+let player4Id: number;
 
 beforeAll(async () => {
   await migrate(db, { migrationsFolder });
@@ -48,8 +52,12 @@ beforeAll(async () => {
   // Seed players
   const [p1] = await db.insert(players).values({ name: 'Alice', handicapIndex: 10.2, createdAt: Date.now() }).returning();
   const [p2] = await db.insert(players).values({ name: 'Bob', handicapIndex: 15.0, createdAt: Date.now() }).returning();
+  const [p3] = await db.insert(players).values({ name: 'Carol', handicapIndex: 8.5, createdAt: Date.now() }).returning();
+  const [p4] = await db.insert(players).values({ name: 'Dave', handicapIndex: 12.0, createdAt: Date.now() }).returning();
   player1Id = p1!.id;
   player2Id = p2!.id;
+  player3Id = p3!.id;
+  player4Id = p4!.id;
 
   // Seed season with weeks
   const [s] = await db
@@ -83,7 +91,16 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  // Clean up attendance + sub bench + test-created players
+  // Clean up rounds + round dependencies first
+  const seasonRounds = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.seasonId, seasonId));
+  const roundIds = seasonRounds.map((r) => r.id);
+  if (roundIds.length > 0) {
+    await db.delete(roundPlayers).where(inArray(roundPlayers.roundId, roundIds));
+    await db.delete(groups).where(inArray(groups.roundId, roundIds));
+    await db.delete(rounds).where(eq(rounds.seasonId, seasonId));
+  }
+
+  // Clean up attendance + sub bench
   const weekIds = (await db.select({ id: seasonWeeks.id }).from(seasonWeeks).where(eq(seasonWeeks.seasonId, seasonId))).map((w) => w.id);
   if (weekIds.length > 0) {
     await db.delete(attendance).where(inArray(attendance.seasonWeekId, weekIds));
@@ -375,6 +392,110 @@ describe('Sub bench', () => {
     const benchBody = (await benchRes.json()) as { items: { name: string }[] };
     const charlies = benchBody.items.filter((s) => s.name === 'Charlie Sub');
     expect(charlies.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/rounds/from-attendance — create round from confirmed
+// ---------------------------------------------------------------------------
+
+describe('POST /admin/rounds/from-attendance', () => {
+  async function confirmPlayers(ids: number[]) {
+    for (const id of ids) {
+      await app.request(`/api/admin/attendance/${weekId}/players/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in' }),
+      });
+    }
+  }
+
+  it('creates round with 4 confirmed players → 1 group + 4 round_players', async () => {
+    await confirmPlayers([player1Id, player2Id, player3Id, player4Id]);
+
+    const res = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      round: { scheduledDate: string; tee: string };
+      entryCode: string;
+      groupCount: number;
+      playerCount: number;
+    };
+    expect(body.groupCount).toBe(1);
+    expect(body.playerCount).toBe(4);
+    expect(body.entryCode).toMatch(/^\d{4}$/);
+    expect(body.round.tee).toBe('blue'); // first week = blue
+    expect(body.round.scheduledDate).toBe('2026-04-10');
+  });
+
+  it('rejects when confirmed count is not multiple of 4', async () => {
+    await confirmPlayers([player1Id, player2Id, player3Id]); // only 3
+
+    const res = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; issues: { message: string }[] };
+    expect(body.code).toBe('VALIDATION_ERROR');
+    expect(body.issues[0]!.message).toContain('more');
+  });
+
+  it('flags sub_bench players with isSub=1', async () => {
+    // Add player1 as a sub on the bench
+    await db.insert(subBench).values({
+      seasonId,
+      playerId: player1Id,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    await confirmPlayers([player1Id, player2Id, player3Id, player4Id]);
+
+    const res = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+
+    expect(res.status).toBe(201);
+
+    // Check round_players for isSub
+    const allRounds = await db.select().from(rounds).where(eq(rounds.seasonId, seasonId));
+    const rps = await db.select().from(roundPlayers).where(eq(roundPlayers.roundId, allRounds[0]!.id));
+    const alice = rps.find((rp) => rp.playerId === player1Id);
+    expect(alice?.isSub).toBe(1);
+    const bob = rps.find((rp) => rp.playerId === player2Id);
+    expect(bob?.isSub).toBe(0);
+  });
+
+  it('rejects when round already exists for this date', async () => {
+    await confirmPlayers([player1Id, player2Id, player3Id, player4Id]);
+
+    // Create first round
+    await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+
+    // Try creating duplicate
+    const res = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('VALIDATION_ERROR');
   });
 });
 

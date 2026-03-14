@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import {
@@ -260,6 +260,14 @@ function AttendancePage() {
             ))}
           </div>
 
+          {/* Create Round (admin only) */}
+          {isAdmin && activeData.week && (
+            <CreateRoundButton
+              weekId={activeData.week.id}
+              confirmed={activeData.confirmed}
+            />
+          )}
+
           {/* Add Sub section (admin only) */}
           {isAdmin && activeData.week && latestSeasonId && (
             <AddSubSection
@@ -338,6 +346,80 @@ function PlayerRow({
         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
       )}
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Create Round Button
+// ---------------------------------------------------------------------------
+
+function CreateRoundButton({ weekId, confirmed }: { weekId: number; confirmed: number }) {
+  const navigate = useNavigate();
+  const [result, setResult] = useState<{ entryCode: string } | null>(null);
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ round: Record<string, unknown>; entryCode: string }>(
+        '/admin/rounds/from-attendance',
+        {
+          method: 'POST',
+          body: JSON.stringify({ seasonWeekId: weekId }),
+        },
+      ),
+    onSuccess: (data) => {
+      setResult({ entryCode: data.entryCode });
+      void queryClient.invalidateQueries({ queryKey: ['admin-rounds'] });
+    },
+  });
+
+  const canCreate = confirmed > 0 && confirmed % 4 === 0;
+  const remainder = confirmed % 4;
+  const needed = remainder === 0 ? 0 : 4 - remainder;
+
+  if (result) {
+    return (
+      <div className="mt-3 rounded-md border p-3 bg-green-50 dark:bg-green-900/20 text-sm">
+        <p className="font-medium text-green-700 dark:text-green-400">
+          Round created! Entry code: <span className="font-mono text-lg">{result.entryCode}</span>
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2"
+          onClick={() => void navigate({ to: '/admin/rounds' })}
+        >
+          Go to Rounds
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3">
+      <Button
+        size="sm"
+        className="w-full"
+        disabled={!canCreate || createMutation.isPending}
+        onClick={() => createMutation.mutate()}
+      >
+        {createMutation.isPending ? (
+          <Loader2 className="h-4 w-4 animate-spin mr-1" />
+        ) : null}
+        Create Round ({confirmed} players)
+      </Button>
+      {!canCreate && confirmed > 0 && (
+        <p className="text-xs text-muted-foreground mt-1 text-center">
+          {needed} more needed for groups of 4
+        </p>
+      )}
+      {createMutation.isError && (
+        <p className="text-xs text-destructive mt-1 text-center">
+          {(createMutation.error as Error).message === 'VALIDATION_ERROR'
+            ? 'Cannot create round — check player count'
+            : 'Could not create round — try again'}
+        </p>
+      )}
+    </div>
   );
 }
 
