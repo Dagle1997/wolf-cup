@@ -26,6 +26,7 @@ import { Hono } from 'hono';
 import attendanceRouter from './attendance.js';
 import adminAttendanceRouter from './admin/attendance.js';
 import adminRoundsRouter from './admin/rounds.js';
+import pairingsRouter from './pairings.js';
 import { db } from '../db/index.js';
 import { seasons, seasonWeeks, players, attendance, subBench, rounds, groups, roundPlayers } from '../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
@@ -38,6 +39,7 @@ const app = new Hono();
 app.route('/api', attendanceRouter);
 app.route('/api/admin', adminAttendanceRouter);
 app.route('/api/admin', adminRoundsRouter);
+app.route('/api', pairingsRouter);
 
 let seasonId: number;
 let weekId: number;
@@ -496,6 +498,55 @@ describe('POST /admin/rounds/from-attendance', () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /pairings/:roundId — public pairings with course handicaps
+// ---------------------------------------------------------------------------
+
+describe('GET /pairings/:roundId', () => {
+  it('returns groups with course handicaps', async () => {
+    // Confirm 4 players and create round
+    for (const id of [player1Id, player2Id, player3Id, player4Id]) {
+      await app.request(`/api/admin/attendance/${weekId}/players/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in' }),
+      });
+    }
+    const createRes = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+    const { round } = (await createRes.json()) as { round: { id: number } };
+
+    const res = await app.request(`/api/pairings/${round.id}`, { method: 'GET' });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      round: { tee: string; handicapUpdatedAt: number; scheduledDate: string };
+      groups: { groupNumber: number; players: { name: string; courseHandicap: number; handicapIndex: number }[] }[];
+    };
+
+    expect(body.round.tee).toBe('blue');
+    expect(body.round.scheduledDate).toBe('2026-04-10');
+    expect(body.round.handicapUpdatedAt).toBeTypeOf('number');
+    expect(body.groups.length).toBe(1);
+    expect(body.groups[0]!.players.length).toBe(4);
+
+    // Verify course handicap is calculated (not same as HI)
+    const alice = body.groups[0]!.players.find((p) => p.name === 'Alice');
+    expect(alice).toBeDefined();
+    expect(alice!.courseHandicap).toBeTypeOf('number');
+    // Alice HI=10.2, blue tees: round(10.2 * (126/113) + (69.9-71)) = round(11.37 - 1.1) = round(10.27) = 10
+    expect(alice!.courseHandicap).toBe(10);
+  });
+
+  it('returns 404 for non-existent round', async () => {
+    const res = await app.request('/api/pairings/99999', { method: 'GET' });
+    expect(res.status).toBe(404);
   });
 });
 

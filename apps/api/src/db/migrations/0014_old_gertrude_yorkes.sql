@@ -1,0 +1,1 @@
+ALTER TABLE `rounds` ADD `handicap_updated_at` integer;

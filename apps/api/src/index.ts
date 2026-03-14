@@ -18,6 +18,7 @@ import adminGhinRouter from './routes/admin/ghin.js';
 import adminPairingRouter from './routes/admin/pairing.js';
 import adminAttendanceRouter from './routes/admin/attendance.js';
 import attendanceRouter from './routes/attendance.js';
+import pairingsRouter from './routes/pairings.js';
 
 export const app = new Hono<{ Variables: Variables }>();
 
@@ -38,6 +39,7 @@ app.route('/api', leaderboardRouter);
 app.route('/api', standingsRouter);
 app.route('/api', statsRouter);
 app.route('/api', attendanceRouter);
+app.route('/api', pairingsRouter);
 
 // ---------------------------------------------------------------------------
 // Admin routes

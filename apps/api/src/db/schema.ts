@@ -108,6 +108,7 @@ export const rounds = sqliteTable(
     tee: text('tee'), // 'black' | 'blue' | 'white' — set by admin at round creation
     autoCalculateMoney: integer('auto_calculate_money').notNull().default(1),
     headcount: integer('headcount'),
+    handicapUpdatedAt: integer('handicap_updated_at'), // timestamp of last HI refresh
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({

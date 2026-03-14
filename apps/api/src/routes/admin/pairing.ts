@@ -148,11 +148,26 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
 
   const result = suggestGroups({ matrix, playerIds, pins: pinMap });
 
-  // Format response with 1-based group numbers
-  const groupsOut = result.groups.map((g, i) => ({
-    groupNumber: i + 1,
-    playerIds: [...g],
-  }));
+  // Format response with 1-based group numbers + pair counts
+  const groupsOut = result.groups.map((g, i) => {
+    const ids = [...g];
+    const pairs: { playerA: number; playerB: number; count: number }[] = [];
+    for (let a = 0; a < ids.length; a++) {
+      for (let b = a + 1; b < ids.length; b++) {
+        const count = matrix.get(pairKey(ids[a]!, ids[b]!)) ?? 0;
+        if (count > 0) {
+          pairs.push({ playerA: ids[a]!, playerB: ids[b]!, count });
+        }
+      }
+    }
+    pairs.sort((a, b) => b.count - a.count);
+    return {
+      groupNumber: i + 1,
+      playerIds: ids,
+      pairCounts: pairs,
+      maxPairCount: pairs[0]?.count ?? 0,
+    };
+  });
 
   return c.json({ groups: groupsOut, remainder: [...result.remainder], totalCost: result.totalCost }, 200);
 });

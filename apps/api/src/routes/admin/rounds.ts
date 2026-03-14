@@ -157,6 +157,7 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
         entryCodeHash,
         tee: tee ?? null,
         autoCalculateMoney: 1,
+        handicapUpdatedAt: Date.now(),
         createdAt: Date.now(),
       })
       .returning();
@@ -752,6 +753,7 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
           entryCodeHash,
           tee: week.tee,
           headcount: confirmedIds.length,
+          handicapUpdatedAt: now,
           createdAt: now,
         })
         .returning();
