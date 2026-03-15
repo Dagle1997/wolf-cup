@@ -147,29 +147,38 @@ function PairingsPage() {
 
       {/* Groups grid — 2 columns for screenshot-friendliness */}
       <div className="grid grid-cols-2 gap-2">
-        {groups.map((group) => (
-          <div
-            key={group.groupNumber}
-            className="rounded-lg border bg-card p-2"
-          >
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              Group {group.groupNumber}
-            </p>
-            {group.players.map((player) => (
-              <div
-                key={player.id}
-                className="flex items-center justify-between py-0.5 text-sm"
-              >
-                <span className={`truncate ${player.isSub ? 'text-blue-600 dark:text-blue-400' : ''}`}>
-                  {player.name}
-                </span>
-                <span className="font-mono text-xs text-muted-foreground ml-2 tabular-nums">
-                  {player.courseHandicap}
-                </span>
+        {groups.map((group) => {
+          const minCH = Math.min(...group.players.map((p) => p.courseHandicap));
+          return (
+            <div
+              key={group.groupNumber}
+              className="rounded-lg border bg-card p-2"
+            >
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Group {group.groupNumber}
+                </p>
+                <p className="text-[10px] text-muted-foreground tabular-nums">
+                  <span className="mr-3">CH</span>SO
+                </p>
               </div>
-            ))}
-          </div>
-        ))}
+              {group.players.map((player) => (
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between py-0.5 text-sm"
+                >
+                  <span className={`truncate ${player.isSub ? 'text-blue-600 dark:text-blue-400' : ''}`}>
+                    {player.name}
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground ml-2 tabular-nums">
+                    <span className="mr-3">{player.courseHandicap}</span>
+                    <span className="text-foreground font-semibold">{player.courseHandicap - minCH}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
 
       {/* Stale indicator + refresh */}
