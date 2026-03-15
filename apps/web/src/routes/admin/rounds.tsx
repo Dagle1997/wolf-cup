@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCw,
   Shuffle,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -48,6 +49,7 @@ type Round = {
   tee: 'black' | 'blue' | 'white' | null;
   autoCalculateMoney: number; // 0 | 1
   headcount: number | null;
+  entryCode: string | null;
   createdAt: number;
   groupCompletion: { total: number; complete: number };
 };
@@ -524,7 +526,22 @@ function RoundRow({
     },
   });
 
-  const isBusy = cancelMutation.isPending || finalizeMutation.isPending;
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<{ deleted: boolean }>(`/admin/rounds/${id}`, { method: 'DELETE' }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-rounds'] }),
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
+  const isBusy = cancelMutation.isPending || finalizeMutation.isPending || deleteMutation.isPending;
+  const canDelete = round.status !== 'finalized';
+
+  function handleDelete() {
+    if (!window.confirm(`Permanently delete round on ${formatDate(round.scheduledDate)}? This cannot be undone.`)) return;
+    deleteMutation.mutate(round.id);
+  }
 
   function handleCancel() {
     if (!window.confirm(`Cancel round on ${formatDate(round.scheduledDate)}? This cannot be undone.`)) return;
@@ -545,6 +562,9 @@ function RoundRow({
         </span>
         {round.tee && (
           <span className="text-xs mt-0.5 block text-muted-foreground capitalize">{round.tee} tees</span>
+        )}
+        {round.entryCode && (
+          <span className="text-xs mt-0.5 block text-muted-foreground">Code: <span className="font-mono font-semibold text-foreground">{round.entryCode}</span></span>
         )}
         {round.status === 'active' && round.type === 'official' && total > 0 && (
           <span className={`text-xs mt-0.5 block ${allComplete ? 'text-green-600' : 'text-muted-foreground'}`}>
@@ -632,6 +652,24 @@ function RoundRow({
                 <Ban className="h-3 w-3" />
               )}
               <span className="ml-1 hidden sm:inline">Cancel</span>
+            </Button>
+          </div>
+        )}
+        {canDelete && (
+          <div className="flex justify-end mt-1">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDelete}
+              disabled={isBusy}
+              aria-label="Delete round"
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Trash2 className="h-3 w-3" />
+              )}
+              <span className="ml-1 hidden sm:inline">Delete</span>
             </Button>
           </div>
         )}

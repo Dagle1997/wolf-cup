@@ -15,6 +15,7 @@ type PairingsResponse = {
     scheduledDate: string;
     tee: string | null;
     status: string;
+    entryCode: string | null;
     handicapUpdatedAt: number | null;
   };
   groups: {
@@ -129,9 +130,15 @@ function PairingsPage() {
         </h1>
         <p className="text-xs text-muted-foreground">
           {teeLabel && <span className={`font-medium ${teeColor}`}>{teeLabel}</span>}
-          {round.handicapUpdatedAt && (
+          {round.entryCode && (
             <>
               {teeLabel && ' · '}
+              Code: <span className="font-mono font-semibold text-foreground">{round.entryCode}</span>
+            </>
+          )}
+          {round.handicapUpdatedAt && (
+            <>
+              {(teeLabel || round.entryCode) && ' · '}
               Updated {formatTimestamp(round.handicapUpdatedAt)}
             </>
           )}

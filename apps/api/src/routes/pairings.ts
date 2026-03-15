@@ -73,6 +73,7 @@ app.get('/pairings/:roundId', async (c) => {
           scheduledDate: round.scheduledDate,
           tee: round.tee,
           status: round.status,
+          entryCode: round.entryCode,
           handicapUpdatedAt: round.handicapUpdatedAt,
         },
         groups: groupsResponse,

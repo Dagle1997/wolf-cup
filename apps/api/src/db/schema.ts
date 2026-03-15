@@ -105,6 +105,7 @@ export const rounds = sqliteTable(
     status: text('status').notNull(), // 'scheduled' | 'active' | 'finalized' | 'cancelled'
     scheduledDate: text('scheduled_date').notNull(), // ISO YYYY-MM-DD
     entryCodeHash: text('entry_code_hash'),
+    entryCode: text('entry_code'), // plain text for admin display
     tee: text('tee'), // 'black' | 'blue' | 'white' — set by admin at round creation
     autoCalculateMoney: integer('auto_calculate_money').notNull().default(1),
     headcount: integer('headcount'),

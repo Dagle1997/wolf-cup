@@ -1,0 +1,1 @@
+ALTER TABLE `rounds` ADD `entry_code` text;

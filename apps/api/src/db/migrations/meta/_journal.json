@@ -113,6 +113,13 @@
       "when": 1773531485886,
       "tag": "0015_oval_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1773536667815,
+      "tag": "0016_early_shotgun",
+      "breakpoints": true
     }
   ]
 }

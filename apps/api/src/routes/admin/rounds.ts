@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { eq, and, desc, countDistinct, sql } from 'drizzle-orm';
+import { eq, and, desc, countDistinct, sql, inArray } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import {
   createRoundSchema,
@@ -170,6 +170,7 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
         scheduledDate,
         status: 'scheduled',
         entryCodeHash,
+        entryCode: entryCode ?? null,
         tee: tee ?? null,
         autoCalculateMoney: 1,
         handicapUpdatedAt: Date.now(),
@@ -243,14 +244,16 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
   if (result.data.entryCode !== undefined) {
     try {
       updates.entryCodeHash = await bcrypt.hash(result.data.entryCode, 10);
+      updates.entryCode = result.data.entryCode;
     } catch {
       return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
     }
   }
 
-  // Cancellation also clears the entry code hash (NFR23)
+  // Cancellation also clears the entry code (NFR23)
   if (updates.status === 'cancelled') {
     updates.entryCodeHash = null;
+    updates.entryCode = null;
   }
 
   try {
@@ -265,6 +268,49 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
       return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
     }
     return c.json({ round: toRoundResponse(round) }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /rounds/:id — permanently delete a round and all dependent data
+// ---------------------------------------------------------------------------
+
+app.delete('/rounds/:id', adminAuthMiddleware, async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  try {
+    const round = await db
+      .select({ id: rounds.id, status: rounds.status, scheduledDate: rounds.scheduledDate })
+      .from(rounds)
+      .where(eq(rounds.id, id))
+      .get();
+
+    if (!round) {
+      return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    if (round.status === 'finalized') {
+      return c.json({ error: 'Cannot delete a finalized round', code: 'VALIDATION_ERROR' }, 422);
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(scoreCorrections).where(eq(scoreCorrections.roundId, id));
+      await tx.delete(wolfDecisions).where(eq(wolfDecisions.roundId, id));
+      await tx.delete(harveyResults).where(eq(harveyResults.roundId, id));
+      await tx.delete(roundResults).where(eq(roundResults.roundId, id));
+      await tx.delete(holeScores).where(eq(holeScores.roundId, id));
+      await tx.delete(roundPlayers).where(eq(roundPlayers.roundId, id));
+      await tx.delete(groups).where(eq(groups.roundId, id));
+      await tx.delete(sideGameResults).where(eq(sideGameResults.roundId, id));
+      await tx.delete(rounds).where(eq(rounds.id, id));
+    });
+
+    return c.json({ deleted: true }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
@@ -927,6 +973,7 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
           status: 'scheduled',
           scheduledDate: week.friday,
           entryCodeHash,
+          entryCode,
           tee: week.tee,
           headcount: confirmedIds.length,
           handicapUpdatedAt: now,
