@@ -918,15 +918,18 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
   const assignedPlayerIds = new Set(roundPlayerList.map((p) => p.playerId));
   const nextGroupNumber = groupList.length + 1;
 
-  // Initialize checkedIds from roster on first load (all active non-guest checked)
+  // Initialize checkedIds: if players are already assigned to the round, default
+  // to just those; otherwise default to all active roster players
   if (checkedIds === null && roster.length > 0) {
-    // Use a microtask to avoid setting state during render
-    const initialIds = new Set(roster.map((p) => p.id));
-    // We use a ref-like pattern: set immediately since this is the init path
+    const initialIds = assignedPlayerIds.size > 0
+      ? new Set(assignedPlayerIds)
+      : new Set(roster.map((p) => p.id));
     queueMicrotask(() => setCheckedIds(initialIds));
   }
 
-  const effectiveCheckedIds = checkedIds ?? new Set(roster.map((p) => p.id));
+  const effectiveCheckedIds = checkedIds ?? (assignedPlayerIds.size > 0
+    ? new Set(assignedPlayerIds)
+    : new Set(roster.map((p) => p.id)));
 
   // Pool = checked roster players + subs
   const totalPlayers = effectiveCheckedIds.size + subs.length;

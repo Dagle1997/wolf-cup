@@ -430,12 +430,11 @@ app.post('/players/refresh-handicaps', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /rounds — list scheduled/active rounds within ±1-day window of today
+// GET /rounds — list scheduled/active rounds (past day through future)
 // ---------------------------------------------------------------------------
 
 app.get('/rounds', async (c) => {
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
 
   try {
     const rows = await db
@@ -451,7 +450,6 @@ app.get('/rounds', async (c) => {
       .where(
         and(
           gte(rounds.scheduledDate, yesterday),
-          lte(rounds.scheduledDate, tomorrow),
           inArray(rounds.status, ['scheduled', 'active']),
         ),
       )
