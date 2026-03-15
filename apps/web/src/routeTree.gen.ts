@@ -15,10 +15,12 @@ import { Route as ScoreEntryHoleRouteImport } from './routes/score-entry-hole'
 import { Route as ScoreEntryRouteImport } from './routes/score-entry'
 import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as BallDrawRouteImport } from './routes/ball-draw'
+import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as RoundRoundIdRouteImport } from './routes/round.$roundId'
+import { Route as PairingsRoundIdRouteImport } from './routes/pairings.$roundId'
 import { Route as AdminSeasonRouteImport } from './routes/admin/season'
 import { Route as AdminScoreCorrectionsRouteImport } from './routes/admin/score-corrections'
 import { Route as AdminRoundsRouteImport } from './routes/admin/rounds'
@@ -55,6 +57,11 @@ const BallDrawRoute = BallDrawRouteImport.update({
   path: '/ball-draw',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AttendanceRoute = AttendanceRouteImport.update({
+  id: '/attendance',
+  path: '/attendance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -73,6 +80,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const RoundRoundIdRoute = RoundRoundIdRouteImport.update({
   id: '/round/$roundId',
   path: '/round/$roundId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PairingsRoundIdRoute = PairingsRoundIdRouteImport.update({
+  id: '/pairings/$roundId',
+  path: '/pairings/$roundId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminSeasonRoute = AdminSeasonRouteImport.update({
@@ -104,6 +116,7 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
@@ -115,11 +128,13 @@ export interface FileRoutesByFullPath {
   '/admin/rounds': typeof AdminRoundsRoute
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
   '/admin/season': typeof AdminSeasonRoute
+  '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
@@ -131,6 +146,7 @@ export interface FileRoutesByTo {
   '/admin/rounds': typeof AdminRoundsRoute
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
   '/admin/season': typeof AdminSeasonRoute
+  '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -138,6 +154,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
@@ -149,6 +166,7 @@ export interface FileRoutesById {
   '/admin/rounds': typeof AdminRoundsRoute
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
   '/admin/season': typeof AdminSeasonRoute
+  '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -157,6 +175,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/attendance'
     | '/ball-draw'
     | '/practice'
     | '/score-entry'
@@ -168,11 +187,13 @@ export interface FileRouteTypes {
     | '/admin/rounds'
     | '/admin/score-corrections'
     | '/admin/season'
+    | '/pairings/$roundId'
     | '/round/$roundId'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/attendance'
     | '/ball-draw'
     | '/practice'
     | '/score-entry'
@@ -184,12 +205,14 @@ export interface FileRouteTypes {
     | '/admin/rounds'
     | '/admin/score-corrections'
     | '/admin/season'
+    | '/pairings/$roundId'
     | '/round/$roundId'
     | '/admin'
   id:
     | '__root__'
     | '/'
     | '/admin'
+    | '/attendance'
     | '/ball-draw'
     | '/practice'
     | '/score-entry'
@@ -201,6 +224,7 @@ export interface FileRouteTypes {
     | '/admin/rounds'
     | '/admin/score-corrections'
     | '/admin/season'
+    | '/pairings/$roundId'
     | '/round/$roundId'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -208,12 +232,14 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  AttendanceRoute: typeof AttendanceRoute
   BallDrawRoute: typeof BallDrawRoute
   PracticeRoute: typeof PracticeRoute
   ScoreEntryRoute: typeof ScoreEntryRoute
   ScoreEntryHoleRoute: typeof ScoreEntryHoleRoute
   StandingsRoute: typeof StandingsRoute
   StatsRoute: typeof StatsRoute
+  PairingsRoundIdRoute: typeof PairingsRoundIdRoute
   RoundRoundIdRoute: typeof RoundRoundIdRoute
 }
 
@@ -261,6 +287,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BallDrawRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/attendance': {
+      id: '/attendance'
+      path: '/attendance'
+      fullPath: '/attendance'
+      preLoaderRoute: typeof AttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -287,6 +320,13 @@ declare module '@tanstack/react-router' {
       path: '/round/$roundId'
       fullPath: '/round/$roundId'
       preLoaderRoute: typeof RoundRoundIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pairings/$roundId': {
+      id: '/pairings/$roundId'
+      path: '/pairings/$roundId'
+      fullPath: '/pairings/$roundId'
+      preLoaderRoute: typeof PairingsRoundIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/season': {
@@ -350,12 +390,14 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  AttendanceRoute: AttendanceRoute,
   BallDrawRoute: BallDrawRoute,
   PracticeRoute: PracticeRoute,
   ScoreEntryRoute: ScoreEntryRoute,
   ScoreEntryHoleRoute: ScoreEntryHoleRoute,
   StandingsRoute: StandingsRoute,
   StatsRoute: StatsRoute,
+  PairingsRoundIdRoute: PairingsRoundIdRoute,
   RoundRoundIdRoute: RoundRoundIdRoute,
 }
 export const routeTree = rootRouteImport

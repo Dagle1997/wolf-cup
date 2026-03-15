@@ -1,10 +1,11 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   Loader2,
   Plus,
   RefreshCw,
@@ -260,6 +261,11 @@ function AttendancePage() {
             ))}
           </div>
 
+          {/* View Groups link — show when a round exists for this week */}
+          {activeData.week && (
+            <ViewGroupsLink friday={activeData.week.friday} />
+          )}
+
           {/* Create Round (admin only) */}
           {isAdmin && activeData.week && (
             <CreateRoundButton
@@ -346,6 +352,34 @@ function PlayerRow({
         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
       )}
     </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// View Groups Link
+// ---------------------------------------------------------------------------
+
+function ViewGroupsLink({ friday }: { friday: string }) {
+  const roundsQuery = useQuery({
+    queryKey: ['rounds-for-week', friday],
+    queryFn: () => apiFetch<{ items: { id: number; scheduledDate: string; status: string }[] }>('/rounds'),
+  });
+
+  const round = roundsQuery.data?.items.find(
+    (r) => r.scheduledDate === friday && (r.status === 'scheduled' || r.status === 'active'),
+  );
+
+  if (!round) return null;
+
+  return (
+    <div className="mt-3">
+      <Link to={`/pairings/${round.id}`}>
+        <Button variant="outline" size="sm" className="w-full">
+          <ExternalLink className="h-4 w-4 mr-2" />
+          View Groups
+        </Button>
+      </Link>
+    </div>
   );
 }
 

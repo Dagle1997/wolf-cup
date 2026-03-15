@@ -154,25 +154,26 @@ function PairingsPage() {
               key={group.groupNumber}
               className="rounded-lg border bg-card p-2"
             >
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="flex items-center mb-1">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex-1">
                   Group {group.groupNumber}
                 </p>
-                <p className="text-[10px] text-muted-foreground tabular-nums">
-                  <span className="mr-3">CH</span>SO
-                </p>
+                <span className="text-[10px] text-muted-foreground w-7 text-right">CH</span>
+                <span className="text-[10px] text-muted-foreground w-7 text-right">SO</span>
               </div>
               {group.players.map((player) => (
                 <div
                   key={player.id}
-                  className="flex items-center justify-between py-0.5 text-sm"
+                  className="flex items-center py-0.5 text-sm"
                 >
-                  <span className={`truncate ${player.isSub ? 'text-blue-600 dark:text-blue-400' : ''}`}>
+                  <span className={`flex-1 truncate ${player.isSub ? 'text-blue-600 dark:text-blue-400' : ''}`}>
                     {player.name}
                   </span>
-                  <span className="font-mono text-xs text-muted-foreground ml-2 tabular-nums">
-                    <span className="mr-3">{player.courseHandicap}</span>
-                    <span className="text-foreground font-semibold">{player.courseHandicap - minCH}</span>
+                  <span className="font-mono text-xs text-muted-foreground w-7 text-right tabular-nums">
+                    {player.courseHandicap}
+                  </span>
+                  <span className="font-mono text-xs text-foreground font-semibold w-7 text-right tabular-nums">
+                    {player.courseHandicap - minCH}
                   </span>
                 </div>
               ))}
