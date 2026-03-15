@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ExternalLink,
   Lock,
   Loader2,
   Pencil,
@@ -605,6 +606,17 @@ function RoundRow({
                 <span className="ml-1 hidden sm:inline">Finalize</span>
               </Button>
             )}
+            <Link to={`/pairings/${round.id}`} target="_blank">
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="View pairings"
+                title="Open public pairings page"
+              >
+                <ExternalLink className="h-3 w-3" />
+                <span className="ml-1 hidden sm:inline">Pairings</span>
+              </Button>
+            </Link>
             <Button
               variant="outline"
               size="sm"
