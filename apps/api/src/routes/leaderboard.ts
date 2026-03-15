@@ -37,6 +37,7 @@ type LeaderboardPlayer = {
   moneyRank: number;
   harveyStableford: number | null;
   harveyMoney: number | null;
+  harveyTotal: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -260,7 +261,19 @@ app.get('/leaderboard/live', async (c) => {
       })),
     );
 
-    // Step 9: Assemble and sort by rank (netToPar ascending)
+    // Step 9: Compute Harvey totals and determine primary rank
+    // When Harvey is enabled, rank by harveyTotal (desc); otherwise by netToPar (asc)
+    const harveyTotalMap = new Map<number, number>();
+    if (harveyLiveEnabled) {
+      for (const p of playerRows) {
+        const h = harveyMap.get(p.playerId);
+        harveyTotalMap.set(p.playerId, h ? h.stablefordPoints + h.moneyPoints : 0);
+      }
+    }
+    const primaryRanks = harveyLiveEnabled
+      ? assignRanks(playerRows.map((p) => ({ playerId: p.playerId, total: harveyTotalMap.get(p.playerId) ?? 0 })))
+      : netToParRanks;
+
     const leaderboard: LeaderboardPlayer[] = playerRows
       .map((p) => {
         const result = resultMap.get(p.playerId);
@@ -277,11 +290,12 @@ app.get('/leaderboard/live', async (c) => {
           netToPar: stats?.netToPar ?? 0,
           stablefordTotal: result?.stablefordTotal ?? 0,
           moneyTotal: result?.moneyTotal ?? 0,
-          rank: netToParRanks.get(p.playerId) ?? playerRows.length,
+          rank: primaryRanks.get(p.playerId) ?? playerRows.length,
           stablefordRank: stablefordRanks.get(p.playerId) ?? playerRows.length,
           moneyRank: moneyRanks.get(p.playerId) ?? playerRows.length,
           harveyStableford: harveyLiveEnabled ? (harvey?.stablefordPoints ?? null) : null,
           harveyMoney: harveyLiveEnabled ? (harvey?.moneyPoints ?? null) : null,
+          harveyTotal: harveyLiveEnabled ? (harveyTotalMap.get(p.playerId) ?? null) : null,
         };
       })
       .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));

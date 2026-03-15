@@ -25,6 +25,7 @@ type LeaderboardPlayer = {
   moneyRank: number;
   harveyStableford: number | null;
   harveyMoney: number | null;
+  harveyTotal: number | null;
 };
 
 type LeaderboardResponse = {
@@ -493,7 +494,7 @@ function LeaderboardPage() {
     return () => clearInterval(interval);
   }, [data?.lastUpdated]);
 
-  const colCount = data?.harveyLiveEnabled ? 7 : 5;
+  const colCount = data?.harveyLiveEnabled ? 6 : 5;
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
@@ -570,8 +571,7 @@ function LeaderboardPage() {
                   <th className="text-right py-2 pr-2 w-14">To Par</th>
                   <th className="text-right py-2 pr-2 w-12">Pts</th>
                   <th className="text-right py-2 pr-3 w-16">$</th>
-                  {data.harveyLiveEnabled && <th className="text-right py-2 pr-2 w-12">H.Pts</th>}
-                  {data.harveyLiveEnabled && <th className="text-right py-2 pr-3 w-12">H.$</th>}
+                  {data.harveyLiveEnabled && <th className="text-right py-2 pr-3 w-14">Harvey</th>}
                 </tr>
               </thead>
               <tbody>
@@ -615,20 +615,11 @@ function LeaderboardPage() {
                           {formatMoney(player.moneyTotal)}
                         </td>
                         {data.harveyLiveEnabled && (
-                          <td className="py-2.5 pr-2 text-right tabular-nums">
-                            {player.harveyStableford !== null
-                              ? (typeof player.harveyStableford === 'number' && !Number.isInteger(player.harveyStableford)
-                                  ? player.harveyStableford.toFixed(1)
-                                  : player.harveyStableford)
-                              : '—'}
-                          </td>
-                        )}
-                        {data.harveyLiveEnabled && (
-                          <td className="py-2.5 pr-3 text-right tabular-nums">
-                            {player.harveyMoney !== null
-                              ? (typeof player.harveyMoney === 'number' && !Number.isInteger(player.harveyMoney)
-                                  ? player.harveyMoney.toFixed(1)
-                                  : player.harveyMoney)
+                          <td className="py-2.5 pr-3 text-right tabular-nums font-medium">
+                            {player.harveyTotal !== null
+                              ? (typeof player.harveyTotal === 'number' && !Number.isInteger(player.harveyTotal)
+                                  ? player.harveyTotal.toFixed(1)
+                                  : player.harveyTotal)
                               : '—'}
                           </td>
                         )}

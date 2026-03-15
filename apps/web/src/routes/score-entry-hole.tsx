@@ -692,7 +692,7 @@ function ScoreEntryHolePage() {
         <div className="grid grid-cols-2 gap-2 mb-3">
           {orderedPlayers.map((player, idx) => (
             <div key={player.id} className="border rounded-xl p-3 bg-card">
-              <div className="text-xs font-semibold text-muted-foreground mb-2 truncate">{player.name}</div>
+              <div className="text-xs font-semibold text-muted-foreground mb-2 truncate"><span className="text-[10px] text-muted-foreground/60 mr-1">{idx + 1}.</span>{player.name}</div>
               <input
                 ref={(el) => { scoreInputRefs.current[idx] = el; }}
                 type="text"
