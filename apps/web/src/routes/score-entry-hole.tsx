@@ -576,23 +576,30 @@ function ScoreEntryHolePage() {
               <tr className="border-b">
                 <th className="text-left py-2 pr-3">Player</th>
                 <th className="text-right py-2 pr-3">Gross</th>
-                <th className="text-right py-2 pr-3">Stableford</th>
-                <th className="text-right py-2">Money</th>
+                <th className="text-right py-2 pr-3">Pts</th>
+                <th className="text-right py-2 pr-3">$</th>
+                <th className="text-right py-2">Total</th>
               </tr>
             </thead>
             <tbody>
-              {summaryRows.map(({ player, grossTotal, stablefordTotal, moneyTotal }) => (
-                <tr key={player.id} className="border-b last:border-0">
-                  <td className="py-2 pr-3">{player.name}</td>
-                  <td className="py-2 pr-3 text-right">{grossTotal}</td>
-                  <td className="py-2 pr-3 text-right">
-                    {stablefordTotal !== undefined ? stablefordTotal : '—'}
-                  </td>
-                  <td className="py-2 text-right">
-                    {moneyTotal !== undefined ? formatMoney(moneyTotal) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {summaryRows.map(({ player, grossTotal, stablefordTotal, moneyTotal }) => {
+                const total = (stablefordTotal ?? 0) + (moneyTotal ?? 0);
+                return (
+                  <tr key={player.id} className="border-b last:border-0">
+                    <td className="py-2 pr-3">{player.name}</td>
+                    <td className="py-2 pr-3 text-right">{grossTotal}</td>
+                    <td className="py-2 pr-3 text-right">
+                      {stablefordTotal !== undefined ? stablefordTotal : '—'}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      {moneyTotal !== undefined ? formatMoney(moneyTotal) : '—'}
+                    </td>
+                    <td className="py-2 text-right font-semibold">
+                      {stablefordTotal !== undefined ? total : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
