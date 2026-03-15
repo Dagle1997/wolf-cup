@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, inArray, desc } from 'drizzle-orm';
+import { eq, and, or, inArray, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   rounds,
@@ -74,6 +74,8 @@ function assignRanksAsc(items: { playerId: number; total: number }[]): Map<numbe
 app.get('/leaderboard/live', async (c) => {
   try {
     // Step 1: Find today's scheduled or active round
+    // Active rounds always show (even if date doesn't match — supports testing
+    // and late-night scoring). Scheduled rounds only show on their date.
     const TODAY = new Date().toISOString().slice(0, 10);
     const round = await db
       .select({
@@ -86,9 +88,12 @@ app.get('/leaderboard/live', async (c) => {
       })
       .from(rounds)
       .where(
-        and(
-          eq(rounds.scheduledDate, TODAY),
-          inArray(rounds.status, ['scheduled', 'active']),
+        or(
+          eq(rounds.status, 'active'),
+          and(
+            eq(rounds.scheduledDate, TODAY),
+            eq(rounds.status, 'scheduled'),
+          ),
         ),
       )
       .orderBy(desc(rounds.id))
