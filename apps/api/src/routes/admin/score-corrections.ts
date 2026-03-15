@@ -7,8 +7,10 @@ import {
   applyBonusModifiers,
   getHandicapStrokes,
   getWolfAssignment,
+  calcCourseHandicap,
 } from '@wolf-cup/engine';
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
+import type { Tee } from '@wolf-cup/engine';
 import { db } from '../../db/index.js';
 import {
   admins,
@@ -64,7 +66,7 @@ function buildBonusInput(bonusesJson: string | null, battingOrder: number[]): Bo
 // rescoreGroup — recalculate Stableford + money and write to round_results
 // ---------------------------------------------------------------------------
 
-async function rescoreGroup(roundId: number, groupId: number): Promise<void> {
+async function rescoreGroup(roundId: number, groupId: number, tee: Tee = 'blue'): Promise<void> {
   const group = await db
     .select({ battingOrder: groups.battingOrder })
     .from(groups)
@@ -93,10 +95,14 @@ async function rescoreGroup(roundId: number, groupId: number): Promise<void> {
       .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId))),
   ]);
 
-  // Stableford uses full HI; money uses relative ("play off the low man")
+  // Stableford uses full HI; money uses relative course handicaps ("play off the low man")
   const fullHandicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex]));
-  const minHI = Math.min(...handicapRows.map((r) => r.handicapIndex));
-  const handicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex - minHI]));
+  const courseHandicaps = handicapRows.map((r) => ({
+    playerId: r.playerId,
+    courseHandicap: calcCourseHandicap(r.handicapIndex, tee),
+  }));
+  const minCH = Math.min(...courseHandicaps.map((r) => r.courseHandicap));
+  const handicapMap = new Map(courseHandicaps.map((r) => [r.playerId, r.courseHandicap - minCH]));
 
   // Recalculate Stableford
   const stablefordTotals = new Map<number, number>();
@@ -194,7 +200,7 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
   }
 
   const round = await db
-    .select({ id: rounds.id, status: rounds.status })
+    .select({ id: rounds.id, status: rounds.status, tee: rounds.tee })
     .from(rounds)
     .where(eq(rounds.id, roundId))
     .get();
@@ -371,7 +377,7 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
   }
 
   // Rescore the affected group then write audit log
-  await rescoreGroup(roundId, rescoreGroupId!);
+  await rescoreGroup(roundId, rescoreGroupId!, (round.tee as Tee) ?? 'blue');
   const [correction] = await db
     .insert(scoreCorrections)
     .values({

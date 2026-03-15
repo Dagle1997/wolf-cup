@@ -8,8 +8,10 @@ import {
   calculateHoleMoney,
   applyBonusModifiers,
   getHandicapStrokes,
+  calcCourseHandicap,
 } from '@wolf-cup/engine';
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
+import type { Tee } from '@wolf-cup/engine';
 import { db } from '../db/index.js';
 import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults } from '../db/schema.js';
 import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema, createPracticeRoundSchema } from '../schemas/round.js';
@@ -65,7 +67,7 @@ type DbWolfDecision = {
   bonusesJson: string | null;
 };
 
-async function recalculateMoney(roundId: number, groupId: number): Promise<Map<number, number>> {
+async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'blue'): Promise<Map<number, number>> {
   const group = await db
     .select({ battingOrder: groups.battingOrder })
     .from(groups)
@@ -106,9 +108,13 @@ async function recalculateMoney(roundId: number, groupId: number): Promise<Map<n
     decisionByHole.set(row.holeNumber, row);
   }
 
-  // Relative handicaps: subtract group's lowest HI ("play off the low man")
-  const minHI = Math.min(...handicapRows.map((r) => r.handicapIndex));
-  const handicapMap = new Map(handicapRows.map((r) => [r.playerId, r.handicapIndex - minHI]));
+  // Relative handicaps: convert HI → course handicap, then subtract group's lowest ("play off the low man")
+  const courseHandicaps = handicapRows.map((r) => ({
+    playerId: r.playerId,
+    courseHandicap: calcCourseHandicap(r.handicapIndex, tee),
+  }));
+  const minCH = Math.min(...courseHandicaps.map((r) => r.courseHandicap));
+  const handicapMap = new Map(courseHandicaps.map((r) => [r.playerId, r.courseHandicap - minCH]));
 
   const playerMoneyTotals = new Map<number, number>();
 
@@ -1057,10 +1063,10 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
   }
 
   // Fetch round
-  let round: { id: number; type: string; status: string; entryCodeHash: string | null } | undefined;
+  let round: { id: number; type: string; status: string; entryCodeHash: string | null; tee: string | null } | undefined;
   try {
     round = await db
-      .select({ id: rounds.id, type: rounds.type, status: rounds.status, entryCodeHash: rounds.entryCodeHash })
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status, entryCodeHash: rounds.entryCodeHash, tee: rounds.tee })
       .from(rounds)
       .where(eq(rounds.id, roundId))
       .get();
@@ -1213,7 +1219,7 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
   // Recalculate money totals for all holes in this group
   let playerMoneyTotals: Map<number, number>;
   try {
-    playerMoneyTotals = await recalculateMoney(roundId, groupId);
+    playerMoneyTotals = await recalculateMoney(roundId, groupId, (round.tee as Tee) ?? 'blue');
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
@@ -1519,11 +1525,12 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
 
   // Look up round
   const round = await db
-    .select({ autoCalculateMoney: rounds.autoCalculateMoney })
+    .select({ autoCalculateMoney: rounds.autoCalculateMoney, tee: rounds.tee })
     .from(rounds)
     .where(eq(rounds.id, roundId))
     .get();
   if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  const roundTee = (round.tee as Tee) ?? 'blue';
 
   // Look up player in round → get groupId and handicapIndex
   const rp = await db
@@ -1571,9 +1578,14 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
   ]);
 
   // Relative handicaps for money calculations ("play off the low man")
-  const minHI = allHandicaps.length > 0 ? Math.min(...allHandicaps.map((r) => r.handicapIndex)) : 0;
-  const relativeHandicapMap = new Map(allHandicaps.map((r) => [r.playerId, r.handicapIndex - minHI]));
-  const relativeHI = handicapIndex - minHI;
+  // Convert HI → course handicap first, then subtract lowest
+  const allCourseHandicaps = allHandicaps.map((r) => ({
+    playerId: r.playerId,
+    courseHandicap: calcCourseHandicap(r.handicapIndex, roundTee),
+  }));
+  const minCH = allCourseHandicaps.length > 0 ? Math.min(...allCourseHandicaps.map((r) => r.courseHandicap)) : 0;
+  const relativeHandicapMap = new Map(allCourseHandicaps.map((r) => [r.playerId, r.courseHandicap - minCH]));
+  const relativeHI = calcCourseHandicap(handicapIndex, roundTee) - minCH;
 
   const scoresByHole = new Map<number, Map<number, number>>();
   for (const row of allScores) {
