@@ -166,6 +166,7 @@ async function getRoundDetail(roundId: number) {
   const round = await db
     .select({
       id: rounds.id,
+      seasonId: rounds.seasonId,
       type: rounds.type,
       status: rounds.status,
       scheduledDate: rounds.scheduledDate,
@@ -176,6 +177,14 @@ async function getRoundDetail(roundId: number) {
     .get();
 
   if (!round) return null;
+
+  // Compute per-season round number
+  const seasonRounds = await db
+    .select({ id: rounds.id, scheduledDate: rounds.scheduledDate })
+    .from(rounds)
+    .where(and(eq(rounds.seasonId, round.seasonId), sql`${rounds.status} != 'cancelled'`))
+    .orderBy(rounds.scheduledDate, rounds.id);
+  const roundNumber = seasonRounds.findIndex((r) => r.id === round.id) + 1;
 
   const roundGroups = await db
     .select({ id: groups.id, groupNumber: groups.groupNumber, battingOrder: groups.battingOrder })
@@ -207,6 +216,7 @@ async function getRoundDetail(roundId: number) {
 
   return {
     id: round.id,
+    roundNumber,
     type: round.type,
     status: round.status,
     scheduledDate: round.scheduledDate,
@@ -431,6 +441,7 @@ app.get('/rounds', async (c) => {
     const rows = await db
       .select({
         id: rounds.id,
+        seasonId: rounds.seasonId,
         type: rounds.type,
         status: rounds.status,
         scheduledDate: rounds.scheduledDate,
@@ -446,8 +457,21 @@ app.get('/rounds', async (c) => {
       )
       .orderBy(desc(rounds.scheduledDate));
 
+    // Compute per-season round numbers for each unique season
+    const seasonIds = [...new Set(rows.map((r) => r.seasonId))];
+    const roundNumberMap = new Map<number, number>();
+    for (const sid of seasonIds) {
+      const seasonRounds = await db
+        .select({ id: rounds.id })
+        .from(rounds)
+        .where(and(eq(rounds.seasonId, sid), sql`${rounds.status} != 'cancelled'`))
+        .orderBy(rounds.scheduledDate, rounds.id);
+      seasonRounds.forEach((sr, i) => roundNumberMap.set(sr.id, i + 1));
+    }
+
     const items = rows.map((r) => ({
       ...r,
+      roundNumber: roundNumberMap.get(r.id) ?? null,
       autoCalculateMoney: Boolean(r.autoCalculateMoney),
     }));
 

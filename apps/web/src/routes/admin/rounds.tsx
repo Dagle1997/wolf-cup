@@ -41,6 +41,7 @@ type Season = {
 type Round = {
   id: number;
   seasonId: number;
+  roundNumber: number | null;
   type: 'official' | 'casual';
   status: 'scheduled' | 'active' | 'finalized' | 'cancelled';
   scheduledDate: string;
@@ -540,7 +541,7 @@ function RoundRow({
       <td className="py-2 px-3 font-medium">
         <span className="flex items-center gap-1.5">
           <CalendarDays className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          {formatDate(round.scheduledDate)}
+          {round.roundNumber ? `R${round.roundNumber} · ` : ''}{formatDate(round.scheduledDate)}
         </span>
         {round.tee && (
           <span className="text-xs mt-0.5 block text-muted-foreground capitalize">{round.tee} tees</span>

@@ -86,8 +86,21 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
       completionMap.set(g.roundId, entry);
     }
 
+    // Compute per-season round numbers (ordered by scheduledDate, excluding cancelled)
+    const roundNumberMap = new Map<number, number>();
+    const bySeasonDate = [...allRounds]
+      .filter((r) => r.status !== 'cancelled')
+      .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate) || a.id - b.id);
+    const seasonCounters = new Map<number, number>();
+    for (const r of bySeasonDate) {
+      const n = (seasonCounters.get(r.seasonId) ?? 0) + 1;
+      seasonCounters.set(r.seasonId, n);
+      roundNumberMap.set(r.id, n);
+    }
+
     const items = allRounds.map((r) => ({
       ...toRoundResponse(r),
+      roundNumber: roundNumberMap.get(r.id) ?? null,
       groupCompletion: completionMap.get(r.id) ?? { total: 0, complete: 0 },
     }));
 

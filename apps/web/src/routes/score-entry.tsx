@@ -110,7 +110,7 @@ function ScoreEntryPage() {
           {round?.type === 'official' ? 'Official round joined' : 'Joined casual round — ready to begin'}
         </h2>
         <p className="text-muted-foreground text-sm text-center">
-          {round?.scheduledDate} · Round #{joined.roundId}
+          {round?.scheduledDate}{round?.roundNumber ? ` · Round #${round.roundNumber}` : ''}
         </p>
         {canResumeDirectly ? (
           <Link to="/score-entry-hole" className="mt-4 w-full max-w-xs">
