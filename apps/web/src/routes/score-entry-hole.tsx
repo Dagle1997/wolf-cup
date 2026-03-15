@@ -727,6 +727,65 @@ function ScoreEntryHolePage() {
           ))}
         </div>
 
+        {/* Bonuses — compact chip grid (Greenie on par-3s, Polie on wolf holes 3+) */}
+        {roundData.autoCalculateMoney && currentHole >= 3 && (
+          <div className="border rounded-xl p-3 mb-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
+              Bonuses
+            </p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+              {orderedPlayers.map((p) => (
+                <div key={p.id} className="flex items-center gap-2">
+                  <span className="flex-1 text-sm font-medium truncate min-w-0">
+                    {p.name.split(' ')[0]}
+                  </span>
+                  {PAR3_HOLES.has(currentHole) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const s = new Set(currentGreenies);
+                        if (s.has(p.id)) s.delete(p.id);
+                        else s.add(p.id);
+                        setCurrentGreenies(s);
+                      }}
+                      className={cn(
+                        'w-8 h-8 rounded-lg text-xs font-bold border transition-colors',
+                        currentGreenies.has(p.id)
+                          ? 'bg-green-600 text-white border-green-600'
+                          : 'border-border text-muted-foreground hover:border-green-400',
+                      )}
+                      title={`Greenie — ${p.name}`}
+                    >
+                      G
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const s = new Set(currentPolies);
+                      if (s.has(p.id)) s.delete(p.id);
+                      else s.add(p.id);
+                      setCurrentPolies(s);
+                    }}
+                    className={cn(
+                      'w-8 h-8 rounded-lg text-xs font-bold border transition-colors',
+                      currentPolies.has(p.id)
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'border-border text-muted-foreground hover:border-blue-400',
+                    )}
+                    title={`Polie — ${p.name}`}
+                  >
+                    P
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/50 mt-2">
+              {PAR3_HOLES.has(currentHole) ? 'G = Greenie · ' : ''}P = Polie
+            </p>
+          </div>
+        )}
+
         {/* Wolf decision (holes 3-18, autoCalculateMoney=true) */}
         {isWolfHole && (
           <div className={cn('border rounded-xl p-3 mb-3', !wolfDecisionValid && 'border-amber-400')}>
@@ -821,65 +880,6 @@ function ScoreEntryHolePage() {
                 Blind Wolf
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Bonuses — compact chip grid (Greenie on par-3s, Polie on wolf holes 3+) */}
-        {roundData.autoCalculateMoney && currentHole >= 3 && (
-          <div className="border rounded-xl p-3 mb-3">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
-              Bonuses
-            </p>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-              {orderedPlayers.map((p) => (
-                <div key={p.id} className="flex items-center gap-2">
-                  <span className="flex-1 text-sm font-medium truncate min-w-0">
-                    {p.name.split(' ')[0]}
-                  </span>
-                  {PAR3_HOLES.has(currentHole) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const s = new Set(currentGreenies);
-                        if (s.has(p.id)) s.delete(p.id);
-                        else s.add(p.id);
-                        setCurrentGreenies(s);
-                      }}
-                      className={cn(
-                        'w-8 h-8 rounded-lg text-xs font-bold border transition-colors',
-                        currentGreenies.has(p.id)
-                          ? 'bg-green-600 text-white border-green-600'
-                          : 'border-border text-muted-foreground hover:border-green-400',
-                      )}
-                      title={`Greenie — ${p.name}`}
-                    >
-                      G
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const s = new Set(currentPolies);
-                      if (s.has(p.id)) s.delete(p.id);
-                      else s.add(p.id);
-                      setCurrentPolies(s);
-                    }}
-                    className={cn(
-                      'w-8 h-8 rounded-lg text-xs font-bold border transition-colors',
-                      currentPolies.has(p.id)
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'border-border text-muted-foreground hover:border-blue-400',
-                    )}
-                    title={`Polie — ${p.name}`}
-                  >
-                    P
-                  </button>
-                </div>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground/50 mt-2">
-              {PAR3_HOLES.has(currentHole) ? 'G = Greenie · ' : ''}P = Polie
-            </p>
           </div>
         )}
 
