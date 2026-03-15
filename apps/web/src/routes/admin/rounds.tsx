@@ -433,50 +433,35 @@ function RoundsTable({ rounds }: { rounds: Round[] }) {
   }
 
   return (
-    <div className="rounded-md border overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-muted/50">
-            <th className="py-2 px-3 text-left font-medium text-muted-foreground">Date</th>
-            <th className="py-2 px-3 text-left font-medium text-muted-foreground">Type</th>
-            <th className="py-2 px-3 text-left font-medium text-muted-foreground">Status</th>
-            <th className="py-2 px-3 text-left font-medium text-muted-foreground">Auto-$</th>
-            <th className="py-2 px-3" />
-          </tr>
-        </thead>
-        <tbody>
-          {rounds.map((r) => (
-            <Fragment key={r.id}>
-              {editingId === r.id ? (
-                <EditRow round={r} onClose={() => setEditingId(null)} />
-              ) : (
-                <RoundRow
-                  round={r}
-                  onEdit={() => setEditingId(r.id)}
-                  handicapExpanded={handicapExpandedId === r.id}
-                  onToggleHandicap={() => toggleHandicap(r.id)}
-                  groupsExpanded={groupsExpandedId === r.id}
-                  onToggleGroups={() => toggleGroups(r.id)}
-                />
-              )}
-              {handicapExpandedId === r.id && editingId !== r.id && (
-                <tr className="border-b bg-muted/10">
-                  <td colSpan={5} className="p-0">
-                    <HandicapPanel roundId={r.id} />
-                  </td>
-                </tr>
-              )}
-              {groupsExpandedId === r.id && editingId !== r.id && (
-                <tr className="border-b bg-muted/10">
-                  <td colSpan={5} className="p-0">
-                    <GroupsPanel roundId={r.id} seasonId={r.seasonId} />
-                  </td>
-                </tr>
-              )}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
+    <div className="flex flex-col gap-2">
+      {rounds.map((r) => (
+        <Fragment key={r.id}>
+          {editingId === r.id ? (
+            <div className="rounded-md border p-3 bg-muted/10">
+              <EditRow round={r} onClose={() => setEditingId(null)} />
+            </div>
+          ) : (
+            <RoundRow
+              round={r}
+              onEdit={() => setEditingId(r.id)}
+              handicapExpanded={handicapExpandedId === r.id}
+              onToggleHandicap={() => toggleHandicap(r.id)}
+              groupsExpanded={groupsExpandedId === r.id}
+              onToggleGroups={() => toggleGroups(r.id)}
+            />
+          )}
+          {handicapExpandedId === r.id && editingId !== r.id && (
+            <div className="rounded-md border bg-muted/10 -mt-1">
+              <HandicapPanel roundId={r.id} />
+            </div>
+          )}
+          {groupsExpandedId === r.id && editingId !== r.id && (
+            <div className="rounded-md border bg-muted/10 -mt-1">
+              <GroupsPanel roundId={r.id} seasonId={r.seasonId} />
+            </div>
+          )}
+        </Fragment>
+      ))}
     </div>
   );
 }
@@ -554,139 +539,95 @@ function RoundRow({
     finalizeMutation.mutate(round.id);
   }
 
+  const shortDate = (() => {
+    const [y, m, d] = round.scheduledDate.split('-').map(Number);
+    return new Date(y!, m! - 1, d!).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+  })();
+
   return (
-    <tr className={`border-b last:border-0 ${dimmed ? 'opacity-60' : ''}`}>
-      <td className="py-2 px-3 font-medium">
-        <span className="flex items-center gap-1.5">
-          <CalendarDays className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          {round.roundNumber ? `R${round.roundNumber} · ` : ''}{formatDate(round.scheduledDate)}
+    <div className={`rounded-md border overflow-hidden ${dimmed ? 'opacity-50' : ''}`}>
+      {/* Header row */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
+        <span className="font-semibold text-sm">
+          {round.roundNumber ? `R${round.roundNumber}` : ''}
         </span>
+        <span className="text-sm">{shortDate}</span>
         {round.tee && (
-          <span className="text-xs mt-0.5 block text-muted-foreground capitalize">{round.tee} tees</span>
+          <span className="text-xs text-muted-foreground capitalize">{round.tee}</span>
         )}
         {round.entryCode && (
-          <span className="text-xs mt-0.5 block text-muted-foreground">Code: <span className="font-mono font-semibold text-foreground">{round.entryCode}</span></span>
-        )}
-        {round.status === 'active' && round.type === 'official' && total > 0 && (
-          <span className={`text-xs mt-0.5 block ${allComplete ? 'text-green-600' : 'text-muted-foreground'}`}>
-            {complete}/{total} groups complete
+          <span className="text-xs text-muted-foreground">
+            Code: <span className="font-mono font-semibold text-foreground">{round.entryCode}</span>
           </span>
         )}
-      </td>
-      <td className="py-2 px-3">
-        <Badge text={round.type === 'official' ? 'Official' : 'Casual'} className={TYPE_BADGE[round.type]} />
-      </td>
-      <td className="py-2 px-3">
-        <Badge text={STATUS_LABEL[round.status]} className={STATUS_BADGE[round.status]} />
-      </td>
-      <td className="py-2 px-3">
-        {round.autoCalculateMoney === 1 ? (
-          <Check className="h-4 w-4 text-green-600" aria-label="Auto-money on" />
-        ) : (
-          <X className="h-4 w-4 text-muted-foreground" aria-label="Auto-money off" />
+        <span className="flex-1" />
+        {round.status === 'cancelled' && (
+          <Badge text="Cancelled" className={STATUS_BADGE['cancelled']} />
         )}
-      </td>
-      <td className="py-2 px-3">
-        {editable && (
-          <div className="flex items-center justify-end gap-1 flex-wrap">
-            {round.status === 'active' && round.type === 'official' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleFinalize}
-                disabled={isBusy || !allComplete}
-                title={allComplete ? 'Finalize round' : 'Waiting for all groups to finish'}
-                aria-label="Finalize round"
-              >
-                {finalizeMutation.isPending ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Lock className="h-3 w-3" />
-                )}
-                <span className="ml-1 hidden sm:inline">Finalize</span>
-              </Button>
-            )}
-            <Link to={`/pairings/${round.id}`} target="_blank">
-              <Button
-                variant="outline"
-                size="sm"
-                aria-label="View pairings"
-                title="Open public pairings page"
-              >
-                <ExternalLink className="h-3 w-3" />
-                <span className="ml-1 hidden sm:inline">Pairings</span>
-              </Button>
-            </Link>
+        {round.status === 'finalized' && (
+          <Badge text="Final" className={STATUS_BADGE['finalized']} />
+        )}
+        {round.status === 'active' && total > 0 && (
+          <span className={`text-xs ${allComplete ? 'text-green-600 font-medium' : 'text-muted-foreground'}`}>
+            {complete}/{total} scored
+          </span>
+        )}
+      </div>
+
+      {/* Actions */}
+      {editable && (
+        <div className="flex items-center gap-1 px-3 py-2 flex-wrap">
+          <Link to={`/pairings/${round.id}`} target="_blank">
+            <Button variant="outline" size="sm" aria-label="View pairings">
+              <ExternalLink className="h-3 w-3" />
+              <span className="ml-1">Pairings</span>
+            </Button>
+          </Link>
+          <Button variant="outline" size="sm" onClick={onToggleGroups} disabled={isBusy}>
+            {groupsExpanded ? <ChevronDown className="h-3 w-3" /> : <Users className="h-3 w-3" />}
+            <span className="ml-1">Groups</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={onToggleHandicap} disabled={isBusy}>
+            {handicapExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            <span className="ml-1">HI</span>
+          </Button>
+          <Button variant="outline" size="sm" onClick={onEdit} disabled={isBusy}>
+            <Pencil className="h-3 w-3" />
+            <span className="ml-1">Edit</span>
+          </Button>
+          <span className="flex-1" />
+          {round.status === 'active' && round.type === 'official' && (
             <Button
               variant="outline"
               size="sm"
-              onClick={onToggleGroups}
-              disabled={isBusy}
-              aria-label="Toggle groups panel"
-              title="Manage groups and player assignments"
+              onClick={handleFinalize}
+              disabled={isBusy || !allComplete}
+              title={allComplete ? 'Finalize round' : 'Waiting for all groups to finish'}
             >
-              {groupsExpanded ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <Users className="h-3 w-3" />
-              )}
-              <span className="ml-1 hidden sm:inline">Groups</span>
+              {finalizeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Lock className="h-3 w-3" />}
+              <span className="ml-1">Finalize</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onToggleHandicap}
-              disabled={isBusy}
-              aria-label="Toggle handicap panel"
-              title="View / set handicap indexes"
-            >
-              {handicapExpanded ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-              <span className="ml-1 hidden sm:inline">HI</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={onEdit} disabled={isBusy} aria-label="Edit round">
-              <Pencil className="h-3 w-3" />
-              <span className="ml-1 hidden sm:inline">Edit</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCancel}
-              disabled={isBusy}
-              aria-label="Cancel round"
-            >
-              {cancelMutation.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Ban className="h-3 w-3" />
-              )}
-              <span className="ml-1 hidden sm:inline">Cancel</span>
-            </Button>
-          </div>
-        )}
-        {canDelete && (
-          <div className="flex justify-end mt-1">
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleDelete}
-              disabled={isBusy}
-              aria-label="Delete round"
-            >
-              {deleteMutation.isPending ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Trash2 className="h-3 w-3" />
-              )}
-              <span className="ml-1 hidden sm:inline">Delete</span>
-            </Button>
-          </div>
-        )}
-      </td>
-    </tr>
+          )}
+          <Button variant="ghost" size="sm" onClick={handleCancel} disabled={isBusy} className="text-muted-foreground">
+            {cancelMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleDelete} disabled={isBusy} className="text-destructive">
+            {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+          </Button>
+        </div>
+      )}
+      {!editable && canDelete && (
+        <div className="flex justify-end px-3 py-2">
+          <Button variant="ghost" size="sm" onClick={handleDelete} disabled={isBusy} className="text-destructive">
+            {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            <span className="ml-1">Delete</span>
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -743,8 +684,6 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
   }
 
   return (
-    <tr className="border-b last:border-0 bg-muted/20">
-      <td className="py-3 px-3" colSpan={5}>
         <div className="flex flex-col gap-2">
           <div className="flex flex-col sm:flex-row gap-2">
             {/* Date */}
@@ -830,8 +769,6 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
           </div>
           {editError && <p className="text-sm text-destructive">{editError}</p>}
         </div>
-      </td>
-    </tr>
   );
 }
 
