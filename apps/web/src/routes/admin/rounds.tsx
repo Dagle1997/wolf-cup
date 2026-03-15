@@ -1437,6 +1437,20 @@ function GroupCard({
     },
   });
 
+  const deleteGroupMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ success: boolean }>(
+        `/admin/rounds/${roundId}/groups/${group.id}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-round-groups', roundId] });
+    },
+    onError: (err: Error) => {
+      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+    },
+  });
+
   const selectedRosterPlayer = availableRoster.find((p) => p.id === Number(selectedPlayerId));
 
   async function handleFetchHI() {
@@ -1460,7 +1474,20 @@ function GroupCard({
     <div className="rounded-md border overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
         <p className="text-xs font-semibold">Group {group.groupNumber}</p>
-        <span className="text-xs text-muted-foreground">{groupPlayers.length}/4 players</span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">{groupPlayers.length}/4 players</span>
+          {groupPlayers.length === 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-5 px-1.5 text-[10px]"
+              onClick={() => deleteGroupMutation.mutate()}
+              disabled={deleteGroupMutation.isPending}
+            >
+              {deleteGroupMutation.isPending ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Trash2 className="h-2.5 w-2.5" />}
+            </Button>
+          )}
+        </div>
       </div>
       <div className="px-3 py-2 flex flex-col gap-1.5">
         {groupPlayers.length === 0 ? (
