@@ -6,9 +6,9 @@ export type Tee = 'black' | 'blue' | 'white';
 const COURSE_PAR = 71;
 
 export const TEE_RATINGS: Record<Tee, { courseRating: number; slopeRating: number }> = {
-  black: { courseRating: 71.4, slopeRating: 128 },
-  blue:  { courseRating: 69.9, slopeRating: 126 },
-  white: { courseRating: 67.7, slopeRating: 119 },
+  black: { courseRating: 71.3, slopeRating: 126 },
+  blue:  { courseRating: 69.7, slopeRating: 121 },
+  white: { courseRating: 67.4, slopeRating: 118 },
 };
 
 export function calcCourseHandicap(handicapIndex: number, tee: Tee): number {
@@ -23,7 +23,7 @@ export function calcCourseHandicap(handicapIndex: number, tee: Tee): number {
  * Weekly tee rotation: black → blue → white → repeat
  *
  * Total par: 71 (36 out / 35 in)
- * Black: 6,523 yds  Blue: 6,209 yds  White: 5,795 yds
+ * Black: 6,523 yds (71.3/126)  Blue: 6,209 yds (69.7/121)  White: 5,795 yds (67.4/118)
  */
 const COURSE_DATA: CourseHole[] = [
   { hole:  1, par: 5, strokeIndex:  3, yardages: { black: 558, blue: 543, white: 497 } },
