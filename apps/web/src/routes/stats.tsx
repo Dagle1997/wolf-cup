@@ -127,8 +127,8 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
       {/* Stats grid — 2 rows of data */}
       <div className="px-4 py-3">
         <div className="grid grid-cols-4 gap-y-3 gap-x-2 text-center">
-          <StatCell label="Wolf" value={wolfRecord(p)} />
-          <StatCell label="Calls" value={String(p.wolfCallsWolf)} />
+          <StatCell label="Record" value={wolfRecord(p)} />
+          <StatCell label="Wolf" value={String(p.wolfCallsWolf)} />
           <StatCell label="Blind" value={String(p.wolfCallsBlindWolf)} />
           <StatCell label="Birdies" value={String(p.birdies)} highlight={p.birdies > 0} />
 
