@@ -17,8 +17,8 @@ type PlayerStats = {
   wolfWins: number;
   wolfLosses: number;
   wolfPushes: number;
-  netBirdies: number;
-  netEagles: number;
+  birdies: number;
+  eagles: number;
   greenies: number;
   polies: number;
   totalMoney: number;
@@ -130,9 +130,9 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
           <StatCell label="Wolf" value={wolfRecord(p)} />
           <StatCell label="Calls" value={String(p.wolfCallsWolf)} />
           <StatCell label="Blind" value={String(p.wolfCallsBlindWolf)} />
-          <StatCell label="Birdies" value={String(p.netBirdies)} highlight={p.netBirdies > 0} />
+          <StatCell label="Birdies" value={String(p.birdies)} highlight={p.birdies > 0} />
 
-          <StatCell label="Eagles" value={String(p.netEagles)} highlight={p.netEagles > 0} />
+          <StatCell label="Eagles" value={String(p.eagles)} highlight={p.eagles > 0} />
           <StatCell label="Greenies" value={String(p.greenies)} />
           <StatCell label="Polies" value={String(p.polies)} />
           <StatCell

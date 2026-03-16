@@ -159,6 +159,23 @@ async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'bl
       const playerId = battingOrder[pos]!;
       playerMoneyTotals.set(playerId, (playerMoneyTotals.get(playerId) ?? 0) + result[pos]!.total);
     }
+
+    // Write wolf outcome for non-skins holes
+    if (holeNum >= 3 && holeAssignment.type === 'wolf') {
+      const wolfBatterIndex = holeAssignment.wolfBatterIndex;
+      const wolfMoney = result[wolfBatterIndex]!.total;
+      const outcome = wolfMoney > 0 ? 'win' : wolfMoney < 0 ? 'loss' : 'push';
+      await db
+        .update(wolfDecisions)
+        .set({ outcome })
+        .where(
+          and(
+            eq(wolfDecisions.roundId, roundId),
+            eq(wolfDecisions.groupId, groupId),
+            eq(wolfDecisions.holeNumber, holeNum),
+          ),
+        );
+    }
   }
 
   return playerMoneyTotals;

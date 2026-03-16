@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { players, rounds, wolfDecisions, holeScores, roundPlayers, roundResults } from '../db/schema.js';
-import { getCourseHole, getHandicapStrokes } from '@wolf-cup/engine';
+import { players, rounds, wolfDecisions, holeScores, roundResults } from '../db/schema.js';
+import { getCourseHole } from '@wolf-cup/engine';
 
 const app = new Hono();
 
@@ -19,8 +19,8 @@ type PlayerStats = {
   wolfWins: number;
   wolfLosses: number;
   wolfPushes: number;
-  netBirdies: number;
-  netEagles: number;
+  birdies: number;
+  eagles: number;
   greenies: number;
   polies: number;
   totalMoney: number;
@@ -53,23 +53,15 @@ app.get('/stats', async (c) => {
       .innerJoin(rounds, eq(rounds.id, wolfDecisions.roundId))
       .where(and(eq(rounds.type, 'official'), eq(rounds.status, 'finalized')));
 
-    // Step 3: Hole scores for birdies/eagles
+    // Step 3: Hole scores for birdies/eagles (gross)
     const hsRows = await db
       .select({
         playerId: holeScores.playerId,
         holeNumber: holeScores.holeNumber,
         grossScore: holeScores.grossScore,
-        handicapIndex: roundPlayers.handicapIndex,
       })
       .from(holeScores)
       .innerJoin(rounds, eq(rounds.id, holeScores.roundId))
-      .innerJoin(
-        roundPlayers,
-        and(
-          eq(roundPlayers.roundId, holeScores.roundId),
-          eq(roundPlayers.playerId, holeScores.playerId),
-        ),
-      )
       .where(and(eq(rounds.type, 'official'), eq(rounds.status, 'finalized')));
 
     // Step 4: Round money totals
@@ -117,16 +109,15 @@ app.get('/stats', async (c) => {
       }
     }
 
-    // Step 7: Net birdies / eagles
+    // Step 7: Gross birdies / eagles
     const birdieMap = new Map<number, number>();
     const eagleMap = new Map<number, number>();
     for (const row of hsRows) {
       const courseHole = getCourseHole(row.holeNumber as Parameters<typeof getCourseHole>[0]);
-      const strokes = getHandicapStrokes(row.handicapIndex, courseHole.strokeIndex);
-      const netScore = row.grossScore - strokes;
-      if (netScore === courseHole.par - 1) {
+      const diff = row.grossScore - courseHole.par;
+      if (diff === -1) {
         birdieMap.set(row.playerId, (birdieMap.get(row.playerId) ?? 0) + 1);
-      } else if (netScore <= courseHole.par - 2) {
+      } else if (diff <= -2) {
         eagleMap.set(row.playerId, (eagleMap.get(row.playerId) ?? 0) + 1);
       }
     }
@@ -153,8 +144,8 @@ app.get('/stats', async (c) => {
         wolfWins: w?.wins ?? 0,
         wolfLosses: w?.losses ?? 0,
         wolfPushes: w?.pushes ?? 0,
-        netBirdies: birdieMap.get(p.id) ?? 0,
-        netEagles: eagleMap.get(p.id) ?? 0,
+        birdies: birdieMap.get(p.id) ?? 0,
+        eagles: eagleMap.get(p.id) ?? 0,
         greenies: greenieMap.get(p.id) ?? 0,
         polies: polieMap.get(p.id) ?? 0,
         totalMoney: totalMoneyMap.get(p.id) ?? 0,
