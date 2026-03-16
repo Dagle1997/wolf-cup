@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
@@ -52,20 +53,85 @@ export const Route = createFileRoute('/stats')({
   component: StatsPage,
 });
 
+type SortKey = 'alpha' | 'money' | 'birdies' | 'wolf';
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'alpha', label: 'A-Z' },
+  { key: 'money', label: 'Money' },
+  { key: 'birdies', label: 'Birdies' },
+  { key: 'wolf', label: 'Wolf' },
+];
+
+function sortPlayers(players: PlayerStats[], sortKey: SortKey): PlayerStats[] {
+  const sorted = [...players];
+  switch (sortKey) {
+    case 'alpha':
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case 'money':
+      sorted.sort((a, b) => b.totalMoney - a.totalMoney || a.name.localeCompare(b.name));
+      break;
+    case 'birdies':
+      sorted.sort((a, b) => (b.birdies + b.eagles) - (a.birdies + a.eagles) || a.name.localeCompare(b.name));
+      break;
+    case 'wolf': {
+      // Sort by win%, then total alone/blind calls desc
+      const wolfScore = (p: PlayerStats) => {
+        const total = p.wolfCallsWolf + p.wolfCallsBlindWolf;
+        if (total === 0) return -1; // no calls = bottom
+        return p.wolfWins / total;
+      };
+      sorted.sort((a, b) => {
+        const diff = wolfScore(b) - wolfScore(a);
+        if (Math.abs(diff) > 0.001) return diff;
+        return (b.wolfCallsWolf + b.wolfCallsBlindWolf) - (a.wolfCallsWolf + a.wolfCallsBlindWolf) || a.name.localeCompare(b.name);
+      });
+      break;
+    }
+  }
+  return sorted;
+}
+
 function StatsPage() {
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['stats'],
     queryFn: () => apiFetch<StatsResponse>('/stats'),
   });
 
+  const [sortKey, setSortKey] = useState<SortKey>('alpha');
+
+  const sortedPlayers = useMemo(
+    () => data ? sortPlayers(data.players, sortKey) : [],
+    [data, sortKey],
+  );
+
   return (
     <div className="p-4 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h2 className="text-xl font-bold tracking-tight">Player Statistics</h2>
         <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching} className="h-8 px-2">
           <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
         </Button>
       </div>
+
+      {/* Sort buttons */}
+      {data && data.players.length > 0 && (
+        <div className="flex gap-1.5 mb-3">
+          {SORT_OPTIONS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setSortKey(key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                sortKey === key
+                  ? 'bg-foreground text-background'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {isLoading && <LoadingSkeleton />}
 
@@ -89,7 +155,7 @@ function StatsPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {data.players.map((p, i) => (
+              {sortedPlayers.map((p, i) => (
                 <PlayerCard key={p.playerId} player={p} rank={i + 1} />
               ))}
             </div>
