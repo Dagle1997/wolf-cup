@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, Fragment } from 'react';
-import { RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
+import { RefreshCw, AlertCircle, Loader2, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -40,6 +40,18 @@ type LeaderboardResponse = {
   sideGame: { name: string; format: string } | null;
   leaderboard: LeaderboardPlayer[];
   lastUpdated: string;
+};
+
+type HistoryRound = {
+  id: number;
+  type: string;
+  status: string;
+  scheduledDate: string;
+  playerCount: number;
+};
+
+type HistoryResponse = {
+  rounds: HistoryRound[];
 };
 
 type ScorecardHole = {
@@ -85,6 +97,12 @@ function formatThru(thruHole: number): string {
   if (thruHole === 0) return '—';
   if (thruHole === 18) return 'F';
   return `Thru ${thruHole}`;
+}
+
+function formatRoundDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-');
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 // ---------------------------------------------------------------------------
@@ -467,61 +485,225 @@ function RankCell({ rank }: { rank: number }) {
 }
 
 // ---------------------------------------------------------------------------
+// LeaderboardTable — shared between live and historical views
+// ---------------------------------------------------------------------------
+
+function LeaderboardTable({
+  data,
+  roundId,
+  autoCalculateMoney,
+}: {
+  data: LeaderboardResponse;
+  roundId: number;
+  autoCalculateMoney: boolean;
+}) {
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+  const colCount = data.harveyLiveEnabled ? 6 : 5;
+
+  return (
+    <div className="rounded-xl border overflow-hidden shadow-sm">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b bg-muted/60 text-muted-foreground text-[11px]">
+            <th className="text-center py-2 pl-2 pr-1 w-10">#</th>
+            <th className="text-left py-2 pr-2">Player</th>
+            <th className="text-right py-2 pr-2 w-14">To Par</th>
+            <th className="text-right py-2 pr-2 w-12">Pts</th>
+            <th className="text-right py-2 pr-3 w-16">$</th>
+            {data.harveyLiveEnabled && <th className="text-right py-2 pr-3 w-14">Harvey</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {data.leaderboard.map((player) => {
+            const isSelected = selectedPlayerId === player.playerId;
+            const toParColor =
+              player.netToPar < 0
+                ? 'text-green-600 font-bold'
+                : player.netToPar > 0
+                  ? 'text-destructive font-medium'
+                  : 'font-medium';
+
+            return (
+              <Fragment key={player.playerId}>
+                <tr
+                  role="button"
+                  aria-expanded={isSelected}
+                  onClick={() =>
+                    setSelectedPlayerId((prev) =>
+                      prev === player.playerId ? null : player.playerId,
+                    )
+                  }
+                  className={rankRowClass(player.rank, isSelected)}
+                >
+                  <td className="py-2.5 pl-2 pr-1 text-center">
+                    <RankCell rank={player.rank} />
+                  </td>
+                  <td className="py-2.5 pr-2">
+                    <div className="font-semibold leading-tight">{player.name}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                      HCP {Math.round(player.handicapIndex * 10) / 10} · {formatThru(player.thruHole)}
+                    </div>
+                  </td>
+                  <td className={`py-2.5 pr-2 text-right tabular-nums text-base ${toParColor}`}>
+                    {player.thruHole === 0 ? '—' : formatNetToPar(player.netToPar)}
+                  </td>
+                  <td className="py-2.5 pr-2 text-right tabular-nums font-medium">
+                    {player.stablefordTotal}
+                  </td>
+                  <td className={`py-2.5 pr-3 text-right tabular-nums font-medium ${player.moneyTotal > 0 ? 'text-green-600' : player.moneyTotal < 0 ? 'text-destructive' : ''}`}>
+                    {formatMoney(player.moneyTotal)}
+                  </td>
+                  {data.harveyLiveEnabled && (
+                    <td className="py-2.5 pr-3 text-right tabular-nums font-medium">
+                      {player.harveyTotal !== null
+                        ? (typeof player.harveyTotal === 'number' && !Number.isInteger(player.harveyTotal)
+                            ? player.harveyTotal.toFixed(1)
+                            : player.harveyTotal)
+                        : '—'}
+                    </td>
+                  )}
+                </tr>
+                {isSelected && (
+                  <tr className="border-b bg-muted/5">
+                    <td colSpan={colCount} className="p-0">
+                      <ScorecardPanel
+                        roundId={roundId}
+                        playerId={player.playerId}
+                        autoCalculateMoney={autoCalculateMoney}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+          {data.leaderboard.length === 0 && (
+            <tr>
+              <td colSpan={colCount} className="py-10 text-center text-muted-foreground">
+                No players in this round yet
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // LeaderboardPage
 // ---------------------------------------------------------------------------
 
 function LeaderboardPage() {
-  const { data, isLoading, isError, isFetching, refetch } = useQuery({
+  const [viewingRoundId, setViewingRoundId] = useState<number | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Live leaderboard
+  const { data: liveData, isLoading: liveLoading, isError: liveError, isFetching: liveFetching, refetch: liveRefetch } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: () => apiFetch<LeaderboardResponse>('/leaderboard/live'),
-    refetchInterval: 5000,
+    refetchInterval: viewingRoundId ? false : 5000, // stop polling when viewing history
+  });
+
+  // History list
+  const { data: historyData, isLoading: historyLoading } = useQuery({
+    queryKey: ['leaderboard-history'],
+    queryFn: () => apiFetch<HistoryResponse>('/leaderboard/history'),
+    enabled: showHistory || (liveData?.round === null),
+  });
+
+  // Historical round leaderboard
+  const { data: histRoundData, isLoading: histRoundLoading } = useQuery({
+    queryKey: ['leaderboard', viewingRoundId],
+    queryFn: () => apiFetch<LeaderboardResponse>(`/leaderboard/${viewingRoundId}`),
+    enabled: viewingRoundId !== null,
   });
 
   const [secondsAgo, setSecondsAgo] = useState(0);
-  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
-  const currentRound = data?.round ?? null;
+
+  const isViewingHistory = viewingRoundId !== null;
+  const currentData = isViewingHistory ? histRoundData : liveData;
+  const currentRound = currentData?.round ?? null;
 
   useEffect(() => {
-    setSelectedPlayerId(null);
-  }, [data?.round?.id]);
-
-  useEffect(() => {
-    if (!data?.lastUpdated) return;
-    setSecondsAgo(Math.floor((Date.now() - new Date(data.lastUpdated).getTime()) / 1000));
+    if (!liveData?.lastUpdated || isViewingHistory) return;
+    setSecondsAgo(Math.floor((Date.now() - new Date(liveData.lastUpdated).getTime()) / 1000));
     const interval = setInterval(() => {
-      setSecondsAgo(Math.floor((Date.now() - new Date(data.lastUpdated).getTime()) / 1000));
+      setSecondsAgo(Math.floor((Date.now() - new Date(liveData.lastUpdated).getTime()) / 1000));
     }, 1000);
     return () => clearInterval(interval);
-  }, [data?.lastUpdated]);
+  }, [liveData?.lastUpdated, isViewingHistory]);
 
-  const colCount = data?.harveyLiveEnabled ? 6 : 5;
+  // Auto-show history when no live round
+  useEffect(() => {
+    if (liveData && liveData.round === null) {
+      setShowHistory(true);
+    }
+  }, [liveData]);
+
+  const goBackToLive = () => {
+    setViewingRoundId(null);
+    setShowHistory(false);
+  };
+
+  // Filter out the live round from history list
+  const historyRounds = historyData?.rounds.filter(
+    (r) => !liveData?.round || r.id !== liveData.round.id
+  ) ?? [];
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Live Leaderboard</h1>
-          {data?.lastUpdated && (
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              {isFetching ? 'Updating…' : `Updated ${secondsAgo}s ago`}
-            </p>
+          {isViewingHistory ? (
+            <>
+              <button
+                onClick={goBackToLive}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                {liveData?.round ? 'Back to Live' : 'All Rounds'}
+              </button>
+              <h1 className="text-xl font-bold tracking-tight">
+                {currentRound ? formatRoundDate(currentRound.scheduledDate) : 'Round'}
+              </h1>
+              {currentRound && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {currentRound.type === 'casual' ? 'Practice' : 'Official'} · {currentRound.status}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <h1 className="text-xl font-bold tracking-tight">Live Leaderboard</h1>
+              {liveData?.lastUpdated && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {liveFetching ? 'Updating…' : `Updated ${secondsAgo}s ago`}
+                </p>
+              )}
+            </>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/admin" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Admin
-          </Link>
-          <Link to="/practice" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Practice
-          </Link>
-          <Button variant="ghost" size="sm" onClick={() => void refetch()} className="gap-1 h-8 px-2">
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          </Button>
+          {!isViewingHistory && (
+            <>
+              <Link to="/admin" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Admin
+              </Link>
+              <Link to="/practice" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Practice
+              </Link>
+              <Button variant="ghost" size="sm" onClick={() => void liveRefetch()} className="gap-1 h-8 px-2">
+                <RefreshCw className={`h-3.5 w-3.5 ${liveFetching ? 'animate-spin' : ''}`} />
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {isLoading && (
+      {/* Loading state */}
+      {(liveLoading || (isViewingHistory && histRoundLoading)) && (
         <div className="flex flex-col gap-2">
           {[1, 2, 3, 4].map((n) => (
             <div key={n} className="h-14 rounded-xl bg-muted animate-pulse" />
@@ -529,16 +711,54 @@ function LeaderboardPage() {
         </div>
       )}
 
-      {isError && !isLoading && (
+      {/* Error state */}
+      {liveError && !liveLoading && !isViewingHistory && (
         <div className="flex flex-col items-center gap-3 py-8 text-center">
           <AlertCircle className="h-8 w-8 text-destructive" />
           <p className="text-muted-foreground">Could not load leaderboard — tap to retry</p>
-          <Button variant="outline" onClick={() => void refetch()}>Retry</Button>
+          <Button variant="outline" onClick={() => void liveRefetch()}>Retry</Button>
         </div>
       )}
 
-      {data && data.round === null && (
-        <div className="flex flex-col items-center gap-4 py-10 text-center">
+      {/* Historical round view */}
+      {isViewingHistory && currentData && currentRound && (
+        <>
+          {currentData.sideGame && (
+            <div className="rounded-xl border bg-card p-3 mb-3">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
+              <p className="font-semibold">{currentData.sideGame.name}</p>
+              <p className="text-sm text-muted-foreground">{currentData.sideGame.format}</p>
+            </div>
+          )}
+          <LeaderboardTable
+            data={currentData}
+            roundId={currentRound.id}
+            autoCalculateMoney={currentRound.autoCalculateMoney}
+          />
+        </>
+      )}
+
+      {/* Live round view */}
+      {!isViewingHistory && liveData && currentRound && (
+        <>
+          {liveData.sideGame && (
+            <div className="rounded-xl border bg-card p-3 mb-3">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
+              <p className="font-semibold">{liveData.sideGame.name}</p>
+              <p className="text-sm text-muted-foreground">{liveData.sideGame.format}</p>
+            </div>
+          )}
+          <LeaderboardTable
+            data={liveData}
+            roundId={currentRound.id}
+            autoCalculateMoney={currentRound.autoCalculateMoney}
+          />
+        </>
+      )}
+
+      {/* No live round + history list / Past rounds link */}
+      {!isViewingHistory && liveData && liveData.round === null && (
+        <div className="flex flex-col items-center gap-4 py-6 text-center">
           <span className="text-5xl">⛳</span>
           <p className="text-muted-foreground">No official round today</p>
           <div className="flex flex-col gap-3 w-full max-w-xs">
@@ -552,103 +772,46 @@ function LeaderboardPage() {
         </div>
       )}
 
-      {data && currentRound && (
-        <>
-          {data.sideGame && (
-            <div className="rounded-xl border bg-card p-3 mb-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
-              <p className="font-semibold">{data.sideGame.name}</p>
-              <p className="text-sm text-muted-foreground">{data.sideGame.format}</p>
+      {/* Past rounds button when live round is showing */}
+      {!isViewingHistory && liveData && liveData.round !== null && !showHistory && (
+        <button
+          onClick={() => setShowHistory(true)}
+          className="w-full mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors py-2"
+        >
+          View Past Rounds
+        </button>
+      )}
+
+      {/* History list */}
+      {!isViewingHistory && showHistory && (
+        <div className="mt-4">
+          <h2 className="text-sm font-semibold text-muted-foreground mb-2">Past Rounds</h2>
+          {historyLoading && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
             </div>
           )}
-
-          <div className="rounded-xl border overflow-hidden shadow-sm">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/60 text-muted-foreground text-[11px]">
-                  <th className="text-center py-2 pl-2 pr-1 w-10">#</th>
-                  <th className="text-left py-2 pr-2">Player</th>
-                  <th className="text-right py-2 pr-2 w-14">To Par</th>
-                  <th className="text-right py-2 pr-2 w-12">Pts</th>
-                  <th className="text-right py-2 pr-3 w-16">$</th>
-                  {data.harveyLiveEnabled && <th className="text-right py-2 pr-3 w-14">Harvey</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.leaderboard.map((player) => {
-                  const isSelected = selectedPlayerId === player.playerId;
-                  const toParColor =
-                    player.netToPar < 0
-                      ? 'text-green-600 font-bold'
-                      : player.netToPar > 0
-                        ? 'text-destructive font-medium'
-                        : 'font-medium';
-
-                  return (
-                    <Fragment key={player.playerId}>
-                      <tr
-                        role="button"
-                        aria-expanded={isSelected}
-                        onClick={() =>
-                          setSelectedPlayerId((prev) =>
-                            prev === player.playerId ? null : player.playerId,
-                          )
-                        }
-                        className={rankRowClass(player.rank, isSelected)}
-                      >
-                        <td className="py-2.5 pl-2 pr-1 text-center">
-                          <RankCell rank={player.rank} />
-                        </td>
-                        <td className="py-2.5 pr-2">
-                          <div className="font-semibold leading-tight">{player.name}</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">
-                            HCP {Math.round(player.handicapIndex * 10) / 10} · {formatThru(player.thruHole)}
-                          </div>
-                        </td>
-                        <td className={`py-2.5 pr-2 text-right tabular-nums text-base ${toParColor}`}>
-                          {player.thruHole === 0 ? '—' : formatNetToPar(player.netToPar)}
-                        </td>
-                        <td className="py-2.5 pr-2 text-right tabular-nums font-medium">
-                          {player.stablefordTotal}
-                        </td>
-                        <td className={`py-2.5 pr-3 text-right tabular-nums font-medium ${player.moneyTotal > 0 ? 'text-green-600' : player.moneyTotal < 0 ? 'text-destructive' : ''}`}>
-                          {formatMoney(player.moneyTotal)}
-                        </td>
-                        {data.harveyLiveEnabled && (
-                          <td className="py-2.5 pr-3 text-right tabular-nums font-medium">
-                            {player.harveyTotal !== null
-                              ? (typeof player.harveyTotal === 'number' && !Number.isInteger(player.harveyTotal)
-                                  ? player.harveyTotal.toFixed(1)
-                                  : player.harveyTotal)
-                              : '—'}
-                          </td>
-                        )}
-                      </tr>
-                      {isSelected && (
-                        <tr className="border-b bg-muted/5">
-                          <td colSpan={colCount} className="p-0">
-                            <ScorecardPanel
-                              roundId={currentRound.id}
-                              playerId={player.playerId}
-                              autoCalculateMoney={currentRound.autoCalculateMoney}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-                {data.leaderboard.length === 0 && (
-                  <tr>
-                    <td colSpan={colCount} className="py-10 text-center text-muted-foreground">
-                      No players in this round yet
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          {historyRounds.length === 0 && !historyLoading && (
+            <p className="text-sm text-muted-foreground text-center py-4">No past rounds yet</p>
+          )}
+          <div className="flex flex-col gap-1.5">
+            {historyRounds.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => setViewingRoundId(r.id)}
+                className="flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm hover:bg-muted/30 transition-colors text-left"
+              >
+                <div>
+                  <span className="font-medium">{formatRoundDate(r.scheduledDate)}</span>
+                  <span className="text-muted-foreground ml-2 text-xs">
+                    {r.type === 'casual' ? 'Practice' : 'Official'}
+                  </span>
+                </div>
+                <span className="text-xs text-muted-foreground">{r.playerCount} players</span>
+              </button>
+            ))}
           </div>
-        </>
+        </div>
       )}
     </div>
   );
