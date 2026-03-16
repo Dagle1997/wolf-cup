@@ -89,9 +89,12 @@ app.get('/stats', async (c) => {
       s.total++;
       if (row.decision === 'alone') s.wolf++;
       else if (row.decision === 'blind_wolf') s.blindWolf++;
-      if (row.outcome === 'win') s.wins++;
-      else if (row.outcome === 'loss') s.losses++;
-      else if (row.outcome === 'push') s.pushes++;
+      // W-L-T only counts alone and blind wolf calls
+      if (row.decision === 'alone' || row.decision === 'blind_wolf') {
+        if (row.outcome === 'win') s.wins++;
+        else if (row.outcome === 'loss') s.losses++;
+        else if (row.outcome === 'push') s.pushes++;
+      }
       wolfMap.set(row.wolfPlayerId, s);
     }
 
