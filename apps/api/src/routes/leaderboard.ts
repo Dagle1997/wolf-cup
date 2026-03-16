@@ -150,10 +150,25 @@ async function buildLeaderboard(round: RoundRow) {
     .where(eq(roundResults.roundId, round.id));
   const resultMap = new Map(resultRows.map((r) => [r.playerId, r]));
 
-  // Harvey points — live computed for active round, DB for finalized
+  // Harvey points — try DB first (finalized rounds), fall back to live computation
   let harveyMap = new Map<number, { stablefordPoints: number; moneyPoints: number }>();
   if (harveyLiveEnabled) {
-    if (round.status === 'active') {
+    // Try stored results first (finalized rounds with harvey_results)
+    if (round.status !== 'active') {
+      const harveyRows = await db
+        .select({
+          playerId: harveyResults.playerId,
+          stablefordPoints: harveyResults.stablefordPoints,
+          moneyPoints: harveyResults.moneyPoints,
+        })
+        .from(harveyResults)
+        .where(eq(harveyResults.roundId, round.id));
+      if (harveyRows.length > 0) {
+        harveyMap = new Map(harveyRows.map((r) => [r.playerId, r]));
+      }
+    }
+    // Compute on the fly if no stored results (active rounds or missing harvey_results)
+    if (harveyMap.size === 0 && playerRows.length > 0) {
       const playerCount = playerRows.length;
       const bonusPerPlayer =
         ({ 1: 8, 2: 6, 3: 4, 4: 2 } as Record<number, number>)[
@@ -173,16 +188,6 @@ async function buildLeaderboard(round: RoundRow) {
           },
         ]),
       );
-    } else {
-      const harveyRows = await db
-        .select({
-          playerId: harveyResults.playerId,
-          stablefordPoints: harveyResults.stablefordPoints,
-          moneyPoints: harveyResults.moneyPoints,
-        })
-        .from(harveyResults)
-        .where(eq(harveyResults.roundId, round.id));
-      harveyMap = new Map(harveyRows.map((r) => [r.playerId, r]));
     }
   }
 
