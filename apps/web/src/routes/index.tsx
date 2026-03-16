@@ -509,7 +509,7 @@ function LeaderboardTable({
             <th className="text-left py-2 pr-2">Player</th>
             <th className="text-right py-2 pr-2 w-14">To Par</th>
             <th className="text-right py-2 pr-2 w-12">Stb</th>
-            <th className="text-right py-2 pr-2 w-14">$</th>
+            <th className="text-right py-2 pr-3 w-14">$</th>
             {data.harveyLiveEnabled && <th className="text-right py-2 pr-3 w-16">Hvy Pts</th>}
           </tr>
         </thead>
@@ -550,7 +550,7 @@ function LeaderboardTable({
                   <td className="py-2.5 pr-2 text-right tabular-nums font-medium">
                     {player.stablefordTotal}
                   </td>
-                  <td className={`py-2.5 pr-2 text-right tabular-nums font-medium ${player.moneyTotal > 0 ? 'text-green-600' : player.moneyTotal < 0 ? 'text-destructive' : ''}`}>
+                  <td className={`py-2.5 pr-3 text-right tabular-nums font-medium ${player.moneyTotal > 0 ? 'text-green-600' : player.moneyTotal < 0 ? 'text-destructive' : ''}`}>
                     {formatMoney(player.moneyTotal)}
                   </td>
                   {data.harveyLiveEnabled && (
