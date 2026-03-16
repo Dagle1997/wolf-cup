@@ -5,8 +5,20 @@ export const Route = createRootRoute({
   component: RootComponent,
 });
 
+function getInitialDark(): boolean {
+  const stored = localStorage.getItem('dark-mode');
+  if (stored !== null) return stored === 'true';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
 function RootComponent() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [isDark, setIsDark] = useState(getInitialDark);
+
+  // Apply dark class whenever isDark changes
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDark);
+  }, [isDark]);
 
   useEffect(() => {
     // Online / offline
@@ -15,20 +27,27 @@ function RootComponent() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Auto dark mode — follow OS preference
+    // Follow OS preference only when no manual override
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const applyDark = (e: MediaQueryList | MediaQueryListEvent) => {
-      document.documentElement.classList.toggle('dark', e.matches);
+    const onOsChange = (e: MediaQueryListEvent) => {
+      if (localStorage.getItem('dark-mode') === null) {
+        setIsDark(e.matches);
+      }
     };
-    applyDark(mq);
-    mq.addEventListener('change', applyDark);
+    mq.addEventListener('change', onOsChange);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      mq.removeEventListener('change', applyDark);
+      mq.removeEventListener('change', onOsChange);
     };
   }, []);
+
+  const toggleDark = () => {
+    const next = !isDark;
+    setIsDark(next);
+    localStorage.setItem('dark-mode', String(next));
+  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
@@ -54,8 +73,16 @@ function RootComponent() {
             </div>
           </Link>
 
-          {/* Right side: offline + AssTV */}
+          {/* Right side: dark toggle + offline + AssTV */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={toggleDark}
+              className="text-sm leading-none hover:opacity-70 transition-opacity"
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label="Toggle dark mode"
+            >
+              {isDark ? '☀️' : '🌙'}
+            </button>
             {!isOnline && (
               <span
                 aria-live="assertive"
