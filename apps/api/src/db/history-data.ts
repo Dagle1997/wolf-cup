@@ -3,10 +3,14 @@
  * Separate from seed.ts for clean organization and easy updates.
  *
  * Data sources:
- * - 2023: Auto-Printable sheet from Excel
- * - 2025: season-standings.json from engine fixtures
- * - 2015–2020: Partial ranks from Stats sheet (no points)
- * - Champions: Confirmed by Josh
+ * - 2023: Auto-Printable sheet from Excel (full season, all players)
+ * - 2025: season-standings.json from engine fixtures (full season, all players)
+ * - 2021, 2022, 2024: Top-4 playoff data from Jason Moses (final points)
+ * - 2015–2020: Top-4 final points from Jason Moses + partial ranks from Stats sheet
+ * - Champions: Confirmed by Josh + Jason's playoff records
+ *
+ * Note: For years with only top-4 data, points are FINAL totals (season + playoffs).
+ * For 2023 and 2025, points are regular season totals (full rosters available).
  */
 
 export const HISTORICAL_CHAMPIONS: { year: number; playerName: string }[] = [
@@ -18,16 +22,16 @@ export const HISTORICAL_CHAMPIONS: { year: number; playerName: string }[] = [
   { year: 2020, playerName: 'Chris Preston' },
   { year: 2019, playerName: 'Chris McNeely' },
   { year: 2018, playerName: 'Chris Preston' },
+  { year: 2017, playerName: 'Chris Preston' },
   { year: 2016, playerName: 'Moses' },
   { year: 2015, playerName: 'Matt Jaquint' },
-  // 2017: champion unknown — skip until Josh/Jason confirm
 ];
 
 export const HISTORICAL_STANDINGS: {
   year: number;
   standings: { name: string; rank: number; points?: number }[];
 }[] = [
-  // 2025 — from season-standings.json
+  // 2025 — from season-standings.json (regular season, all players)
   {
     year: 2025,
     standings: [
@@ -50,7 +54,17 @@ export const HISTORICAL_STANDINGS: {
       { name: 'Sean Wilson', rank: 17, points: 88.5 },
     ],
   },
-  // 2023 — from Auto-Printable sheet
+  // 2024 — top-4 final points from Jason Moses
+  {
+    year: 2024,
+    standings: [
+      { name: 'Ronnie A.', rank: 1, points: 436.5 },
+      { name: 'Tim Biller', rank: 2, points: 411 },
+      { name: 'Ben McGinnis', rank: 3, points: 391 },
+      { name: 'Matt Jaquint', rank: 4, points: 390.5 },
+    ],
+  },
+  // 2023 — from Auto-Printable sheet (regular season, all players)
   {
     year: 2023,
     standings: [
@@ -75,79 +89,100 @@ export const HISTORICAL_STANDINGS: {
       { name: 'Alan Beasley', rank: 19, points: 32.5 },
     ],
   },
-  // 2020 — partial ranks, no points
+  // 2022 — top-4 final points from Jason Moses
+  {
+    year: 2022,
+    standings: [
+      { name: 'Chris Preston', rank: 1, points: 462 },
+      { name: 'Jeff Madden', rank: 2, points: 440 },
+      { name: 'Ben McGinnis', rank: 3, points: 402 },
+      { name: 'Kyle Cox', rank: 4, points: 364 },
+    ],
+  },
+  // 2021 — top-4 final points from Jason Moses
+  {
+    year: 2021,
+    standings: [
+      { name: 'Jeff Madden', rank: 1, points: 357.5 },
+      { name: 'Moses', rank: 2, points: 325 },
+      { name: 'Jay Patterson', rank: 3, points: 294.5 },
+      { name: 'Chris Preston', rank: 4, points: 294.5 },
+    ],
+  },
+  // 2020 — top-4 final points from Jason Moses + partial ranks from Stats sheet
   {
     year: 2020,
     standings: [
-      { name: 'Chris Preston', rank: 1 },
-      { name: 'Sean Wilson', rank: 2 },
-      { name: 'A. Dawson', rank: 3 },
-      { name: 'Jay Patterson', rank: 4 },
+      { name: 'Chris Preston', rank: 1, points: 284 },
+      { name: 'Sean Wilson', rank: 2, points: 263 },
+      { name: 'A. Dawson', rank: 3, points: 243.5 },
+      { name: 'Jay Patterson', rank: 4, points: 242 },
       { name: 'Ronnie A.', rank: 5 },
       { name: 'Josh Stoll', rank: 6 },
       { name: 'Jeff Madden', rank: 7 },
       { name: 'Kyle Cox', rank: 8 },
     ],
   },
-  // 2019 — partial ranks, no points
+  // 2019 — top-4 final points from Jason Moses + partial ranks from Stats sheet
   {
     year: 2019,
     standings: [
-      { name: 'Chris McNeely', rank: 1 },
-      { name: 'Jay Patterson', rank: 2 },
-      { name: 'Moses', rank: 3 },
-      { name: 'Josh Stoll', rank: 4 },
+      { name: 'Chris McNeely', rank: 1, points: 288 },
+      { name: 'Jay Patterson', rank: 2, points: 263.5 },
+      { name: 'Moses', rank: 3, points: 240.5 },
+      { name: 'Josh Stoll', rank: 4, points: 228.5 },
       { name: 'Chris Preston', rank: 5 },
       { name: 'Jeff Madden', rank: 6 },
       { name: 'Sean Wilson', rank: 7 },
     ],
   },
-  // 2018 — partial ranks, no points
+  // 2018 — top-4 final points from Jason Moses + partial ranks from Stats sheet
   {
     year: 2018,
     standings: [
-      { name: 'Chris Preston', rank: 1 },
-      { name: 'Jeff Madden', rank: 2 },
-      { name: 'Chris Keaton', rank: 3 },
-      { name: 'Josh Stoll', rank: 4 },
+      { name: 'Chris Preston', rank: 1, points: 266.5 },
+      { name: 'Jeff Madden', rank: 2, points: 263 },
+      { name: 'Chris Keaton', rank: 3, points: 259 },
+      { name: 'Josh Stoll', rank: 4, points: 258.5 },
       { name: 'Jay Patterson', rank: 5 },
       { name: 'Ronnie A.', rank: 6 },
       { name: 'Moses', rank: 7 },
       { name: 'Matt Jaquint', rank: 8 },
     ],
   },
-  // 2017 — partial ranks, no points, no champion
+  // 2017 — top-4 final points from Jason Moses + partial ranks from Stats sheet
   {
     year: 2017,
     standings: [
-      { name: 'Chris Preston', rank: 1 },
-      { name: 'Matt Jaquint', rank: 2 },
-      { name: 'A. Dawson', rank: 3 },
-      { name: 'Matt White', rank: 4 },
+      { name: 'Chris Preston', rank: 1, points: 267 },
+      { name: 'Matt Jaquint', rank: 2, points: 257.5 },
+      { name: 'A. Dawson', rank: 3, points: 251 },
+      { name: 'Matt White', rank: 4, points: 239 },
       { name: 'Jay Patterson', rank: 6 },
       { name: 'Moses', rank: 7 },
       { name: 'Jeff Madden', rank: 8 },
     ],
   },
-  // 2016 — partial ranks, no points
+  // 2016 — top-4 final points from Jason Moses + partial ranks from Stats sheet
   {
     year: 2016,
     standings: [
-      { name: 'Moses', rank: 1 },
-      { name: 'Matt Jaquint', rank: 2 },
-      { name: 'Matt White', rank: 3 },
-      { name: 'Chris Preston', rank: 4 },
+      { name: 'Moses', rank: 1, points: 281.5 },
+      { name: 'Matt Jaquint', rank: 2, points: 276 },
+      { name: 'Matt White', rank: 3, points: 268.5 },
+      { name: 'Chris Preston', rank: 4, points: 223.5 },
       { name: 'Jeff Madden', rank: 5 },
       { name: 'Chris McNeely', rank: 8 },
     ],
   },
-  // 2015 — partial ranks, no points
+  // 2015 — top-4 final points from Jason Moses + partial ranks from Stats sheet
   {
     year: 2015,
     standings: [
-      { name: 'Matt Jaquint', rank: 1 },
-      { name: 'Moses', rank: 2 },
-      { name: 'Matt White', rank: 3 },
+      { name: 'Matt Jaquint', rank: 1, points: 277 },
+      { name: 'Moses', rank: 2, points: 241.5 },
+      { name: 'Matt White', rank: 3, points: 234 },
+      { name: 'Brian White', rank: 4, points: 232 },
       { name: 'Chris Preston', rank: 5 },
       { name: 'Chris Keaton', rank: 6 },
       { name: 'Chris McNeely', rank: 7 },
@@ -162,4 +197,5 @@ export const HISTORICAL_PLAYERS: string[] = [
   'Chris Preston',
   'A. Dawson',
   'Alan Beasley',
+  'Brian White',
 ];
