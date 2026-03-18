@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  computeBackToBack,
   computeDynasty,
   computeRickieFowler,
   computePhBalance,
@@ -22,6 +23,27 @@ import {
 // ---------------------------------------------------------------------------
 // Unit tests with real data
 // ---------------------------------------------------------------------------
+
+describe('computeBackToBack', () => {
+  it('Preston qualifies with 2017-2018 consecutive wins', () => {
+    const result = computeBackToBack(HISTORICAL_CHAMPIONS);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.playerName).toBe('Chris Preston');
+    expect(result[0]!.years).toEqual([[2017, 2018]]);
+  });
+
+  it('non-consecutive wins do not qualify', () => {
+    const champs = [
+      { year: 2020, playerName: 'Alice' },
+      { year: 2022, playerName: 'Alice' },
+    ];
+    expect(computeBackToBack(champs)).toHaveLength(0);
+  });
+
+  it('empty data returns empty', () => {
+    expect(computeBackToBack([])).toHaveLength(0);
+  });
+});
 
 describe('computeDynasty', () => {
   it('Preston qualifies with 4 wins', () => {

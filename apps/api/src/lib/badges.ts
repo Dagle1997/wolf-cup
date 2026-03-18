@@ -39,6 +39,22 @@ type IronmanEntry = { year: number; maxRounds: number; perfectAttendance: string
 // Individual compute functions
 // ---------------------------------------------------------------------------
 
+/** Players who won consecutive championships */
+export function computeBackToBack(champions: Champion[]): { playerName: string; years: [number, number][] }[] {
+  // Sort by year ascending
+  const sorted = [...champions].sort((a, b) => a.year - b.year);
+  const streaks = new Map<string, [number, number][]>();
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i]!.playerName === sorted[i + 1]!.playerName && sorted[i + 1]!.year === sorted[i]!.year + 1) {
+      const name = sorted[i]!.playerName;
+      const arr = streaks.get(name) ?? [];
+      arr.push([sorted[i]!.year, sorted[i + 1]!.year]);
+      streaks.set(name, arr);
+    }
+  }
+  return [...streaks.entries()].map(([playerName, years]) => ({ playerName, years }));
+}
+
 /** Players with 4+ championship wins */
 export function computeDynasty(champions: Champion[]): { playerName: string; years: number[] }[] {
   const map = new Map<string, number[]>();
@@ -208,6 +224,22 @@ export function computeAllAwards(
         playerName: d.playerName,
         years: d.years,
         detail: `${d.years.length}× Champion`,
+      })),
+    });
+  }
+
+  const backToBack = computeBackToBack(champions);
+  if (backToBack.length > 0) {
+    awards.push({
+      id: 'back_to_back',
+      emoji: '🔁',
+      name: 'Back to Back',
+      category: 'hall_of_fame',
+      description: 'Won the Wolf Cup in consecutive years.',
+      recipients: backToBack.map((b) => ({
+        playerName: b.playerName,
+        years: b.years.flatMap(([y1, y2]) => [y1, y2]).filter((y, i, a) => a.indexOf(y) === i).sort((a, b) => a - b),
+        detail: b.years.map(([y1, y2]) => `${y1}–${y2}`).join(', '),
       })),
     });
   }
