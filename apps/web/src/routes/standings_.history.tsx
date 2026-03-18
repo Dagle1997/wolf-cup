@@ -277,11 +277,20 @@ function AwardCard({ award }: { award: Award }) {
       <div className="text-[10px] text-muted-foreground text-center mt-1 mb-2">{award.description}</div>
       <div className="space-y-1.5">
         {award.recipients.map((r) => {
+          const cashRecord = ['biggest_season_win', 'biggest_season_loss'].includes(award.id);
           const perSeason = ['money_man', 'philanthropist', 'ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance'];
-          const showYearEmojis = perSeason.includes(award.id);
+          const showYearEmojis = !cashRecord && perSeason.includes(award.id);
           return (
             <div key={r.playerName} className="text-xs">
               <div className="font-medium">{r.playerName}</div>
+              {cashRecord && (
+                <div className="flex items-center justify-center gap-1 mt-0.5">
+                  <span className="inline-flex flex-col items-center leading-none">
+                    <span className="text-sm">{award.emoji}</span>
+                    <span className="text-[8px] font-bold text-muted-foreground">{r.detail}</span>
+                  </span>
+                </div>
+              )}
               {showYearEmojis && (
                 <div className="flex items-center gap-1 mt-0.5">
                   {r.years.map((y) => (
@@ -292,7 +301,7 @@ function AwardCard({ award }: { award: Award }) {
                   ))}
                 </div>
               )}
-              <div className="text-[10px] text-muted-foreground">{r.detail}</div>
+              {!cashRecord && <div className="text-[10px] text-muted-foreground">{r.detail}</div>}
             </div>
           );
         })}

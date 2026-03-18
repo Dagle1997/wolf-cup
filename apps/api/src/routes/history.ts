@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { eq, isNotNull, desc, asc, count, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { seasons, seasonStandings, players } from '../db/schema.js';
-import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN } from '../db/history-data.js';
+import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS } from '../db/history-data.js';
 import { computeAllAwards } from '../lib/badges.js';
 
 const app = new Hono();
@@ -106,7 +106,7 @@ app.get('/history', async (c) => {
     // 7. Compute awards from historical data
     const awards = computeAllAwards(
       HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
-      HISTORICAL_CASH, HISTORICAL_IRONMAN,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS,
     );
 
     return c.json({ seasons: seasonResults, championshipCounts, awards }, 200);

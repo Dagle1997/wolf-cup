@@ -240,6 +240,12 @@ export const HISTORICAL_CASH: { year: number; moneyMan: { name: string; cash: nu
   { year: 2025, moneyMan: { name: 'Jay Patterson', cash: 159 }, philanthropist: { name: 'Chris Keaton', cash: -127 } },
 ];
 
+/** All-time single-season cash records (2016-2025) */
+export const HISTORICAL_CASH_RECORDS = {
+  biggestWin: { name: 'Josh Stoll', year: 2018, cash: 191 },
+  biggestLoss: { name: 'Chris Keaton', year: 2023, cash: -228 },
+};
+
 /** Years where players played every regular season round */
 export const HISTORICAL_IRONMAN: { year: number; maxRounds: number; perfectAttendance: string[] }[] = [
   { year: 2020, maxRounds: 18, perfectAttendance: ['Jay Patterson'] },

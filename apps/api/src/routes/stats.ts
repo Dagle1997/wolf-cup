@@ -3,7 +3,7 @@ import { eq, and, isNotNull, count, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { players, rounds, wolfDecisions, holeScores, roundResults, seasons } from '../db/schema.js';
 import { getCourseHole } from '@wolf-cup/engine';
-import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN } from '../db/history-data.js';
+import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS } from '../db/history-data.js';
 import { computeAllAwards, computePlayerBadges } from '../lib/badges.js';
 import type { PlayerBadge } from '../lib/badges.js';
 
@@ -116,7 +116,7 @@ app.get('/stats', async (c) => {
     // Step 4e: Compute badge awards from historical data
     const allAwards = computeAllAwards(
       HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
-      HISTORICAL_CASH, HISTORICAL_IRONMAN,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS,
     );
 
     // Step 5: Aggregate wolf record per player

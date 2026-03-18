@@ -18,6 +18,7 @@ import {
   HISTORICAL_ROSTERS,
   HISTORICAL_CASH,
   HISTORICAL_IRONMAN,
+  HISTORICAL_CASH_RECORDS,
 } from '../db/history-data.js';
 
 // ---------------------------------------------------------------------------
@@ -196,7 +197,7 @@ describe('computeAllAwards', () => {
   it('returns awards with no empty recipients', () => {
     const awards = computeAllAwards(
       HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
-      HISTORICAL_CASH, HISTORICAL_IRONMAN,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS,
     );
     for (const award of awards) {
       expect(award.recipients.length).toBeGreaterThan(0);
@@ -206,7 +207,7 @@ describe('computeAllAwards', () => {
   it('has both hall_of_fame and superlatives categories', () => {
     const awards = computeAllAwards(
       HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
-      HISTORICAL_CASH, HISTORICAL_IRONMAN,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS,
     );
     const categories = new Set(awards.map((a) => a.category));
     expect(categories.has('hall_of_fame')).toBe(true);
@@ -216,7 +217,7 @@ describe('computeAllAwards', () => {
   it('normalizes historical names to DB names', () => {
     const awards = computeAllAwards(
       HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
-      HISTORICAL_CASH, HISTORICAL_IRONMAN,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS,
     );
     const allNames = awards.flatMap((a) => a.recipients.map((r) => r.playerName));
     // Should use DB names, not historical nicknames
@@ -224,6 +225,22 @@ describe('computeAllAwards', () => {
     expect(allNames).not.toContain('Moses');
     expect(allNames).toContain('John Patterson');
     expect(allNames).toContain('Jason Moses');
+  });
+
+  it('includes cash record awards with correct recipients', () => {
+    const awards = computeAllAwards(
+      HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS,
+    );
+    const bigWin = awards.find((a) => a.id === 'biggest_season_win');
+    expect(bigWin).toBeDefined();
+    expect(bigWin!.recipients[0]!.playerName).toBe('Josh Stoll');
+    expect(bigWin!.recipients[0]!.detail).toBe('+$191');
+
+    const bigLoss = awards.find((a) => a.id === 'biggest_season_loss');
+    expect(bigLoss).toBeDefined();
+    expect(bigLoss!.recipients[0]!.playerName).toBe('Chris Keaton');
+    expect(bigLoss!.recipients[0]!.detail).toBe('-$228');
   });
 
   it('empty data returns empty awards', () => {

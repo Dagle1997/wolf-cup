@@ -34,6 +34,7 @@ type Champion = { year: number; playerName: string };
 type Standing = { year: number; standings: { name: string; rank: number }[] };
 type CashEntry = { year: number; moneyMan: { name: string; cash: number }; philanthropist: { name: string; cash: number } };
 type IronmanEntry = { year: number; maxRounds: number; perfectAttendance: string[] };
+type CashRecord = { name: string; year: number; cash: number };
 
 // ---------------------------------------------------------------------------
 // Individual compute functions
@@ -207,6 +208,7 @@ export function computeAllAwards(
   rosters: Record<number, string[]>,
   cashData: CashEntry[],
   ironmanData: IronmanEntry[],
+  cashRecords?: { biggestWin: CashRecord; biggestLoss: CashRecord },
 ): Award[] {
   const awards: Award[] = [];
 
@@ -362,6 +364,34 @@ export function computeAllAwards(
           return entry ? `-$${Math.abs(entry.philanthropist.cash)}` : '';
         }).join(', '),
       })),
+    });
+  }
+
+  if (cashRecords) {
+    awards.push({
+      id: 'biggest_season_win',
+      emoji: '🤑',
+      name: 'Season High Roller',
+      category: 'superlatives',
+      description: 'Most money won in a single season. All-time record.',
+      recipients: [{
+        playerName: cashRecords.biggestWin.name,
+        years: [cashRecords.biggestWin.year],
+        detail: `+$${cashRecords.biggestWin.cash}`,
+      }],
+    });
+
+    awards.push({
+      id: 'biggest_season_loss',
+      emoji: '🕳️',
+      name: 'Season Rock Bottom',
+      category: 'superlatives',
+      description: 'Most money lost in a single season. All-time record.',
+      recipients: [{
+        playerName: cashRecords.biggestLoss.name,
+        years: [cashRecords.biggestLoss.year],
+        detail: `-$${Math.abs(cashRecords.biggestLoss.cash)}`,
+      }],
     });
   }
 
