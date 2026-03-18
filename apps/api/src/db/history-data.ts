@@ -246,6 +246,29 @@ export const HISTORICAL_CASH_RECORDS = {
   biggestLoss: { name: 'Chris Keaton', year: 2023, cash: -228 },
 };
 
+/** Custom/joke awards — hardcoded one-offs */
+export const CUSTOM_AWARDS = [
+  {
+    id: 'snow_cone',
+    emoji: '🍧',
+    name: 'Snow Cone',
+    category: 'superlatives' as const,
+    description: 'Never lost a ball. Not once. Ever.',
+    recipients: [{ playerName: 'Tim Eves', years: [2016, 2017, 2018, 2019], detail: '4 seasons, 0 lost balls' }],
+  },
+  {
+    id: 'the_ronnie',
+    emoji: '😤',
+    name: 'The Ronnie',
+    category: 'superlatives' as const,
+    description: 'Dominated the regular season, then choked in the playoffs. A tradition unlike any other.',
+    recipients: [
+      { playerName: 'Ronnie A.', years: [2020], detail: '#1 seed, eliminated before Final Four' },
+      { playerName: 'Chris McNeely', years: [2021, 2022, 2023], detail: 'Highest non-Final-Four finisher 3×' },
+    ],
+  },
+];
+
 /** Years where players played every regular season round */
 export const HISTORICAL_IRONMAN: { year: number; maxRounds: number; perfectAttendance: string[] }[] = [
   { year: 2020, maxRounds: 18, perfectAttendance: ['Jay Patterson'] },

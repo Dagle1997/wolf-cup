@@ -243,9 +243,9 @@ describe('computeAllAwards', () => {
     expect(bigLoss!.recipients[0]!.detail).toBe('-$228');
   });
 
-  it('empty data returns empty awards', () => {
+  it('empty data still includes custom awards', () => {
     const awards = computeAllAwards([], [], {}, [], []);
-    expect(awards).toHaveLength(0);
+    expect(awards.every((a) => ['snow_cone', 'the_ronnie'].includes(a.id))).toBe(true);
   });
 });
 

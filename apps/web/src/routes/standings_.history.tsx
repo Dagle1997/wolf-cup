@@ -278,7 +278,7 @@ function AwardCard({ award }: { award: Award }) {
       <div className="space-y-1.5">
         {award.recipients.map((r) => {
           const cashRecord = ['biggest_season_win', 'biggest_season_loss'].includes(award.id);
-          const perSeason = ['money_man', 'philanthropist', 'ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance'];
+          const perSeason = ['money_man', 'philanthropist', 'ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance', 'the_ronnie', 'snow_cone'];
           const showYearEmojis = !cashRecord && perSeason.includes(award.id);
           return (
             <div key={r.playerName} className="text-xs">
