@@ -76,6 +76,7 @@ app.post('/seasons', adminAuthMiddleware, async (c) => {
         .insert(seasons)
         .values({
           name: result.data.name,
+          year: result.data.year,
           startDate: result.data.startDate,
           endDate: result.data.endDate,
           playoffFormat: result.data.playoffFormat,

@@ -25,6 +25,7 @@ type PlayerStats = {
   totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
+  championshipWins?: number;
 };
 
 type StatsResponse = {
@@ -184,6 +185,11 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
         <div className="flex items-center gap-2.5">
           <span className="text-xs font-bold text-muted-foreground w-5 text-center">{rank}</span>
           <span className="font-semibold">{p.name}</span>
+          {p.championshipWins && (
+            <span className="text-xs font-bold text-amber-600" title={`${p.championshipWins}× Wolf Cup Champion`}>
+              {p.championshipWins}×🏆
+            </span>
+          )}
         </div>
         <span className={`text-base font-bold tabular-nums ${moneyColor}`}>
           {formatMoney(p.totalMoney)}

@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -59,6 +59,16 @@ function StandingsPage() {
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
+      <Link
+        to="/standings/history"
+        className="flex items-center justify-between px-4 py-2 mb-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 group"
+      >
+        <span className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+          🏆 Champions & History
+        </span>
+        <span className="text-xs text-amber-600 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform">→</span>
+      </Link>
+
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-xl font-bold tracking-tight">

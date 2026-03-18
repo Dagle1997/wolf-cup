@@ -42,6 +42,7 @@ beforeAll(async () => {
     .insert(seasons)
     .values({
       name: 'Test Season SG',
+      year: 3080,
       startDate: '2026-01-01',
       endDate: '2026-12-31',
       totalRounds: 17,
@@ -117,6 +118,7 @@ describe('GET /seasons/:seasonId/side-games', () => {
       .insert(seasons)
       .values({
         name: 'Empty Season SG',
+        year: 3081,
         startDate: '2027-01-01',
         endDate: '2027-12-31',
         totalRounds: 10,

@@ -17,7 +17,9 @@ import adminScoreCorrectionsRouter from './routes/admin/score-corrections.js';
 import adminGhinRouter from './routes/admin/ghin.js';
 import adminPairingRouter from './routes/admin/pairing.js';
 import adminAttendanceRouter from './routes/admin/attendance.js';
+import adminHistoryRouter from './routes/admin/history.js';
 import attendanceRouter from './routes/attendance.js';
+import historyRouter from './routes/history.js';
 import pairingsRouter from './routes/pairings.js';
 import cron from 'node-cron';
 import { ghinClient } from './lib/ghin-client.js';
@@ -44,6 +46,7 @@ app.route('/api', standingsRouter);
 app.route('/api', statsRouter);
 app.route('/api', attendanceRouter);
 app.route('/api', pairingsRouter);
+app.route('/api', historyRouter);
 
 // ---------------------------------------------------------------------------
 // Admin routes
@@ -58,6 +61,7 @@ app.route('/api/admin', adminScoreCorrectionsRouter);
 app.route('/api/admin', adminGhinRouter);
 app.route('/api/admin', adminPairingRouter);
 app.route('/api/admin', adminAttendanceRouter);
+app.route('/api/admin/history', adminHistoryRouter);
 
 // ---------------------------------------------------------------------------
 // Startup cleanup — delete cancelled casual rounds older than 24 hours

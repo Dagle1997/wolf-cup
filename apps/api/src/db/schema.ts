@@ -43,16 +43,48 @@ export const sessions = sqliteTable(
 // seasons
 // ---------------------------------------------------------------------------
 
-export const seasons = sqliteTable('seasons', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(),
-  startDate: text('start_date').notNull(), // ISO YYYY-MM-DD
-  endDate: text('end_date').notNull(),
-  totalRounds: integer('total_rounds').notNull(),
-  playoffFormat: text('playoff_format').notNull(),
-  harveyLiveEnabled: integer('harvey_live_enabled').notNull().default(0), // boolean 0/1
-  createdAt: integer('created_at').notNull(),
-});
+export const seasons = sqliteTable(
+  'seasons',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    year: integer('year').notNull().default(0),
+    startDate: text('start_date').notNull(), // ISO YYYY-MM-DD
+    endDate: text('end_date').notNull(),
+    totalRounds: integer('total_rounds').notNull(),
+    playoffFormat: text('playoff_format').notNull(),
+    harveyLiveEnabled: integer('harvey_live_enabled').notNull().default(0), // boolean 0/1
+    championPlayerId: integer('champion_player_id').references(() => players.id),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    yearUniq: uniqueIndex('uniq_seasons_year').on(t.year),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// season_standings
+// ---------------------------------------------------------------------------
+
+export const seasonStandings = sqliteTable(
+  'season_standings',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    seasonId: integer('season_id')
+      .notNull()
+      .references(() => seasons.id, { onDelete: 'cascade' }),
+    playerId: integer('player_id')
+      .notNull()
+      .references(() => players.id),
+    rank: integer('rank').notNull(),
+    points: real('points'), // nullable — some historical years have rank only
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    seasonPlayerUniq: uniqueIndex('uniq_season_standings_season_player').on(t.seasonId, t.playerId),
+    seasonIdx: index('idx_season_standings_season').on(t.seasonId),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // season_weeks

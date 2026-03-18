@@ -67,6 +67,7 @@ beforeAll(async () => {
     .insert(seasons)
     .values({
       name: '2026',
+      year: 3040,
       startDate: '2026-01-01',
       endDate: '2026-12-31',
       totalRounds: 15,

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNotNull, count } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { players, rounds, wolfDecisions, holeScores, roundResults } from '../db/schema.js';
+import { players, rounds, wolfDecisions, holeScores, roundResults, seasons } from '../db/schema.js';
 import { getCourseHole } from '@wolf-cup/engine';
 
 const app = new Hono();
@@ -26,6 +26,7 @@ type PlayerStats = {
   totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
+  championshipWins?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -70,6 +71,17 @@ app.get('/stats', async (c) => {
       .from(roundResults)
       .innerJoin(rounds, eq(rounds.id, roundResults.roundId))
       .where(and(eq(rounds.type, 'official'), eq(rounds.status, 'finalized')));
+
+    // Step 4b: Championship win counts
+    const champCounts = await db
+      .select({ playerId: seasons.championPlayerId, wins: count() })
+      .from(seasons)
+      .where(isNotNull(seasons.championPlayerId))
+      .groupBy(seasons.championPlayerId);
+    const champMap = new Map<number, number>();
+    for (const row of champCounts) {
+      if (row.playerId != null) champMap.set(row.playerId, row.wins);
+    }
 
     // Step 5: Aggregate wolf record per player
     const wolfMap = new Map<
@@ -154,6 +166,7 @@ app.get('/stats', async (c) => {
         totalMoney: totalMoneyMap.get(p.id) ?? 0,
         biggestRoundWin: winMap.get(p.id) ?? 0,
         biggestRoundLoss: lossMap.get(p.id) ?? 0,
+        ...(champMap.has(p.id) ? { championshipWins: champMap.get(p.id)! } : {}),
       };
     });
 

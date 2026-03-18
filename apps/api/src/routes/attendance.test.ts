@@ -66,6 +66,7 @@ beforeAll(async () => {
     .insert(seasons)
     .values({
       name: 'Test Season',
+      year: 3001,
       startDate: '2026-04-10',
       endDate: '2026-05-01',
       totalRounds: 4,
@@ -155,7 +156,7 @@ describe('GET /attendance', () => {
     // Restore season + weeks
     const [s] = await db
       .insert(seasons)
-      .values({ id: seasonId, name: 'Test Season', startDate: '2026-04-10', endDate: '2026-05-01', totalRounds: 4, playoffFormat: 'top4', createdAt: Date.now() })
+      .values({ id: seasonId, name: 'Test Season', year: 3002, startDate: '2026-04-10', endDate: '2026-05-01', totalRounds: 4, playoffFormat: 'top4', createdAt: Date.now() })
       .returning();
     const fridays = ['2026-04-10', '2026-04-17', '2026-04-24', '2026-05-01'];
     const tees = ['blue', 'black', 'white', 'blue'] as const;

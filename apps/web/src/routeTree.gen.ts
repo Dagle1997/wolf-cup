@@ -19,6 +19,7 @@ import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as StandingsHistoryRouteImport } from './routes/standings_.history'
 import { Route as RoundRoundIdRouteImport } from './routes/round.$roundId'
 import { Route as PairingsRoundIdRouteImport } from './routes/pairings.$roundId'
 import { Route as AdminSeasonRouteImport } from './routes/admin/season'
@@ -77,6 +78,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRoute,
 } as any)
+const StandingsHistoryRoute = StandingsHistoryRouteImport.update({
+  id: '/standings_/history',
+  path: '/standings/history',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RoundRoundIdRoute = RoundRoundIdRouteImport.update({
   id: '/round/$roundId',
   path: '/round/$roundId',
@@ -130,6 +136,7 @@ export interface FileRoutesByFullPath {
   '/admin/season': typeof AdminSeasonRoute
   '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
+  '/standings/history': typeof StandingsHistoryRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/admin/season': typeof AdminSeasonRoute
   '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
+  '/standings/history': typeof StandingsHistoryRoute
   '/admin': typeof AdminIndexRoute
 }
 export interface FileRoutesById {
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/admin/season': typeof AdminSeasonRoute
   '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
+  '/standings_/history': typeof StandingsHistoryRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRouteTypes {
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/admin/season'
     | '/pairings/$roundId'
     | '/round/$roundId'
+    | '/standings/history'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -207,6 +217,7 @@ export interface FileRouteTypes {
     | '/admin/season'
     | '/pairings/$roundId'
     | '/round/$roundId'
+    | '/standings/history'
     | '/admin'
   id:
     | '__root__'
@@ -226,6 +237,7 @@ export interface FileRouteTypes {
     | '/admin/season'
     | '/pairings/$roundId'
     | '/round/$roundId'
+    | '/standings_/history'
     | '/admin/'
   fileRoutesById: FileRoutesById
 }
@@ -241,6 +253,7 @@ export interface RootRouteChildren {
   StatsRoute: typeof StatsRoute
   PairingsRoundIdRoute: typeof PairingsRoundIdRoute
   RoundRoundIdRoute: typeof RoundRoundIdRoute
+  StandingsHistoryRoute: typeof StandingsHistoryRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -314,6 +327,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/standings_/history': {
+      id: '/standings_/history'
+      path: '/standings/history'
+      fullPath: '/standings/history'
+      preLoaderRoute: typeof StandingsHistoryRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/round/$roundId': {
       id: '/round/$roundId'
@@ -399,6 +419,7 @@ const rootRouteChildren: RootRouteChildren = {
   StatsRoute: StatsRoute,
   PairingsRoundIdRoute: PairingsRoundIdRoute,
   RoundRoundIdRoute: RoundRoundIdRoute,
+  StandingsHistoryRoute: StandingsHistoryRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -51,6 +51,7 @@ beforeAll(async () => {
     .insert(seasons)
     .values({
       name: 'Baseline Season',
+      year: 2070,
       startDate: '2026-01-01',
       endDate: '2026-12-31',
       totalRounds: 17,
@@ -127,6 +128,7 @@ describe('POST /seasons', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2071,
         startDate: '2026-04-10', // Friday
         endDate: '2026-05-01', // Friday
         playoffFormat: 'top4',
@@ -154,6 +156,7 @@ describe('POST /seasons', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2072,
         startDate: '2026-04-10',
         endDate: '2026-04-10',
         playoffFormat: 'top4',
@@ -175,6 +178,7 @@ describe('POST /seasons', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        year: 2073,
         startDate: '2026-04-10',
         endDate: '2026-05-01',
         playoffFormat: 'top4',
@@ -192,6 +196,7 @@ describe('POST /seasons', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2074,
         startDate: '2026-04-11', // Saturday
         endDate: '2026-05-01',
         playoffFormat: 'top4',
@@ -209,6 +214,7 @@ describe('POST /seasons', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2075,
         startDate: '2026-04-10',
         endDate: '2026-05-02', // Saturday
         playoffFormat: 'top4',
@@ -226,6 +232,7 @@ describe('POST /seasons', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2076,
         startDate: 'January 1 2027',
         endDate: '2027-12-31',
         playoffFormat: 'top4',
@@ -244,6 +251,7 @@ describe('POST /seasons', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2077,
         startDate: '2026-04-10',
         endDate: '2026-04-17',
         playoffFormat: 'top4',
@@ -260,6 +268,7 @@ describe('POST /seasons', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2078,
         startDate: '2026-04-10',
         endDate: '2026-04-17',
         playoffFormat: 'top4',
@@ -289,6 +298,7 @@ describe('POST /seasons', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2079,
         startDate: '2026-08-28',
         endDate: '2026-04-10',
         playoffFormat: 'top4',
@@ -422,6 +432,7 @@ describe('GET /seasons/:seasonId/weeks', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2080,
         startDate: '2026-04-10',
         endDate: '2026-05-01',
         playoffFormat: 'top4',
@@ -465,6 +476,7 @@ describe('GET /seasons/:seasonId/weeks', () => {
 // ---------------------------------------------------------------------------
 
 describe('PATCH /seasons/:seasonId/weeks/:weekId', () => {
+  let createTestSeasonYear = 2081;
   async function createTestSeason(): Promise<{
     seasonId: number;
     weekIds: number[];
@@ -474,6 +486,7 @@ describe('PATCH /seasons/:seasonId/weeks/:weekId', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: createTestSeasonYear++,
         startDate: '2026-04-10',
         endDate: '2026-05-01',
         playoffFormat: 'top4',
@@ -657,12 +670,14 @@ describe('PATCH /seasons/:seasonId/weeks/:weekId', () => {
 // ---------------------------------------------------------------------------
 
 describe('Tee rotation', () => {
+  let teeRotationYear = 2090;
   it('POST /seasons assigns tees on creation (blue, black, white, blue)', async () => {
     const res = await seasonApp.request('/seasons', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: teeRotationYear++,
         startDate: '2026-04-10',
         endDate: '2026-05-01',
         playoffFormat: 'top4',
@@ -684,6 +699,7 @@ describe('Tee rotation', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: teeRotationYear++,
         startDate: '2026-04-10',
         endDate: '2026-04-24',
         playoffFormat: 'top4',
@@ -709,6 +725,7 @@ describe('Tee rotation', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: teeRotationYear++,
         startDate: '2026-04-10',
         endDate: '2026-05-01',
         playoffFormat: 'top4',
@@ -752,6 +769,7 @@ describe('Tee rotation', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: teeRotationYear++,
         startDate: '2026-04-10',
         endDate: '2026-05-01',
         playoffFormat: 'top4',
@@ -800,6 +818,7 @@ describe('Tee rotation', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: teeRotationYear++,
         startDate: '2026-04-10',
         endDate: '2026-04-24',
         playoffFormat: 'top4',
@@ -841,6 +860,7 @@ describe('Harvey live default', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2095,
         startDate: '2026-04-10',
         endDate: '2026-04-10',
         playoffFormat: 'top4',
@@ -858,6 +878,7 @@ describe('Harvey live default', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2096,
         startDate: '2026-04-10',
         endDate: '2026-04-10',
         playoffFormat: 'top4',
@@ -882,6 +903,7 @@ describe('DELETE /seasons/:id', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2097,
         startDate: '2026-04-10',
         endDate: '2026-04-10',
         playoffFormat: 'top4',
@@ -912,6 +934,7 @@ describe('DELETE /seasons/:id', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2098,
         startDate: '2026-04-10',
         endDate: '2026-04-10',
         playoffFormat: 'top4',
@@ -1018,6 +1041,7 @@ describe('GET /seasons/:id/stats', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'Test Season',
+        year: 2099,
         startDate: '2026-04-10',
         endDate: '2026-04-10',
         playoffFormat: 'top4',
