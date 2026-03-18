@@ -107,11 +107,11 @@ describe('computePhBalance', () => {
     expect(names).toContain('Ben McGinnis');
   });
 
-  it('Matt White has 3rd in 2015, 2016, 2025', () => {
+  it('Matt White has 3rd in 2015, 2016', () => {
     const result = computePhBalance(HISTORICAL_STANDINGS);
     const mw = result.find((r) => r.playerName === 'Matt White');
     expect(mw).toBeDefined();
-    expect(mw!.years).toEqual([2015, 2016, 2025]);
+    expect(mw!.years).toEqual([2015, 2016]);
   });
 
   it('Ben McGinnis has 3rd in 2022, 2024', () => {
