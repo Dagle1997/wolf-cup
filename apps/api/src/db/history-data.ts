@@ -200,6 +200,24 @@ export const HISTORICAL_PLAYERS: string[] = [
   'Brian White',
 ];
 
+/**
+ * Maps historical/Excel names → database player names.
+ * Historical data uses nicknames; the DB uses formal names.
+ */
+export const NAME_MAP: Record<string, string> = {
+  'Jay Patterson': 'John Patterson',
+  'Moses': 'Jason Moses',
+  'Bobby Marshall': 'Bob Marshall',
+  'Mike Bonner': 'Michael Bonner',
+  'Ronnie A.': 'Ronnie Adkins',
+  'Scotty Pierson': 'Scott Pierson',
+};
+
+/** Normalize a historical name to the DB name */
+export function normalizePlayerName(name: string): string {
+  return NAME_MAP[name] ?? name;
+}
+
 /** Player names per year — used for OG / Every Season badge detection */
 export const HISTORICAL_ROSTERS: Record<number, string[]> = {
   2015: ['Moses', 'Brian White', 'Matt Jaquint', 'Chris Preston', 'Matt White', 'Chris McNeely', 'Nick Goff', 'Chris Keaton', 'Josh Stoll', 'Allan Thacker', 'A. Dawson', 'David Sheils', 'Jack Taylor', 'Chris Michael', 'Sid Torlone'],

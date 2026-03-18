@@ -2,6 +2,7 @@
  * Badge computation — pure functions that derive awards from historical data.
  * No database access; all inputs are passed in.
  */
+import { normalizePlayerName } from '../db/history-data.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -330,6 +331,13 @@ export function computeAllAwards(
         }).join(', '),
       })),
     });
+  }
+
+  // Normalize all recipient names to match DB player names
+  for (const award of awards) {
+    for (const r of award.recipients) {
+      r.playerName = normalizePlayerName(r.playerName);
+    }
   }
 
   return awards;

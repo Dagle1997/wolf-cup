@@ -49,6 +49,7 @@ describe('computeRickieFowler', () => {
   it('Jay Patterson wins with 2 runner-ups (2019, 2025)', () => {
     const result = computeRickieFowler(HISTORICAL_STANDINGS, HISTORICAL_CHAMPIONS);
     expect(result.length).toBeGreaterThanOrEqual(1);
+    // computeRickieFowler uses raw historical names (normalization happens in computeAllAwards)
     const jay = result.find((r) => r.playerName === 'Jay Patterson');
     expect(jay).toBeDefined();
     expect(jay!.runnerUpCount).toBe(2);
@@ -190,6 +191,19 @@ describe('computeAllAwards', () => {
     expect(categories.has('superlatives')).toBe(true);
   });
 
+  it('normalizes historical names to DB names', () => {
+    const awards = computeAllAwards(
+      HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN,
+    );
+    const allNames = awards.flatMap((a) => a.recipients.map((r) => r.playerName));
+    // Should use DB names, not historical nicknames
+    expect(allNames).not.toContain('Jay Patterson');
+    expect(allNames).not.toContain('Moses');
+    expect(allNames).toContain('John Patterson');
+    expect(allNames).toContain('Jason Moses');
+  });
+
   it('empty data returns empty awards', () => {
     const awards = computeAllAwards([], [], {}, [], []);
     expect(awards).toHaveLength(0);
@@ -210,8 +224,9 @@ describe('computePlayerBadges', () => {
     expect(ids).toContain('philanthropist');
   });
 
-  it('Jay Patterson gets Rickie Fowler + Ironman + Money Man', () => {
-    const badges = computePlayerBadges('Jay Patterson', awards);
+  it('John Patterson (DB name) gets Rickie Fowler + Ironman + Money Man', () => {
+    // computeAllAwards normalizes "Jay Patterson" → "John Patterson"
+    const badges = computePlayerBadges('John Patterson', awards);
     const ids = badges.map((b) => b.id);
     expect(ids).toContain('rickie_fowler');
     expect(ids).toContain('ironman');
