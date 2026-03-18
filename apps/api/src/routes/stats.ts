@@ -1,8 +1,11 @@
 import { Hono } from 'hono';
-import { eq, and, isNotNull, count } from 'drizzle-orm';
+import { eq, and, isNotNull, count, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { players, rounds, wolfDecisions, holeScores, roundResults, seasons } from '../db/schema.js';
 import { getCourseHole } from '@wolf-cup/engine';
+import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN } from '../db/history-data.js';
+import { computeAllAwards, computePlayerBadges } from '../lib/badges.js';
+import type { PlayerBadge } from '../lib/badges.js';
 
 const app = new Hono();
 
@@ -27,6 +30,9 @@ type PlayerStats = {
   biggestRoundWin: number;
   biggestRoundLoss: number;
   championshipWins?: number;
+  championshipYears?: number[];
+  isDefendingChampion?: boolean;
+  badges?: PlayerBadge[];
 };
 
 // ---------------------------------------------------------------------------
@@ -82,6 +88,36 @@ app.get('/stats', async (c) => {
     for (const row of champCounts) {
       if (row.playerId != null) champMap.set(row.playerId, row.wins);
     }
+
+    // Step 4c: Championship years per player (for year labels under trophies)
+    const champYearRows = await db
+      .select({ playerId: seasons.championPlayerId, year: seasons.year })
+      .from(seasons)
+      .where(isNotNull(seasons.championPlayerId))
+      .orderBy(seasons.year);
+    const champYearsMap = new Map<number, number[]>();
+    for (const row of champYearRows) {
+      if (row.playerId != null) {
+        const arr = champYearsMap.get(row.playerId) ?? [];
+        arr.push(row.year);
+        champYearsMap.set(row.playerId, arr);
+      }
+    }
+
+    // Step 4d: Defending champion (most recent completed season's champion)
+    const mostRecentChamp = await db
+      .select({ championPlayerId: seasons.championPlayerId })
+      .from(seasons)
+      .where(isNotNull(seasons.championPlayerId))
+      .orderBy(desc(seasons.year))
+      .limit(1);
+    const defendingChampId = mostRecentChamp[0]?.championPlayerId ?? null;
+
+    // Step 4e: Compute badge awards from historical data
+    const allAwards = computeAllAwards(
+      HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN,
+    );
 
     // Step 5: Aggregate wolf record per player
     const wolfMap = new Map<
@@ -167,6 +203,12 @@ app.get('/stats', async (c) => {
         biggestRoundWin: winMap.get(p.id) ?? 0,
         biggestRoundLoss: lossMap.get(p.id) ?? 0,
         ...(champMap.has(p.id) ? { championshipWins: champMap.get(p.id)! } : {}),
+        ...(champYearsMap.has(p.id) ? { championshipYears: champYearsMap.get(p.id)! } : {}),
+        ...(p.id === defendingChampId ? { isDefendingChampion: true } : {}),
+        ...(() => {
+          const badges = computePlayerBadges(p.name, allAwards);
+          return badges.length > 0 ? { badges } : {};
+        })(),
       };
     });
 

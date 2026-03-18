@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { eq, isNotNull, desc, asc, count, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { seasons, seasonStandings, players } from '../db/schema.js';
+import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN } from '../db/history-data.js';
+import { computeAllAwards } from '../lib/badges.js';
 
 const app = new Hono();
 
@@ -101,7 +103,13 @@ app.get('/history', async (c) => {
     }));
     championshipCounts.sort((a, b) => b.wins - a.wins);
 
-    return c.json({ seasons: seasonResults, championshipCounts }, 200);
+    // 7. Compute awards from historical data
+    const awards = computeAllAwards(
+      HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
+      HISTORICAL_CASH, HISTORICAL_IRONMAN,
+    );
+
+    return c.json({ seasons: seasonResults, championshipCounts, awards }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }

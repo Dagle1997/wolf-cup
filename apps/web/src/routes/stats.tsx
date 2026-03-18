@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useMemo } from 'react';
 import { RefreshCw, AlertCircle } from 'lucide-react';
@@ -8,6 +8,13 @@ import { apiFetch } from '@/lib/api';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+type PlayerBadge = {
+  id: string;
+  emoji: string;
+  name: string;
+  years: number[];
+};
 
 type PlayerStats = {
   playerId: number;
@@ -26,6 +33,9 @@ type PlayerStats = {
   biggestRoundWin: number;
   biggestRoundLoss: number;
   championshipWins?: number;
+  championshipYears?: number[];
+  isDefendingChampion?: boolean;
+  badges?: PlayerBadge[];
 };
 
 type StatsResponse = {
@@ -115,6 +125,15 @@ function StatsPage() {
         </Button>
       </div>
 
+      {/* Awards Wall link */}
+      <Link
+        to="/standings/history"
+        hash="awards"
+        className="block mb-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-2.5 text-center text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+      >
+        🏆 View Awards Wall & Badge Explanations
+      </Link>
+
       {/* Sort buttons */}
       {data && data.players.length > 0 && (
         <div className="flex gap-1.5 mb-3">
@@ -179,17 +198,39 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
       : '';
 
   return (
-    <div className="rounded-xl border overflow-hidden shadow-sm">
+    <div className={`rounded-xl border overflow-hidden shadow-sm ${p.isDefendingChampion ? 'border-l-2 border-l-amber-400' : ''}`}>
       {/* Header — player name + total money */}
       <div className="flex items-center justify-between px-4 py-3 bg-muted/40 border-b">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
           <span className="text-xs font-bold text-muted-foreground w-5 text-center">{rank}</span>
           <span className="font-semibold">{p.name}</span>
-          {p.championshipWins && (
-            <span className="text-xs font-bold text-amber-600" title={`${p.championshipWins}× Wolf Cup Champion`}>
-              {p.championshipWins}×🏆
-            </span>
-          )}
+          {p.championshipYears && p.championshipYears.map((year) => (
+            <Link key={year} to="/standings/history" hash="badge-dynasty" className="inline-flex flex-col items-center leading-none">
+              <span className="text-sm">🏆</span>
+              <span className="text-[8px] text-muted-foreground">{String(year).slice(2)}</span>
+            </Link>
+          ))}
+          {p.badges && p.badges.map((badge) => {
+            // Per-season awards: repeat emoji per year with year labels
+            const perSeason = ['money_man', 'philanthropist', 'ironman', 'rickie_fowler', 'ph_balance'];
+            if (perSeason.includes(badge.id) && badge.years.length > 1) {
+              return badge.years.map((year) => (
+                <Link key={`${badge.id}-${year}`} to="/standings/history" hash={`badge-${badge.id}`} className="inline-flex flex-col items-center leading-none">
+                  <span className="text-sm">{badge.emoji}</span>
+                  <span className="text-[8px] text-muted-foreground">{String(year).slice(2)}</span>
+                </Link>
+              ));
+            }
+            // Career badges (OG, Every Season, Rickie Fowler, pH Balance): single emoji, no year label
+            return (
+              <Link key={badge.id} to="/standings/history" hash={`badge-${badge.id}`} className="inline-flex flex-col items-center leading-none">
+                <span className="text-sm">{badge.emoji}</span>
+                {perSeason.includes(badge.id) && badge.years[0] && (
+                  <span className="text-[8px] text-muted-foreground">{String(badge.years[0]).slice(2)}</span>
+                )}
+              </Link>
+            );
+          })}
         </div>
         <span className={`text-base font-bold tabular-nums ${moneyColor}`}>
           {formatMoney(p.totalMoney)}

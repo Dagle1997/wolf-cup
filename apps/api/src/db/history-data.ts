@@ -199,3 +199,30 @@ export const HISTORICAL_PLAYERS: string[] = [
   'Alan Beasley',
   'Brian White',
 ];
+
+/** Player names per year — used for OG / Every Season badge detection */
+export const HISTORICAL_ROSTERS: Record<number, string[]> = {
+  2015: ['Moses', 'Brian White', 'Matt Jaquint', 'Chris Preston', 'Matt White', 'Chris McNeely', 'Nick Goff', 'Chris Keaton', 'Josh Stoll', 'Allan Thacker', 'A. Dawson', 'David Sheils', 'Jack Taylor', 'Chris Michael', 'Sid Torlone'],
+  2016: ['Moses', 'Matt Jaquint', 'Brian White', 'Matt White', 'Sid Torlone', 'Chris Preston', 'Jeff Madden', 'Chris McNeely', 'John Short', 'Scott Crouch', 'Tim Eves', 'Chris Keaton', 'Jay Patterson', 'Josh Stoll', 'A. Dawson'],
+  2017: ['Sid Torlone', 'Jeff Madden', 'Matt White', 'Matt Jaquint', 'A. Dawson', 'Jay Patterson', 'Moses', 'Chris Preston', 'Josh Stoll', 'Chris Keaton', 'Tim Eves', 'Ronnie A.', 'Chris McNeely', 'John Short'],
+  2018: ['Josh Stoll', 'Jeff Madden', 'Matt Jaquint', 'Chris Preston', 'Jay Patterson', 'Ronnie A.', 'Moses', 'Chris Keaton', 'Sean Wilson', 'Chris McNeely', 'Matt White', 'A. Dawson', 'Tim Eves'],
+  2019: ['Chris McNeely', 'Moses', 'Josh Stoll', 'Jeff Madden', 'Chris Preston', 'Jay Patterson', 'Sean Wilson', 'Tim Eves', 'Chris Keaton', 'Matt White', 'A. Dawson', 'Ronnie A.'],
+  2020: ['Ronnie A.', 'A. Dawson', 'Chris Preston', 'Jeff Madden', 'Josh Stoll', 'Jay Patterson', 'Sean Wilson', 'Kyle Cox', 'Moses', 'Chris McNeely', 'Chris Keaton', 'Matt White'],
+  2021: ['Moses', 'Jeff Madden', 'Chris Preston', 'Chris McNeely', 'Jay Patterson', 'Ronnie A.', 'Sean Wilson', 'Kyle Cox', 'Mike Bonner', 'Josh Stoll', 'A. Dawson', 'Nathan Copley', 'Jeff Biederman', 'Alan Beasley', 'Matt White', 'Chris Keaton'],
+  2022: ['Jeff Madden', 'Ben McGinnis', 'Chris McNeely', 'Kyle Cox', 'Nathan Copley', 'Chris Preston', 'Scotty Pierson', 'Matt White', 'A. Dawson', 'Jeff Biederman', 'Jay Patterson', 'Mike Bonner', 'Josh Stoll', 'Ronnie A.', 'Sean Wilson', 'Chris Keaton', 'Moses', 'Matt Jaquint', 'Alan Beasley'],
+  2023: ['Ronnie A.', 'Nathan Copley', 'Chris Preston', 'Chris McNeely', 'Matt Jaquint', 'Josh Stoll', 'Moses', 'Scotty Pierson', 'Ben McGinnis', 'Jeff Biederman', 'Mike Bonner', 'Jeff Madden', 'A. Dawson', 'Kyle Cox', 'Matt White', 'Sean Wilson', 'Chris Keaton', 'Jay Patterson', 'Alan Beasley'],
+  2024: ['Ronnie A.', 'Tim Biller', 'Matt Jaquint', 'Scotty Pierson', 'Ben McGinnis', 'Jay Patterson', 'Moses', 'Mike Bonner', 'Jeff Madden', 'Chris McNeely', 'Josh Stoll', 'A. Dawson', 'Jeff Biederman', 'Kyle Cox', 'Sean Wilson', 'Matt White', 'Chris Preston', 'Chris Keaton'],
+  2025: ['Matt Jaquint', 'Jay Patterson', 'Matt White', 'Moses', 'Scotty Pierson', 'Josh Stoll', 'Chris McNeely', 'Mike Bonner', 'Ronnie A.', 'Tim Biller', 'Jeff Madden', 'Ben McGinnis', 'Kyle Cox', 'Jeff Biederman', 'Chris Keaton', 'Bobby Marshall', 'Sean Wilson'],
+};
+
+/** Per-season Money Man and Philanthropist winners (2023+ only — earlier eras had different point scales) */
+export const HISTORICAL_CASH: { year: number; moneyMan: { name: string; cash: number }; philanthropist: { name: string; cash: number } }[] = [
+  { year: 2023, moneyMan: { name: 'Matt Jaquint', cash: 124 }, philanthropist: { name: 'Chris Keaton', cash: -228 } },
+  { year: 2024, moneyMan: { name: 'Matt Jaquint', cash: 108 }, philanthropist: { name: 'Chris Keaton', cash: -143 } },
+  { year: 2025, moneyMan: { name: 'Jay Patterson', cash: 159 }, philanthropist: { name: 'Chris Keaton', cash: -127 } },
+];
+
+/** Years where players played every regular season round */
+export const HISTORICAL_IRONMAN: { year: number; maxRounds: number; perfectAttendance: string[] }[] = [
+  { year: 2020, maxRounds: 18, perfectAttendance: ['Jay Patterson'] },
+];

@@ -42,15 +42,16 @@ type PlayerStats = {
   playerId: number;
   name: string;
   wolfCallsTotal: number;
-  wolfCallsAlone: number;
-  wolfCallsPartner: number;
+  wolfCallsWolf: number;
+  wolfCallsBlindWolf: number;
   wolfWins: number;
   wolfLosses: number;
   wolfPushes: number;
-  netBirdies: number;
-  netEagles: number;
+  birdies: number;
+  eagles: number;
   greenies: number;
   polies: number;
+  totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
 };
@@ -143,13 +144,13 @@ describe('GET /stats', () => {
     const alice = body.players.find((p) => p.playerId === p1Id)!;
     expect(alice).toBeDefined();
     expect(alice.wolfCallsTotal).toBe(0);
-    expect(alice.wolfCallsAlone).toBe(0);
-    expect(alice.wolfCallsPartner).toBe(0);
+    expect(alice.wolfCallsWolf).toBe(0);
+    expect(alice.wolfCallsBlindWolf).toBe(0);
     expect(alice.wolfWins).toBe(0);
     expect(alice.wolfLosses).toBe(0);
     expect(alice.wolfPushes).toBe(0);
-    expect(alice.netBirdies).toBe(0);
-    expect(alice.netEagles).toBe(0);
+    expect(alice.birdies).toBe(0);
+    expect(alice.eagles).toBe(0);
     expect(alice.greenies).toBe(0);
     expect(alice.polies).toBe(0);
     expect(alice.biggestRoundWin).toBe(0);
@@ -201,10 +202,11 @@ describe('GET /stats', () => {
     const body = (await res.json()) as StatsResponse;
     const alice = body.players.find((p) => p.playerId === p1Id)!;
     expect(alice.wolfCallsTotal).toBe(3);
-    expect(alice.wolfCallsAlone).toBe(2);
-    expect(alice.wolfCallsPartner).toBe(1);
+    expect(alice.wolfCallsWolf).toBe(2);
+    expect(alice.wolfCallsBlindWolf).toBe(0);
+    // W-L-T only counts alone/blind_wolf decisions — partner decision doesn't count
     expect(alice.wolfWins).toBe(1);
-    expect(alice.wolfLosses).toBe(1);
+    expect(alice.wolfLosses).toBe(0);
     expect(alice.wolfPushes).toBe(1);
   });
 
@@ -226,8 +228,8 @@ describe('GET /stats', () => {
     const body = (await res.json()) as StatsResponse;
     const alice = body.players.find((p) => p.playerId === p1Id)!;
     expect(alice.wolfCallsTotal).toBe(1);
-    expect(alice.wolfCallsAlone).toBe(1);
-    expect(alice.wolfCallsPartner).toBe(0);
+    expect(alice.wolfCallsWolf).toBe(0);
+    expect(alice.wolfCallsBlindWolf).toBe(1);
     expect(alice.wolfWins).toBe(1);
   });
 
@@ -301,11 +303,9 @@ describe('GET /stats', () => {
     expect(bob.polies).toBe(0);
   });
 
-  it('computes net birdies correctly (gross - handicap strokes === par - 1)', async () => {
+  it('computes gross birdies correctly (gross score === par - 1)', async () => {
     const now = Date.now();
-    // Bob has handicapIndex=0 (set in beforeAll round_players)
-    // Hole 6: par 3, strokeIndex 17 → getHandicapStrokes(0, 17)=0 strokes
-    // gross=2, net=2, par-1=2 → birdie
+    // Hole 6: par 3 — gross=2 → birdie (1 under par)
     await db.insert(holeScores).values({
       roundId,
       groupId,
@@ -319,15 +319,13 @@ describe('GET /stats', () => {
     const res = await statsApp.request('/stats');
     const body = (await res.json()) as StatsResponse;
     const bob = body.players.find((p) => p.playerId === p2Id)!;
-    expect(bob.netBirdies).toBe(1);
-    expect(bob.netEagles).toBe(0);
+    expect(bob.birdies).toBe(1);
+    expect(bob.eagles).toBe(0);
   });
 
-  it('computes net eagles correctly (net score <= par - 2)', async () => {
+  it('computes gross eagles correctly (gross score <= par - 2)', async () => {
     const now = Date.now();
-    // Bob has handicapIndex=0
-    // Hole 6: par 3, strokeIndex 17 → 0 strokes
-    // gross=1, net=1, par-2=1 → eagle
+    // Hole 6: par 3 — gross=1 → eagle (2 under par)
     await db.insert(holeScores).values({
       roundId,
       groupId,
@@ -341,8 +339,8 @@ describe('GET /stats', () => {
     const res = await statsApp.request('/stats');
     const body = (await res.json()) as StatsResponse;
     const bob = body.players.find((p) => p.playerId === p2Id)!;
-    expect(bob.netEagles).toBe(1);
-    expect(bob.netBirdies).toBe(0);
+    expect(bob.eagles).toBe(1);
+    expect(bob.birdies).toBe(0);
   });
 
   it('computes biggest round win and loss from round_results', async () => {

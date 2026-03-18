@@ -50,7 +50,7 @@ function RootComponent() {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground">
+    <div className="flex flex-col h-dvh overflow-hidden bg-background text-foreground">
       {/* Faint watermark */}
       <div
         className="fixed inset-0 flex items-center justify-center pointer-events-none select-none z-0"

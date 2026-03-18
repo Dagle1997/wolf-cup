@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertCircle, RefreshCw, ChevronDown, ChevronRight, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
@@ -36,9 +36,25 @@ type ChampionshipCount = {
   wins: number;
 };
 
+type AwardRecipient = {
+  playerName: string;
+  years: number[];
+  detail: string;
+};
+
+type Award = {
+  id: string;
+  emoji: string;
+  name: string;
+  category: 'hall_of_fame' | 'superlatives';
+  description: string;
+  recipients: AwardRecipient[];
+};
+
 type HistoryResponse = {
   seasons: HistorySeason[];
   championshipCounts: ChampionshipCount[];
+  awards: Award[];
 };
 
 // ---------------------------------------------------------------------------
@@ -101,6 +117,22 @@ function HistoryPage() {
 
   const gallery = data ? buildGallery(data) : [];
 
+  const hallOfFame = data?.awards.filter((a) => a.category === 'hall_of_fame') ?? [];
+  const superlatives = data?.awards.filter((a) => a.category === 'superlatives') ?? [];
+
+  // Handle hash fragment navigation (TanStack Router doesn't auto-scroll)
+  useEffect(() => {
+    if (!data) return;
+    const hash = window.location.hash.replace('#', '');
+    if (hash) {
+      // Small delay to ensure DOM is rendered
+      const timer = setTimeout(() => {
+        document.getElementById(hash)?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [data]);
+
   return (
     <div className="p-4 max-w-2xl mx-auto">
       {/* Back nav */}
@@ -151,6 +183,39 @@ function HistoryPage() {
                 </section>
               )}
 
+              {/* Awards Wall */}
+              {(hallOfFame.length > 0 || superlatives.length > 0) && (
+                <section id="awards" className="mb-6">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Awards</h3>
+
+                  {hallOfFame.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-xs font-medium text-muted-foreground mb-2">Hall of Fame</h4>
+                      <div className="overflow-x-auto -mx-4 px-4">
+                        <div className="flex gap-3">
+                          {hallOfFame.map((award) => (
+                            <AwardCard key={award.id} award={award} />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {superlatives.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium text-muted-foreground mb-2">Superlatives</h4>
+                      <div className="overflow-x-auto -mx-4 px-4">
+                        <div className="flex gap-3">
+                          {superlatives.map((award) => (
+                            <AwardCard key={award.id} award={award} />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
               {/* Season History */}
               <section>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Season History</h3>
@@ -190,13 +255,47 @@ function ChampionCard({ name, wins, years }: { playerId: number; name: string; w
       </div>
       {/* Info */}
       <div className="px-3 py-2.5 text-center">
-        <div className="text-2xl font-black text-amber-600">
-          ×{wins} 🏆
+        <div className="flex items-center justify-center gap-1">
+          {years.map((y) => (
+            <span key={y} className="inline-flex flex-col items-center leading-none">
+              <span className="text-lg">🏆</span>
+              <span className="text-[8px] text-muted-foreground">{String(y).slice(2)}</span>
+            </span>
+          ))}
         </div>
         <div className="text-sm font-semibold mt-0.5">{name}</div>
-        <div className="text-[10px] text-muted-foreground mt-1">
-          {years.join(', ')}
-        </div>
+      </div>
+    </div>
+  );
+}
+
+function AwardCard({ award }: { award: Award }) {
+  return (
+    <div id={`badge-${award.id}`} className="flex-shrink-0 w-40 rounded-xl border bg-card shadow-sm overflow-hidden p-3">
+      <div className="text-3xl text-center mb-1">{award.emoji}</div>
+      <div className="text-sm font-semibold text-center">{award.name}</div>
+      <div className="text-[10px] text-muted-foreground text-center mt-1 mb-2">{award.description}</div>
+      <div className="space-y-1.5">
+        {award.recipients.map((r) => {
+          const perSeason = ['money_man', 'philanthropist', 'ironman', 'dynasty', 'rickie_fowler', 'ph_balance'];
+          const showYearEmojis = perSeason.includes(award.id);
+          return (
+            <div key={r.playerName} className="text-xs">
+              <div className="font-medium">{r.playerName}</div>
+              {showYearEmojis && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  {r.years.map((y) => (
+                    <span key={y} className="inline-flex flex-col items-center leading-none">
+                      <span className="text-sm">{award.emoji}</span>
+                      <span className="text-[8px] text-muted-foreground">{String(y).slice(2)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="text-[10px] text-muted-foreground">{r.detail}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
