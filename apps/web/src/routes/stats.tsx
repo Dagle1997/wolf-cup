@@ -198,12 +198,17 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
       : '';
 
   return (
-    <div className={`rounded-xl border overflow-hidden shadow-sm ${p.isDefendingChampion ? 'border-l-2 border-l-amber-400' : ''}`}>
+    <div className={`rounded-xl border overflow-hidden shadow-sm ${p.isDefendingChampion ? 'border-x-2 border-x-amber-400' : ''}`}>
       {/* Header — player name + total money */}
       <div className="flex items-center justify-between px-4 py-3 bg-muted/40 border-b">
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className="text-xs font-bold text-muted-foreground w-5 text-center">{rank}</span>
-          <span className="font-semibold">{p.name}</span>
+          <div>
+            <span className="font-semibold">{p.name}</span>
+            {p.isDefendingChampion && (
+              <div className="text-[9px] font-medium text-amber-500">Defending Champion</div>
+            )}
+          </div>
           {p.championshipYears && p.championshipYears.map((year) => (
             <Link key={year} to="/standings/history" hash="badge-dynasty" className="inline-flex flex-col items-center leading-none">
               <span className="text-sm">🏆</span>

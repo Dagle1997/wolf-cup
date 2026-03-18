@@ -278,8 +278,10 @@ function AwardCard({ award }: { award: Award }) {
       <div className="space-y-1.5">
         {award.recipients.map((r) => {
           const cashRecord = ['biggest_season_win', 'biggest_season_loss'].includes(award.id);
-          const perSeason = ['money_man', 'philanthropist', 'ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance', 'the_ronnie', 'snow_cone'];
-          const showYearEmojis = !cashRecord && perSeason.includes(award.id);
+          const cashPerYear = ['money_man', 'philanthropist'].includes(award.id);
+          const perSeason = ['ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance', 'the_ronnie', 'snow_cone'];
+          const showYearEmojis = !cashRecord && !cashPerYear && perSeason.includes(award.id);
+          const cashLabels = cashPerYear ? r.detail.split(', ') : [];
           return (
             <div key={r.playerName} className="text-xs">
               <div className="font-medium">{r.playerName}</div>
@@ -289,6 +291,16 @@ function AwardCard({ award }: { award: Award }) {
                     <span className="text-sm">{award.emoji}</span>
                     <span className="text-[8px] font-bold text-muted-foreground">{r.detail}</span>
                   </span>
+                </div>
+              )}
+              {cashPerYear && (
+                <div className="flex items-center gap-1 mt-0.5">
+                  {r.years.map((y, i) => (
+                    <span key={y} className="inline-flex flex-col items-center leading-none">
+                      <span className="text-sm">{award.emoji}</span>
+                      <span className="text-[8px] text-muted-foreground">{cashLabels[i] ?? String(y).slice(2)}</span>
+                    </span>
+                  ))}
                 </div>
               )}
               {showYearEmojis && (
@@ -301,7 +313,7 @@ function AwardCard({ award }: { award: Award }) {
                   ))}
                 </div>
               )}
-              {!cashRecord && <div className="text-[10px] text-muted-foreground">{r.detail}</div>}
+              {!cashRecord && !cashPerYear && <div className="text-[10px] text-muted-foreground">{r.detail}</div>}
             </div>
           );
         })}
