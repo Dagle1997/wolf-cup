@@ -336,7 +336,7 @@ export function computeAllAwards(
       emoji: '💰',
       name: 'Money Man',
       category: 'superlatives',
-      description: 'Biggest cash earner of the season. The wolf who always gets paid.',
+      description: 'Biggest cash earner of the season (last 3 seasons).',
       recipients: moneyMan.map((mm) => ({
         playerName: mm.playerName,
         years: mm.years,
@@ -355,7 +355,7 @@ export function computeAllAwards(
       emoji: '💸',
       name: 'Philanthropist',
       category: 'superlatives',
-      description: 'Worst cash total of the season. Generously funding everyone else\'s winnings.',
+      description: 'Worst cash total of the season (last 3 seasons).',
       recipients: philanthropist.map((ph) => ({
         playerName: ph.playerName,
         years: ph.years,
