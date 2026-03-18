@@ -261,10 +261,9 @@ export const CUSTOM_AWARDS = [
     emoji: '😤',
     name: 'The Ronnie',
     category: 'superlatives' as const,
-    description: 'Dominated the regular season, then choked in the playoffs. A tradition unlike any other.',
+    description: '#1 seed in the regular season. Eliminated before the Final Four.',
     recipients: [
-      { playerName: 'Ronnie A.', years: [2020], detail: '#1 seed, eliminated before Final Four' },
-      { playerName: 'Chris McNeely', years: [2021, 2022, 2023], detail: 'Highest non-Final-Four finisher 3×' },
+      { playerName: 'Ronnie A.', years: [2020], detail: '#1 seed, bounced in playoffs' },
     ],
   },
 ];
