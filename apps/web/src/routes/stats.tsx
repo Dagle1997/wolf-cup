@@ -571,11 +571,14 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
           {/* Round history */}
           {detail.rounds.length > 0 && (() => {
             const bestRound = detail.rounds.reduce((a, b) => a.gross < b.gross ? a : b);
+            const bestNet = bestRound.gross - Math.round(bestRound.handicapIndex);
             return (
               <div className="px-4 py-3 border-b">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Round History</p>
-                  <span className="text-[10px] text-green-500">Best Gross: {bestRound.gross} ({new Date(bestRound.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</span>
+                  <span className="text-[10px] text-green-500">
+                    Best: {bestRound.gross} gross · {bestNet} net · {bestRound.tee ?? '—'} tees
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
                   <span className="w-14">Date</span>
