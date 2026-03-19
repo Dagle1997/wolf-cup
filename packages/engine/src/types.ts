@@ -143,6 +143,22 @@ export type HarveyRoundResult = {
   readonly moneyPoints: number;
 };
 
+/** Input for sandbagger detection — one round of data */
+export interface SandbaggerRoundInput {
+  readonly gross18: number;       // Sum of 18 hole gross scores
+  readonly courseRating: number;   // From TEE_RATINGS[tee].courseRating
+  readonly slopeRating: number;    // From TEE_RATINGS[tee].slopeRating
+  readonly handicapIndex: number;  // Snapshot from roundPlayers
+}
+
+/** Sandbagger detection result */
+export interface SandbaggerResult {
+  readonly beatsCount: number;    // Rounds where differential < HI
+  readonly totalRounds: number;
+  readonly ratio: number;         // beatsCount / totalRounds (0 if no rounds)
+  readonly tier: 0 | 1 | 2 | 3;
+}
+
 /** Thrown when Harvey Cup point totals violate the expected sum invariant */
 export class HarveySumViolationError extends Error {
   constructor(

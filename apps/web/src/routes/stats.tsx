@@ -36,6 +36,7 @@ type PlayerStats = {
   championshipYears?: number[];
   isDefendingChampion?: boolean;
   badges?: PlayerBadge[];
+  sandbagging?: { beatsCount: number; totalRounds: number; tier: 1 | 2 | 3 };
 };
 
 type StatsResponse = {
@@ -235,11 +236,32 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
               </Link>
             );
           })}
+          {p.sandbagging && (
+            <span
+              className="inline-flex flex-col items-center leading-none"
+              title={p.sandbagging.tier === 1 ? 'Hmm... suspiciously good lately' : p.sandbagging.tier === 2 ? 'Nice putt, Ronnie' : 'Someone call the levee board'}
+            >
+              <span className={p.sandbagging.tier === 3 ? 'text-2xl' : p.sandbagging.tier === 2 ? 'text-lg' : 'text-sm'}>
+                🏌️
+              </span>
+              <span className="text-[8px] text-amber-600">{p.sandbagging.beatsCount}/{p.sandbagging.totalRounds}</span>
+            </span>
+          )}
         </div>
         <span className={`text-base font-bold tabular-nums ${moneyColor}`}>
           {formatMoney(p.totalMoney)}
         </span>
       </div>
+
+      {/* Sandbagger explainer */}
+      {p.sandbagging && (
+        <div className="px-4 py-1 bg-amber-50/50 dark:bg-amber-950/20 border-b text-[10px] text-amber-700 dark:text-amber-400">
+          Shot below handicap {p.sandbagging.beatsCount}/{p.sandbagging.totalRounds} rounds
+          {p.sandbagging.tier === 1 && ' — hmm...'}
+          {p.sandbagging.tier === 2 && ' — suspicious'}
+          {p.sandbagging.tier === 3 && ' — CERTIFIED SANDBAGGER'}
+        </div>
+      )}
 
       {/* Stats grid — 2 rows of data */}
       <div className="px-4 py-3">
