@@ -443,31 +443,104 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             );
           })()}
 
-          {/* Per-hole averages — horizontal scroll */}
+          {/* Per-hole averages — scorecard style */}
           {detail.holeAverages.length > 0 && (
-            <div className="px-4 py-3 border-b">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Hole-by-Hole</p>
-              <div className="overflow-x-auto -mx-4 px-4">
-                <div className="flex gap-0">
-                  {detail.holeAverages.map((h) => {
-                    const diff = h.avg != null ? h.avg - h.par : null;
-                    const color = diff == null ? '' : diff <= -1 ? 'text-green-500' : diff <= 0 ? 'text-muted-foreground' : diff <= 0.5 ? 'text-orange-500' : 'text-red-500';
-                    const bgColor = diff == null ? '' : diff <= -1 ? 'bg-green-500/10' : diff <= 0 ? '' : diff <= 0.5 ? 'bg-orange-500/10' : 'bg-red-500/10';
-                    return (
-                      <div key={h.hole} className={`flex-shrink-0 w-9 text-center py-1 ${bgColor} ${h.hole === 10 ? 'ml-2 border-l border-muted' : ''}`}>
-                        <div className="text-[10px] font-medium text-muted-foreground">{h.hole}</div>
-                        <div className={`text-xs font-bold tabular-nums ${color}`}>
-                          {h.avg != null ? h.avg.toFixed(1) : '—'}
-                        </div>
-                        <div className="text-[7px] text-muted-foreground/40">
-                          {h.min != null ? `${h.min}-${h.max}` : ''}
-                        </div>
-                      </div>
-                    );
-                  })}
+            <div className="px-2 py-3 border-b">
+              <div className="overflow-x-auto">
+                <div className="min-w-max space-y-1.5">
+                  {/* Front 9 */}
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-green-700 text-white">
+                        <th className="pl-2 pr-1 py-1 text-[10px] font-semibold text-left w-10">Hole</th>
+                        {[1,2,3,4,5,6,7,8,9].map((n) => (
+                          <th key={n} className="w-[22px] text-center py-1 text-[10px] font-semibold">{n}</th>
+                        ))}
+                        <th className="w-[28px] text-center py-1 text-[10px] font-bold">Out</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="text-[9px] text-muted-foreground/50">
+                        <td className="pl-2 pr-1 py-[2px] text-[9px] font-medium text-muted-foreground">Par</td>
+                        {detail.holeAverages.slice(0, 9).map((h) => (
+                          <td key={h.hole} className="text-center py-[2px]">{h.par}</td>
+                        ))}
+                        <td className="text-center py-[2px] font-medium">{detail.holeAverages.slice(0, 9).reduce((s, h) => s + h.par, 0)}</td>
+                      </tr>
+                      <tr>
+                        <td className="pl-2 pr-1 py-[2px] text-[9px] font-medium text-muted-foreground">Avg</td>
+                        {detail.holeAverages.slice(0, 9).map((h) => {
+                          const diff = h.avg != null ? h.avg - h.par : null;
+                          const bg = diff == null ? '' : diff <= -0.5 ? 'bg-blue-600/20' : diff <= 0.2 ? '' : diff <= 0.8 ? 'bg-amber-500/15' : 'bg-red-500/15';
+                          const color = diff == null ? 'text-muted-foreground' : diff <= -0.5 ? 'text-blue-400' : diff <= 0.2 ? '' : diff <= 0.8 ? 'text-amber-500' : 'text-red-500';
+                          return (
+                            <td key={h.hole} className={`text-center py-[2px] text-[10px] font-bold tabular-nums ${bg} ${color}`}>
+                              {h.avg != null ? h.avg.toFixed(1) : '—'}
+                            </td>
+                          );
+                        })}
+                        <td className="text-center py-[2px] text-[10px] font-bold tabular-nums">
+                          {detail.holeAverages.slice(0, 9).filter((h) => h.avg != null).reduce((s, h) => s + h.avg!, 0).toFixed(1)}
+                        </td>
+                      </tr>
+                      <tr className="text-[8px] text-muted-foreground/40">
+                        <td className="pl-2 pr-1 py-[1px] text-[8px] text-muted-foreground/40">Range</td>
+                        {detail.holeAverages.slice(0, 9).map((h) => (
+                          <td key={h.hole} className="text-center py-[1px]">{h.min != null ? `${h.min}-${h.max}` : ''}</td>
+                        ))}
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Back 9 */}
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-green-700 text-white">
+                        <th className="pl-2 pr-1 py-1 text-[10px] font-semibold text-left w-10">Hole</th>
+                        {[10,11,12,13,14,15,16,17,18].map((n) => (
+                          <th key={n} className="w-[22px] text-center py-1 text-[10px] font-semibold">{n}</th>
+                        ))}
+                        <th className="w-[28px] text-center py-1 text-[10px] font-bold">In</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="text-[9px] text-muted-foreground/50">
+                        <td className="pl-2 pr-1 py-[2px] text-[9px] font-medium text-muted-foreground">Par</td>
+                        {detail.holeAverages.slice(9, 18).map((h) => (
+                          <td key={h.hole} className="text-center py-[2px]">{h.par}</td>
+                        ))}
+                        <td className="text-center py-[2px] font-medium">{detail.holeAverages.slice(9, 18).reduce((s, h) => s + h.par, 0)}</td>
+                      </tr>
+                      <tr>
+                        <td className="pl-2 pr-1 py-[2px] text-[9px] font-medium text-muted-foreground">Avg</td>
+                        {detail.holeAverages.slice(9, 18).map((h) => {
+                          const diff = h.avg != null ? h.avg - h.par : null;
+                          const bg = diff == null ? '' : diff <= -0.5 ? 'bg-blue-600/20' : diff <= 0.2 ? '' : diff <= 0.8 ? 'bg-amber-500/15' : 'bg-red-500/15';
+                          const color = diff == null ? 'text-muted-foreground' : diff <= -0.5 ? 'text-blue-400' : diff <= 0.2 ? '' : diff <= 0.8 ? 'text-amber-500' : 'text-red-500';
+                          return (
+                            <td key={h.hole} className={`text-center py-[2px] text-[10px] font-bold tabular-nums ${bg} ${color}`}>
+                              {h.avg != null ? h.avg.toFixed(1) : '—'}
+                            </td>
+                          );
+                        })}
+                        <td className="text-center py-[2px] text-[10px] font-bold tabular-nums">
+                          {detail.holeAverages.slice(9, 18).filter((h) => h.avg != null).reduce((s, h) => s + h.avg!, 0).toFixed(1)}
+                        </td>
+                      </tr>
+                      <tr className="text-[8px] text-muted-foreground/40">
+                        <td className="pl-2 pr-1 py-[1px] text-[8px] text-muted-foreground/40">Range</td>
+                        {detail.holeAverages.slice(9, 18).map((h) => (
+                          <td key={h.hole} className="text-center py-[1px]">{h.min != null ? `${h.min}-${h.max}` : ''}</td>
+                        ))}
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
-              {/* Par averages + Best/worst holes */}
+
+              {/* Par averages + Best/worst */}
               {(() => {
                 const withAvg = detail.holeAverages.filter((h) => h.avg != null);
                 if (withAvg.length === 0) return null;
@@ -479,17 +552,17 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                   return (holes.reduce((s, h) => s + h.avg!, 0) / holes.length).toFixed(1);
                 };
                 return (
-                  <>
-                    <div className="flex gap-3 mt-2 text-xs">
+                  <div className="flex items-center justify-between mt-2 text-[10px]">
+                    <div className="flex gap-2">
                       <span className="text-muted-foreground">Par 3: <span className="font-bold text-foreground">{parAvg(3) ?? '—'}</span></span>
                       <span className="text-muted-foreground">Par 4: <span className="font-bold text-foreground">{parAvg(4) ?? '—'}</span></span>
                       <span className="text-muted-foreground">Par 5: <span className="font-bold text-foreground">{parAvg(5) ?? '—'}</span></span>
                     </div>
-                    <div className="flex gap-4 mt-1 text-xs">
-                      <span className="text-green-500">Best: #{best.hole} (avg {best.avg!.toFixed(1)}, par {best.par})</span>
-                      <span className="text-red-500">Worst: #{worst.hole} (avg {worst.avg!.toFixed(1)}, par {worst.par})</span>
+                    <div className="flex gap-2">
+                      <span className="text-green-500">Best: #{best.hole}</span>
+                      <span className="text-red-500">Worst: #{worst.hole}</span>
                     </div>
-                  </>
+                  </div>
                 );
               })()}
             </div>
