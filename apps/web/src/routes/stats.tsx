@@ -171,6 +171,7 @@ function StatsPage() {
   }, [standingsData]);
 
   const [sortKey, setSortKey] = useState<SortKey>('standings');
+  const [compareIds, setCompareIds] = useState<[number, number] | null>(null);
 
   const sortedPlayers = useMemo(
     () => data ? sortPlayers(data.players, sortKey, standingsRankMap) : [],
@@ -235,11 +236,26 @@ function StatsPage() {
               <p className="text-xs text-muted-foreground/60">Stats populate after finalized rounds.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {sortedPlayers.map((p, i) => (
-                <PlayerCard key={p.playerId} player={p} rank={i + 1} />
-              ))}
-            </div>
+            <>
+              {compareIds && (() => {
+                const pA = data.players.find((pl) => pl.playerId === compareIds[0]);
+                const pB = data.players.find((pl) => pl.playerId === compareIds[1]);
+                if (!pA || !pB) return null;
+                return <CompareView playerA={pA} playerB={pB} onClose={() => setCompareIds(null)} />;
+              })()}
+
+              <div className="flex flex-col gap-3">
+                {sortedPlayers.map((p, i) => (
+                  <PlayerCard
+                    key={p.playerId}
+                    player={p}
+                    rank={i + 1}
+                    allPlayers={data.players}
+                    onCompare={(otherId) => setCompareIds([p.playerId, otherId])}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </>
       )}
@@ -251,8 +267,9 @@ function StatsPage() {
 // Player Card — mobile-optimized
 // ---------------------------------------------------------------------------
 
-function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) {
+function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: PlayerStats; rank: number; allPlayers: PlayerStats[]; onCompare: (otherId: number) => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [showCompareSelect, setShowCompareSelect] = useState(false);
 
   const { data: detail } = useQuery({
     queryKey: ['player-detail', p.playerId],
@@ -424,30 +441,179 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
             </div>
           )}
 
-          {/* Rivals */}
-          {detail.rivals.length > 0 && (
-            <div className="px-4 py-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Rivals</p>
-              <div className="space-y-1.5">
-                {detail.rivals.map((r) => (
-                  <div key={r.playerId} className="flex items-center justify-between text-xs">
-                    <span className="font-medium">{r.name}</span>
-                    <span className="text-muted-foreground">{r.roundsTogether}x together</span>
-                    <span className={`font-bold tabular-nums ${r.moneyDiff > 0 ? 'text-green-600' : r.moneyDiff < 0 ? 'text-destructive' : ''}`}>
-                      {r.moneyDiff > 0 ? '+' : ''}{r.moneyDiff !== 0 ? `$${Math.abs(r.moneyDiff)}` : 'Even'}
-                    </span>
+          {/* Partner Chemistry + Rivals */}
+          {detail.rivals.length > 0 && (() => {
+            const sorted = [...detail.rivals].sort((a, b) => b.myMoney - a.myMoney);
+            const bestPartner = sorted[0];
+            const worstPartner = sorted[sorted.length - 1];
+            const rivalsSorted = [...detail.rivals].sort((a, b) => a.moneyDiff - b.moneyDiff); // worst diff first
+            return (
+              <div className="px-4 py-3">
+                {/* Chemistry callouts */}
+                {sorted.length >= 2 && (
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Chemistry</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-2 text-center">
+                        <div className="text-[10px] text-green-600 font-medium">Best Partner</div>
+                        <div className="text-sm font-bold">{bestPartner!.name}</div>
+                        <div className="text-xs text-green-600 font-bold tabular-nums">{formatMoney(bestPartner!.myMoney)}</div>
+                        <div className="text-[9px] text-muted-foreground">{bestPartner!.roundsTogether} rounds</div>
+                      </div>
+                      <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-2 text-center">
+                        <div className="text-[10px] text-red-500 font-medium">Worst Partner</div>
+                        <div className="text-sm font-bold">{worstPartner!.name}</div>
+                        <div className="text-xs text-red-500 font-bold tabular-nums">{formatMoney(worstPartner!.myMoney)}</div>
+                        <div className="text-[9px] text-muted-foreground">{worstPartner!.roundsTogether} rounds</div>
+                      </div>
+                    </div>
                   </div>
-                ))}
+                )}
+
+                {/* Full rival list */}
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">When Grouped With</p>
+                <div className="space-y-1.5">
+                  {rivalsSorted.map((r) => (
+                    <div key={r.playerId} className="flex items-center justify-between text-xs">
+                      <span className="font-medium flex-1">{r.name}</span>
+                      <span className="text-muted-foreground w-12 text-center">{r.roundsTogether}x</span>
+                      <span className={`w-14 text-right tabular-nums ${r.myMoney > 0 ? 'text-green-600' : r.myMoney < 0 ? 'text-destructive' : ''}`}>
+                        {formatMoney(r.myMoney)}
+                      </span>
+                      <span className={`w-14 text-right tabular-nums font-bold ${r.moneyDiff > 0 ? 'text-green-600' : r.moneyDiff < 0 ? 'text-destructive' : ''}`}>
+                        {r.moneyDiff > 0 ? '+' : ''}{r.moneyDiff !== 0 ? `$${Math.abs(r.moneyDiff)}` : 'Even'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mt-1 pt-1 border-t border-muted">
+                  <span>Player</span><span>Rds</span><span>Your $</span><span>vs Them</span>
+                </div>
+
+                {/* Compare button */}
+                <div className="mt-3 pt-2 border-t border-muted">
+                  {!showCompareSelect ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowCompareSelect(true)}
+                      className="w-full text-xs text-center py-1.5 rounded-lg bg-muted hover:bg-muted/80 font-medium transition-colors"
+                    >
+                      Compare with another player
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="flex-1 rounded-md border bg-background px-2 py-1.5 text-xs"
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            onCompare(Number(e.target.value));
+                            setShowCompareSelect(false);
+                          }
+                        }}
+                        defaultValue=""
+                      >
+                        <option value="">Pick a player...</option>
+                        {allPlayers
+                          .filter((o) => o.playerId !== p.playerId)
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((o) => (
+                            <option key={o.playerId} value={o.playerId}>{o.name}</option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setShowCompareSelect(false)}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="text-[9px] text-muted-foreground/50 mt-2">Money differential when grouped together</p>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
 
       {expanded && !detail && (
         <div className="border-t px-4 py-3 text-center text-xs text-muted-foreground">Loading...</div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Compare View — side-by-side player comparison
+// ---------------------------------------------------------------------------
+
+function CompareView({ playerA, playerB, onClose }: { playerA: PlayerStats; playerB: PlayerStats; onClose: () => void }) {
+  const { data: detailA } = useQuery({
+    queryKey: ['player-detail', playerA.playerId],
+    queryFn: () => apiFetch<PlayerDetail>(`/stats/${playerA.playerId}/detail`),
+    staleTime: 60_000,
+  });
+  const { data: detailB } = useQuery({
+    queryKey: ['player-detail', playerB.playerId],
+    queryFn: () => apiFetch<PlayerDetail>(`/stats/${playerB.playerId}/detail`),
+    staleTime: 60_000,
+  });
+
+  // Find head-to-head from rivalry data
+  const h2h = detailA?.rivals.find((r) => r.playerId === playerB.playerId);
+
+  function CompareRow({ label, a, b, higherWins = true }: { label: string; a: number; b: number; higherWins?: boolean }) {
+    const aWins = higherWins ? a > b : a < b;
+    const bWins = higherWins ? b > a : b < a;
+    return (
+      <div className="flex items-center text-xs py-1">
+        <span className={`w-16 text-right tabular-nums font-bold ${aWins ? 'text-green-500' : ''}`}>{a}</span>
+        <span className="flex-1 text-center text-[10px] text-muted-foreground">{label}</span>
+        <span className={`w-16 text-left tabular-nums font-bold ${bWins ? 'text-green-500' : ''}`}>{b}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border shadow-sm overflow-hidden mb-3 bg-card">
+      <div className="flex items-center justify-between px-4 py-2 bg-muted/40 border-b">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Head to Head</span>
+        <button type="button" onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+      </div>
+      <div className="px-4 py-3">
+        {/* Names */}
+        <div className="flex items-center text-sm font-bold mb-3">
+          <span className="w-16 text-right truncate">{playerA.name.split(' ')[0]}</span>
+          <span className="flex-1 text-center text-muted-foreground text-xs">vs</span>
+          <span className="w-16 text-left truncate">{playerB.name.split(' ')[0]}</span>
+        </div>
+
+        <CompareRow label="Wolf W" a={playerA.wolfWins} b={playerB.wolfWins} />
+        <CompareRow label="Wolf L" a={playerA.wolfLosses} b={playerB.wolfLosses} higherWins={false} />
+        <CompareRow label="Birdies" a={playerA.birdies} b={playerB.birdies} />
+        <CompareRow label="Greenies" a={playerA.greenies} b={playerB.greenies} />
+        <CompareRow label="Polies" a={playerA.polies} b={playerB.polies} />
+        <CompareRow label="Money" a={playerA.totalMoney} b={playerB.totalMoney} />
+        <CompareRow label="Best Rd" a={playerA.biggestRoundWin} b={playerB.biggestRoundWin} />
+
+        {/* Head-to-head when grouped */}
+        {h2h && (
+          <div className="mt-3 pt-2 border-t border-muted">
+            <p className="text-[10px] text-muted-foreground text-center mb-1">
+              Grouped together {h2h.roundsTogether}x this season
+            </p>
+            <div className="flex items-center justify-center gap-4 text-xs">
+              <span className={`font-bold tabular-nums ${h2h.myMoney > 0 ? 'text-green-600' : h2h.myMoney < 0 ? 'text-destructive' : ''}`}>
+                {formatMoney(h2h.myMoney)}
+              </span>
+              <span className="text-muted-foreground">vs</span>
+              <span className={`font-bold tabular-nums ${h2h.theirMoney > 0 ? 'text-green-600' : h2h.theirMoney < 0 ? 'text-destructive' : ''}`}>
+                {formatMoney(h2h.theirMoney)}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
