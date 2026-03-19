@@ -13,6 +13,7 @@ import {
   fromAttendanceSchema,
 } from '../../schemas/round.js';
 import { updateHandicapSchema } from '../../schemas/handicap.js';
+import { calculateHarveyPoints } from '@wolf-cup/engine';
 import { ghinClient } from '../../lib/ghin-client.js';
 import type { Variables } from '../../types.js';
 
@@ -52,6 +53,63 @@ async function recordPairings(seasonId: number, roundId: number): Promise<void> 
           });
       }
     }
+  }
+}
+
+// Helper: compute Harvey Cup ranking points from round_results and store in harvey_results
+async function computeAndStoreHarvey(roundId: number): Promise<void> {
+  // Get all round_results for this round
+  const results = await db
+    .select({
+      playerId: roundResults.playerId,
+      stablefordTotal: roundResults.stablefordTotal,
+      moneyTotal: roundResults.moneyTotal,
+    })
+    .from(roundResults)
+    .where(eq(roundResults.roundId, roundId));
+
+  if (results.length === 0) return;
+
+  // Calculate Harvey points using engine
+  const harveyInput = results.map((r) => ({
+    stableford: r.stablefordTotal,
+    money: r.moneyTotal,
+  }));
+
+  const harveyOutput = calculateHarveyPoints(harveyInput);
+  const now = Date.now();
+
+  // Compute ranks for storage
+  const stablefordSorted = [...results].sort((a, b) => b.stablefordTotal - a.stablefordTotal);
+  const moneySorted = [...results].sort((a, b) => b.moneyTotal - a.moneyTotal);
+
+  for (let i = 0; i < results.length; i++) {
+    const player = results[i]!;
+    const harvey = harveyOutput[i]!;
+    const stablefordRank = stablefordSorted.findIndex((r) => r.playerId === player.playerId) + 1;
+    const moneyRank = moneySorted.findIndex((r) => r.playerId === player.playerId) + 1;
+
+    await db
+      .insert(harveyResults)
+      .values({
+        roundId,
+        playerId: player.playerId,
+        stablefordRank,
+        moneyRank,
+        stablefordPoints: harvey.stablefordPoints,
+        moneyPoints: harvey.moneyPoints,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [harveyResults.roundId, harveyResults.playerId],
+        set: {
+          stablefordRank,
+          moneyRank,
+          stablefordPoints: harvey.stablefordPoints,
+          moneyPoints: harvey.moneyPoints,
+          updatedAt: now,
+        },
+      });
   }
 }
 
@@ -644,6 +702,13 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, id));
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  // Compute Harvey Cup points from round results
+  try {
+    await computeAndStoreHarvey(id);
+  } catch (err) {
+    console.error('Failed to compute Harvey points (non-fatal):', err);
   }
 
   // Record pairings for group suggestion history
