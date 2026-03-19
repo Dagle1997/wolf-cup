@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wolf Cup — The App</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --green: #16a34a;
+    --green-dark: #15803d;
+    --green-deeper: #0f5c2e;
+    --gold: #f59e0b;
+    --dark: #0a0f0a;
+    --grey: #6b7280;
+  }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: white;
+    color: #1a1a1a;
+    line-height: 1.5;
+  }
+
+  @page {
+    size: letter;
+    margin: 0;
+  }
+
+  .page {
+    width: 8.5in;
+    height: 11in;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+
+  /* ===== SHARED ===== */
+  .section-label {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .section-title {
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1.15;
+    margin-bottom: 12px;
+  }
+
+  .section-desc {
+    font-size: 20px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+
+  .phone-frame {
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.1);
+    border: 2px solid #e5e7eb;
+  }
+
+  .phone-frame img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .dark-phone-frame {
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    border: 2px solid rgba(255,255,255,0.1);
+  }
+
+  .dark-phone-frame img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .bullets {
+    list-style: none;
+    padding: 0;
+  }
+
+  .bullets li {
+    font-size: 18px;
+    padding: 6px 0;
+    padding-left: 28px;
+    position: relative;
+    line-height: 1.5;
+  }
+
+  .bullets li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--green);
+    font-weight: 700;
+  }
+
+  .dark-bullets li {
+    color: rgba(255,255,255,0.8);
+  }
+
+  .dark-bullets li::before {
+    color: var(--green);
+  }
+
+  /* ===== PAGE 1: HERO ===== */
+  .hero-page {
+    background: linear-gradient(165deg, var(--dark) 0%, #0d1f0d 40%, var(--green-deeper) 100%);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 0.7in 0.8in;
+  }
+
+  .hero-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.6in;
+  }
+
+  .hero-top-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .hero-logo { font-size: 32px; }
+
+  .hero-brand {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--green);
+  }
+
+  .asstv-badge {
+    font-size: 14px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 1px;
+  }
+
+  .asstv-badge .asstv-icon { font-size: 16px; }
+
+  .hero-headline {
+    font-size: 56px;
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -1.5px;
+    margin-bottom: 24px;
+  }
+
+  .hero-headline .accent { color: var(--green); }
+
+  .hero-sub {
+    font-size: 22px;
+    font-weight: 300;
+    color: rgba(255,255,255,0.7);
+    max-width: 6in;
+    line-height: 1.6;
+    margin-bottom: 0.5in;
+  }
+
+  .hero-features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: auto;
+  }
+
+  .hero-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 18px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+  }
+
+  .hero-feature-icon { font-size: 28px; flex-shrink: 0; margin-top: 2px; }
+
+  .hero-feature-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+
+  .hero-feature-desc { font-size: 15px; color: rgba(255,255,255,0.5); line-height: 1.45; }
+
+  .hero-bottom {
+    margin-top: 0.4in;
+    text-align: center;
+  }
+
+  .hero-url-text { font-size: 28px; font-weight: 700; color: var(--green); }
+
+  .hero-url-note { font-size: 15px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+
+  .hero-tagline { font-size: 14px; color: rgba(255,255,255,0.3); font-style: italic; }
+
+  /* ===== FEATURE PAGES (light) ===== */
+  .feature-page-light {
+    background: white;
+    padding: 0.6in 0.8in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .feature-page-light .section-label { color: var(--green); }
+  .feature-page-light .section-title { color: var(--dark); }
+  .feature-page-light .section-desc { color: var(--grey); }
+  .feature-page-light .bullets li { color: #374151; }
+
+  .feature-layout {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    flex: 1;
+  }
+
+  .feature-layout.reverse { flex-direction: row-reverse; }
+
+  .feature-layout .phone-frame { width: 260px; flex-shrink: 0; }
+
+  .feature-text { flex: 1; }
+
+  .feature-text h3 {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--dark);
+    margin-bottom: 14px;
+  }
+
+  .feature-text p {
+    font-size: 19px;
+    color: var(--grey);
+    line-height: 1.6;
+    margin-bottom: 18px;
+  }
+
+  /* ===== FEATURE PAGES (dark) ===== */
+  .feature-page-dark {
+    background: var(--dark);
+    color: white;
+    padding: 0.6in 0.8in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .feature-page-dark .section-label { color: var(--gold); }
+  .feature-page-dark .section-title { color: white; }
+  .feature-page-dark .section-desc { color: rgba(255,255,255,0.5); }
+
+  .dark-feature-layout {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    flex: 1;
+  }
+
+  .dark-feature-layout.reverse { flex-direction: row-reverse; }
+
+  .dark-feature-layout .dark-phone-frame { width: 260px; flex-shrink: 0; }
+
+  .dark-feature-text { flex: 1; }
+
+  .dark-feature-text h3 {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 14px;
+  }
+
+  .dark-feature-text p {
+    font-size: 19px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+    margin-bottom: 18px;
+  }
+
+  /* ===== STANDINGS PAGE (dark, landscape ss) ===== */
+  .standings-banner {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 28px;
+  }
+
+  .standings-banner img {
+    width: 100%;
+    display: block;
+  }
+
+  /* ===== CTA PAGE ===== */
+  .cta-page {
+    background: linear-gradient(170deg, #fafafa 0%, white 50%, #f0fdf4 100%);
+    padding: 0.4in 0.8in 0.35in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .steps-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .step-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+
+  .step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    background: var(--green);
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .step-card h4 { font-size: 17px; font-weight: 700; color: var(--dark); margin-bottom: 5px; }
+
+  .step-card p { font-size: 14px; color: var(--grey); line-height: 1.5; }
+
+  .what-it-replaces {
+    background: var(--dark);
+    border-radius: 14px;
+    padding: 14px 20px;
+    margin-bottom: 14px;
+    color: white;
+  }
+
+  .what-it-replaces h3 { font-size: 20px; font-weight: 800; margin-bottom: 14px; }
+
+  .replace-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .replace-item { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+  .replace-old { color: #ef4444; text-decoration: line-through; opacity: 0.6; }
+  .replace-arrow { color: var(--green); font-weight: 700; }
+  .replace-new { color: var(--green); font-weight: 600; }
+
+  .cta-box {
+    text-align: center;
+    padding: 22px;
+    background: white;
+    border-radius: 18px;
+    border: 2px solid var(--green);
+    box-shadow: 0 4px 20px rgba(22,163,74,0.1);
+  }
+
+  .cta-box h2 { font-size: 24px; font-weight: 900; color: var(--dark); margin-bottom: 6px; }
+  .cta-box p { font-size: 15px; color: var(--grey); margin-bottom: 10px; }
+  .cta-url { font-size: 26px; font-weight: 800; color: var(--green); }
+
+  .cta-install { font-size: 12px; color: var(--grey); margin-top: 8px; line-height: 1.5; }
+
+  .footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 16px;
+  }
+
+  .footer-note { font-size: 11px; color: #9ca3af; }
+
+  .footer-asstv { font-size: 11px; color: #9ca3af; }
+
+  @media print {
+    .page { page-break-after: always; page-break-inside: avoid; }
+    body { -webkit-print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== PAGE 1: HERO ===== -->
+<div class="page hero-page">
+  <div class="hero-top">
+    <div class="hero-top-left">
+      <span class="hero-logo">🐺</span>
+      <span class="hero-brand">Wolf Cup</span>
+    </div>
+    <div class="asstv-badge">AssTV <span class="asstv-icon">🍑</span><br><span style="font-size: 8px; font-weight: 400; letter-spacing: 0; opacity: 0.5;">NETWORKS</span></div>
+  </div>
+
+  <div style="font-size: 16px; font-weight: 500; color: rgba(255,255,255,0.4); letter-spacing: 1px; margin-bottom: 12px;">
+    AssTV 🍑 is proud to present
+  </div>
+
+  <h1 class="hero-headline">
+    Your wolf game.<br>
+    <span class="accent">Finally automated.</span>
+  </h1>
+
+  <p class="hero-sub">
+    Live scoring, instant standings, real-time leaderboards, and deep player stats —
+    all from your phone, right on the course. No more spreadsheets. No more math at the turn.
+  </p>
+
+  <div class="hero-features">
+    <div class="hero-feature">
+      <span class="hero-feature-icon">📱</span>
+      <div>
+        <div class="hero-feature-title">Score from your phone</div>
+        <div class="hero-feature-desc">Hole-by-hole entry with wolf decisions, bonuses, and instant money calculations</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">📊</span>
+      <div>
+        <div class="hero-feature-title">Live leaderboard</div>
+        <div class="hero-feature-desc">Real-time standings as groups finish holes — to par, stableford, money, Harvey points</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">🏆</span>
+      <div>
+        <div class="hero-feature-title">Season-long standings</div>
+        <div class="hero-feature-desc">Best 10 of 20, playoff multipliers, drop-score logic — all computed automatically</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">🤝</span>
+      <div>
+        <div class="hero-feature-title">Know your numbers</div>
+        <div class="hero-feature-desc">Partner chemistry, rivalry matchups, hole-by-hole averages, and awards you've earned</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-bottom">
+    <div class="hero-url-text">wolf.dagle.cloud</div>
+    <div class="hero-url-note">Works on any phone — add to your home screen for the full experience</div>
+    <div class="hero-tagline" style="margin-top: 12px;">Built for Guyan Golf & Country Club</div>
+  </div>
+</div>
+
+<!-- ===== PAGE 2: ROSTER & HANDICAPS ===== -->
+<div class="page feature-page-light">
+  <div class="section-label">Game Day</div>
+  <div class="section-title">Everything happens on your phone</div>
+  <div class="section-desc">
+    From lineup to final standings, the entire round flows through the app. One scorer per group keeps things moving.
+  </div>
+
+  <div class="feature-layout">
+    <div class="phone-frame">
+      <img src="app%20screenshots/IMG_7402.PNG" alt="Attendance screen">
+    </div>
+    <div class="feature-text">
+      <h3>Roster & Handicaps</h3>
+      <p>
+        The admin sets the week's lineup and the app pulls current GHIN handicap indexes
+        automatically. Course handicaps calculate for the tee of the week — no more guessing or getting it wrong like game book.
+      </p>
+      <ul class="bullets">
+        <li>Weekly attendance with live headcount</li>
+        <li>GHIN handicap lookup built in</li>
+        <li>Accurate course handicaps every week, every tee</li>
+        <li>Weighted pairing — play with different people each week</li>
+        <li>Optional digital ball draw — randomize order on your phone or toss balls like always</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 3: SCORING ===== -->
+<div class="page feature-page-light">
+  <div class="feature-layout reverse">
+    <div class="phone-frame">
+      <img src="app%20screenshots/IMG_7403.PNG" alt="Score entry screen">
+    </div>
+    <div class="feature-text">
+      <h3>Hole-by-Hole Scoring</h3>
+      <p>
+        One person in each group enters scores after every hole. Wolf decisions, partner picks,
+        greenies, and polies — all captured in seconds. The math happens instantly.
+      </p>
+      <ul class="bullets">
+        <li>Gross scores → net, stableford, and money auto-calculated</li>
+        <li>Wolf / Partner / Blind Wolf decision flow</li>
+        <li>Greenie & polie bonus tracking per hole</li>
+        <li>Works offline — syncs when signal returns</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 4: LIVE LEADERBOARD ===== -->
+<div class="page feature-page-light">
+  <div class="feature-layout">
+    <div class="phone-frame">
+      <img src="app%20screenshots/IMG_7408.PNG" alt="Live leaderboard">
+    </div>
+    <div class="feature-text">
+      <h3>Live Leaderboard</h3>
+      <p>
+        Everyone in the league can follow along in real time. See who's up, who's bleeding money,
+        and tap any player to see their full scorecard mid-round.
+      </p>
+      <ul class="bullets">
+        <li>Updates as each hole is saved</li>
+        <li>To par, stableford, money, and Harvey points</li>
+        <li>Expandable scorecards with wolf hole markers</li>
+        <li>Accessible to all league members — no login needed</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 5: STANDINGS ===== -->
+<div class="page feature-page-dark">
+  <div class="section-label">The Race</div>
+  <div class="section-title">Season standings, always current</div>
+  <div class="section-desc">
+    The Wolf Cup race updates automatically after every finalized round. No more waiting for the spreadsheet.
+  </div>
+
+  <div class="standings-banner">
+    <img src="app%20screenshots/IMG_7410.PNG" alt="Season standings">
+  </div>
+
+  <ul class="bullets dark-bullets">
+    <li>Best 10 of 20 rounds count toward your season total</li>
+    <li>Combined stableford + money Harvey points per round</li>
+    <li>Drop-score logic applied automatically</li>
+    <li>Playoff rounds with weighted multipliers (R8 = 3x, R4 = 8x)</li>
+    <li>No more waiting for the official spreadsheet — it's live</li>
+  </ul>
+</div>
+
+<!-- ===== PAGE 6: PLAYER STATS ===== -->
+<div class="page feature-page-dark">
+  <div class="section-label">Beyond Game Day</div>
+  <div class="section-title">Stats that tell the real story</div>
+
+  <div class="dark-feature-layout">
+    <div class="dark-phone-frame">
+      <img src="app%20screenshots/IMG_7405.PNG" alt="Player statistics">
+    </div>
+    <div class="dark-feature-text">
+      <h3>Deep Player Profiles</h3>
+      <p>
+        Tap any player to see their full story — wolf record, birdies, eagles, greenies,
+        biggest wins, and worst losses. The Best Partnership banner highlights the league's
+        most dominant duo.
+      </p>
+      <ul class="bullets dark-bullets">
+        <li>Wolf call record (alone + blind wolf win %)</li>
+        <li>Birdies, eagles, greenies, polies season totals</li>
+        <li>Biggest round win & loss</li>
+        <li>Championship trophies & league badges</li>
+        <li>Best partnership spotlight at the top</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 7: CHEMISTRY & RIVALRIES ===== -->
+<div class="page feature-page-dark">
+  <div class="dark-feature-layout reverse">
+    <div class="dark-phone-frame">
+      <img src="app%20screenshots/IMG_7407.PNG" alt="Chemistry and rivalry data">
+    </div>
+    <div class="dark-feature-text">
+      <h3>Chemistry & Rivalries</h3>
+      <p>
+        Expand any player to see who they play best with — and who they should avoid.
+        Hole-by-hole scoring averages, round history, and complete grouping money breakdowns.
+      </p>
+      <ul class="bullets dark-bullets">
+        <li>Best & worst partner by 2v2 win rate</li>
+        <li>Lucky charm & rival callouts</li>
+        <li>Scorecard-style hole averages (front 9 / back 9)</li>
+        <li>Full money breakdown when grouped with anyone</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 8: CHAMPIONS & AWARDS ===== -->
+<div class="page feature-page-dark">
+  <div class="dark-feature-layout">
+    <div class="dark-phone-frame">
+      <img src="app%20screenshots/IMG_7409.PNG" alt="Champions and awards">
+    </div>
+    <div class="dark-feature-text">
+      <h3>Champions & Awards</h3>
+      <p>
+        Every season's champion is enshrined. The awards wall tracks Hall of Fame honors,
+        superlatives, and bragging rights that the spreadsheet never captured.
+      </p>
+      <ul class="bullets dark-bullets">
+        <li>Trophy gallery with all past champions</li>
+        <li>Dynasty, Back-to-Back, OG, and more awards</li>
+        <li>Champions & top-4 history back to 2015</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 9: HOW IT WORKS + CTA ===== -->
+<div class="page cta-page">
+  <div class="section-label" style="color: var(--green);">How It Works</div>
+  <div class="section-title" style="color: var(--dark); margin-bottom: 6px;">Four steps. Every week.</div>
+  <div style="font-size: 18px; color: var(--grey); margin-bottom: 12px; line-height: 1.5;">
+    The scorer in each group handles entry. Everyone else just plays golf and watches the leaderboard.
+  </div>
+
+  <div class="steps-grid">
+    <div class="step-card">
+      <div class="step-number">1</div>
+      <h4>Weekly Lineup</h4>
+      <p>Admin confirms who's playing. The app shows the roster, current handicaps, and headcount for group planning.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">2</div>
+      <h4>Ball Draw & Groups</h4>
+      <p>Toss balls like always, or use the app to draw and randomize — it's your call. Either way, enter the order and wolf assignments for all 18 holes appear instantly.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">3</div>
+      <h4>Score Each Hole</h4>
+      <p>Enter 4 gross scores, pick wolf/partner/blind wolf, mark greenies and polies. Takes 15 seconds.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-number">4</div>
+      <h4>See Results Instantly</h4>
+      <p>Net scores, stableford, money, and Harvey points calculate automatically. Standings update in real time.</p>
+    </div>
+  </div>
+
+  <div class="what-it-replaces">
+    <h3>What it replaces</h3>
+    <div class="replace-grid">
+      <div class="replace-item">
+        <span class="replace-old">Pen & paper scorecards</span>
+        <span class="replace-arrow">→</span>
+        <span class="replace-new">Phone entry</span>
+      </div>
+      <div class="replace-item">
+        <span class="replace-old">Post-round math</span>
+        <span class="replace-arrow">→</span>
+        <span class="replace-new">Instant calculations</span>
+      </div>
+      <div class="replace-item">
+        <span class="replace-old">Excel standings</span>
+        <span class="replace-arrow">→</span>
+        <span class="replace-new">Auto standings</span>
+      </div>
+      <div class="replace-item">
+        <span class="replace-old">"What's my wolf schedule?"</span>
+        <span class="replace-arrow">→</span>
+        <span class="replace-new">On your screen</span>
+      </div>
+      <div class="replace-item">
+        <span class="replace-old">Texting scores after the round</span>
+        <span class="replace-arrow">→</span>
+        <span class="replace-new">Live leaderboard</span>
+      </div>
+      <div class="replace-item">
+        <span class="replace-old">"Who owes who?"</span>
+        <span class="replace-arrow">→</span>
+        <span class="replace-new">Settled per hole</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-box">
+    <h2>Ready for the 2026 season</h2>
+    <p>Open the link on your phone. Add it to your home screen. That's it.</p>
+    <div class="cta-url">wolf.dagle.cloud</div>
+    <div class="cta-install">
+      iPhone: Open in Safari → Share button → "Add to Home Screen"<br>
+      Android: Open in Chrome → Menu (⋮) → "Add to Home Screen"
+    </div>
+  </div>
+
+  <div style="text-align: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
+    <div style="font-size: 12px; color: #9ca3af; margin-bottom: 4px;">Built for the Wolf Cup at Guyan Golf & Country Club</div>
+    <div style="font-size: 10px; color: #b0b0b0; line-height: 1.5; max-width: 6in; margin: 0 auto;">
+      © 2026 Appalachian Sports Station TV Networks (AssTV). All content is owned by Appalachian Sports Station TV Networks
+      and may not be reproduced, rebroadcast, or otherwise distributed without the express written consent of AssTV Networks.
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
