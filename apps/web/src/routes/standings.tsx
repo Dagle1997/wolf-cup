@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -35,6 +36,19 @@ type StandingsResponse = {
   lastUpdated: string;
 };
 
+type PairingPair = {
+  playerAId: number;
+  playerAName: string;
+  playerBId: number;
+  playerBName: string;
+  count: number;
+};
+
+type PairingHistoryResponse = {
+  season: { id: number; name: string; year: number } | null;
+  pairs: PairingPair[];
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -55,6 +69,12 @@ function StandingsPage() {
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['standings'],
     queryFn: () => apiFetch<StandingsResponse>('/standings'),
+  });
+
+  const { data: pairingData } = useQuery({
+    queryKey: ['pairing-history'],
+    queryFn: () => apiFetch<PairingHistoryResponse>('/pairings/history'),
+    staleTime: 60_000,
   });
 
   return (
@@ -113,11 +133,11 @@ function StandingsPage() {
                 </div>
               ) : (
                 <>
-                  <StandingsTable players={data.fullMembers} showPlayoff />
+                  <StandingsTable players={data.fullMembers} showPlayoff pairs={pairingData?.pairs ?? []} />
                   {data.subs.length > 0 && (
                     <div className="mt-6">
                       <h3 className="text-base font-semibold mb-2">Substitutes</h3>
-                      <StandingsTable players={data.subs} showPlayoff={false} />
+                      <StandingsTable players={data.subs} showPlayoff={false} pairs={pairingData?.pairs ?? []} />
                     </div>
                   )}
                 </>
@@ -151,7 +171,20 @@ function RankBadge({ rank, isPlayoffEligible, showPlayoff }: { rank: number; isP
   return <><span className="text-sm font-medium text-muted-foreground">{rank}</span>{badge}</>;
 }
 
-function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; showPlayoff: boolean }) {
+function getPlayerPairings(playerId: number, pairs: PairingPair[]): { name: string; count: number }[] {
+  const partners: { name: string; count: number }[] = [];
+  for (const p of pairs) {
+    if (p.playerAId === playerId) partners.push({ name: p.playerBName, count: p.count });
+    else if (p.playerBId === playerId) partners.push({ name: p.playerAName, count: p.count });
+  }
+  partners.sort((a, b) => b.count - a.count);
+  return partners;
+}
+
+function StandingsTable({ players, showPlayoff, pairs }: { players: StandingsPlayer[]; showPlayoff: boolean; pairs: PairingPair[] }) {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const hasPairings = pairs.length > 0;
+
   if (players.length === 0) {
     return <p className="text-muted-foreground text-sm">No results yet.</p>;
   }
@@ -173,35 +206,76 @@ function StandingsTable({ players, showPlayoff }: { players: StandingsPlayer[]; 
           </tr>
         </thead>
         <tbody>
-          {players.map((player) => (
-            <tr
-              key={player.playerId}
-              className={rankRowStyle(player.rank, player.isPlayoffEligible, showPlayoff)}
-            >
-              <td className="py-2.5 pl-3 pr-1 text-center">
-                <RankBadge rank={player.rank} isPlayoffEligible={player.isPlayoffEligible} showPlayoff={showPlayoff} />
-              </td>
-              <td className="py-2.5 px-2 font-semibold">{player.name}</td>
-              <td className="py-2.5 px-2 text-center tabular-nums text-muted-foreground">
-                {player.roundsPlayed}
-                {player.roundsDropped > 0 && (
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-0.5">(-{player.roundsDropped})</span>
+          {players.map((player) => {
+            const isExpanded = expandedId === player.playerId;
+            const partnerList = isExpanded ? getPlayerPairings(player.playerId, pairs) : [];
+            return (
+              <>
+                <tr
+                  key={player.playerId}
+                  className={`${rankRowStyle(player.rank, player.isPlayoffEligible, showPlayoff)} ${hasPairings ? 'cursor-pointer hover:bg-muted/30' : ''}`}
+                  onClick={() => hasPairings && setExpandedId(isExpanded ? null : player.playerId)}
+                >
+                  <td className="py-2.5 pl-3 pr-1 text-center">
+                    <RankBadge rank={player.rank} isPlayoffEligible={player.isPlayoffEligible} showPlayoff={showPlayoff} />
+                  </td>
+                  <td className="py-2.5 px-2 font-semibold">
+                    <span className="flex items-center gap-1">
+                      {player.name}
+                      {hasPairings && (
+                        <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      )}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-2 text-center tabular-nums text-muted-foreground">
+                    {player.roundsPlayed}
+                    {player.roundsDropped > 0 && (
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-0.5">(-{player.roundsDropped})</span>
+                    )}
+                  </td>
+                  <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
+                    {fmt(player.avgPerRound)}
+                  </td>
+                  <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
+                    {player.roundsPlayed > 0 ? fmt(player.lowRound) : '—'}
+                  </td>
+                  <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
+                    {player.roundsPlayed > 0 ? fmt(player.highRound) : '—'}
+                  </td>
+                  <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.stablefordTotal)}</td>
+                  <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.moneyTotal)}</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums font-bold text-base">{fmt(player.combinedTotal)}</td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${player.playerId}-pairings`}>
+                    <td colSpan={9} className="px-4 py-2 bg-muted/20 border-b">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1.5">Paired With This Season</p>
+                      {partnerList.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No pairing history yet</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {partnerList.map((p) => (
+                            <span
+                              key={p.name}
+                              className={`text-xs px-2 py-0.5 rounded-full ${
+                                p.count >= 3
+                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                                  : p.count === 2
+                                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                                    : 'bg-muted text-foreground'
+                              }`}
+                            >
+                              {p.name} <span className="font-bold">{p.count}x</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
                 )}
-              </td>
-              <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
-                {fmt(player.avgPerRound)}
-              </td>
-              <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
-                {player.roundsPlayed > 0 ? fmt(player.lowRound) : '—'}
-              </td>
-              <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
-                {player.roundsPlayed > 0 ? fmt(player.highRound) : '—'}
-              </td>
-              <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.stablefordTotal)}</td>
-              <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.moneyTotal)}</td>
-              <td className="py-2.5 px-3 text-right tabular-nums font-bold text-base">{fmt(player.combinedTotal)}</td>
-            </tr>
-          ))}
+              </>
+            );
+          })}
         </tbody>
       </table>
     </div>

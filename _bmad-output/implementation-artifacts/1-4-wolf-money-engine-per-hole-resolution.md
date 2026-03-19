@@ -1,6 +1,6 @@
 # Story 1.4: Wolf Money Engine — Per-Hole Resolution
 
-Status: review
+Status: done
 
 ## Story
 

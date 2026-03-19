@@ -1,6 +1,6 @@
 # Story 9.1: Weighted Average Pairing — Group Assignment Optimization
 
-Status: review
+Status: done
 
 ## Story
 

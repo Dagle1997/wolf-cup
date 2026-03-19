@@ -271,11 +271,11 @@ development_status:
   # through the entire league over the course of a season. Admin override
   # before locking. Season-scoped history (resets each year). v2+ feature.
   # ---------------------------------------------------------------------------
-  epic-9: in-progress
+  epic-9: done
 
   # Pairing history tracking, N×N matrix API, greedy suggestion algorithm
   # (pure engine function), suggestion API endpoint, admin UI panel with
   # pin/override/commit workflow. Season-scoped, resets each year.
-  9-1-weighted-average-pairing: review
+  9-1-weighted-average-pairing: done
 
   epic-9-retrospective: optional

@@ -1,6 +1,6 @@
 # Story 8.3: GHIN Handicap Index Lookup & Per-Round HI Management
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 

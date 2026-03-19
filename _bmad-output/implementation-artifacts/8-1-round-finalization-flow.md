@@ -1,6 +1,6 @@
 # Story 8.1: Round Finalization Flow
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 

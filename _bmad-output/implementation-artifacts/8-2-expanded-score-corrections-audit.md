@@ -1,6 +1,6 @@
 # Story 8.2: Expanded Score Corrections & Full Audit Log
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
