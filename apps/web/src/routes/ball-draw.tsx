@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter, Link } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useState, useEffect, useRef } from 'react';
-import { Loader2, AlertCircle, X } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Loader2, AlertCircle, X, Dices } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { getSession, setSession, clearSession } from '@/lib/session-store';
@@ -696,7 +696,23 @@ function BattingOrderForm({
   onSubmit: (order: number[]) => void;
 }) {
   const [order, setOrder] = useState<(number | null)[]>([null, null, null, null]);
+  const [rolling, setRolling] = useState(false);
   const usedIds = new Set(order.filter((id): id is number => id !== null));
+
+  const rollForOrder = useCallback(() => {
+    setRolling(true);
+    let ticks = 0;
+    const totalTicks = 12;
+    const interval = setInterval(() => {
+      const shuffled = [...players].sort(() => Math.random() - 0.5);
+      setOrder(shuffled.map((p) => p.id));
+      ticks++;
+      if (ticks >= totalTicks) {
+        clearInterval(interval);
+        setRolling(false);
+      }
+    }, 80);
+  }, [players]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -725,20 +741,31 @@ function BattingOrderForm({
           </select>
         </div>
       ))}
-      <Button
-        className="min-h-12 w-full mt-2"
-        disabled={order.some((id) => id === null) || isPending}
-        onClick={() => onSubmit(order as number[])}
-      >
-        {isPending ? (
-          <>
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            Saving…
-          </>
-        ) : (
-          'Confirm Ball Draw'
-        )}
-      </Button>
+      <div className="flex gap-2 mt-2">
+        <Button
+          variant="outline"
+          className="min-h-12 flex-1"
+          disabled={rolling || isPending}
+          onClick={rollForOrder}
+        >
+          <Dices className={`w-4 h-4 mr-2 ${rolling ? 'animate-bounce' : ''}`} />
+          {rolling ? 'Rolling…' : 'Roll for Order'}
+        </Button>
+        <Button
+          className="min-h-12 flex-[2]"
+          disabled={order.some((id) => id === null) || isPending || rolling}
+          onClick={() => onSubmit(order as number[])}
+        >
+          {isPending ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            'Confirm Ball Draw'
+          )}
+        </Button>
+      </div>
     </div>
   );
 }
