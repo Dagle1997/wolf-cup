@@ -454,13 +454,12 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                     const color = diff == null ? '' : diff <= -1 ? 'text-green-500' : diff <= 0 ? 'text-muted-foreground' : diff <= 0.5 ? 'text-orange-500' : 'text-red-500';
                     const bgColor = diff == null ? '' : diff <= -1 ? 'bg-green-500/10' : diff <= 0 ? '' : diff <= 0.5 ? 'bg-orange-500/10' : 'bg-red-500/10';
                     return (
-                      <div key={h.hole} className={`flex-shrink-0 w-10 text-center py-1.5 ${bgColor} ${h.hole === 10 ? 'ml-2 border-l border-muted' : ''}`}>
-                        <div className="text-[9px] text-muted-foreground">{h.hole}</div>
-                        <div className="text-[9px] text-muted-foreground/50">P{h.par}</div>
-                        <div className={`text-sm font-bold tabular-nums ${color}`}>
+                      <div key={h.hole} className={`flex-shrink-0 w-9 text-center py-1 ${bgColor} ${h.hole === 10 ? 'ml-2 border-l border-muted' : ''}`}>
+                        <div className="text-[10px] font-medium text-muted-foreground">{h.hole}</div>
+                        <div className={`text-xs font-bold tabular-nums ${color}`}>
                           {h.avg != null ? h.avg.toFixed(1) : '—'}
                         </div>
-                        <div className="text-[8px] text-muted-foreground">
+                        <div className="text-[7px] text-muted-foreground/40">
                           {h.min != null ? `${h.min}-${h.max}` : ''}
                         </div>
                       </div>
