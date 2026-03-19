@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Sparkline } from '@/components/sparkline';
 import { apiFetch } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,7 @@ type StandingsPlayer = {
   highRound: number;
   rank: number;
   isPlayoffEligible: boolean;
+  roundTotals: number[];
 };
 
 type StandingsResponse = {
@@ -196,6 +198,7 @@ function StandingsTable({ players, showPlayoff, pairs }: { players: StandingsPla
           <tr className="border-b bg-muted/60 text-[11px] text-muted-foreground">
             <th className="py-2 pl-3 pr-1 text-center font-medium w-12">#</th>
             <th className="py-2 px-2 text-left font-medium">Player</th>
+            <th className="py-2 px-1 text-center font-medium w-16">Trend</th>
             <th className="py-2 px-2 text-center font-medium">Rds</th>
             <th className="py-2 px-2 text-right font-medium">Avg</th>
             <th className="py-2 px-2 text-right font-medium">Low</th>
@@ -227,6 +230,18 @@ function StandingsTable({ players, showPlayoff, pairs }: { players: StandingsPla
                       )}
                     </span>
                   </td>
+                  <td className="py-2.5 px-1 text-center">
+                    {player.roundTotals.length >= 2 ? (
+                      <Sparkline
+                        data={player.roundTotals}
+                        width={52}
+                        height={16}
+                        color="#8b5cf6"
+                      />
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground/30">—</span>
+                    )}
+                  </td>
                   <td className="py-2.5 px-2 text-center tabular-nums text-muted-foreground">
                     {player.roundsPlayed}
                     {player.roundsDropped > 0 && (
@@ -248,7 +263,7 @@ function StandingsTable({ players, showPlayoff, pairs }: { players: StandingsPla
                 </tr>
                 {isExpanded && (
                   <tr key={`${player.playerId}-pairings`}>
-                    <td colSpan={9} className="px-4 py-2 bg-muted/20 border-b">
+                    <td colSpan={10} className="px-4 py-2 bg-muted/20 border-b">
                       <p className="text-xs font-semibold text-muted-foreground mb-1.5">Paired With This Season</p>
                       {partnerList.length === 0 ? (
                         <p className="text-xs text-muted-foreground">No pairing history yet</p>

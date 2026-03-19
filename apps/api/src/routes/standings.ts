@@ -23,6 +23,7 @@ type StandingsPlayer = {
   highRound: number;
   rank: number;
   isPlayoffEligible: boolean;
+  roundTotals: number[];
 };
 
 // ---------------------------------------------------------------------------
@@ -57,9 +58,9 @@ app.get('/standings', async (c) => {
       return c.json({ season: null, fullMembers: [], subs: [], lastUpdated: new Date().toISOString() }, 200);
     }
 
-    // Step 2: Official non-cancelled rounds for this season
+    // Step 2: Official non-cancelled rounds for this season (ordered by date for sparklines)
     const officialRounds = await db
-      .select({ id: rounds.id, status: rounds.status })
+      .select({ id: rounds.id, status: rounds.status, scheduledDate: rounds.scheduledDate })
       .from(rounds)
       .where(
         and(
@@ -67,7 +68,8 @@ app.get('/standings', async (c) => {
           eq(rounds.type, 'official'),
           not(eq(rounds.status, 'cancelled')),
         ),
-      );
+      )
+      .orderBy(rounds.scheduledDate);
 
     const officialRoundIds = officialRounds.map((r) => r.id);
     const roundsCompleted = officialRounds.filter((r) => r.status === 'finalized').length;
@@ -127,11 +129,24 @@ app.get('/standings', async (c) => {
       .where(inArray(players.id, playerIds));
     const nameMap = new Map(playerRows.map((p) => [p.id, p.name]));
 
-    // Step 6: Build per-player harvey results map
+    // Build round date-ordering map for sparkline data
+    const roundDateOrder = new Map<number, number>();
+    const sortedRounds = [...officialRounds].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+    sortedRounds.forEach((r, i) => roundDateOrder.set(r.id, i));
+
+    // Step 6: Build per-player harvey results map (ordered by round date for sparklines)
     const harveyByPlayer = new Map<number, Array<{ stablefordPoints: number; moneyPoints: number }>>();
+    const roundTotalsByPlayer = new Map<number, number[]>();
+    // Group harvey rows by player, then sort by round date order
+    const harveyRowsByPlayer = new Map<number, typeof harveyRows>();
     for (const row of harveyRows) {
-      if (!harveyByPlayer.has(row.playerId)) harveyByPlayer.set(row.playerId, []);
-      harveyByPlayer.get(row.playerId)!.push({ stablefordPoints: row.stablefordPoints, moneyPoints: row.moneyPoints });
+      if (!harveyRowsByPlayer.has(row.playerId)) harveyRowsByPlayer.set(row.playerId, []);
+      harveyRowsByPlayer.get(row.playerId)!.push(row);
+    }
+    for (const [pid, rows] of harveyRowsByPlayer) {
+      rows.sort((a, b) => (roundDateOrder.get(a.roundId) ?? 0) - (roundDateOrder.get(b.roundId) ?? 0));
+      harveyByPlayer.set(pid, rows.map(r => ({ stablefordPoints: r.stablefordPoints, moneyPoints: r.moneyPoints })));
+      roundTotalsByPlayer.set(pid, rows.map(r => r.stablefordPoints + r.moneyPoints));
     }
 
     // Determine sub classification: full member if ANY round_players row has is_sub=0
@@ -191,6 +206,7 @@ app.get('/standings', async (c) => {
         highRound: p.highRound,
         rank: fullMemberRanks.get(p.playerId) ?? fullMemberRows.length,
         isPlayoffEligible: (fullMemberRanks.get(p.playerId) ?? 999) <= 8,
+        roundTotals: roundTotalsByPlayer.get(p.playerId) ?? [],
       }))
       .sort(sortByRankName);
 
@@ -208,6 +224,7 @@ app.get('/standings', async (c) => {
         highRound: p.highRound,
         rank: subRanks.get(p.playerId) ?? subRows.length,
         isPlayoffEligible: false,
+        roundTotals: roundTotalsByPlayer.get(p.playerId) ?? [],
       }))
       .sort(sortByRankName);
 

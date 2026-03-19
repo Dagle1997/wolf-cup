@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState, useMemo } from 'react';
 import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Sparkline } from '@/components/sparkline';
 import { apiFetch } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
@@ -32,6 +33,7 @@ type PlayerStats = {
   totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
+  moneyByRound: number[];
   championshipWins?: number;
   championshipYears?: number[];
   isDefendingChampion?: boolean;
@@ -423,9 +425,20 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             </span>
           )}
         </div>
-        <span className={`text-base font-bold tabular-nums ${moneyColor}`}>
-          {formatMoney(p.totalMoney)}
-        </span>
+        <div className="flex items-center gap-1.5">
+          {p.moneyByRound.length >= 2 && (
+            <Sparkline
+              data={p.moneyByRound}
+              width={48}
+              height={16}
+              color={p.totalMoney >= 0 ? '#16a34a' : '#ef4444'}
+              showZeroLine
+            />
+          )}
+          <span className={`text-base font-bold tabular-nums ${moneyColor}`}>
+            {formatMoney(p.totalMoney)}
+          </span>
+        </div>
       </div>
 
       {/* Sandbagger explainer */}
@@ -662,10 +675,26 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
           {detail.rounds.length > 0 && (() => {
             const bestRound = detail.rounds.reduce((a, b) => a.gross < b.gross ? a : b);
             const bestNet = bestRound.gross - Math.round(bestRound.handicapIndex);
+            const moneyTrend = detail.rounds.map((r) => r.money);
+            const stabTrend = detail.rounds.map((r) => r.stableford);
             return (
               <div className="px-4 py-3 border-b">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Round History</p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Round History</p>
+                    {detail.rounds.length >= 2 && (
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          <Sparkline data={moneyTrend} width={44} height={14} color="#16a34a" showZeroLine />
+                          <span className="text-[8px] text-muted-foreground/50">$</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Sparkline data={stabTrend} width={44} height={14} color="#3b82f6" />
+                          <span className="text-[8px] text-muted-foreground/50">stab</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <span className="text-[10px] text-green-500">
                     Best: {bestRound.gross} gross · {bestNet} net · {bestRound.tee ?? '—'} tees
                   </span>

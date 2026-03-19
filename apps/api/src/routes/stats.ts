@@ -32,6 +32,7 @@ type PlayerStats = {
   totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
+  moneyByRound: number[];
   championshipWins?: number;
   championshipYears?: number[];
   isDefendingChampion?: boolean;
@@ -76,12 +77,13 @@ app.get('/stats', async (c) => {
       .innerJoin(rounds, eq(rounds.id, holeScores.roundId))
       .where(and(eq(rounds.type, 'official'), eq(rounds.status, 'finalized')));
 
-    // Step 4: Round money totals
+    // Step 4: Round money totals (ordered by date for sparklines)
     const rrRows = await db
-      .select({ playerId: roundResults.playerId, moneyTotal: roundResults.moneyTotal })
+      .select({ playerId: roundResults.playerId, moneyTotal: roundResults.moneyTotal, scheduledDate: rounds.scheduledDate })
       .from(roundResults)
       .innerJoin(rounds, eq(rounds.id, roundResults.roundId))
-      .where(and(eq(rounds.type, 'official'), eq(rounds.status, 'finalized')));
+      .where(and(eq(rounds.type, 'official'), eq(rounds.status, 'finalized')))
+      .orderBy(rounds.scheduledDate);
 
     // Step 4b: Championship win counts
     const champCounts = await db
@@ -178,14 +180,18 @@ app.get('/stats', async (c) => {
       }
     }
 
-    // Step 8: Total money, biggest round win / loss
+    // Step 8: Total money, biggest round win / loss, per-round sparkline data
     const totalMoneyMap = new Map<number, number>();
     const winMap = new Map<number, number>();
     const lossMap = new Map<number, number>();
+    const moneyByRoundMap = new Map<number, number[]>();
     for (const row of rrRows) {
       totalMoneyMap.set(row.playerId, (totalMoneyMap.get(row.playerId) ?? 0) + row.moneyTotal);
       winMap.set(row.playerId, Math.max(winMap.get(row.playerId) ?? 0, row.moneyTotal));
       lossMap.set(row.playerId, Math.min(lossMap.get(row.playerId) ?? 0, row.moneyTotal));
+      const arr = moneyByRoundMap.get(row.playerId) ?? [];
+      arr.push(row.moneyTotal);
+      moneyByRoundMap.set(row.playerId, arr);
     }
 
     // Step 8b: Sandbagger detection — per-player gross totals + tee info
@@ -266,6 +272,7 @@ app.get('/stats', async (c) => {
         totalMoney: totalMoneyMap.get(p.id) ?? 0,
         biggestRoundWin: winMap.get(p.id) ?? 0,
         biggestRoundLoss: lossMap.get(p.id) ?? 0,
+        moneyByRound: moneyByRoundMap.get(p.id) ?? [],
         ...(champMap.has(p.id) ? { championshipWins: champMap.get(p.id)! } : {}),
         ...(champYearsMap.has(p.id) ? { championshipYears: champYearsMap.get(p.id)! } : {}),
         ...(p.id === defendingChampId ? { isDefendingChampion: true } : {}),
