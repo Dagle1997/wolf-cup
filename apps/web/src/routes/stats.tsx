@@ -701,30 +701,62 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
           })()}
 
           {/* Stat Events — eagles, birdies, greenies, polies breakdown */}
-          {(detail.statEvents.length > 0 || detail.bonusEvents.length > 0) && (
-            <div className="px-4 py-3 border-b">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Highlight Reel</p>
-              <div className="space-y-1">
-                {[...detail.statEvents, ...detail.bonusEvents]
-                  .sort((a, b) => b.date.localeCompare(a.date) || b.hole - a.hole)
-                  .map((ev, i) => {
-                    const icon = ev.type === 'eagle' ? '🦅' : ev.type === 'birdie' ? '🐦' : ev.type === 'greenie' ? '🟢' : '🎯';
-                    const label = ev.type.charAt(0).toUpperCase() + ev.type.slice(1);
-                    const dateStr = new Date(ev.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    return (
-                      <div key={`${ev.type}-${ev.roundId}-${ev.hole}-${i}`} className="flex items-center justify-between text-xs py-0.5">
-                        <span>
-                          <span className="mr-1">{icon}</span>
-                          <span className="font-medium">{label}</span>
-                          <span className="text-muted-foreground"> — Hole {ev.hole} (par {ev.par})</span>
+          {(detail.statEvents.length > 0 || detail.bonusEvents.length > 0) && (() => {
+            const allEvents = [...detail.statEvents, ...detail.bonusEvents];
+            // Find hot spots: holes where they have 2+ of the same event type
+            const freqMap = new Map<string, { type: string; hole: number; par: number; count: number }>();
+            for (const ev of allEvents) {
+              const key = `${ev.type}-${ev.hole}`;
+              const entry = freqMap.get(key) ?? { type: ev.type, hole: ev.hole, par: ev.par, count: 0 };
+              entry.count++;
+              freqMap.set(key, entry);
+            }
+            const hotSpots = [...freqMap.values()]
+              .filter((h) => h.count >= 2)
+              .sort((a, b) => b.count - a.count);
+
+            return (
+              <div className="px-4 py-3 border-b">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Highlight Reel</p>
+
+                {/* Hot Spots — pattern detection */}
+                {hotSpots.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {hotSpots.map((hs) => {
+                      const icon = hs.type === 'eagle' ? '🦅' : hs.type === 'birdie' ? '🐦' : hs.type === 'greenie' ? '🟢' : '🎯';
+                      return (
+                        <span key={`${hs.type}-${hs.hole}`} className="inline-flex items-center gap-1 bg-muted/40 rounded-full px-2.5 py-1 text-[11px]">
+                          <span>{icon}</span>
+                          <span className="font-semibold">Hole {hs.hole}</span>
+                          <span className="text-muted-foreground">×{hs.count}</span>
                         </span>
-                        <span className="text-muted-foreground/60 tabular-nums">{dateStr}</span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  {allEvents
+                    .sort((a, b) => b.date.localeCompare(a.date) || b.hole - a.hole)
+                    .map((ev, i) => {
+                      const icon = ev.type === 'eagle' ? '🦅' : ev.type === 'birdie' ? '🐦' : ev.type === 'greenie' ? '🟢' : '🎯';
+                      const label = ev.type.charAt(0).toUpperCase() + ev.type.slice(1);
+                      const dateStr = new Date(ev.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      return (
+                        <div key={`${ev.type}-${ev.roundId}-${ev.hole}-${i}`} className="flex items-center justify-between text-xs py-0.5">
+                          <span>
+                            <span className="mr-1">{icon}</span>
+                            <span className="font-medium">{label}</span>
+                            <span className="text-muted-foreground"> — Hole {ev.hole} (par {ev.par})</span>
+                          </span>
+                          <span className="text-muted-foreground/60 tabular-nums">{dateStr}</span>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Batting Order Performance */}
           {detail.battingPerformance.length > 0 && detail.battingPerformance.some((b) => b.rounds > 0) && (
