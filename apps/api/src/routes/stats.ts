@@ -281,7 +281,96 @@ app.get('/stats', async (c) => {
       };
     });
 
-    return c.json({ players: playerStats, lastUpdated: new Date().toISOString() }, 200);
+    // Step 10: Best partnership — league-wide from 2v2 wolf_decisions
+    const allPartnerDecisions = await db
+      .select({
+        roundId: wolfDecisions.roundId,
+        groupId: wolfDecisions.groupId,
+        wolfPlayerId: wolfDecisions.wolfPlayerId,
+        partnerPlayerId: wolfDecisions.partnerPlayerId,
+        outcome: wolfDecisions.outcome,
+      })
+      .from(wolfDecisions)
+      .innerJoin(rounds, eq(rounds.id, wolfDecisions.roundId))
+      .where(and(
+        eq(rounds.type, 'official'),
+        eq(rounds.status, 'finalized'),
+        eq(wolfDecisions.decision, 'partner'),
+      ));
+
+    // Get all group memberships for these rounds to find opposing pairs
+    const partnerRoundIds = [...new Set(allPartnerDecisions.map((d) => d.roundId))];
+    const allGroupMembersForPartnership = partnerRoundIds.length > 0 ? await db
+      .select({
+        roundId: roundPlayers.roundId,
+        groupId: roundPlayers.groupId,
+        playerId: roundPlayers.playerId,
+      })
+      .from(roundPlayers)
+      .where(inArray(roundPlayers.roundId, partnerRoundIds)) : [];
+
+    const gpMap = new Map<string, number[]>();
+    for (const gm of allGroupMembersForPartnership) {
+      const key = `${gm.roundId}-${gm.groupId}`;
+      const arr = gpMap.get(key) ?? [];
+      arr.push(gm.playerId);
+      gpMap.set(key, arr);
+    }
+
+    // Build partnership stats: both wolf+partner team AND opponent team
+    const pairMap = new Map<string, { ids: [number, number]; holes: number; wins: number; losses: number; pushes: number }>();
+    const nameMapAll = new Map(allPlayers.map((p) => [p.id, p.name]));
+
+    for (const d of allPartnerDecisions) {
+      if (d.wolfPlayerId == null || d.partnerPlayerId == null) continue;
+      const key1 = `${d.roundId}-${d.groupId}`;
+      const groupPlayers = gpMap.get(key1) ?? [];
+
+      // Wolf team pair
+      const wolfPairKey = [d.wolfPlayerId, d.partnerPlayerId].sort((a, b) => a - b).join('-');
+      const wolfPair = pairMap.get(wolfPairKey) ?? { ids: [Math.min(d.wolfPlayerId, d.partnerPlayerId), Math.max(d.wolfPlayerId, d.partnerPlayerId)] as [number, number], holes: 0, wins: 0, losses: 0, pushes: 0 };
+      wolfPair.holes++;
+      if (d.outcome === 'win') wolfPair.wins++;
+      else if (d.outcome === 'loss') wolfPair.losses++;
+      else if (d.outcome === 'push') wolfPair.pushes++;
+      pairMap.set(wolfPairKey, wolfPair);
+
+      // Opponent team pair
+      const opponents = groupPlayers.filter((pid) => pid !== d.wolfPlayerId && pid !== d.partnerPlayerId);
+      if (opponents.length === 2) {
+        const oppPairKey = opponents.sort((a, b) => a - b).join('-');
+        const oppPair = pairMap.get(oppPairKey) ?? { ids: [opponents[0]!, opponents[1]!] as [number, number], holes: 0, wins: 0, losses: 0, pushes: 0 };
+        oppPair.holes++;
+        // Inverted outcome for opponents
+        if (d.outcome === 'win') oppPair.losses++;
+        else if (d.outcome === 'loss') oppPair.wins++;
+        else if (d.outcome === 'push') oppPair.pushes++;
+        pairMap.set(oppPairKey, oppPair);
+      }
+    }
+
+    // Find best partnership (min 5 holes together, highest win rate)
+    const qualifiedPairs = [...pairMap.values()].filter((p) => p.holes >= 5);
+    let bestPartnership: { player1: string; player2: string; holes: number; wins: number; losses: number; pushes: number; winRate: number } | null = null;
+    if (qualifiedPairs.length > 0) {
+      const best = qualifiedPairs.reduce((a, b) => {
+        const aRate = a.wins / a.holes;
+        const bRate = b.wins / b.holes;
+        if (Math.abs(aRate - bRate) > 0.001) return bRate > aRate ? b : a;
+        return b.holes > a.holes ? b : a; // tiebreak: more holes
+      });
+      bestPartnership = {
+        player1: nameMapAll.get(best.ids[0]) ?? 'Unknown',
+        player2: nameMapAll.get(best.ids[1]) ?? 'Unknown',
+        holes: best.holes,
+        wins: best.wins,
+        losses: best.losses,
+        pushes: best.pushes,
+        winRate: Math.round((best.wins / best.holes) * 100),
+      };
+    }
+
+    return c.json({ players: playerStats, bestPartnership, lastUpdated: new Date().toISOString() }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
@@ -319,7 +408,7 @@ app.get('/stats/:playerId/detail', async (c) => {
     const roundIds = playerRoundRows.map((r) => r.roundId);
 
     if (roundIds.length === 0) {
-      return c.json({ playerId, holeAverages: [], rounds: [], rivals: [] }, 200);
+      return c.json({ playerId, holeAverages: [], rounds: [], rivals: [], chemistry: [] }, 200);
     }
 
     // Per-hole scores for this player across all rounds
@@ -455,7 +544,92 @@ app.get('/stats/:playerId/detail', async (c) => {
       }))
       .sort((a, b) => b.roundsTogether - a.roundsTogether);
 
-    return c.json({ playerId, holeAverages, rounds: roundSummaries, rivals }, 200);
+    // Chemistry: partner relationships from wolf_decisions on 2v2 holes
+    const decisionRows = await db
+      .select({
+        roundId: wolfDecisions.roundId,
+        groupId: wolfDecisions.groupId,
+        holeNumber: wolfDecisions.holeNumber,
+        wolfPlayerId: wolfDecisions.wolfPlayerId,
+        decision: wolfDecisions.decision,
+        partnerPlayerId: wolfDecisions.partnerPlayerId,
+        outcome: wolfDecisions.outcome,
+      })
+      .from(wolfDecisions)
+      .where(and(
+        inArray(wolfDecisions.roundId, roundIds),
+        eq(wolfDecisions.decision, 'partner'),
+      ));
+
+    // Build a map: groupId+roundId → list of player IDs in that group
+    const groupPlayersMap = new Map<string, number[]>();
+    for (const gm of groupMates) {
+      const key = `${gm.roundId}-${gm.groupId}`;
+      const arr = groupPlayersMap.get(key) ?? [];
+      arr.push(gm.playerId);
+      groupPlayersMap.set(key, arr);
+    }
+
+    // For each 2v2 hole, determine if this player was involved and who their partner was
+    const chemMap = new Map<number, { name: string; holes: number; wins: number; losses: number; pushes: number }>();
+    for (const d of decisionRows) {
+      // Only process holes where this player was in the group
+      const key = `${d.roundId}-${d.groupId}`;
+      const groupPlayers = groupPlayersMap.get(key) ?? [];
+      if (!groupPlayers.includes(playerId)) continue;
+
+      let partnerId: number | null = null;
+      let playerWon: string | null = null; // from this player's perspective
+
+      if (d.wolfPlayerId === playerId) {
+        // This player was wolf, their partner is partnerPlayerId
+        partnerId = d.partnerPlayerId;
+        playerWon = d.outcome; // wolf's outcome = this player's outcome
+      } else if (d.partnerPlayerId === playerId) {
+        // This player was picked as partner
+        partnerId = d.wolfPlayerId;
+        playerWon = d.outcome; // same team as wolf
+      } else {
+        // This player is on the opposing team — find the other opponent
+        const opponents = groupPlayers.filter(
+          (pid) => pid !== d.wolfPlayerId && pid !== d.partnerPlayerId,
+        );
+        partnerId = opponents.find((pid) => pid !== playerId) ?? null;
+        // Invert outcome: wolf win = opponent loss, wolf loss = opponent win
+        if (d.outcome === 'win') playerWon = 'loss';
+        else if (d.outcome === 'loss') playerWon = 'win';
+        else playerWon = d.outcome; // push stays push, null stays null
+      }
+
+      if (partnerId == null) continue;
+
+      const entry = chemMap.get(partnerId) ?? {
+        name: nameMap.get(partnerId) ?? 'Unknown',
+        holes: 0,
+        wins: 0,
+        losses: 0,
+        pushes: 0,
+      };
+      entry.holes++;
+      if (playerWon === 'win') entry.wins++;
+      else if (playerWon === 'loss') entry.losses++;
+      else if (playerWon === 'push') entry.pushes++;
+      chemMap.set(partnerId, entry);
+    }
+
+    const chemistry = [...chemMap.entries()]
+      .map(([id, c]) => ({
+        playerId: id,
+        name: c.name,
+        holes: c.holes,
+        wins: c.wins,
+        losses: c.losses,
+        pushes: c.pushes,
+        winRate: c.holes > 0 ? Math.round((c.wins / c.holes) * 100) : 0,
+      }))
+      .sort((a, b) => b.holes - a.holes);
+
+    return c.json({ playerId, holeAverages, rounds: roundSummaries, rivals, chemistry }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }

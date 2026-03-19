@@ -39,8 +39,19 @@ type PlayerStats = {
   sandbagging?: { beatsCount: number; totalRounds: number; tier: 1 | 2 | 3 };
 };
 
+type BestPartnership = {
+  player1: string;
+  player2: string;
+  holes: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  winRate: number;
+};
+
 type StatsResponse = {
   players: PlayerStats[];
+  bestPartnership: BestPartnership | null;
   lastUpdated: string;
 };
 
@@ -72,11 +83,22 @@ type Rival = {
   moneyDiff: number;
 };
 
+type PartnerChemistry = {
+  playerId: number;
+  name: string;
+  holes: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  winRate: number;
+};
+
 type PlayerDetail = {
   playerId: number;
   holeAverages: HoleAverage[];
   rounds: RoundSummary[];
   rivals: Rival[];
+  chemistry: PartnerChemistry[];
 };
 
 // ---------------------------------------------------------------------------
@@ -195,6 +217,26 @@ function StatsPage() {
       >
         🏆 View Awards Wall & Badge Explanations
       </Link>
+
+      {/* Best Partnership spotlight */}
+      {data?.bestPartnership && (
+        <div className="mb-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-2.5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[10px] text-green-600 dark:text-green-400 font-medium uppercase tracking-wider">Best Partnership</div>
+              <div className="text-sm font-bold mt-0.5">
+                {data.bestPartnership.player1.split(' ')[0]} & {data.bestPartnership.player2.split(' ')[0]}
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-bold text-green-600 dark:text-green-400">{data.bestPartnership.winRate}%</div>
+              <div className="text-[10px] text-muted-foreground">
+                {data.bestPartnership.wins}W-{data.bestPartnership.losses}L-{data.bestPartnership.pushes}P · {data.bestPartnership.holes} holes
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sort buttons */}
       {data && data.players.length > 0 && (
@@ -610,7 +652,40 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             );
           })()}
 
-          {/* Partner Chemistry + Rivals */}
+          {/* Chemistry — best/worst partners from 2v2 holes */}
+          {detail.chemistry?.length > 0 && (() => {
+            const minHoles = 3;
+            const qualified = detail.chemistry.filter((c) => c.holes >= minHoles);
+            if (qualified.length < 2) return null;
+            const byWinRate = [...qualified].sort((a, b) => b.winRate - a.winRate);
+            const best = byWinRate[0]!;
+            const worst = byWinRate[byWinRate.length - 1]!;
+            return (
+              <div className="px-4 py-3 border-b">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Chemistry</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-green-500/10 rounded-lg p-2.5">
+                    <div className="text-[9px] text-green-500 font-medium uppercase tracking-wider mb-1">Best Partner</div>
+                    <div className="text-sm font-bold">{best.name.split(' ')[0]}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      <span className="text-green-500 font-bold">{best.winRate}%</span> win rate · {best.wins}W-{best.losses}L-{best.pushes}P
+                    </div>
+                    <div className="text-[9px] text-muted-foreground/50">{best.holes} holes together</div>
+                  </div>
+                  <div className="bg-red-500/10 rounded-lg p-2.5">
+                    <div className="text-[9px] text-red-500 font-medium uppercase tracking-wider mb-1">Worst Partner</div>
+                    <div className="text-sm font-bold">{worst.name.split(' ')[0]}</div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      <span className="text-red-500 font-bold">{worst.winRate}%</span> win rate · {worst.wins}W-{worst.losses}L-{worst.pushes}P
+                    </div>
+                    <div className="text-[9px] text-muted-foreground/50">{worst.holes} holes together</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Rivals — when grouped with */}
           {detail.rivals.length > 0 && (() => {
             const rivalsSorted = [...detail.rivals].sort((a, b) => a.moneyDiff - b.moneyDiff);
             return (
@@ -620,17 +695,21 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">When Grouped With</p>
                 <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
                   <span className="flex-1">Player</span>
-                  <span className="w-12 text-center">Rds</span>
-                  <span className="w-14 text-right">Your $</span>
-                  <span className="w-14 text-right">+/-</span>
+                  <span className="w-8 text-center">Rds</span>
+                  <span className="w-14 text-right">You</span>
+                  <span className="w-14 text-right">Them</span>
+                  <span className="w-14 text-right">+/−</span>
                 </div>
                 <div className="space-y-1.5">
                   {rivalsSorted.map((r) => (
                     <div key={r.playerId} className="flex items-center justify-between text-xs">
                       <span className="font-medium flex-1">{r.name}</span>
-                      <span className="text-muted-foreground w-12 text-center">{r.roundsTogether}x</span>
+                      <span className="text-muted-foreground w-8 text-center">{r.roundsTogether}</span>
                       <span className={`w-14 text-right tabular-nums ${r.myMoney > 0 ? 'text-green-600' : r.myMoney < 0 ? 'text-destructive' : ''}`}>
                         {formatMoney(r.myMoney)}
+                      </span>
+                      <span className={`w-14 text-right tabular-nums ${r.theirMoney > 0 ? 'text-green-600' : r.theirMoney < 0 ? 'text-destructive' : ''}`}>
+                        {formatMoney(r.theirMoney)}
                       </span>
                       <span className={`w-14 text-right tabular-nums font-bold ${r.moneyDiff > 0 ? 'text-green-600' : r.moneyDiff < 0 ? 'text-destructive' : ''}`}>
                         {r.moneyDiff > 0 ? '+' : ''}{r.moneyDiff !== 0 ? `$${Math.abs(r.moneyDiff)}` : 'Even'}
