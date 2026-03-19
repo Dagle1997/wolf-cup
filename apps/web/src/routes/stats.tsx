@@ -105,6 +105,23 @@ type PlayerDetail = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Short display name — first name, plus last initial if another player
+ * shares the same first name (e.g. "Matt W." vs "Matt J.").
+ * Pass the full roster of names for duplicate detection.
+ */
+function shortName(fullName: string, allNames: string[]): string {
+  const parts = fullName.split(' ');
+  const first = parts[0]!;
+  const hasDuplicate = allNames.some(
+    (n) => n !== fullName && n.split(' ')[0] === first,
+  );
+  if (hasDuplicate && parts.length > 1) {
+    return `${first} ${parts[parts.length - 1]![0]}.`;
+  }
+  return first;
+}
+
 function wolfRecord(p: PlayerStats): string {
   return `${p.wolfWins}-${p.wolfLosses}-${p.wolfPushes}`;
 }
@@ -225,7 +242,7 @@ function StatsPage() {
             <div>
               <div className="text-[10px] text-green-600 dark:text-green-400 font-medium uppercase tracking-wider">Best Partnership</div>
               <div className="text-sm font-bold mt-0.5">
-                {data.bestPartnership.player1.split(' ')[0]} & {data.bestPartnership.player2.split(' ')[0]}
+                {shortName(data.bestPartnership.player1, data.players.map((pl) => pl.name))} & {shortName(data.bestPartnership.player2, data.players.map((pl) => pl.name))}
               </div>
             </div>
             <div className="text-right">
@@ -283,7 +300,7 @@ function StatsPage() {
                 const pA = data.players.find((pl) => pl.playerId === compareIds[0]);
                 const pB = data.players.find((pl) => pl.playerId === compareIds[1]);
                 if (!pA || !pB) return null;
-                return <CompareView playerA={pA} playerB={pB} onClose={() => setCompareIds(null)} />;
+                return <CompareView playerA={pA} playerB={pB} allNames={data.players.map((pl) => pl.name)} onClose={() => setCompareIds(null)} />;
               })()}
 
               <div className="flex flex-col gap-3">
@@ -312,6 +329,8 @@ function StatsPage() {
 function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: PlayerStats; rank: number; allPlayers: PlayerStats[]; onCompare: (otherId: number) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [showCompareSelect, setShowCompareSelect] = useState(false);
+  const allNames = useMemo(() => allPlayers.map((pl) => pl.name), [allPlayers]);
+  const sn = (name: string) => shortName(name, allNames);
 
   const { data: detail } = useQuery({
     queryKey: ['player-detail', p.playerId],
@@ -465,14 +484,14 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
               <div className="px-4 py-2 border-b bg-muted/10">
                 <div className="flex items-center justify-between gap-1 text-[10px]">
                   <span className="text-green-500" title="You win the most money when they are in your group">
-                    🍀 <span className="font-bold">{charm.name.split(' ')[0]}</span> <span className="tabular-nums">{formatMoney(charm.myMoney)}</span>
+                    🍀 <span className="font-bold">{sn(charm.name)}</span> <span className="tabular-nums">{formatMoney(charm.myMoney)}</span>
                   </span>
                   <span className="text-red-500" title="You lose the most money when they are in your group">
-                    🎯 <span className="font-bold">{rival.name.split(' ')[0]}</span> <span className="tabular-nums">{formatMoney(rival.myMoney)}</span>
+                    🎯 <span className="font-bold">{sn(rival.name)}</span> <span className="tabular-nums">{formatMoney(rival.myMoney)}</span>
                   </span>
                   {dominate.moneyDiff > 0 && (
                     <span className="text-amber-500" title="You outperform them the most when grouped together">
-                      👑 <span className="font-bold">{dominate.name.split(' ')[0]}</span> <span className="tabular-nums">+${dominate.moneyDiff}</span>
+                      👑 <span className="font-bold">{sn(dominate.name)}</span> <span className="tabular-nums">+${dominate.moneyDiff}</span>
                     </span>
                   )}
                 </div>
@@ -666,7 +685,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-green-500/10 rounded-lg p-2.5">
                     <div className="text-[9px] text-green-500 font-medium uppercase tracking-wider mb-1">Best Partner</div>
-                    <div className="text-sm font-bold">{best.name.split(' ')[0]}</div>
+                    <div className="text-sm font-bold">{sn(best.name)}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
                       <span className="text-green-500 font-bold">{best.winRate}%</span> win rate · {best.wins}W-{best.losses}L-{best.pushes}P
                     </div>
@@ -674,7 +693,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                   </div>
                   <div className="bg-red-500/10 rounded-lg p-2.5">
                     <div className="text-[9px] text-red-500 font-medium uppercase tracking-wider mb-1">Worst Partner</div>
-                    <div className="text-sm font-bold">{worst.name.split(' ')[0]}</div>
+                    <div className="text-sm font-bold">{sn(worst.name)}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
                       <span className="text-red-500 font-bold">{worst.winRate}%</span> win rate · {worst.wins}W-{worst.losses}L-{worst.pushes}P
                     </div>
@@ -735,7 +754,8 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
 // Compare View — side-by-side player comparison
 // ---------------------------------------------------------------------------
 
-function CompareView({ playerA, playerB, onClose }: { playerA: PlayerStats; playerB: PlayerStats; onClose: () => void }) {
+function CompareView({ playerA, playerB, allNames, onClose }: { playerA: PlayerStats; playerB: PlayerStats; allNames: string[]; onClose: () => void }) {
+  const sn = (name: string) => shortName(name, allNames);
   const { data: detailA } = useQuery({
     queryKey: ['player-detail', playerA.playerId],
     queryFn: () => apiFetch<PlayerDetail>(`/stats/${playerA.playerId}/detail`),
@@ -771,9 +791,9 @@ function CompareView({ playerA, playerB, onClose }: { playerA: PlayerStats; play
       <div className="px-4 py-3">
         {/* Names */}
         <div className="flex items-center text-sm font-bold mb-3">
-          <span className="w-16 text-right truncate">{playerA.name.split(' ')[0]}</span>
+          <span className="w-16 text-right truncate">{sn(playerA.name)}</span>
           <span className="flex-1 text-center text-muted-foreground text-xs">vs</span>
-          <span className="w-16 text-left truncate">{playerB.name.split(' ')[0]}</span>
+          <span className="w-16 text-left truncate">{sn(playerB.name)}</span>
         </div>
 
         <CompareRow label="Wolf W" a={playerA.wolfWins} b={playerB.wolfWins} />
@@ -791,9 +811,9 @@ function CompareView({ playerA, playerB, onClose }: { playerA: PlayerStats; play
               Grouped together {h2h.roundsTogether}x this season
             </p>
             <div className="flex items-center justify-between text-xs mb-1">
-              <span className="font-medium">{playerA.name.split(' ')[0]}</span>
+              <span className="font-medium">{sn(playerA.name)}</span>
               <span className="text-muted-foreground">Money when grouped</span>
-              <span className="font-medium">{playerB.name.split(' ')[0]}</span>
+              <span className="font-medium">{sn(playerB.name)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className={`font-bold tabular-nums ${h2h.myMoney > 0 ? 'text-green-600' : h2h.myMoney < 0 ? 'text-destructive' : ''}`}>
@@ -803,7 +823,7 @@ function CompareView({ playerA, playerB, onClose }: { playerA: PlayerStats; play
                 <div className={`text-lg font-black tabular-nums ${h2h.moneyDiff > 0 ? 'text-green-600' : h2h.moneyDiff < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                   {h2h.moneyDiff > 0 ? '+' : ''}{h2h.moneyDiff !== 0 ? `$${Math.abs(h2h.moneyDiff)}` : 'EVEN'}
                 </div>
-                <div className="text-[9px] text-muted-foreground">net {h2h.moneyDiff >= 0 ? playerA.name.split(' ')[0] : playerB.name.split(' ')[0]}</div>
+                <div className="text-[9px] text-muted-foreground">net {h2h.moneyDiff >= 0 ? sn(playerA.name) : sn(playerB.name)}</div>
               </div>
               <span className={`font-bold tabular-nums ${h2h.theirMoney > 0 ? 'text-green-600' : h2h.theirMoney < 0 ? 'text-destructive' : ''}`}>
                 {formatMoney(h2h.theirMoney)}
