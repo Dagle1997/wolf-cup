@@ -65,18 +65,24 @@ export const Route = createFileRoute('/stats')({
   component: StatsPage,
 });
 
-type SortKey = 'alpha' | 'money' | 'birdies' | 'wolf';
+type SortKey = 'standings' | 'alpha' | 'money' | 'birdies' | 'wolf';
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'standings', label: 'Standings' },
   { key: 'alpha', label: 'A-Z' },
   { key: 'money', label: 'Money' },
   { key: 'birdies', label: 'Birdies' },
   { key: 'wolf', label: 'Wolf' },
 ];
 
-function sortPlayers(players: PlayerStats[], sortKey: SortKey): PlayerStats[] {
+function sortPlayers(players: PlayerStats[], sortKey: SortKey, standingsRankMap?: Map<number, number>): PlayerStats[] {
   const sorted = [...players];
   switch (sortKey) {
+    case 'standings': {
+      const getRank = (p: PlayerStats) => standingsRankMap?.get(p.playerId) ?? 999;
+      sorted.sort((a, b) => getRank(a) - getRank(b) || a.name.localeCompare(b.name));
+      break;
+    }
     case 'alpha':
       sorted.sort((a, b) => a.name.localeCompare(b.name));
       break;
@@ -104,17 +110,36 @@ function sortPlayers(players: PlayerStats[], sortKey: SortKey): PlayerStats[] {
   return sorted;
 }
 
+type StandingsEntry = { playerId: number; rank: number; combinedTotal: number };
+type StandingsData = { fullMembers: StandingsEntry[]; subs: StandingsEntry[] };
+
 function StatsPage() {
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['stats'],
     queryFn: () => apiFetch<StatsResponse>('/stats'),
   });
 
-  const [sortKey, setSortKey] = useState<SortKey>('alpha');
+  const { data: standingsData } = useQuery({
+    queryKey: ['standings'],
+    queryFn: () => apiFetch<StandingsData>('/standings'),
+    staleTime: 60_000,
+  });
+
+  const standingsRankMap = useMemo(() => {
+    const map = new Map<number, number>();
+    if (standingsData) {
+      for (const p of [...standingsData.fullMembers, ...standingsData.subs]) {
+        map.set(p.playerId, p.rank);
+      }
+    }
+    return map;
+  }, [standingsData]);
+
+  const [sortKey, setSortKey] = useState<SortKey>('standings');
 
   const sortedPlayers = useMemo(
-    () => data ? sortPlayers(data.players, sortKey) : [],
-    [data, sortKey],
+    () => data ? sortPlayers(data.players, sortKey, standingsRankMap) : [],
+    [data, sortKey, standingsRankMap],
   );
 
   return (

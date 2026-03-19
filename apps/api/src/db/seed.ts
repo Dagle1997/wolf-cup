@@ -11,7 +11,7 @@ import bcrypt from 'bcrypt';
 import { db } from './index.js';
 import { admins, players, seasons, seasonStandings } from './schema.js';
 import { eq } from 'drizzle-orm';
-import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_PLAYERS } from './history-data.js';
+import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_PLAYERS, normalizePlayerName } from './history-data.js';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -58,19 +58,22 @@ async function main(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function ensurePlayer(name: string, isActive: number): Promise<number> {
+  // Normalize historical names to match DB names (e.g., "Moses" → "Jason Moses")
+  const dbName = normalizePlayerName(name);
+
   const existing = await db
     .select({ id: players.id })
     .from(players)
-    .where(eq(players.name, name))
+    .where(eq(players.name, dbName))
     .get();
 
   if (existing) return existing.id;
 
   const [inserted] = await db
     .insert(players)
-    .values({ name, ghinNumber: null, isActive, isGuest: 0, createdAt: Date.now() })
+    .values({ name: dbName, ghinNumber: null, isActive, isGuest: 0, createdAt: Date.now() })
     .returning({ id: players.id });
-  console.log(`  ✓ Player '${name}' created (isActive=${isActive})`);
+  console.log(`  ✓ Player '${dbName}' created (isActive=${isActive})`);
   return inserted!.id;
 }
 
