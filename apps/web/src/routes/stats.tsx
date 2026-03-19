@@ -93,12 +93,41 @@ type PartnerChemistry = {
   winRate: number;
 };
 
+type StatEvent = {
+  type: 'eagle' | 'birdie';
+  hole: number;
+  par: number;
+  gross: number;
+  roundId: number;
+  date: string;
+};
+
+type BonusEvent = {
+  type: 'greenie' | 'polie';
+  hole: number;
+  par: number;
+  roundId: number;
+  date: string;
+};
+
+type BattingPositionStats = {
+  position: number;
+  label: string;
+  rounds: number;
+  avgMoney: number;
+  avgStableford: number;
+  wolfRecord: { wins: number; losses: number; pushes: number };
+};
+
 type PlayerDetail = {
   playerId: number;
   holeAverages: HoleAverage[];
   rounds: RoundSummary[];
   rivals: Rival[];
   chemistry: PartnerChemistry[];
+  statEvents: StatEvent[];
+  bonusEvents: BonusEvent[];
+  battingPerformance: BattingPositionStats[];
 };
 
 // ---------------------------------------------------------------------------
@@ -670,6 +699,68 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
               </div>
             );
           })()}
+
+          {/* Stat Events — eagles, birdies, greenies, polies breakdown */}
+          {(detail.statEvents.length > 0 || detail.bonusEvents.length > 0) && (
+            <div className="px-4 py-3 border-b">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Highlight Reel</p>
+              <div className="space-y-1">
+                {[...detail.statEvents, ...detail.bonusEvents]
+                  .sort((a, b) => b.date.localeCompare(a.date) || b.hole - a.hole)
+                  .map((ev, i) => {
+                    const icon = ev.type === 'eagle' ? '🦅' : ev.type === 'birdie' ? '🐦' : ev.type === 'greenie' ? '🟢' : '🎯';
+                    const label = ev.type.charAt(0).toUpperCase() + ev.type.slice(1);
+                    const dateStr = new Date(ev.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    return (
+                      <div key={`${ev.type}-${ev.roundId}-${ev.hole}-${i}`} className="flex items-center justify-between text-xs py-0.5">
+                        <span>
+                          <span className="mr-1">{icon}</span>
+                          <span className="font-medium">{label}</span>
+                          <span className="text-muted-foreground"> — Hole {ev.hole} (par {ev.par})</span>
+                        </span>
+                        <span className="text-muted-foreground/60 tabular-nums">{dateStr}</span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Batting Order Performance */}
+          {detail.battingPerformance.length > 0 && detail.battingPerformance.some((b) => b.rounds > 0) && (
+            <div className="px-4 py-3 border-b">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">By Batting Position</p>
+              <div className="grid grid-cols-4 gap-2">
+                {detail.battingPerformance.map((bp) => {
+                  if (bp.rounds === 0) return (
+                    <div key={bp.position} className="bg-muted/20 rounded-lg p-2 text-center">
+                      <div className="text-[10px] font-medium text-muted-foreground/50">{bp.label}</div>
+                      <div className="text-[10px] text-muted-foreground/30 mt-1">—</div>
+                    </div>
+                  );
+                  const wolfTotal = bp.wolfRecord.wins + bp.wolfRecord.losses + bp.wolfRecord.pushes;
+                  const wolfPct = wolfTotal > 0 ? Math.round((bp.wolfRecord.wins / wolfTotal) * 100) : 0;
+                  const moneyColor = bp.avgMoney > 0 ? 'text-green-600' : bp.avgMoney < 0 ? 'text-destructive' : '';
+                  return (
+                    <div key={bp.position} className="bg-muted/30 rounded-lg p-2 text-center">
+                      <div className="text-[10px] font-semibold text-muted-foreground">{bp.label}</div>
+                      <div className={`text-sm font-bold tabular-nums mt-0.5 ${moneyColor}`}>
+                        {bp.avgMoney > 0 ? '+' : ''}{bp.avgMoney !== 0 ? `$${Math.abs(bp.avgMoney)}` : '$0'}
+                      </div>
+                      <div className="text-[9px] text-muted-foreground/60 mt-0.5">avg/rd</div>
+                      <div className="text-[10px] tabular-nums mt-1">{bp.avgStableford} stab</div>
+                      {wolfTotal > 0 && (
+                        <div className="text-[9px] text-muted-foreground/50 mt-0.5">
+                          🐺 {wolfPct}% ({bp.wolfRecord.wins}-{bp.wolfRecord.losses}-{bp.wolfRecord.pushes})
+                        </div>
+                      )}
+                      <div className="text-[8px] text-muted-foreground/30 mt-0.5">{bp.rounds} rds</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Chemistry — best/worst partners from 2v2 holes */}
           {detail.chemistry?.length > 0 && (() => {

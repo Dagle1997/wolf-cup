@@ -2,13 +2,15 @@ import { Hono } from 'hono';
 import { eq, and, isNotNull, count, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { players, rounds, wolfDecisions, holeScores, roundResults, seasons, groups, roundPlayers } from '../db/schema.js';
-import { getCourseHole, calculateSandbaggerStatus, TEE_RATINGS } from '@wolf-cup/engine';
+import { getCourseHole, calculateSandbaggerStatus, TEE_RATINGS, getWolfAssignment } from '@wolf-cup/engine';
 import type { SandbaggerRoundInput, Tee } from '@wolf-cup/engine';
 import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS } from '../db/history-data.js';
 import { computeAllAwards, computePlayerBadges } from '../lib/badges.js';
 import type { PlayerBadge } from '../lib/badges.js';
 
 const app = new Hono();
+
+const POSITIONS = ['1st Batter', '2nd Batter', '3rd Batter', '4th Batter'] as const;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -408,7 +410,7 @@ app.get('/stats/:playerId/detail', async (c) => {
     const roundIds = playerRoundRows.map((r) => r.roundId);
 
     if (roundIds.length === 0) {
-      return c.json({ playerId, holeAverages: [], rounds: [], rivals: [], chemistry: [] }, 200);
+      return c.json({ playerId, holeAverages: [], rounds: [], rivals: [], chemistry: [], statEvents: [], bonusEvents: [], battingPerformance: [] }, 200);
     }
 
     // Per-hole scores for this player across all rounds
@@ -629,7 +631,136 @@ app.get('/stats/:playerId/detail', async (c) => {
       }))
       .sort((a, b) => b.holes - a.holes);
 
-    return c.json({ playerId, holeAverages, rounds: roundSummaries, rivals, chemistry }, 200);
+    // Stat drill-downs: eagles, birdies, greenies, polies with hole/round/date context
+    const roundDateMap = new Map(playerRoundRows.map((r) => [r.roundId, r.scheduledDate]));
+
+    const statEvents: { type: 'eagle' | 'birdie'; hole: number; par: number; gross: number; roundId: number; date: string }[] = [];
+    for (const row of holeRows) {
+      const courseHoleData = getCourseHole(row.holeNumber as Parameters<typeof getCourseHole>[0]);
+      const diff = row.grossScore - courseHoleData.par;
+      if (diff <= -2) {
+        statEvents.push({ type: 'eagle', hole: row.holeNumber, par: courseHoleData.par, gross: row.grossScore, roundId: row.roundId, date: roundDateMap.get(row.roundId) ?? '' });
+      } else if (diff === -1) {
+        statEvents.push({ type: 'birdie', hole: row.holeNumber, par: courseHoleData.par, gross: row.grossScore, roundId: row.roundId, date: roundDateMap.get(row.roundId) ?? '' });
+      }
+    }
+
+    // Greenies and polies from wolf_decisions bonusesJson
+    const bonusDecisionRows = await db
+      .select({
+        roundId: wolfDecisions.roundId,
+        holeNumber: wolfDecisions.holeNumber,
+        bonusesJson: wolfDecisions.bonusesJson,
+      })
+      .from(wolfDecisions)
+      .where(and(
+        inArray(wolfDecisions.roundId, roundIds),
+        isNotNull(wolfDecisions.bonusesJson),
+      ));
+
+    const bonusEvents: { type: 'greenie' | 'polie'; hole: number; par: number; roundId: number; date: string }[] = [];
+    for (const row of bonusDecisionRows) {
+      if (!row.bonusesJson) continue;
+      try {
+        const parsed = JSON.parse(row.bonusesJson) as { greenies?: number[]; polies?: number[] };
+        const courseHoleData = getCourseHole(row.holeNumber as Parameters<typeof getCourseHole>[0]);
+        if (parsed.greenies?.includes(playerId)) {
+          bonusEvents.push({ type: 'greenie', hole: row.holeNumber, par: courseHoleData.par, roundId: row.roundId, date: roundDateMap.get(row.roundId) ?? '' });
+        }
+        if (parsed.polies?.includes(playerId)) {
+          bonusEvents.push({ type: 'polie', hole: row.holeNumber, par: courseHoleData.par, roundId: row.roundId, date: roundDateMap.get(row.roundId) ?? '' });
+        }
+      } catch { /* skip malformed JSON */ }
+    }
+
+    // Batting order performance: money/stableford/wolf record by position
+    const groupRows = await db
+      .select({
+        groupId: groups.id,
+        roundId: groups.roundId,
+        battingOrder: groups.battingOrder,
+      })
+      .from(groups)
+      .where(and(
+        inArray(groups.roundId, roundIds),
+        isNotNull(groups.battingOrder),
+      ));
+
+    // Reuse myGroupByRound from rivals section above
+    const rrMap2 = new Map(
+      (await db.select({ roundId: roundResults.roundId, playerId: roundResults.playerId, stablefordTotal: roundResults.stablefordTotal, moneyTotal: roundResults.moneyTotal })
+        .from(roundResults)
+        .where(and(eq(roundResults.playerId, playerId), inArray(roundResults.roundId, roundIds)))
+      ).map((r) => [r.roundId, r]),
+    );
+
+    // Wolf decisions for this player's rounds (for wolf record by position)
+    const wolfDecRows = await db
+      .select({
+        roundId: wolfDecisions.roundId,
+        groupId: wolfDecisions.groupId,
+        holeNumber: wolfDecisions.holeNumber,
+        wolfPlayerId: wolfDecisions.wolfPlayerId,
+        decision: wolfDecisions.decision,
+        outcome: wolfDecisions.outcome,
+      })
+      .from(wolfDecisions)
+      .where(and(
+        inArray(wolfDecisions.roundId, roundIds),
+      ));
+
+    const positionStats = [0, 1, 2, 3].map((pos) => ({
+      position: pos,
+      rounds: 0,
+      totalMoney: 0,
+      totalStableford: 0,
+      wolfWins: 0,
+      wolfLosses: 0,
+      wolfPushes: 0,
+    }));
+
+    for (const gr of groupRows) {
+      if (myGroupByRound.get(gr.roundId) !== gr.groupId) continue;
+      if (!gr.battingOrder) continue;
+      let battingArr: number[];
+      try { battingArr = JSON.parse(gr.battingOrder) as number[]; } catch { continue; }
+      const posIdx = battingArr.indexOf(playerId);
+      if (posIdx === -1) continue;
+
+      const stat = positionStats[posIdx]!;
+      stat.rounds++;
+      const rr = rrMap2.get(gr.roundId);
+      if (rr) {
+        stat.totalMoney += rr.moneyTotal;
+        stat.totalStableford += rr.stablefordTotal;
+      }
+
+      // Wolf record for holes where this player was wolf based on batting position
+      const roundWolfDecs = wolfDecRows.filter((d) => d.roundId === gr.roundId && d.groupId === gr.groupId);
+      for (const d of roundWolfDecs) {
+        if (d.holeNumber <= 2) continue; // skins holes
+        const assignment = getWolfAssignment(battingArr as [number, number, number, number], d.holeNumber as Parameters<typeof getWolfAssignment>[1]);
+        if (assignment.type === 'wolf' && assignment.wolfBatterIndex === posIdx) {
+          // This player was wolf on this hole
+          if (d.wolfPlayerId === playerId) {
+            if (d.outcome === 'win') stat.wolfWins++;
+            else if (d.outcome === 'loss') stat.wolfLosses++;
+            else if (d.outcome === 'push') stat.wolfPushes++;
+          }
+        }
+      }
+    }
+
+    const battingPerformance = positionStats.map((s) => ({
+      position: s.position,
+      label: POSITIONS[s.position] ?? '',
+      rounds: s.rounds,
+      avgMoney: s.rounds > 0 ? Math.round((s.totalMoney / s.rounds) * 10) / 10 : 0,
+      avgStableford: s.rounds > 0 ? Math.round((s.totalStableford / s.rounds) * 10) / 10 : 0,
+      wolfRecord: { wins: s.wolfWins, losses: s.wolfLosses, pushes: s.wolfPushes },
+    }));
+
+    return c.json({ playerId, holeAverages, rounds: roundSummaries, rivals, chemistry, statEvents, bonusEvents, battingPerformance }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
