@@ -205,9 +205,9 @@ export const HISTORICAL_PLAYERS: string[] = [
  * Historical data uses nicknames; the DB uses formal names.
  */
 export const NAME_MAP: Record<string, string> = {
-  'Jay Patterson': 'John Patterson',
+  'John Patterson': 'Jay Patterson',
   'Moses': 'Jason Moses',
-  'Bobby Marshall': 'Bob Marshall',
+  'Bob Marshall': 'Bobby Marshall',
   'Mike Bonner': 'Michael Bonner',
   'Ronnie A.': 'Ronnie Adkins',
   'Scotty Pierson': 'Scott Pierson',

@@ -221,9 +221,9 @@ describe('computeAllAwards', () => {
     );
     const allNames = awards.flatMap((a) => a.recipients.map((r) => r.playerName));
     // Should use DB names, not historical nicknames
-    expect(allNames).not.toContain('Jay Patterson');
     expect(allNames).not.toContain('Moses');
-    expect(allNames).toContain('John Patterson');
+    expect(allNames).not.toContain('Ronnie A.');
+    expect(allNames).toContain('Jay Patterson');
     expect(allNames).toContain('Jason Moses');
   });
 
@@ -263,8 +263,8 @@ describe('computePlayerBadges', () => {
     expect(ids).toContain('philanthropist');
   });
 
-  it('John Patterson (DB name) gets Money Man on stats (Rickie Fowler + Ironman are Awards Wall only)', () => {
-    const badges = computePlayerBadges('John Patterson', awards);
+  it('Jay Patterson (DB name) gets Money Man on stats (Rickie Fowler + Ironman are Awards Wall only)', () => {
+    const badges = computePlayerBadges('Jay Patterson', awards);
     const ids = badges.map((b) => b.id);
     expect(ids).toContain('money_man');
     expect(ids).not.toContain('rickie_fowler');
