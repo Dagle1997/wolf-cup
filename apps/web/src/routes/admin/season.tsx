@@ -315,6 +315,43 @@ function CreateSeasonForm({ onCreated }: { onCreated: (id: number) => void }) {
 // Season List
 // ---------------------------------------------------------------------------
 
+function SeasonRow({ season: s, selectedSeasonId, onSelect, onDeselect }: {
+  season: Season;
+  selectedSeasonId: number | null;
+  onSelect: (id: number) => void;
+  onDeselect: () => void;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onSelect(s.id)}
+        className={`w-full flex items-center justify-between px-4 py-3 text-left text-sm border-b transition-colors ${
+          selectedSeasonId === s.id
+            ? 'bg-primary/5 border-l-2 border-l-primary'
+            : 'hover:bg-muted/50'
+        }`}
+      >
+        <div>
+          <p className="font-medium">{s.name}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatDate(s.startDate)} – {formatDate(s.endDate)} · {s.totalRounds} rounds ·{' '}
+            {s.playoffFormat}
+          </p>
+        </div>
+        {s.harveyLiveEnabled === 1 && (
+          <span className="ml-3 shrink-0 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-full px-2 py-0.5">
+            Harvey Live
+          </span>
+        )}
+      </button>
+      {selectedSeasonId === s.id && (
+        <EditSeasonPanel season={s} onClose={onDeselect} />
+      )}
+    </div>
+  );
+}
+
 function SeasonList({
   seasons,
   selectedSeasonId,
@@ -326,37 +363,33 @@ function SeasonList({
   onSelect: (id: number) => void;
   onDeselect: () => void;
 }) {
+  const [showPrior, setShowPrior] = useState(false);
+
+  // Most recent season is "current", rest are "prior"
+  const sorted = [...seasons].sort((a, b) => b.startDate.localeCompare(a.startDate));
+  const current = sorted[0];
+  const prior = sorted.slice(1);
+
   return (
     <div className="rounded-md border overflow-hidden">
-      {seasons.map((s) => (
-        <div key={s.id}>
+      {current && (
+        <SeasonRow season={current} selectedSeasonId={selectedSeasonId} onSelect={onSelect} onDeselect={onDeselect} />
+      )}
+      {prior.length > 0 && (
+        <>
           <button
             type="button"
-            onClick={() => onSelect(s.id)}
-            className={`w-full flex items-center justify-between px-4 py-3 text-left text-sm border-b transition-colors ${
-              selectedSeasonId === s.id
-                ? 'bg-primary/5 border-l-2 border-l-primary'
-                : 'hover:bg-muted/50'
-            }`}
+            onClick={() => setShowPrior(!showPrior)}
+            className="w-full flex items-center justify-between px-4 py-2 text-left text-xs font-medium text-muted-foreground bg-muted/30 hover:bg-muted/50 border-b transition-colors"
           >
-            <div>
-              <p className="font-medium">{s.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {formatDate(s.startDate)} – {formatDate(s.endDate)} · {s.totalRounds} rounds ·{' '}
-                {s.playoffFormat}
-              </p>
-            </div>
-            {s.harveyLiveEnabled === 1 && (
-              <span className="ml-3 shrink-0 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded-full px-2 py-0.5">
-                Harvey Live
-              </span>
-            )}
+            <span>Prior Seasons ({prior.length})</span>
+            <span>{showPrior ? '▲' : '▼'}</span>
           </button>
-          {selectedSeasonId === s.id && (
-            <EditSeasonPanel season={s} onClose={onDeselect} />
-          )}
-        </div>
-      ))}
+          {showPrior && prior.map((s) => (
+            <SeasonRow key={s.id} season={s} selectedSeasonId={selectedSeasonId} onSelect={onSelect} onDeselect={onDeselect} />
+          ))}
+        </>
+      )}
     </div>
   );
 }

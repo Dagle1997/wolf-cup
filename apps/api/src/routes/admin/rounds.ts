@@ -144,6 +144,13 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
       completionMap.set(g.roundId, entry);
     }
 
+    // Player count per round
+    const playerCountRows = await db
+      .select({ roundId: roundPlayers.roundId, count: countDistinct(roundPlayers.playerId) })
+      .from(roundPlayers)
+      .groupBy(roundPlayers.roundId);
+    const playerCountMap = new Map(playerCountRows.map((r) => [r.roundId, r.count]));
+
     // Compute per-season round numbers (ordered by scheduledDate, excluding cancelled)
     const roundNumberMap = new Map<number, number>();
     const bySeasonDate = [...allRounds]
@@ -160,6 +167,7 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
       ...toRoundResponse(r),
       roundNumber: roundNumberMap.get(r.id) ?? null,
       groupCompletion: completionMap.get(r.id) ?? { total: 0, complete: 0 },
+      playerCount: playerCountMap.get(r.id) ?? 0,
     }));
 
     return c.json({ items }, 200);

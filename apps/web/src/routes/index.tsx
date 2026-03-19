@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, Fragment } from 'react';
-import { RefreshCw, AlertCircle, Loader2, ChevronLeft } from 'lucide-react';
+import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -651,6 +651,11 @@ function LeaderboardPage() {
     (r) => !liveData?.round || r.id !== liveData.round.id
   ) ?? [];
 
+  // Prev/next round navigation
+  const currentHistIdx = historyRounds.findIndex((r) => r.id === viewingRoundId);
+  const prevRound = currentHistIdx < historyRounds.length - 1 ? historyRounds[currentHistIdx + 1] : null;
+  const nextRound = currentHistIdx > 0 ? historyRounds[currentHistIdx - 1] : null;
+
   return (
     <div className="p-4 max-w-2xl mx-auto">
       {/* Header */}
@@ -665,14 +670,34 @@ function LeaderboardPage() {
                 <ChevronLeft className="w-3 h-3" />
                 {liveData?.round ? 'Back to Live' : 'All Rounds'}
               </button>
-              <h1 className="text-xl font-bold tracking-tight">
-                {currentRound ? formatRoundDate(currentRound.scheduledDate) : 'Round'}
-              </h1>
-              {currentRound && (
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {currentRound.type === 'casual' ? 'Practice' : 'Official'} · {currentRound.status}
-                </p>
-              )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => prevRound && setViewingRoundId(prevRound.id)}
+                  disabled={!prevRound}
+                  className="p-1 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-default"
+                  aria-label="Previous round"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <div className="text-center">
+                  <h1 className="text-xl font-bold tracking-tight">
+                    {currentRound ? formatRoundDate(currentRound.scheduledDate) : 'Round'}
+                  </h1>
+                  {currentRound && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {currentRound.type === 'casual' ? 'Practice' : 'Official'} · {currentRound.status}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => nextRound && setViewingRoundId(nextRound.id)}
+                  disabled={!nextRound}
+                  className="p-1 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-default"
+                  aria-label="Next round"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
             </>
           ) : (
             <>

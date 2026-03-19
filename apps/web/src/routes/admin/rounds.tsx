@@ -53,6 +53,7 @@ type Round = {
   entryCode: string | null;
   createdAt: number;
   groupCompletion: { total: number; complete: number };
+  playerCount: number;
 };
 
 type RoundPlayer = {
@@ -568,7 +569,10 @@ function RoundRow({
           <Badge text="Cancelled" className={STATUS_BADGE['cancelled']} />
         )}
         {round.status === 'finalized' && (
-          <Badge text="Final" className={STATUS_BADGE['finalized']} />
+          <>
+            <span className="text-xs text-muted-foreground">{round.playerCount} players · {total} groups</span>
+            <Badge text="Final" className={STATUS_BADGE['finalized']} />
+          </>
         )}
         {round.status === 'active' && total > 0 && (
           <span className={`text-xs ${allComplete ? 'text-green-600 font-medium' : 'text-muted-foreground'}`}>
