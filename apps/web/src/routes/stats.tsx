@@ -377,6 +377,41 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
       {/* Expanded detail */}
       {expanded && detail && (
         <div className="border-t">
+          {/* Compare button at top of expanded */}
+          <div className="px-4 py-2 border-b bg-muted/20">
+            {!showCompareSelect ? (
+              <button
+                type="button"
+                onClick={() => setShowCompareSelect(true)}
+                className="w-full text-xs text-center py-1 rounded-lg bg-muted hover:bg-muted/80 font-medium transition-colors"
+              >
+                Compare with another player
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <select
+                  className="flex-1 rounded-md border bg-background px-2 py-1.5 text-xs"
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      onCompare(Number(e.target.value));
+                      setShowCompareSelect(false);
+                    }
+                  }}
+                  defaultValue=""
+                >
+                  <option value="">Pick a player...</option>
+                  {allPlayers
+                    .filter((o) => o.playerId !== p.playerId)
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((o) => (
+                      <option key={o.playerId} value={o.playerId}>{o.name}</option>
+                    ))}
+                </select>
+                <button type="button" onClick={() => setShowCompareSelect(false)} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+              </div>
+            )}
+          </div>
+
           {/* Per-hole averages — horizontal scroll */}
           {detail.holeAverages.length > 0 && (
             <div className="px-4 py-3 border-b">
@@ -402,44 +437,72 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                   })}
                 </div>
               </div>
-              {/* Best/worst holes */}
+              {/* Par averages + Best/worst holes */}
               {(() => {
                 const withAvg = detail.holeAverages.filter((h) => h.avg != null);
                 if (withAvg.length === 0) return null;
                 const best = withAvg.reduce((a, b) => (a.avg! - a.par) < (b.avg! - b.par) ? a : b);
                 const worst = withAvg.reduce((a, b) => (a.avg! - a.par) > (b.avg! - b.par) ? a : b);
+                const parAvg = (par: number) => {
+                  const holes = withAvg.filter((h) => h.par === par);
+                  if (holes.length === 0) return null;
+                  return (holes.reduce((s, h) => s + h.avg!, 0) / holes.length).toFixed(1);
+                };
                 return (
-                  <div className="flex gap-4 mt-2 text-xs">
-                    <span className="text-green-500">Best: #{best.hole} (avg {best.avg!.toFixed(1)}, par {best.par})</span>
-                    <span className="text-red-500">Worst: #{worst.hole} (avg {worst.avg!.toFixed(1)}, par {worst.par})</span>
-                  </div>
+                  <>
+                    <div className="flex gap-3 mt-2 text-xs">
+                      <span className="text-muted-foreground">Par 3: <span className="font-bold text-foreground">{parAvg(3) ?? '—'}</span></span>
+                      <span className="text-muted-foreground">Par 4: <span className="font-bold text-foreground">{parAvg(4) ?? '—'}</span></span>
+                      <span className="text-muted-foreground">Par 5: <span className="font-bold text-foreground">{parAvg(5) ?? '—'}</span></span>
+                    </div>
+                    <div className="flex gap-4 mt-1 text-xs">
+                      <span className="text-green-500">Best: #{best.hole} (avg {best.avg!.toFixed(1)}, par {best.par})</span>
+                      <span className="text-red-500">Worst: #{worst.hole} (avg {worst.avg!.toFixed(1)}, par {worst.par})</span>
+                    </div>
+                  </>
                 );
               })()}
             </div>
           )}
 
           {/* Round history */}
-          {detail.rounds.length > 0 && (
-            <div className="px-4 py-3 border-b">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Round History</p>
-              <div className="space-y-1">
-                {detail.rounds.map((r) => (
-                  <div key={r.roundId} className="flex items-center justify-between text-xs py-1">
-                    <span className="text-muted-foreground w-16">{new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                    <span className="w-10 text-center capitalize text-muted-foreground/60">{r.tee}</span>
-                    <span className="w-10 text-center tabular-nums font-medium">{r.gross}</span>
-                    <span className="w-10 text-center tabular-nums">{r.stableford}</span>
-                    <span className={`w-12 text-right tabular-nums font-medium ${r.money > 0 ? 'text-green-600' : r.money < 0 ? 'text-destructive' : ''}`}>
-                      {formatMoney(r.money)}
-                    </span>
-                  </div>
-                ))}
+          {detail.rounds.length > 0 && (() => {
+            const bestRound = detail.rounds.reduce((a, b) => a.gross < b.gross ? a : b);
+            return (
+              <div className="px-4 py-3 border-b">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Round History</p>
+                  <span className="text-[10px] text-green-500">Best Gross: {bestRound.gross} ({new Date(bestRound.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})</span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
+                  <span className="w-14">Date</span>
+                  <span className="w-10 text-center">Tee</span>
+                  <span className="w-10 text-center">Gross</span>
+                  <span className="w-10 text-center">Net</span>
+                  <span className="w-10 text-center">Stab</span>
+                  <span className="w-12 text-right">Money</span>
+                </div>
+                <div className="space-y-1">
+                  {detail.rounds.map((r) => {
+                    const isBest = r.roundId === bestRound.roundId;
+                    const net = r.gross - Math.round(r.handicapIndex);
+                    return (
+                      <div key={r.roundId} className={`flex items-center justify-between text-xs py-1 ${isBest ? 'bg-green-500/5 rounded' : ''}`}>
+                        <span className="text-muted-foreground w-14">{new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        <span className="w-10 text-center capitalize text-muted-foreground/60 text-[10px]">{r.tee ?? '—'}</span>
+                        <span className={`w-10 text-center tabular-nums font-medium ${isBest ? 'text-green-500' : ''}`}>{r.gross}</span>
+                        <span className="w-10 text-center tabular-nums text-muted-foreground">{net}</span>
+                        <span className="w-10 text-center tabular-nums">{r.stableford}</span>
+                        <span className={`w-12 text-right tabular-nums font-medium ${r.money > 0 ? 'text-green-600' : r.money < 0 ? 'text-destructive' : ''}`}>
+                          {formatMoney(r.money)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 mt-1 pt-1 border-t border-muted">
-                <span>Date</span><span>Tee</span><span>Gross</span><span>Stab</span><span>Money</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Partner Chemistry + Rivals */}
           {detail.rivals.length > 0 && (() => {
@@ -471,7 +534,13 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 )}
 
                 {/* Full rival list */}
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">When Grouped With</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">When Grouped With</p>
+                <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
+                  <span className="flex-1">Player</span>
+                  <span className="w-12 text-center">Rds</span>
+                  <span className="w-14 text-right">Your $</span>
+                  <span className="w-14 text-right">+/-</span>
+                </div>
                 <div className="space-y-1.5">
                   {rivalsSorted.map((r) => (
                     <div key={r.playerId} className="flex items-center justify-between text-xs">
@@ -486,50 +555,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mt-1 pt-1 border-t border-muted">
-                  <span>Player</span><span>Rds</span><span>Your $</span><span>vs Them</span>
-                </div>
 
-                {/* Compare button */}
-                <div className="mt-3 pt-2 border-t border-muted">
-                  {!showCompareSelect ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowCompareSelect(true)}
-                      className="w-full text-xs text-center py-1.5 rounded-lg bg-muted hover:bg-muted/80 font-medium transition-colors"
-                    >
-                      Compare with another player
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="flex-1 rounded-md border bg-background px-2 py-1.5 text-xs"
-                        onChange={(e) => {
-                          if (e.target.value) {
-                            onCompare(Number(e.target.value));
-                            setShowCompareSelect(false);
-                          }
-                        }}
-                        defaultValue=""
-                      >
-                        <option value="">Pick a player...</option>
-                        {allPlayers
-                          .filter((o) => o.playerId !== p.playerId)
-                          .sort((a, b) => a.name.localeCompare(b.name))
-                          .map((o) => (
-                            <option key={o.playerId} value={o.playerId}>{o.name}</option>
-                          ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => setShowCompareSelect(false)}
-                        className="text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
             );
           })()}
