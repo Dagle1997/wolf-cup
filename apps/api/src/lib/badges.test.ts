@@ -263,18 +263,18 @@ describe('computePlayerBadges', () => {
     expect(ids).toContain('philanthropist');
   });
 
-  it('John Patterson (DB name) gets Rickie Fowler + Ironman + Money Man', () => {
-    // computeAllAwards normalizes "Jay Patterson" → "John Patterson"
+  it('John Patterson (DB name) gets Money Man on stats (Rickie Fowler + Ironman are Awards Wall only)', () => {
     const badges = computePlayerBadges('John Patterson', awards);
     const ids = badges.map((b) => b.id);
-    expect(ids).toContain('rickie_fowler');
-    expect(ids).toContain('ironman');
     expect(ids).toContain('money_man');
+    expect(ids).not.toContain('rickie_fowler');
+    expect(ids).not.toContain('ironman');
   });
 
-  it('does NOT include dynasty badge (trophies rendered separately)', () => {
+  it('does NOT include Awards Wall-only badges on stats page', () => {
     const badges = computePlayerBadges('Chris Preston', awards);
     expect(badges.find((b) => b.id === 'dynasty')).toBeUndefined();
+    expect(badges.find((b) => b.id === 'back_to_back')).toBeUndefined();
   });
 
   it('unknown player returns empty', () => {

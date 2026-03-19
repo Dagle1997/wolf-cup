@@ -216,9 +216,8 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
             </Link>
           ))}
           {p.badges && p.badges.map((badge) => {
-            // Per-season awards: repeat emoji per year with year labels
-            const perSeason = ['money_man', 'philanthropist', 'ironman', 'rickie_fowler', 'ph_balance'];
-            if (perSeason.includes(badge.id) && badge.years.length > 1) {
+            // Per-season awards (money_man, philanthropist): repeat emoji per year
+            if (['money_man', 'philanthropist'].includes(badge.id) && badge.years.length > 1) {
               return badge.years.map((year) => (
                 <Link key={`${badge.id}-${year}`} to="/standings/history" hash={`badge-${badge.id}`} className="inline-flex flex-col items-center leading-none">
                   <span className="text-sm">{badge.emoji}</span>
@@ -226,11 +225,11 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
                 </Link>
               ));
             }
-            // Career badges (OG, Every Season, Rickie Fowler, pH Balance): single emoji, no year label
+            // Single emoji badges (OG, Every Season, single-year money/philanthropist)
             return (
               <Link key={badge.id} to="/standings/history" hash={`badge-${badge.id}`} className="inline-flex flex-col items-center leading-none">
                 <span className="text-sm">{badge.emoji}</span>
-                {perSeason.includes(badge.id) && badge.years[0] && (
+                {['money_man', 'philanthropist'].includes(badge.id) && badge.years[0] && (
                   <span className="text-[8px] text-muted-foreground">{String(badge.years[0]).slice(2)}</span>
                 )}
               </Link>

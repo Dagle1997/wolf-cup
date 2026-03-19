@@ -414,14 +414,16 @@ export function computeAllAwards(
 // Per-player badge computation (for stats page — active players only)
 // ---------------------------------------------------------------------------
 
+/** Badge IDs that only appear on the Awards Wall, not on stats page cards */
+const AWARDS_WALL_ONLY = ['dynasty', 'biggest_season_win', 'biggest_season_loss', 'ph_balance', 'rickie_fowler', 'snow_cone', 'the_ronnie', 'back_to_back', 'ironman'];
+
 export function computePlayerBadges(
   playerName: string,
   awards: Award[],
 ): PlayerBadge[] {
   const badges: PlayerBadge[] = [];
   for (const award of awards) {
-    // Skip dynasty — championship trophies rendered separately
-    if (award.id === 'dynasty') continue;
+    if (AWARDS_WALL_ONLY.includes(award.id)) continue;
     const recipient = award.recipients.find((r) => r.playerName === playerName);
     if (recipient) {
       badges.push({
