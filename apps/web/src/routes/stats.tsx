@@ -412,6 +412,37 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             )}
           </div>
 
+          {/* Rivalry callouts — first thing visible on expand */}
+          {detail.rivals.length >= 2 && (() => {
+            const byMyMoney = [...detail.rivals].sort((a, b) => b.myMoney - a.myMoney);
+            const charm = byMyMoney[0]!;
+            const rival = byMyMoney[byMyMoney.length - 1]!;
+            const byDiff = [...detail.rivals].sort((a, b) => b.moneyDiff - a.moneyDiff);
+            const dominate = byDiff[0]!;
+            return (
+              <div className="px-4 py-2 border-b bg-muted/10">
+                <div className="flex items-center justify-between gap-1 text-[10px]">
+                  <span className="text-green-500" title="You win the most money when they are in your group">
+                    🍀 <span className="font-bold">{charm.name.split(' ')[0]}</span> <span className="tabular-nums">{formatMoney(charm.myMoney)}</span>
+                  </span>
+                  <span className="text-red-500" title="You lose the most money when they are in your group">
+                    🎯 <span className="font-bold">{rival.name.split(' ')[0]}</span> <span className="tabular-nums">{formatMoney(rival.myMoney)}</span>
+                  </span>
+                  {dominate.moneyDiff > 0 && (
+                    <span className="text-amber-500" title="You outperform them the most when grouped together">
+                      👑 <span className="font-bold">{dominate.name.split(' ')[0]}</span> <span className="tabular-nums">+${dominate.moneyDiff}</span>
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-1 text-[8px] text-muted-foreground/50 mt-0.5">
+                  <span>Lucky Charm</span>
+                  <span>Rival</span>
+                  {dominate.moneyDiff > 0 && <span>Dominate</span>}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Per-hole averages — horizontal scroll */}
           {detail.holeAverages.length > 0 && (
             <div className="px-4 py-3 border-b">
@@ -506,32 +537,9 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
 
           {/* Partner Chemistry + Rivals */}
           {detail.rivals.length > 0 && (() => {
-            const sorted = [...detail.rivals].sort((a, b) => b.myMoney - a.myMoney);
-            const bestPartner = sorted[0];
-            const worstPartner = sorted[sorted.length - 1];
-            const rivalsSorted = [...detail.rivals].sort((a, b) => a.moneyDiff - b.moneyDiff); // worst diff first
+            const rivalsSorted = [...detail.rivals].sort((a, b) => a.moneyDiff - b.moneyDiff);
             return (
               <div className="px-4 py-3">
-                {/* Good luck charm + Rival */}
-                {sorted.length >= 2 && (
-                  <div className="mb-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-2 text-center">
-                        <div className="text-[10px] text-green-600 font-medium">Good Luck Charm</div>
-                        <div className="text-sm font-bold">{bestPartner!.name}</div>
-                        <div className="text-xs text-green-600 font-bold tabular-nums">{formatMoney(bestPartner!.myMoney)}</div>
-                        <div className="text-[9px] text-muted-foreground">{bestPartner!.roundsTogether} rounds together</div>
-                      </div>
-                      <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-2 text-center">
-                        <div className="text-[10px] text-red-500 font-medium">Rival</div>
-                        <div className="text-sm font-bold">{worstPartner!.name}</div>
-                        <div className="text-xs text-red-500 font-bold tabular-nums">{formatMoney(worstPartner!.myMoney)}</div>
-                        <div className="text-[9px] text-muted-foreground">{worstPartner!.roundsTogether} rounds together</div>
-                      </div>
-                    </div>
-                    <p className="text-[9px] text-muted-foreground/50 mt-1 text-center">Your season money when grouped with each player</p>
-                  </div>
-                )}
 
                 {/* Full rival list */}
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">When Grouped With</p>
