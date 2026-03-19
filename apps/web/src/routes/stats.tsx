@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useMemo } from 'react';
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -42,6 +42,41 @@ type PlayerStats = {
 type StatsResponse = {
   players: PlayerStats[];
   lastUpdated: string;
+};
+
+type HoleAverage = {
+  hole: number;
+  par: number;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+  rounds: number;
+};
+
+type RoundSummary = {
+  roundId: number;
+  date: string;
+  tee: string | null;
+  handicapIndex: number;
+  gross: number;
+  stableford: number;
+  money: number;
+};
+
+type Rival = {
+  playerId: number;
+  name: string;
+  roundsTogether: number;
+  myMoney: number;
+  theirMoney: number;
+  moneyDiff: number;
+};
+
+type PlayerDetail = {
+  playerId: number;
+  holeAverages: HoleAverage[];
+  rounds: RoundSummary[];
+  rivals: Rival[];
 };
 
 // ---------------------------------------------------------------------------
@@ -217,6 +252,14 @@ function StatsPage() {
 // ---------------------------------------------------------------------------
 
 function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const { data: detail } = useQuery({
+    queryKey: ['player-detail', p.playerId],
+    queryFn: () => apiFetch<PlayerDetail>(`/stats/${p.playerId}/detail`),
+    enabled: expanded,
+    staleTime: 60_000,
+  });
   const moneyColor = p.totalMoney > 0
     ? 'text-green-600'
     : p.totalMoney < 0
@@ -289,7 +332,11 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
       )}
 
       {/* Stats grid — 2 rows of data */}
-      <div className="px-4 py-3">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 text-left hover:bg-muted/20 transition-colors"
+      >
         <div className="grid grid-cols-4 gap-y-3 gap-x-2 text-center">
           <StatCell label="Record" value={wolfRecord(p)} />
           <StatCell label="Wolf" value={String(p.wolfCallsWolf)} />
@@ -305,7 +352,102 @@ function PlayerCard({ player: p, rank }: { player: PlayerStats; rank: number }) 
             className="text-green-600"
           />
         </div>
-      </div>
+        <div className="flex items-center justify-center mt-2">
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </div>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && detail && (
+        <div className="border-t">
+          {/* Per-hole averages — horizontal scroll */}
+          {detail.holeAverages.length > 0 && (
+            <div className="px-4 py-3 border-b">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Hole-by-Hole</p>
+              <div className="overflow-x-auto -mx-4 px-4">
+                <div className="flex gap-0">
+                  {detail.holeAverages.map((h) => {
+                    const diff = h.avg != null ? h.avg - h.par : null;
+                    const color = diff == null ? '' : diff <= -1 ? 'text-green-500' : diff <= 0 ? 'text-muted-foreground' : diff <= 0.5 ? 'text-orange-500' : 'text-red-500';
+                    const bgColor = diff == null ? '' : diff <= -1 ? 'bg-green-500/10' : diff <= 0 ? '' : diff <= 0.5 ? 'bg-orange-500/10' : 'bg-red-500/10';
+                    return (
+                      <div key={h.hole} className={`flex-shrink-0 w-10 text-center py-1.5 ${bgColor} ${h.hole === 10 ? 'ml-2 border-l border-muted' : ''}`}>
+                        <div className="text-[9px] text-muted-foreground">{h.hole}</div>
+                        <div className="text-[9px] text-muted-foreground/50">P{h.par}</div>
+                        <div className={`text-sm font-bold tabular-nums ${color}`}>
+                          {h.avg != null ? h.avg.toFixed(1) : '—'}
+                        </div>
+                        <div className="text-[8px] text-muted-foreground">
+                          {h.min != null ? `${h.min}-${h.max}` : ''}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Best/worst holes */}
+              {(() => {
+                const withAvg = detail.holeAverages.filter((h) => h.avg != null);
+                if (withAvg.length === 0) return null;
+                const best = withAvg.reduce((a, b) => (a.avg! - a.par) < (b.avg! - b.par) ? a : b);
+                const worst = withAvg.reduce((a, b) => (a.avg! - a.par) > (b.avg! - b.par) ? a : b);
+                return (
+                  <div className="flex gap-4 mt-2 text-xs">
+                    <span className="text-green-500">Best: #{best.hole} (avg {best.avg!.toFixed(1)}, par {best.par})</span>
+                    <span className="text-red-500">Worst: #{worst.hole} (avg {worst.avg!.toFixed(1)}, par {worst.par})</span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Round history */}
+          {detail.rounds.length > 0 && (
+            <div className="px-4 py-3 border-b">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Round History</p>
+              <div className="space-y-1">
+                {detail.rounds.map((r) => (
+                  <div key={r.roundId} className="flex items-center justify-between text-xs py-1">
+                    <span className="text-muted-foreground w-16">{new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    <span className="w-10 text-center capitalize text-muted-foreground/60">{r.tee}</span>
+                    <span className="w-10 text-center tabular-nums font-medium">{r.gross}</span>
+                    <span className="w-10 text-center tabular-nums">{r.stableford}</span>
+                    <span className={`w-12 text-right tabular-nums font-medium ${r.money > 0 ? 'text-green-600' : r.money < 0 ? 'text-destructive' : ''}`}>
+                      {formatMoney(r.money)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 mt-1 pt-1 border-t border-muted">
+                <span>Date</span><span>Tee</span><span>Gross</span><span>Stab</span><span>Money</span>
+              </div>
+            </div>
+          )}
+
+          {/* Rivals */}
+          {detail.rivals.length > 0 && (
+            <div className="px-4 py-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Rivals</p>
+              <div className="space-y-1.5">
+                {detail.rivals.map((r) => (
+                  <div key={r.playerId} className="flex items-center justify-between text-xs">
+                    <span className="font-medium">{r.name}</span>
+                    <span className="text-muted-foreground">{r.roundsTogether}x together</span>
+                    <span className={`font-bold tabular-nums ${r.moneyDiff > 0 ? 'text-green-600' : r.moneyDiff < 0 ? 'text-destructive' : ''}`}>
+                      {r.moneyDiff > 0 ? '+' : ''}{r.moneyDiff !== 0 ? `$${Math.abs(r.moneyDiff)}` : 'Even'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[9px] text-muted-foreground/50 mt-2">Money differential when grouped together</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {expanded && !detail && (
+        <div className="border-t px-4 py-3 text-center text-xs text-muted-foreground">Loading...</div>
+      )}
     </div>
   );
 }

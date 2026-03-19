@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, isNotNull, count, desc } from 'drizzle-orm';
+import { eq, and, isNotNull, count, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { players, rounds, wolfDecisions, holeScores, roundResults, seasons, groups, roundPlayers } from '../db/schema.js';
 import { getCourseHole, calculateSandbaggerStatus, TEE_RATINGS } from '@wolf-cup/engine';
@@ -282,6 +282,180 @@ app.get('/stats', async (c) => {
     });
 
     return c.json({ players: playerStats, lastUpdated: new Date().toISOString() }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /stats/:playerId/detail — per-hole averages + round history + rivals
+// ---------------------------------------------------------------------------
+
+app.get('/stats/:playerId/detail', async (c) => {
+  const playerId = Number(c.req.param('playerId'));
+  if (!Number.isInteger(playerId) || playerId <= 0) {
+    return c.json({ error: 'Invalid player ID', code: 'INVALID_ID' }, 400);
+  }
+
+  try {
+    // Get all finalized official rounds this player participated in
+    const playerRoundRows = await db
+      .select({
+        roundId: roundPlayers.roundId,
+        groupId: roundPlayers.groupId,
+        handicapIndex: roundPlayers.handicapIndex,
+        scheduledDate: rounds.scheduledDate,
+        tee: rounds.tee,
+      })
+      .from(roundPlayers)
+      .innerJoin(rounds, eq(rounds.id, roundPlayers.roundId))
+      .where(and(
+        eq(roundPlayers.playerId, playerId),
+        eq(rounds.type, 'official'),
+        eq(rounds.status, 'finalized'),
+      ))
+      .orderBy(rounds.scheduledDate);
+
+    const roundIds = playerRoundRows.map((r) => r.roundId);
+
+    if (roundIds.length === 0) {
+      return c.json({ playerId, holeAverages: [], rounds: [], rivals: [] }, 200);
+    }
+
+    // Per-hole scores for this player across all rounds
+    const holeRows = await db
+      .select({
+        roundId: holeScores.roundId,
+        holeNumber: holeScores.holeNumber,
+        grossScore: holeScores.grossScore,
+      })
+      .from(holeScores)
+      .where(and(
+        eq(holeScores.playerId, playerId),
+        inArray(holeScores.roundId, roundIds),
+      ));
+
+    // Group by hole number for averages
+    const holeMap = new Map<number, number[]>();
+    for (const row of holeRows) {
+      const arr = holeMap.get(row.holeNumber) ?? [];
+      arr.push(row.grossScore);
+      holeMap.set(row.holeNumber, arr);
+    }
+
+    const holeAverages = Array.from({ length: 18 }, (_, i) => {
+      const hole = i + 1;
+      const scores = holeMap.get(hole) ?? [];
+      const courseHole = getCourseHole(hole as Parameters<typeof getCourseHole>[0]);
+      return {
+        hole,
+        par: courseHole.par,
+        avg: scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100 : null,
+        min: scores.length > 0 ? Math.min(...scores) : null,
+        max: scores.length > 0 ? Math.max(...scores) : null,
+        rounds: scores.length,
+      };
+    });
+
+    // Round-by-round summary
+    const rrRows = await db
+      .select({
+        roundId: roundResults.roundId,
+        stablefordTotal: roundResults.stablefordTotal,
+        moneyTotal: roundResults.moneyTotal,
+      })
+      .from(roundResults)
+      .where(and(
+        eq(roundResults.playerId, playerId),
+        inArray(roundResults.roundId, roundIds),
+      ));
+    const rrMap = new Map(rrRows.map((r) => [r.roundId, r]));
+
+    // Gross totals per round
+    const grossByRound = new Map<number, number>();
+    for (const row of holeRows) {
+      grossByRound.set(row.roundId, (grossByRound.get(row.roundId) ?? 0) + row.grossScore);
+    }
+
+    const roundSummaries = playerRoundRows.map((pr) => {
+      const rr = rrMap.get(pr.roundId);
+      return {
+        roundId: pr.roundId,
+        date: pr.scheduledDate,
+        tee: pr.tee,
+        handicapIndex: pr.handicapIndex,
+        gross: grossByRound.get(pr.roundId) ?? 0,
+        stableford: rr?.stablefordTotal ?? 0,
+        money: rr?.moneyTotal ?? 0,
+      };
+    });
+
+    // Rivals: who was in the same group, money differential
+    const groupIds = playerRoundRows.map((r) => r.groupId);
+    const groupMates = await db
+      .select({
+        roundId: roundPlayers.roundId,
+        groupId: roundPlayers.groupId,
+        playerId: roundPlayers.playerId,
+      })
+      .from(roundPlayers)
+      .where(and(
+        inArray(roundPlayers.groupId, groupIds),
+        inArray(roundPlayers.roundId, roundIds),
+      ));
+
+    // Map roundId → this player's groupId
+    const myGroupByRound = new Map(playerRoundRows.map((r) => [r.roundId, r.groupId]));
+
+    // Get all round results for group mates
+    const allGroupPlayerIds = [...new Set(groupMates.map((g) => g.playerId))];
+    const allRRRows = await db
+      .select({
+        roundId: roundResults.roundId,
+        playerId: roundResults.playerId,
+        moneyTotal: roundResults.moneyTotal,
+      })
+      .from(roundResults)
+      .where(and(
+        inArray(roundResults.playerId, allGroupPlayerIds),
+        inArray(roundResults.roundId, roundIds),
+      ));
+    const rrLookup = new Map<string, number>();
+    for (const r of allRRRows) rrLookup.set(`${r.roundId}-${r.playerId}`, r.moneyTotal);
+
+    // Build rival stats
+    const rivalMap = new Map<number, { name: string; roundsTogether: number; myMoney: number; theirMoney: number }>();
+    const playerNames = await db.select({ id: players.id, name: players.name }).from(players).where(inArray(players.id, allGroupPlayerIds));
+    const nameMap = new Map(playerNames.map((p) => [p.id, p.name]));
+
+    for (const gm of groupMates) {
+      if (gm.playerId === playerId) continue;
+      if (myGroupByRound.get(gm.roundId) !== gm.groupId) continue; // different group same round
+
+      const rival = rivalMap.get(gm.playerId) ?? {
+        name: nameMap.get(gm.playerId) ?? 'Unknown',
+        roundsTogether: 0,
+        myMoney: 0,
+        theirMoney: 0,
+      };
+      rival.roundsTogether++;
+      rival.myMoney += rrLookup.get(`${gm.roundId}-${playerId}`) ?? 0;
+      rival.theirMoney += rrLookup.get(`${gm.roundId}-${gm.playerId}`) ?? 0;
+      rivalMap.set(gm.playerId, rival);
+    }
+
+    const rivals = [...rivalMap.entries()]
+      .map(([id, r]) => ({
+        playerId: id,
+        name: r.name,
+        roundsTogether: r.roundsTogether,
+        myMoney: r.myMoney,
+        theirMoney: r.theirMoney,
+        moneyDiff: r.myMoney - r.theirMoney,
+      }))
+      .sort((a, b) => b.roundsTogether - a.roundsTogether);
+
+    return c.json({ playerId, holeAverages, rounds: roundSummaries, rivals }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
