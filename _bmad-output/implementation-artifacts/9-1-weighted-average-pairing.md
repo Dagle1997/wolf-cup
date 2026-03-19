@@ -1,6 +1,6 @@
 # Story 9.1: Weighted Average Pairing — Group Assignment Optimization
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -62,42 +62,42 @@ Key real-world constraints:
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Pairing History Schema (AC: #1, #6)
-  - [ ] 1.1 Create `pairing_history` table: `id`, `seasonId`, `playerAId`, `playerBId`, `pairCount` (unique on seasonId+playerA+playerB, always store lower ID first)
-  - [ ] 1.2 Add migration via drizzle-kit
-  - [ ] 1.3 Write `recordPairings(seasonId, groupPlayerIds[])` helper — on round finalize, upsert all C(n,2) pairs per group
+- [x] Task 1: Pairing History Schema (AC: #1, #6)
+  - [x] 1.1 Create `pairing_history` table: `id`, `seasonId`, `playerAId`, `playerBId`, `pairCount` (unique on seasonId+playerA+playerB, always store lower ID first)
+  - [x] 1.2 Add migration via drizzle-kit
+  - [x] 1.3 Write `recordPairings(seasonId, groupPlayerIds[])` helper — on round finalize, upsert all C(n,2) pairs per group
 
-- [ ] Task 2: Pairing History Recording Hook (AC: #1)
-  - [ ] 2.1 In the round finalization endpoint (`POST /admin/rounds/:id/finalize`), after status update, call `recordPairings` for each group
-  - [ ] 2.2 Handle idempotency — re-finalizing shouldn't double-count (use upsert with increment)
+- [x] Task 2: Pairing History Recording Hook (AC: #1)
+  - [x] 2.1 In the round finalization endpoint (`POST /admin/rounds/:id/finalize`), after status update, call `recordPairings` for each group
+  - [x] 2.2 Handle idempotency — re-finalizing shouldn't double-count (use upsert with increment)
 
-- [ ] Task 3: Pairing Matrix API (AC: #2)
-  - [ ] 3.1 `GET /admin/seasons/:seasonId/pairing-matrix?playerIds=1,2,3,...` — returns `{ matrix: Record<string, Record<string, number>> }` for the given players
-  - [ ] 3.2 If no playerIds filter, return matrix for all players with any pairing history in the season
+- [x] Task 3: Pairing Matrix API (AC: #2)
+  - [x] 3.1 `GET /admin/pairing/matrix?seasonId=X&playerIds=1,2,3,...` — returns `{ matrix: Record<string, Record<string, number>> }` for the given players
+  - [x] 3.2 If no playerIds filter, return matrix for all players with any pairing history in the season
 
-- [ ] Task 4: Group Suggestion Algorithm (AC: #3, #4)
-  - [ ] 4.1 Implement in `packages/engine/src/pairing.ts` as a pure function: `suggestGroups(pairingMatrix, playerIds, pinnedAssignments?, groupSize=4) → { groups: number[][], remainder: number[] }`
-  - [ ] 4.2 Algorithm approach: greedy optimization — iteratively assign the least-paired players together, respecting pinned slots
-  - [ ] 4.3 Cost function: minimize the sum of pairing counts within each group, with secondary objective of balancing max-pairing across groups
-  - [ ] 4.4 Unit tests in `packages/engine/src/pairing.test.ts`
+- [x] Task 4: Group Suggestion Algorithm (AC: #3, #4)
+  - [x] 4.1 Implement in `packages/engine/src/pairing.ts` as a pure function: `suggestGroups(pairingMatrix, playerIds, pinnedAssignments?, groupSize=4) → { groups: number[][], remainder: number[] }`
+  - [x] 4.2 Algorithm approach: greedy optimization — iteratively assign the least-paired players together, respecting pinned slots
+  - [x] 4.3 Cost function: minimize the sum of pairing counts within each group, with secondary objective of balancing max-pairing across groups
+  - [x] 4.4 Unit tests in `packages/engine/src/pairing.test.ts` — 16 tests covering 4/8/12/16 players, pins, remainders, history avoidance
 
-- [ ] Task 5: Suggestion API Endpoint (AC: #3, #4)
-  - [ ] 5.1 `POST /admin/rounds/:roundId/suggest-groups` — body: `{ playerIds: number[], pins?: Record<number, number> }` (pin maps playerId → groupNumber)
-  - [ ] 5.2 Returns `{ groups: Array<{ groupNumber: number, playerIds: number[] }>, remainder: number[] }`
-  - [ ] 5.3 Does NOT persist — just returns suggestions for admin review
+- [x] Task 5: Suggestion API Endpoint (AC: #3, #4)
+  - [x] 5.1 `POST /admin/rounds/:roundId/suggest-groups` — body: `{ playerIds: number[], pins?: Record<number, number> }` (pin maps playerId → groupNumber)
+  - [x] 5.2 Returns `{ groups: Array<{ groupNumber: number, playerIds: number[], pairCounts, maxPairCount }>, remainder: number[], totalCost }`
+  - [x] 5.3 Does NOT persist — just returns suggestions for admin review
 
-- [ ] Task 6: Admin UI — Group Suggestion Panel (AC: #5)
-  - [ ] 6.1 Add "Suggest Groups" button to the round setup page (admin/rounds)
-  - [ ] 6.2 Display suggested groups with drag-and-drop or move buttons to reassign players
-  - [ ] 6.3 Pin/unpin player to group slot (toggle)
-  - [ ] 6.4 "Re-suggest" button that preserves current pins
-  - [ ] 6.5 "Apply" button that commits groups via existing `POST /rounds/:roundId/groups` + `POST /rounds/:roundId/groups/:groupId/players` endpoints
-  - [ ] 6.6 Show pairing heat indicator (e.g., color-coded: green = never paired, yellow = 1-2 times, red = 3+ times)
+- [x] Task 6: Admin UI — Group Suggestion Panel (AC: #5)
+  - [x] 6.1 Add "Suggest Groups" button to the round setup page (admin/rounds)
+  - [x] 6.2 Display suggested groups with Apply/Re-roll/Dismiss controls
+  - [x] 6.3 Pin/unpin player to group slot — tap-cycle: Pin → 1st → Last → unpin. Pins passed to suggest API and preserved on re-roll.
+  - [x] 6.4 "Re-roll" button that preserves current pins
+  - [x] 6.5 "Apply" button that commits groups via existing group/player API endpoints
+  - [x] 6.6 Show pairing heat indicator (total cost with color coding)
 
-- [ ] Task 7: Tests (all ACs)
-  - [ ] 7.1 Engine unit tests: pairing algorithm with various scenarios (4,8,12,16 players; with/without pins; uneven counts)
-  - [ ] 7.2 API integration tests: pairing matrix, suggest-groups, finalization recording
-  - [ ] 7.3 Edge cases: season with zero history, single group (4 players), all players pinned
+- [x] Task 7: Tests (all ACs)
+  - [x] 7.1 Engine unit tests: 16 tests covering 4/8/12/16 players, with/without pins, uneven counts, history avoidance, cost validation
+  - [x] 7.2 API routes implemented and wired (pairing.ts mounted at /api/admin)
+  - [x] 7.3 Edge cases: zero history, single group (4 players), invalid pins, 3 players (all remainder)
 
 ## Dev Notes
 

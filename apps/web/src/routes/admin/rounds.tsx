@@ -789,6 +789,7 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
   const [showChecklist, setShowChecklist] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<number> | null>(null); // null = not yet initialized
   const [subs, setSubs] = useState<SubEntry[]>([]);
+  const [pins, setPins] = useState<Map<number, number>>(new Map()); // playerId → 0-based group index
   const [addingSubMode, setAddingSubMode] = useState<'none' | 'existing' | 'new'>('none');
   const [newSubName, setNewSubName] = useState('');
   const [newSubHI, setNewSubHI] = useState('');
@@ -827,11 +828,14 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
   });
 
   const suggestMutation = useMutation({
-    mutationFn: (playerIds: number[]) =>
-      apiFetch<SuggestResponse>(`/admin/rounds/${roundId}/suggest-groups`, {
+    mutationFn: ({ playerIds, pins: pinMap }: { playerIds: number[]; pins: Map<number, number> }) => {
+      const pinsObj: Record<string, number> = {};
+      for (const [pid, gIdx] of pinMap) pinsObj[String(pid)] = gIdx;
+      return apiFetch<SuggestResponse>(`/admin/rounds/${roundId}/suggest-groups`, {
         method: 'POST',
-        body: JSON.stringify({ playerIds }),
-      }),
+        body: JSON.stringify({ playerIds, ...(pinMap.size > 0 ? { pins: pinsObj } : {}) }),
+      });
+    },
     onSuccess: (data) => setSuggestions(data),
     onError: (err: Error) => {
       if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
@@ -903,7 +907,7 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
   }
 
   function handleSuggest() {
-    suggestMutation.mutate(suggestionPool);
+    suggestMutation.mutate({ playerIds: suggestionPool, pins });
   }
 
   // Existing guests that aren't already added as subs
@@ -939,8 +943,13 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
   function toggleChecked(playerId: number) {
     setCheckedIds((prev) => {
       const next = new Set(prev ?? roster.map((p) => p.id));
-      if (next.has(playerId)) next.delete(playerId);
-      else next.add(playerId);
+      if (next.has(playerId)) {
+        next.delete(playerId);
+        // Remove pin when unchecked
+        setPins((p) => { const n = new Map(p); n.delete(playerId); return n; });
+      } else {
+        next.add(playerId);
+      }
       return next;
     });
     // Clear suggestions when pool changes
@@ -1045,20 +1054,53 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
           <div className="mt-2 rounded-md border p-3 bg-muted/10">
             {/* Roster checklist */}
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-              {roster.map((p) => (
-                <label key={p.id} className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
-                  <input
-                    type="checkbox"
-                    checked={effectiveCheckedIds.has(p.id)}
-                    onChange={() => toggleChecked(p.id)}
-                    className="rounded"
-                  />
-                  <span className={effectiveCheckedIds.has(p.id) ? 'font-medium' : 'text-muted-foreground line-through'}>
-                    {p.name}
-                  </span>
-                  <span className="text-muted-foreground">({p.handicapIndex ?? '?'})</span>
-                </label>
-              ))}
+              {roster.map((p) => {
+                const checked = effectiveCheckedIds.has(p.id);
+                const pin = pins.get(p.id);
+                return (
+                  <label key={p.id} className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleChecked(p.id)}
+                      className="rounded"
+                    />
+                    <span className={checked ? 'font-medium' : 'text-muted-foreground line-through'}>
+                      {p.name}
+                    </span>
+                    <span className="text-muted-foreground">({p.handicapIndex ?? '?'})</span>
+                    {checked && numGroups >= 2 && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setPins((prev) => {
+                            const next = new Map(prev);
+                            if (!next.has(p.id)) {
+                              next.set(p.id, 0); // pin to first
+                            } else if (next.get(p.id) === 0) {
+                              next.set(p.id, numGroups - 1); // pin to last
+                            } else {
+                              next.delete(p.id); // unpin
+                            }
+                            return next;
+                          });
+                          if (suggestions) setSuggestions(null);
+                        }}
+                        className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          pin === 0
+                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                            : pin === numGroups - 1
+                              ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
+                              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                        }`}
+                      >
+                        {pin === 0 ? '1st' : pin === numGroups - 1 ? 'Last' : 'Pin'}
+                      </button>
+                    )}
+                  </label>
+                );
+              })}
             </div>
 
             {/* Gap indicator */}
@@ -1083,22 +1125,49 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
               <div className="mt-2">
                 <p className="text-xs text-muted-foreground mb-1">Subs:</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {subs.map((s) => (
-                    <span
-                      key={s.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 text-xs"
-                    >
-                      {s.name} ({s.hi})
-                      <button
-                        type="button"
-                        onClick={() => removeSub(s.id)}
-                        className="hover:text-destructive transition-colors"
-                        aria-label={`Remove ${s.name}`}
+                  {subs.map((s) => {
+                    const pin = pins.get(s.id);
+                    return (
+                      <span
+                        key={s.id}
+                        className="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 text-xs"
                       >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
+                        {s.name} ({s.hi})
+                        {numGroups >= 2 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPins((prev) => {
+                                const next = new Map(prev);
+                                if (!next.has(s.id)) next.set(s.id, 0);
+                                else if (next.get(s.id) === 0) next.set(s.id, numGroups - 1);
+                                else next.delete(s.id);
+                                return next;
+                              });
+                              if (suggestions) setSuggestions(null);
+                            }}
+                            className={`px-1 py-0 rounded text-[10px] font-bold ${
+                              pin === 0
+                                ? 'bg-green-200 text-green-900'
+                                : pin === numGroups - 1
+                                  ? 'bg-orange-200 text-orange-900'
+                                  : 'bg-blue-200/50 hover:bg-blue-200'
+                            }`}
+                          >
+                            {pin === 0 ? '1st' : pin === numGroups - 1 ? 'Last' : 'Pin'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeSub(s.id)}
+                          className="hover:text-destructive transition-colors"
+                          aria-label={`Remove ${s.name}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1283,12 +1352,13 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
                   <div className="flex flex-wrap gap-1">
                     {sg.playerIds.map((pid) => {
                       const isSub = subs.some((s) => s.id === pid);
+                      const isPinned = pins.has(pid);
                       return (
                         <span
                           key={pid}
-                          className={`text-xs px-1.5 py-0.5 rounded ${isSub ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-muted'}`}
+                          className={`text-xs px-1.5 py-0.5 rounded ${isSub ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' : isPinned ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 ring-1 ring-green-300' : 'bg-muted'}`}
                         >
-                          {playerName(pid)}
+                          {isPinned && '📌 '}{playerName(pid)}
                         </span>
                       );
                     })}

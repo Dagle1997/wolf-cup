@@ -276,6 +276,6 @@ development_status:
   # Pairing history tracking, N×N matrix API, greedy suggestion algorithm
   # (pure engine function), suggestion API endpoint, admin UI panel with
   # pin/override/commit workflow. Season-scoped, resets each year.
-  9-1-weighted-average-pairing: ready-for-dev
+  9-1-weighted-average-pairing: review
 
   epic-9-retrospective: optional
