@@ -512,24 +512,24 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             const rivalsSorted = [...detail.rivals].sort((a, b) => a.moneyDiff - b.moneyDiff); // worst diff first
             return (
               <div className="px-4 py-3">
-                {/* Chemistry callouts */}
+                {/* Good luck charm + Rival */}
                 {sorted.length >= 2 && (
                   <div className="mb-3">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Chemistry</p>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded-lg bg-green-500/10 border border-green-500/20 p-2 text-center">
-                        <div className="text-[10px] text-green-600 font-medium">Best Partner</div>
+                        <div className="text-[10px] text-green-600 font-medium">Good Luck Charm</div>
                         <div className="text-sm font-bold">{bestPartner!.name}</div>
                         <div className="text-xs text-green-600 font-bold tabular-nums">{formatMoney(bestPartner!.myMoney)}</div>
-                        <div className="text-[9px] text-muted-foreground">{bestPartner!.roundsTogether} rounds</div>
+                        <div className="text-[9px] text-muted-foreground">{bestPartner!.roundsTogether} rounds together</div>
                       </div>
                       <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-2 text-center">
-                        <div className="text-[10px] text-red-500 font-medium">Worst Partner</div>
+                        <div className="text-[10px] text-red-500 font-medium">Rival</div>
                         <div className="text-sm font-bold">{worstPartner!.name}</div>
                         <div className="text-xs text-red-500 font-bold tabular-nums">{formatMoney(worstPartner!.myMoney)}</div>
-                        <div className="text-[9px] text-muted-foreground">{worstPartner!.roundsTogether} rounds</div>
+                        <div className="text-[9px] text-muted-foreground">{worstPartner!.roundsTogether} rounds together</div>
                       </div>
                     </div>
+                    <p className="text-[9px] text-muted-foreground/50 mt-1 text-center">Your season money when grouped with each player</p>
                   </div>
                 )}
 
@@ -625,14 +625,24 @@ function CompareView({ playerA, playerB, onClose }: { playerA: PlayerStats; play
         {/* Head-to-head when grouped */}
         {h2h && (
           <div className="mt-3 pt-2 border-t border-muted">
-            <p className="text-[10px] text-muted-foreground text-center mb-1">
+            <p className="text-[10px] text-muted-foreground text-center mb-2">
               Grouped together {h2h.roundsTogether}x this season
             </p>
-            <div className="flex items-center justify-center gap-4 text-xs">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span className="font-medium">{playerA.name.split(' ')[0]}</span>
+              <span className="text-muted-foreground">Money when grouped</span>
+              <span className="font-medium">{playerB.name.split(' ')[0]}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
               <span className={`font-bold tabular-nums ${h2h.myMoney > 0 ? 'text-green-600' : h2h.myMoney < 0 ? 'text-destructive' : ''}`}>
                 {formatMoney(h2h.myMoney)}
               </span>
-              <span className="text-muted-foreground">vs</span>
+              <div className="text-center">
+                <div className={`text-lg font-black tabular-nums ${h2h.moneyDiff > 0 ? 'text-green-600' : h2h.moneyDiff < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {h2h.moneyDiff > 0 ? '+' : ''}{h2h.moneyDiff !== 0 ? `$${Math.abs(h2h.moneyDiff)}` : 'EVEN'}
+                </div>
+                <div className="text-[9px] text-muted-foreground">net {h2h.moneyDiff >= 0 ? playerA.name.split(' ')[0] : playerB.name.split(' ')[0]}</div>
+              </div>
               <span className={`font-bold tabular-nums ${h2h.theirMoney > 0 ? 'text-green-600' : h2h.theirMoney < 0 ? 'text-destructive' : ''}`}>
                 {formatMoney(h2h.theirMoney)}
               </span>
