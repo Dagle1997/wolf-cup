@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, or, inArray, desc, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, desc, sql, countDistinct } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   rounds,
@@ -330,17 +330,28 @@ app.get('/leaderboard/live', async (c) => {
 
 app.get('/leaderboard/history', async (c) => {
   try {
-    const rows = await db
+    const roundRows = await db
       .select({
         id: rounds.id,
         type: rounds.type,
         status: rounds.status,
         scheduledDate: rounds.scheduledDate,
-        playerCount: sql<number>`(SELECT COUNT(*) FROM round_players WHERE round_id = ${rounds.id})`,
       })
       .from(rounds)
       .where(inArray(rounds.status, ['finalized', 'active']))
       .orderBy(desc(rounds.scheduledDate), desc(rounds.id));
+
+    // Get player counts per round
+    const playerCounts = await db
+      .select({ roundId: roundPlayers.roundId, count: countDistinct(roundPlayers.playerId) })
+      .from(roundPlayers)
+      .groupBy(roundPlayers.roundId);
+    const countMap = new Map(playerCounts.map((r) => [r.roundId, r.count]));
+
+    const rows = roundRows.map((r) => ({
+      ...r,
+      playerCount: countMap.get(r.id) ?? 0,
+    }));
 
     return c.json({ rounds: rows }, 200);
   } catch {
