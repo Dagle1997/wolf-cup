@@ -501,7 +501,9 @@ function BallDrawPage() {
             }}
           >
             <option value="">— Select player —</option>
-            {rosterPlayers.map((p) => (
+            {rosterPlayers
+              .filter((p) => !localPlayers.some((lp) => lp.id === p.id))
+              .map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}{p.handicapIndex != null ? ` (HI ${p.handicapIndex})` : ''}
               </option>

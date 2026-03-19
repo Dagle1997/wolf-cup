@@ -801,14 +801,24 @@ function ScoreEntryHolePage() {
               {orderedPlayers.map((p) => {
                 const isWolf = p.id === wolfHole.wolfPlayerId;
                 const isPartner = currentDecision === 'partner' && currentPartnerId === p.id;
-                const partnerDisabled = isWolf || forceWolf;
+                const isAlone = isWolf && currentDecision === 'alone';
+                const partnerDisabled = forceWolf && !isWolf;
                 return (
                   <button
                     key={p.id}
                     type="button"
                     disabled={partnerDisabled}
                     onClick={() => {
-                      if (isPartner) {
+                      if (isWolf) {
+                        // Tapping yourself as wolf = go alone (toggle)
+                        if (currentDecision === 'alone') {
+                          setCurrentDecision(null);
+                          setCurrentPartnerId(null);
+                        } else {
+                          setCurrentDecision('alone');
+                          setCurrentPartnerId(null);
+                        }
+                      } else if (isPartner) {
                         // Deselect partner
                         setCurrentDecision(null);
                         setCurrentPartnerId(null);
@@ -820,7 +830,9 @@ function ScoreEntryHolePage() {
                     className={cn(
                       'flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors',
                       isWolf
-                        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 cursor-default'
+                        ? isAlone
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 hover:border-amber-500'
                         : partnerDisabled
                           ? 'border-border text-muted-foreground/40 cursor-not-allowed'
                           : isPartner
@@ -830,7 +842,9 @@ function ScoreEntryHolePage() {
                   >
                     <span>{p.name}</span>
                     {isWolf && (
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Wolf</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider">
+                        {isAlone ? 'Wolf ✓' : 'Wolf — tap to go alone'}
+                      </span>
                     )}
                     {isPartner && (
                       <span className="text-xs font-bold">Partner ✓</span>
