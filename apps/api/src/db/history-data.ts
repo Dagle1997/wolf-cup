@@ -249,6 +249,14 @@ export const HISTORICAL_CASH_RECORDS = {
 /** Custom/joke awards — hardcoded one-offs */
 export const CUSTOM_AWARDS = [
   {
+    id: 'the_founder',
+    emoji: '👑',
+    name: 'The Founder',
+    category: 'hall_of_fame' as const,
+    description: 'Founded the Wolf Cup and has served as league commissioner since day one.',
+    recipients: [{ playerName: 'Moses', years: [2015], detail: 'Commissioner' }],
+  },
+  {
     id: 'snow_cone',
     emoji: '🍧',
     name: 'Snow Cone',

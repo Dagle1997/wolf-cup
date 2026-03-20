@@ -523,8 +523,8 @@ function AddSubSection({
       const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : '';
       const params = new URLSearchParams({ last_name: lastName });
       if (firstName) params.set('first_name', firstName);
-      const res = await apiFetch<{ items: GhinResult[] }>(`/admin/ghin/search?${params}`);
-      setSearchResults(res.items ?? []);
+      const res = await apiFetch<{ results: GhinResult[] }>(`/admin/ghin/search?${params}`);
+      setSearchResults(res.results ?? []);
     } catch {
       setFormError('GHIN search failed — add manually.');
     } finally {

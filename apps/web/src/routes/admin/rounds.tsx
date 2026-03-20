@@ -15,6 +15,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Search,
   Shuffle,
   Trash2,
   UserPlus,
@@ -79,6 +80,15 @@ type RosterPlayer = {
   handicapIndex: number | null;
   isActive: number;
   isGuest: number;
+};
+
+type GhinSearchResult = {
+  ghinNumber: number;
+  firstName: string;
+  lastName: string;
+  handicapIndex: number | null;
+  club: string | null;
+  state: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -798,6 +808,12 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
   const [newSubName, setNewSubName] = useState('');
   const [newSubHI, setNewSubHI] = useState('');
   const [existingSubId, setExistingSubId] = useState('');
+  const [ghinSearch, setGhinSearch] = useState<
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'results'; results: GhinSearchResult[] }
+    | { status: 'error'; msg: string }
+  >({ status: 'idle' });
 
   const groupsQuery = useQuery({
     queryKey: ['admin-round-groups', roundId],
@@ -935,7 +951,28 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
     setSubs((prev) => [...prev, { id: tempId, name, hi, isNew: true }]);
     setNewSubName('');
     setNewSubHI('');
+    setGhinSearch({ status: 'idle' });
     setAddingSubMode('none');
+  }
+
+  async function handleGhinSubSearch() {
+    const parts = newSubName.trim().split(/\s+/);
+    const lastName = parts[parts.length - 1] ?? '';
+    const firstName = parts.length > 1 ? parts.slice(0, -1).join(' ') : undefined;
+    if (!lastName) return;
+    setGhinSearch({ status: 'loading' });
+    try {
+      const qs = `last_name=${encodeURIComponent(lastName)}${firstName ? `&first_name=${encodeURIComponent(firstName)}` : ''}`;
+      const result = await apiFetch<{ results: GhinSearchResult[] }>(`/admin/ghin/search?${qs}`);
+      setGhinSearch({ status: 'results', results: result.results });
+    } catch (err) {
+      const code = (err as Error).message;
+      const msg =
+        code === 'GHIN_NOT_CONFIGURED' ? 'GHIN not configured'
+        : code === 'GHIN_UNAVAILABLE' ? 'GHIN API unavailable'
+        : 'Search failed';
+      setGhinSearch({ status: 'error', msg });
+    }
   }
 
   function removeSub(id: number) {
@@ -1234,40 +1271,86 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
             )}
 
             {addingSubMode === 'new' && (
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                <input
-                  type="text"
-                  placeholder="Name"
-                  value={newSubName}
-                  onChange={(e) => setNewSubName(e.target.value)}
-                  className="w-32 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                <input
-                  type="number"
-                  placeholder="HI"
-                  min={0}
-                  max={54}
-                  step={0.1}
-                  value={newSubHI}
-                  onChange={(e) => setNewSubHI(e.target.value)}
-                  className="w-16 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                <Button
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={handleAddNewSub}
-                  disabled={!newSubName.trim() || !newSubHI || isNaN(Number(newSubHI)) || Number(newSubHI) < 0 || Number(newSubHI) > 54}
-                >
-                  Add
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => { setAddingSubMode('none'); setNewSubName(''); setNewSubHI(''); }}
-                >
-                  Cancel
-                </Button>
+              <div className="mt-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="Name"
+                    value={newSubName}
+                    onChange={(e) => { setNewSubName(e.target.value); setGhinSearch({ status: 'idle' }); }}
+                    className="w-32 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => void handleGhinSubSearch()}
+                    disabled={!newSubName.trim() || ghinSearch.status === 'loading'}
+                    title="Search GHIN by name"
+                    aria-label="Search GHIN"
+                  >
+                    {ghinSearch.status === 'loading' ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Search className="h-3 w-3" />
+                    )}
+                  </Button>
+                  <input
+                    type="number"
+                    placeholder="HI"
+                    min={0}
+                    max={54}
+                    step={0.1}
+                    value={newSubHI}
+                    onChange={(e) => setNewSubHI(e.target.value)}
+                    className="w-16 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={handleAddNewSub}
+                    disabled={!newSubName.trim() || !newSubHI || isNaN(Number(newSubHI)) || Number(newSubHI) < 0 || Number(newSubHI) > 54}
+                  >
+                    Add
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => { setAddingSubMode('none'); setNewSubName(''); setNewSubHI(''); setGhinSearch({ status: 'idle' }); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                {ghinSearch.status === 'results' && (
+                  <div className="mt-1.5 rounded-md border bg-background text-xs overflow-hidden max-h-36 overflow-y-auto">
+                    {ghinSearch.results.length === 0 ? (
+                      <p className="px-2 py-1.5 text-muted-foreground">No matches found.</p>
+                    ) : (
+                      ghinSearch.results.map((r) => (
+                        <button
+                          key={r.ghinNumber}
+                          type="button"
+                          className="w-full text-left px-2 py-1.5 border-b last:border-0 hover:bg-muted/50 flex items-center gap-1.5 flex-wrap"
+                          onClick={() => {
+                            setNewSubName(`${r.firstName} ${r.lastName}`);
+                            if (r.handicapIndex !== null) setNewSubHI(String(r.handicapIndex));
+                            setGhinSearch({ status: 'idle' });
+                          }}
+                        >
+                          <span className="font-medium">{r.firstName} {r.lastName}</span>
+                          {r.handicapIndex !== null && (
+                            <span className="text-muted-foreground">HI: {r.handicapIndex}</span>
+                          )}
+                          {r.club && <span className="text-muted-foreground ml-auto">{r.club}</span>}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+                {ghinSearch.status === 'error' && (
+                  <p className="mt-1 text-xs text-destructive">{ghinSearch.msg}</p>
+                )}
               </div>
             )}
           </div>

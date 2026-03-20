@@ -245,7 +245,7 @@ describe('computeAllAwards', () => {
 
   it('empty data still includes custom awards', () => {
     const awards = computeAllAwards([], [], {}, [], []);
-    expect(awards.every((a) => ['snow_cone', 'the_ronnie'].includes(a.id))).toBe(true);
+    expect(awards.every((a) => ['the_founder', 'snow_cone', 'the_ronnie'].includes(a.id))).toBe(true);
   });
 });
 
