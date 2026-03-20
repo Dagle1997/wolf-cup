@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
 import { Hono } from 'hono';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { calculateStablefordPoints, getCourseHole } from '@wolf-cup/engine';
+import { calculateStablefordPoints, getCourseHole, getWolfAssignment } from '@wolf-cup/engine';
 
 // ---------------------------------------------------------------------------
 // DB mock — must be hoisted before any import that touches db
@@ -152,7 +152,8 @@ async function runGroupFlow(roundId: number, groupId: number, playerIds: number[
       if (h <= 4) {
         wolfBody.decision = 'alone';
       } else if (h <= 8) {
-        const wolfIdx = (h - 3) % 4;
+        const assignment = getWolfAssignment([0, 1, 2, 3], h as 5 | 6 | 7 | 8);
+        const wolfIdx = assignment.type === 'wolf' ? assignment.wolfBatterIndex : 0;
         const partnerIdx = (wolfIdx + 1) % 4;
         wolfBody.decision = 'partner';
         wolfBody.partnerPlayerId = playerIds[partnerIdx]!;
@@ -380,8 +381,9 @@ describe('4-group practice round — all groups independent', () => {
 //     Bob   (ch=13, SI13≤13 → 1 stroke): gross 5, net 4
 //     Carol (ch=18, base 1  → 1 stroke): gross 5, net 4
 //     Dave  (ch=24, base 1, SI13>6 → 1 stroke): gross 6, net 5
-//   Wolf wins all 4 components (low ball + skin + bonus + blind wolf extra):
-//     wolf +$12, each opponent -$4, sum $0
+//   Wolf wins all 4 base components (low ball + skin + bonus + blind wolf extra)
+//   plus birdie bonus skin (net 3 on par 4):
+//     wolf +$15, each opponent -$5, sum $0
 // ---------------------------------------------------------------------------
 
 describe('blind wolf win & no-blood scenarios', () => {
@@ -438,7 +440,7 @@ describe('blind wolf win & no-blood scenarios', () => {
     }
   });
 
-  it('blind_wolf win awards wolf +$12, each opponent -$4, sum $0', async () => {
+  it('blind_wolf win awards wolf +$15, each opponent -$5, sum $0', async () => {
     // Submit hole 2 — all net 4, tie
     const h2Scores = playerIds.map((pid, i) => ({ playerId: pid, grossScore: HOLE2_GROSS[i]! }));
     const s2Res = await postJSON(
@@ -462,14 +464,16 @@ describe('blind wolf win & no-blood scenarios', () => {
     );
     expect(wRes.status, 'hole 3 wolf-decision').toBe(200);
 
-    // Cumulative totals (holes 1+2 no-blood = $0, hole 3 blind wolf wins all 4 components)
-    // Expected: wolf +$12 (4 components × $3), each opp -$4 (4 components × $1)
+    // Cumulative totals (holes 1+2 no-blood = $0, hole 3 blind wolf wins all 4 components + birdie bonus)
+    // Base: wolf +$12 (4 components × $3), each opp -$4 (4 components × $1)
+    // Birdie bonus (net 3 on par 4): wolf +$3, each opp -$1
+    // Total: wolf +$15, each opp -$5
     const wData = (await wRes.json()) as { moneyTotals: MoneyTotal[] };
     const wolfTotal = wData.moneyTotals.find((t) => t.playerId === wolfId)?.moneyTotal;
-    expect(wolfTotal, 'wolf blind wolf total').toBe(12);
+    expect(wolfTotal, 'wolf blind wolf total').toBe(15);
     for (const oppId of oppIds) {
       const oppTotal = wData.moneyTotals.find((t) => t.playerId === oppId)?.moneyTotal;
-      expect(oppTotal, `opp ${oppId} total`).toBe(-4);
+      expect(oppTotal, `opp ${oppId} total`).toBe(-5);
     }
     const sum = wData.moneyTotals.reduce((acc, t) => acc + t.moneyTotal, 0);
     expect(sum, 'zero-sum').toBe(0);

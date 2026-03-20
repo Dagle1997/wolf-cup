@@ -56,6 +56,29 @@ async function recordPairings(seasonId: number, roundId: number): Promise<void> 
   }
 }
 
+/** Group-size bonus per player for Harvey points (incentivizes larger groups). */
+function harveyBonus(playerCount: number): number {
+  const lookup: Record<number, number> = { 1: 8, 2: 6, 3: 4, 4: 2 };
+  return lookup[Math.floor(playerCount / 4)] ?? 0;
+}
+
+/**
+ * Compute tie-aware dense ranks for a descending-sorted value list.
+ * Tied values share the same rank (e.g. [20, 18, 18, 10] → [1, 2, 2, 4]).
+ */
+function computeRanks(
+  items: readonly { playerId: number; value: number }[],
+): Map<number, number> {
+  const sorted = [...items].sort((a, b) => b.value - a.value);
+  const ranks = new Map<number, number>();
+  let rank = 1;
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i]!.value < sorted[i - 1]!.value) rank = i + 1;
+    ranks.set(sorted[i]!.playerId, rank);
+  }
+  return ranks;
+}
+
 // Helper: compute Harvey Cup ranking points from round_results and store in harvey_results
 async function computeAndStoreHarvey(roundId: number): Promise<void> {
   // Get all round_results for this round
@@ -70,24 +93,25 @@ async function computeAndStoreHarvey(roundId: number): Promise<void> {
 
   if (results.length === 0) return;
 
-  // Calculate Harvey points using engine
+  // Calculate Harvey points using engine — include group-size bonus
   const harveyInput = results.map((r) => ({
     stableford: r.stablefordTotal,
     money: r.moneyTotal,
   }));
 
-  const harveyOutput = calculateHarveyPoints(harveyInput);
+  const bonusPerPlayer = harveyBonus(results.length);
+  const harveyOutput = calculateHarveyPoints(harveyInput, 'regular', bonusPerPlayer);
   const now = Date.now();
 
-  // Compute ranks for storage
-  const stablefordSorted = [...results].sort((a, b) => b.stablefordTotal - a.stablefordTotal);
-  const moneySorted = [...results].sort((a, b) => b.moneyTotal - a.moneyTotal);
+  // Compute tie-aware ranks for storage
+  const stablefordRanks = computeRanks(results.map((r) => ({ playerId: r.playerId, value: r.stablefordTotal })));
+  const moneyRanks = computeRanks(results.map((r) => ({ playerId: r.playerId, value: r.moneyTotal })));
 
   for (let i = 0; i < results.length; i++) {
     const player = results[i]!;
     const harvey = harveyOutput[i]!;
-    const stablefordRank = stablefordSorted.findIndex((r) => r.playerId === player.playerId) + 1;
-    const moneyRank = moneySorted.findIndex((r) => r.playerId === player.playerId) + 1;
+    const stablefordRank = stablefordRanks.get(player.playerId)!;
+    const moneyRank = moneyRanks.get(player.playerId)!;
 
     await db
       .insert(harveyResults)
@@ -707,19 +731,22 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
   }
 
   try {
-    await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, id));
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
+    await db.transaction(async (tx) => {
+      await tx.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, id));
+    });
 
-  // Compute Harvey Cup points from round results
-  try {
+    // Compute Harvey Cup points — must succeed for standings integrity
     await computeAndStoreHarvey(id);
   } catch (err) {
-    console.error('Failed to compute Harvey points (non-fatal):', err);
+    // Roll back finalization if Harvey computation failed
+    try {
+      await db.update(rounds).set({ status: 'active' }).where(eq(rounds.id, id));
+    } catch { /* best-effort rollback */ }
+    console.error('Finalization failed:', err);
+    return c.json({ error: 'Failed to finalize round — Harvey computation error', code: 'INTERNAL_ERROR' }, 500);
   }
 
-  // Record pairings for group suggestion history
+  // Record pairings for group suggestion history (non-fatal — doesn't affect standings)
   try {
     await recordPairings(round.seasonId, id);
   } catch (err) {

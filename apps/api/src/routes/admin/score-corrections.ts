@@ -4,6 +4,7 @@ import {
   getCourseHole,
   calculateStablefordPoints,
   calculateHoleMoney,
+  calculateHarveyPoints,
   applyBonusModifiers,
   getHandicapStrokes,
   getWolfAssignment,
@@ -22,6 +23,7 @@ import {
   roundResults,
   wolfDecisions,
   scoreCorrections,
+  harveyResults,
 } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { createScoreCorrectionSchema } from '../../schemas/score-correction.js';
@@ -30,6 +32,81 @@ import type { Variables } from '../../types.js';
 const app = new Hono<{ Variables: Variables }>();
 
 const PAR3_HOLES = new Set([6, 7, 12, 15]);
+
+// ---------------------------------------------------------------------------
+// Harvey recomputation after score corrections
+// ---------------------------------------------------------------------------
+
+/** Group-size bonus per player for Harvey points. */
+function harveyBonus(playerCount: number): number {
+  const lookup: Record<number, number> = { 1: 8, 2: 6, 3: 4, 4: 2 };
+  return lookup[Math.floor(playerCount / 4)] ?? 0;
+}
+
+/** Recompute and store Harvey points for a round (after score correction). */
+async function recomputeHarvey(roundId: number): Promise<void> {
+  const results = await db
+    .select({
+      playerId: roundResults.playerId,
+      stablefordTotal: roundResults.stablefordTotal,
+      moneyTotal: roundResults.moneyTotal,
+    })
+    .from(roundResults)
+    .where(eq(roundResults.roundId, roundId));
+
+  if (results.length === 0) return;
+
+  const harveyInput = results.map((r) => ({
+    stableford: r.stablefordTotal,
+    money: r.moneyTotal,
+  }));
+
+  const bonusPerPlayer = harveyBonus(results.length);
+  const harveyOutput = calculateHarveyPoints(harveyInput, 'regular', bonusPerPlayer);
+  const now = Date.now();
+
+  // Tie-aware ranks
+  const stablefordSorted = [...results].sort((a, b) => b.stablefordTotal - a.stablefordTotal);
+  const moneySorted = [...results].sort((a, b) => b.moneyTotal - a.moneyTotal);
+
+  function tieRank(sorted: typeof results, playerId: number, key: 'stablefordTotal' | 'moneyTotal'): number {
+    const idx = sorted.findIndex((r) => r.playerId === playerId);
+    // Walk back to find first player with this same value
+    const val = sorted[idx]![key];
+    let rank = idx + 1;
+    while (rank > 1 && sorted[rank - 2]![key] === val) rank--;
+    return rank;
+  }
+
+  for (let i = 0; i < results.length; i++) {
+    const player = results[i]!;
+    const harvey = harveyOutput[i]!;
+    const stablefordRank = tieRank(stablefordSorted, player.playerId, 'stablefordTotal');
+    const moneyRank = tieRank(moneySorted, player.playerId, 'moneyTotal');
+
+    await db
+      .insert(harveyResults)
+      .values({
+        roundId,
+        playerId: player.playerId,
+        stablefordRank,
+        moneyRank,
+        stablefordPoints: harvey.stablefordPoints,
+        moneyPoints: harvey.moneyPoints,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [harveyResults.roundId, harveyResults.playerId],
+        set: {
+          stablefordRank,
+          moneyRank,
+          stablefordPoints: harvey.stablefordPoints,
+          moneyPoints: harvey.moneyPoints,
+          updatedAt: now,
+        },
+      });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Scoring helpers (mirrored from rounds.ts)
@@ -393,8 +470,17 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
     rescoreGroupId = rpRow.groupId;
   }
 
-  // Rescore the affected group then write audit log
+  // Rescore the affected group, recompute Harvey, then write audit log
   await rescoreGroup(roundId, rescoreGroupId!, (round.tee as Tee) ?? 'blue');
+
+  // Recompute Harvey points since round_results changed
+  try {
+    await recomputeHarvey(roundId);
+  } catch (err) {
+    console.error('Failed to recompute Harvey after correction:', err);
+    return c.json({ error: 'Correction applied but Harvey recomputation failed', code: 'INTERNAL_ERROR' }, 500);
+  }
+
   const [correction] = await db
     .insert(scoreCorrections)
     .values({

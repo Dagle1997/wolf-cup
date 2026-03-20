@@ -222,7 +222,7 @@ describe('PATCH /rounds/:id', () => {
     const res = await roundsApp.request(`/rounds/${testRoundId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'cancelled' }),
+      body: JSON.stringify({ status: 'cancelled', cancellationReason: 'Weather' }),
     });
 
     expect(res.status).toBe(200);

@@ -207,8 +207,9 @@ describe('GET /leaderboard/live', () => {
     expect(dan.stablefordRank).toBe(4); // gap skip (dense)
   });
 
-  it('returns sorted by stablefordRank then name ascending', async () => {
+  it('returns sorted by primary rank (netToPar) then name ascending', async () => {
     const now = Date.now();
+    // No hole_scores, so netToPar=0 for all → all tied at rank 1 → sort is purely alphabetical
     await db.insert(roundResults).values([
       { roundId, playerId: p1Id, stablefordTotal: 18, moneyTotal: 0, updatedAt: now },
       { roundId, playerId: p2Id, stablefordTotal: 22, moneyTotal: 0, updatedAt: now },
@@ -217,11 +218,11 @@ describe('GET /leaderboard/live', () => {
     ]);
     const res = await leaderboardApp.request('/leaderboard/live');
     const body = await res.json() as { leaderboard: Array<{ playerId: number; name: string }> };
-    // Bob=22 (rank 1), then Alice+Carol=18 (rank 2, alphabetical), then Dan=15 (rank 4)
-    expect(body.leaderboard[0]!.playerId).toBe(p2Id); // Bob
-    expect(body.leaderboard[1]!.name).toBe('Alice');
+    // All netToPar=0 → all rank 1 → alphabetical: Alice, Bob, Carol, Dan
+    expect(body.leaderboard[0]!.name).toBe('Alice');
+    expect(body.leaderboard[1]!.name).toBe('Bob');
     expect(body.leaderboard[2]!.name).toBe('Carol');
-    expect(body.leaderboard[3]!.playerId).toBe(p4Id); // Dan
+    expect(body.leaderboard[3]!.name).toBe('Dan');
   });
 
   it('returns harveyLiveEnabled: false and no harvey fields when disabled', async () => {
@@ -240,25 +241,15 @@ describe('GET /leaderboard/live', () => {
   it('returns harvey fields when harveyLiveEnabled: true', async () => {
     await db.update(seasons).set({ harveyLiveEnabled: 1 }).where(eq(seasons.id, seasonId));
     const now = Date.now();
-    await db.insert(harveyResults).values([
-      {
-        roundId,
-        playerId: p1Id,
-        stablefordRank: 1,
-        moneyRank: 1,
-        stablefordPoints: 4,
-        moneyPoints: 4,
-        updatedAt: now,
-      },
-      {
-        roundId,
-        playerId: p2Id,
-        stablefordRank: 2,
-        moneyRank: 2,
-        stablefordPoints: 3,
-        moneyPoints: 2.5,
-        updatedAt: now,
-      },
+    // Insert round_results so live Harvey computation has meaningful rankings.
+    // 4 players → Math.floor(4/4)=1 → bonusPerPlayer=8
+    // Stableford [22,18,0,0] → ranks [4,3,1.5,1.5] → +8 → [12,11,9.5,9.5]
+    // Money [3,-1,0,0] → ranks [4,1,2.5,2.5] → +8 → [12,9,10.5,10.5]
+    await db.insert(roundResults).values([
+      { roundId, playerId: p1Id, stablefordTotal: 22, moneyTotal: 3, updatedAt: now },
+      { roundId, playerId: p2Id, stablefordTotal: 18, moneyTotal: -1, updatedAt: now },
+      { roundId, playerId: p3Id, stablefordTotal: 0, moneyTotal: 0, updatedAt: now },
+      { roundId, playerId: p4Id, stablefordTotal: 0, moneyTotal: 0, updatedAt: now },
     ]);
     const res = await leaderboardApp.request('/leaderboard/live');
     const body = await res.json() as {
@@ -266,13 +257,17 @@ describe('GET /leaderboard/live', () => {
       leaderboard: Array<{ playerId: number; harveyStableford: number | null; harveyMoney: number | null }>;
     };
     expect(body.harveyLiveEnabled).toBe(true);
+    // Active round → stored harvey_results are skipped, live computation runs
     const alice = body.leaderboard.find((r) => r.playerId === p1Id)!;
-    expect(alice.harveyStableford).toBe(4);
-    expect(alice.harveyMoney).toBe(4);
-    // Players without harvey_results get null
+    expect(alice.harveyStableford).toBe(12);
+    expect(alice.harveyMoney).toBe(12);
+    const bob = body.leaderboard.find((r) => r.playerId === p2Id)!;
+    expect(bob.harveyStableford).toBe(11);
+    expect(bob.harveyMoney).toBe(9);
+    // All players get live-computed values (not null)
     const carol = body.leaderboard.find((r) => r.playerId === p3Id)!;
-    expect(carol.harveyStableford).toBeNull();
-    expect(carol.harveyMoney).toBeNull();
+    expect(carol.harveyStableford).toBe(9.5);
+    expect(carol.harveyMoney).toBe(10.5);
   });
 
   it('returns sideGame when scheduledRoundIds includes current round', async () => {

@@ -7,18 +7,18 @@ import { Hono } from 'hono';
 // ---------------------------------------------------------------------------
 
 const ghinMocks = vi.hoisted(() => {
-  const mockGolferGetOne = vi.fn();
-  const mockHandicapsGetOne = vi.fn();
+  const mockGetHandicap = vi.fn();
+  const mockSearchByName = vi.fn();
   const state = { useNull: false };
-  return { mockGolferGetOne, mockHandicapsGetOne, state };
+  return { mockGetHandicap, mockSearchByName, state };
 });
 
 vi.mock('../../lib/ghin-client.js', () => ({
   get ghinClient() {
     if (ghinMocks.state.useNull) return null;
     return {
-      golfers: { getOne: ghinMocks.mockGolferGetOne },
-      handicaps: { getOne: ghinMocks.mockHandicapsGetOne },
+      getHandicap: ghinMocks.mockGetHandicap,
+      searchByName: ghinMocks.mockSearchByName,
     };
   },
 }));
@@ -43,8 +43,8 @@ app.route('/admin', ghinRouter);
 describe('GET /admin/ghin/:ghinNumber', () => {
   beforeEach(() => {
     ghinMocks.state.useNull = false;
-    ghinMocks.mockGolferGetOne.mockReset();
-    ghinMocks.mockHandicapsGetOne.mockReset();
+    ghinMocks.mockGetHandicap.mockReset();
+    ghinMocks.mockSearchByName.mockReset();
   });
 
   it('returns 503 GHIN_NOT_CONFIGURED when env vars absent', async () => {
@@ -68,7 +68,7 @@ describe('GET /admin/ghin/:ghinNumber', () => {
   });
 
   it('returns 404 when golfer not found', async () => {
-    ghinMocks.mockGolferGetOne.mockResolvedValue(undefined);
+    ghinMocks.mockGetHandicap.mockRejectedValue(new Error('NOT_FOUND'));
     const res = await app.request('/admin/ghin/99999');
     expect(res.status).toBe(404);
     const json = await res.json() as { code: string };
@@ -76,8 +76,7 @@ describe('GET /admin/ghin/:ghinNumber', () => {
   });
 
   it('returns 200 with handicap index on success', async () => {
-    ghinMocks.mockGolferGetOne.mockResolvedValue({ ghin_number: 1234567 });
-    ghinMocks.mockHandicapsGetOne.mockResolvedValue({ handicap_index: 14.2, clubs: [] });
+    ghinMocks.mockGetHandicap.mockResolvedValue({ handicapIndex: 14.2 });
     const res = await app.request('/admin/ghin/1234567');
     expect(res.status).toBe(200);
     const json = await res.json() as {
@@ -91,25 +90,15 @@ describe('GET /admin/ghin/:ghinNumber', () => {
   });
 
   it('returns handicapIndex null when GHIN returns null HI', async () => {
-    ghinMocks.mockGolferGetOne.mockResolvedValue({ ghin_number: 1234567 });
-    ghinMocks.mockHandicapsGetOne.mockResolvedValue({ handicap_index: null, clubs: [] });
+    ghinMocks.mockGetHandicap.mockResolvedValue({ handicapIndex: null });
     const res = await app.request('/admin/ghin/1234567');
     expect(res.status).toBe(200);
     const json = await res.json() as { handicapIndex: null };
     expect(json.handicapIndex).toBeNull();
   });
 
-  it('returns 503 GHIN_UNAVAILABLE when golfers.getOne throws', async () => {
-    ghinMocks.mockGolferGetOne.mockRejectedValue(new Error('Network timeout'));
-    const res = await app.request('/admin/ghin/1234567');
-    expect(res.status).toBe(503);
-    const json = await res.json() as { code: string };
-    expect(json.code).toBe('GHIN_UNAVAILABLE');
-  });
-
-  it('returns 503 GHIN_UNAVAILABLE when handicaps.getOne throws', async () => {
-    ghinMocks.mockGolferGetOne.mockResolvedValue({ ghin_number: 1234567 });
-    ghinMocks.mockHandicapsGetOne.mockRejectedValue(new Error('Rate limit'));
+  it('returns 503 GHIN_UNAVAILABLE when getHandicap throws', async () => {
+    ghinMocks.mockGetHandicap.mockRejectedValue(new Error('Network timeout'));
     const res = await app.request('/admin/ghin/1234567');
     expect(res.status).toBe(503);
     const json = await res.json() as { code: string };
