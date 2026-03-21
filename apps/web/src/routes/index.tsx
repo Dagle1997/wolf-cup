@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, Fragment } from 'react';
-import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react';
+import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 

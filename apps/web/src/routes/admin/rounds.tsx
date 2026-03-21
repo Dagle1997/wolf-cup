@@ -4,7 +4,6 @@ import { useState, Fragment } from 'react';
 import {
   AlertCircle,
   Ban,
-  CalendarDays,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -105,7 +104,7 @@ function formatDate(iso: string): string {
   });
 }
 
-const STATUS_LABEL: Record<Round['status'], string> = {
+const _STATUS_LABEL: Record<Round['status'], string> = {
   scheduled: 'Scheduled',
   active: 'Active',
   finalized: 'Finalized',
@@ -119,7 +118,7 @@ const STATUS_BADGE: Record<Round['status'], string> = {
   cancelled: 'bg-muted text-muted-foreground',
 };
 
-const TYPE_BADGE: Record<Round['type'], string> = {
+const _TYPE_BADGE: Record<Round['type'], string> = {
   official: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   casual: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
 };

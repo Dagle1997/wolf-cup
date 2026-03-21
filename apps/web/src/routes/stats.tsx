@@ -913,7 +913,7 @@ function CompareView({ playerA, playerB, allNames, onClose }: { playerA: PlayerS
     queryFn: () => apiFetch<PlayerDetail>(`/stats/${playerA.playerId}/detail`),
     staleTime: 60_000,
   });
-  const { data: detailB } = useQuery({
+  const { data: _detailB } = useQuery({
     queryKey: ['player-detail', playerB.playerId],
     queryFn: () => apiFetch<PlayerDetail>(`/stats/${playerB.playerId}/detail`),
     staleTime: 60_000,

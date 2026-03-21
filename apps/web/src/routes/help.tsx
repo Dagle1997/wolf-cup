@@ -42,14 +42,6 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
   );
 }
 
-function Img({ src, alt }: { src: string; alt: string }) {
-  return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <img src={src} alt={alt} className="w-full" loading="lazy" />
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -86,9 +78,9 @@ function HelpPage() {
         <p>
           Tap a finished round to expand it and see the full group scorecard:
           each player's stableford points, money won/lost, and who was wolf on
-          each hole.
+          each hole. Finished rounds also show a <strong>Highlight Reel</strong> with
+          the best moments from that round.
         </p>
-        {/* <Img src="/help/board.png" alt="Leaderboard showing rounds" /> */}
       </Section>
 
       <Section emoji="📋" title="Attendance">
@@ -103,67 +95,85 @@ function HelpPage() {
         </p>
       </Section>
 
-      <Section emoji="⛳" title="Score Entry">
+      <Section emoji="⛳" title="Getting Started on Game Day">
         <p>
-          This is where you'll spend most of your time during a round. Here's
-          how it works:
+          Here's the flow when you arrive at the course:
         </p>
         <Step n={1}>
-          Go to the <strong>Score</strong> tab. You'll see today's round listed.
-          Tap it.
+          Go to the <strong>Score</strong> tab. You'll see today's round.
+          Enter your <strong>entry code</strong> — a 2-digit code the admin
+          gives you.
         </Step>
         <Step n={2}>
-          Enter your <strong>entry code</strong> — a 2-digit code your admin
-          gives you. This connects you to your group.
+          Pick your <strong>group</strong>. This takes you to the{' '}
+          <strong>Ball Draw</strong> screen where you set the batting order —
+          either use <strong>"Roll for Order"</strong> to let the app randomly
+          draw, or throw balls and enter the order manually.
         </Step>
         <Step n={3}>
-          You'll land on <strong>Hole 1</strong>. For each hole, enter every
-          player's gross score (actual strokes). The app calculates net scores
-          and stableford points automatically using your handicaps.
+          After the draw, you'll see the <strong>overview</strong> showing
+          everyone's wolf holes for the round.
         </Step>
         <Step n={4}>
-          On <strong>par 3s</strong>, you'll see a toggle to mark{' '}
-          <strong>greenies</strong> (hit the green in regulation) for any player
-          who earned one.
+          Then you're on the <strong>score screen</strong>. For each hole,
+          enter every player's gross score (actual strokes). The app calculates
+          net scores and stableford points automatically using your handicaps.
         </Step>
         <Step n={5}>
-          If a player <strong>polies</strong> (one-putts after hitting the
-          green), mark that too — it's worth bonus money.
+          On <strong>par 3s</strong>, mark <strong>greenies</strong> and{' '}
+          <strong>polies</strong> for any player who earned them (see Money
+          section below).
         </Step>
         <Step n={6}>
           Use the <strong>arrow buttons</strong> to move between holes, or tap
-          the hole number bar at the top to jump to any hole.
+          the hole number bar to jump to any hole. Scores save automatically.
         </Step>
-        <Step n={7}>
-          Scores save automatically. You can close the app and come back — your
-          session is remembered.
-        </Step>
-        {/* <Img src="/help/score-entry.png" alt="Hole-by-hole score entry" /> */}
       </Section>
 
-      <Section emoji="🎰" title="Ball Draw">
+      <Section emoji="🐺" title="The Wolf Game">
         <p>
-          The <strong>Ball Draw</strong> sets the batting order — who's wolf
-          first, second, etc. Your admin handles this before the round starts.
+          The batting order determines who is <strong>wolf</strong> on each
+          hole. Player 1 is wolf on hole 3, player 2 on hole 4, and so on —
+          cycling through the group. Holes <strong>1 &amp; 2</strong> are
+          always <strong>skins</strong> (everyone for themselves).
         </p>
         <p>
-          The <strong>"Roll for Order"</strong> button shuffles the order
-          randomly if you want to leave it up to chance. This is optional — the
-          admin can also set it manually.
+          On wolf holes, the wolf watches each player tee off. After seeing
+          the shots, the wolf either <strong>picks a partner</strong> (2v2) or
+          goes <strong>lone wolf</strong> (1v3).
+        </p>
+        <p>
+          Going lone wolf is riskier — if you win, each of the 3 opponents
+          pays you (nearly <strong>3× the reward</strong>). If you lose, you
+          pay each of them.
+        </p>
+        <p>
+          The app tracks all wolf decisions automatically. The score keeper
+          just records the decision and enters scores.
         </p>
       </Section>
 
-      <Section emoji="🐺" title="Wolf Decisions">
+      <Section emoji="💰" title="How Money Works">
         <p>
-          During score entry, the app tracks who is <strong>wolf</strong> on
-          each hole based on the batting order. On wolf holes, the wolf
-          picks a partner or goes lone wolf — your admin records this in the
-          app.
+          Every hole has money on the line. The app calculates everything
+          automatically — just enter scores.
         </p>
         <p>
-          The first 4 holes cycle through each player as wolf. Holes 5+ repeat
-          the order. Holes 17 &amp; 18 are always{' '}
-          <strong>skins</strong> (everyone for themselves).
+          <strong>Skins (Holes 1 &amp; 2):</strong> Every player for
+          themselves. Lowest net score wins and collects from each opponent.
+        </p>
+        <p>
+          <strong>Wolf holes (3–18):</strong> Wolf team vs. non-wolf team.
+          In a 2v2, the winning team collects from the losing team. Lone wolf
+          wins or loses against all 3 opponents individually.
+        </p>
+        <p>
+          <strong>Greenie</strong> (par 3s): Hit the green and make par — each
+          other player in the group pays you.
+        </p>
+        <p>
+          <strong>Polie</strong> (par 3s): Make a putt longer than the flagstick
+          pole — extra bonus paid by each opponent.
         </p>
       </Section>
 
@@ -176,10 +186,6 @@ function HelpPage() {
         <p>
           Only your <strong>best 10 of 20</strong> rounds count toward the
           final standings, so a bad week won't sink your season.
-        </p>
-        <p>
-          The <strong>Harvey Cup</strong> is a separate competition based on
-          head-to-head money results within your group each round.
         </p>
       </Section>
 
@@ -196,20 +202,15 @@ function HelpPage() {
         </p>
       </Section>
 
-      <Section emoji="💰" title="How Money Works">
+      <Section emoji="📸" title="Gallery">
         <p>
-          Every hole has money on the line. On <strong>wolf holes</strong>, the
-          wolf team plays against the non-wolf team. On <strong>skins
-          holes</strong> (17 &amp; 18), it's every player for themselves.
+          Tap the <strong>camera icon</strong> in the header to open the photo
+          gallery. Upload photos from the course — take a new photo or pick from
+          your library.
         </p>
         <p>
-          <strong>Greenies</strong> (par 3, on the green in reg) and{' '}
-          <strong>polies</strong> (one-putt after a greenie) are bonus money
-          paid by every other player in the group.
-        </p>
-        <p>
-          All money is calculated automatically — just enter the scores and the
-          app handles the rest.
+          Photos uploaded during a live round are automatically tagged to that
+          round. You can also add a caption before uploading.
         </p>
       </Section>
 

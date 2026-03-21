@@ -233,7 +233,7 @@ function HistoryPage() {
   );
 }
 
-function ChampionCard({ name, wins, years }: { playerId: number; name: string; wins: number; years: number[] }) {
+function ChampionCard({ name, years }: { playerId: number; name: string; wins: number; years: number[] }) {
   const [imgFailed, setImgFailed] = useState(false);
 
   return (
