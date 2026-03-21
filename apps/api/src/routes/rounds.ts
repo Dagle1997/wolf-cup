@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, gte, lte, inArray, desc, asc, sql } from 'drizzle-orm';
+import { eq, and, gte, inArray, desc, asc, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import {
   getWolfAssignment,
@@ -1976,7 +1976,7 @@ app.get('/rounds/:roundId/highlights', async (c) => {
   // Players with 2+ lone wolf wins get a combined highlight
   for (const [pid, holes] of loneWolfWinsByPlayer) {
     // Exclude blind wolf holes already highlighted
-    const nonBlindHoles = holes.filter((h) => !blindWolfWins.some((bw) => bw.playerId === pid && bw.hole === h));
+    const _nonBlindHoles = holes.filter((h) => !blindWolfWins.some((bw) => bw.playerId === pid && bw.hole === h));
     const totalWins = holes.length;
     if (totalWins >= 2) {
       highlights.push({

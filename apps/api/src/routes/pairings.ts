@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, desc, isNotNull } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { rounds, groups, roundPlayers, players, pairingHistory, seasons } from '../db/schema.js';
 import { calcCourseHandicap } from '@wolf-cup/engine';

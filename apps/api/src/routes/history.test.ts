@@ -27,7 +27,7 @@ const migrationsFolder = resolve(__dirname, '../db/migrations');
 let adminSessionId: string;
 let p1Id: number;
 let p2Id: number;
-let p3Id: number;
+let _p3Id: number;
 
 type HistoryResponse = {
   seasons: {
@@ -64,7 +64,7 @@ beforeAll(async () => {
       { name: 'Player Three', ghinNumber: null, isActive: 0, isGuest: 0, createdAt: Date.now() },
     ])
     .returning({ id: players.id });
-  [p1Id, p2Id, p3Id] = playerInserts.map((p) => p.id) as [number, number, number];
+  [p1Id, p2Id, _p3Id] = playerInserts.map((p) => p.id) as [number, number, number];
 });
 
 // ---------------------------------------------------------------------------

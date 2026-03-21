@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, or, inArray, desc, sql, countDistinct } from 'drizzle-orm';
+import { eq, and, or, inArray, desc, countDistinct } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   rounds,

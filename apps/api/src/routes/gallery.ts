@@ -3,7 +3,7 @@ import { eq, desc, sql, and } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcrypt';
 import { db } from '../db/index.js';
-import { galleryPhotos, rounds, players, roundPlayers } from '../db/schema.js';
+import { galleryPhotos, rounds, players } from '../db/schema.js';
 import { uploadToR2, r2Configured } from '../lib/r2-client.js';
 
 const app = new Hono();
@@ -70,7 +70,7 @@ app.post('/gallery/upload', async (c) => {
   const roundId = activeRound?.id ?? null;
 
   // Try to resolve player from entry code
-  let playerId: number | null = null;
+  const playerId: number | null = null;
   const entryCode = c.req.header('x-entry-code');
   if (entryCode && activeRound?.entryCodeHash) {
     const codeValid = await bcrypt.compare(entryCode, activeRound.entryCodeHash);
