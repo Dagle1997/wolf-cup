@@ -1948,22 +1948,44 @@ app.get('/rounds/:roundId/highlights', async (c) => {
   }
 
   // --- Lone wolf wins ---
-  const loneWolfWins: { playerId: number; hole: number; decision: string }[] = [];
+  // Only highlight blind wolf wins (always special) or players with 2+ lone wolf wins
+  // (everyone is required to go wolf once, so a single win isn't noteworthy)
+  const blindWolfWins: { playerId: number; hole: number }[] = [];
+  const loneWolfWinsByPlayer = new Map<number, number[]>(); // playerId → holes
   for (const dec of decisionRows) {
     if ((dec.decision === 'alone' || dec.decision === 'blind_wolf') && dec.outcome === 'win' && dec.wolfPlayerId) {
-      loneWolfWins.push({ playerId: dec.wolfPlayerId, hole: dec.holeNumber, decision: dec.decision });
+      if (dec.decision === 'blind_wolf') {
+        blindWolfWins.push({ playerId: dec.wolfPlayerId, hole: dec.holeNumber });
+      }
+      const holes = loneWolfWinsByPlayer.get(dec.wolfPlayerId) ?? [];
+      holes.push(dec.holeNumber);
+      loneWolfWinsByPlayer.set(dec.wolfPlayerId, holes);
     }
   }
 
-  for (const lw of loneWolfWins) {
+  // Blind wolf wins are always highlighted individually
+  for (const bw of blindWolfWins) {
     highlights.push({
-      emoji: lw.decision === 'blind_wolf' ? '😎' : '🐺',
-      title: loneWolfWins.length === 1
-        ? 'Lone Wolf Victory'
-        : `Lone Wolf — Hole ${lw.hole}`,
-      detail: `${nameMap.get(lw.playerId)} took on the field and won`,
+      emoji: '😎',
+      title: 'Blind Wolf Victory',
+      detail: `${nameMap.get(bw.playerId)} went blind on Hole ${bw.hole} and won`,
       category: 'wolf',
     });
+  }
+
+  // Players with 2+ lone wolf wins get a combined highlight
+  for (const [pid, holes] of loneWolfWinsByPlayer) {
+    // Exclude blind wolf holes already highlighted
+    const nonBlindHoles = holes.filter((h) => !blindWolfWins.some((bw) => bw.playerId === pid && bw.hole === h));
+    const totalWins = holes.length;
+    if (totalWins >= 2) {
+      highlights.push({
+        emoji: '🐺',
+        title: `${totalWins} Lone Wolf Wins`,
+        detail: `${nameMap.get(pid)} dominated going solo (Holes ${holes.join(', ')})`,
+        category: 'wolf',
+      });
+    }
   }
 
   return c.json({ highlights });
