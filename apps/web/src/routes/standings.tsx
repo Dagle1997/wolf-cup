@@ -198,14 +198,14 @@ function StandingsTable({ players, showPlayoff, pairs }: { players: StandingsPla
           <tr className="border-b bg-muted/60 text-[11px] text-muted-foreground">
             <th className="py-2 pl-3 pr-1 text-center font-medium w-12">#</th>
             <th className="py-2 px-2 text-left font-medium">Player</th>
+            <th className="py-2 px-2 text-right font-medium">Total</th>
             <th className="py-2 px-1 text-center font-medium w-16">Trend</th>
             <th className="py-2 px-2 text-center font-medium">Rds</th>
             <th className="py-2 px-2 text-right font-medium">Avg</th>
             <th className="py-2 px-2 text-right font-medium">Low</th>
             <th className="py-2 px-2 text-right font-medium">High</th>
             <th className="py-2 px-2 text-right font-medium">Stab</th>
-            <th className="py-2 px-2 text-right font-medium">$</th>
-            <th className="py-2 px-3 text-right font-medium">Total</th>
+            <th className="py-2 px-3 text-right font-medium">$</th>
           </tr>
         </thead>
         <tbody>
@@ -230,6 +230,7 @@ function StandingsTable({ players, showPlayoff, pairs }: { players: StandingsPla
                       )}
                     </span>
                   </td>
+                  <td className="py-2.5 px-2 text-right tabular-nums font-bold text-base">{fmt(player.combinedTotal)}</td>
                   <td className="py-2.5 px-1 text-center">
                     {player.roundTotals.length >= 2 ? (
                       <Sparkline
@@ -258,8 +259,7 @@ function StandingsTable({ players, showPlayoff, pairs }: { players: StandingsPla
                     {player.roundsPlayed > 0 ? fmt(player.highRound) : '—'}
                   </td>
                   <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.stablefordTotal)}</td>
-                  <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.moneyTotal)}</td>
-                  <td className="py-2.5 px-3 text-right tabular-nums font-bold text-base">{fmt(player.combinedTotal)}</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums">{fmt(player.moneyTotal)}</td>
                 </tr>
                 {isExpanded && (
                   <tr key={`${player.playerId}-pairings`}>
