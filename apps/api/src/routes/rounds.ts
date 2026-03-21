@@ -1726,4 +1726,247 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// GET /rounds/:roundId/highlights — per-round highlight reel
+// ---------------------------------------------------------------------------
+
+type Highlight = {
+  emoji: string;
+  title: string;
+  detail: string;
+  category: 'scoring' | 'money' | 'bonus' | 'wolf';
+};
+
+app.get('/rounds/:roundId/highlights', async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+
+  // Validate round exists and is finalized
+  const [round] = await db
+    .select({ id: rounds.id, status: rounds.status, scheduledDate: rounds.scheduledDate })
+    .from(rounds)
+    .where(eq(rounds.id, roundId));
+  if (!round) return c.json({ error: 'ROUND_NOT_FOUND' }, 404);
+  if (round.status !== 'finalized') return c.json({ highlights: [] });
+
+  // Fetch all data in parallel
+  const [playerRows, scoreRows, resultRows, decisionRows] = await Promise.all([
+    db.select({
+      playerId: roundPlayers.playerId,
+      name: players.name,
+      handicapIndex: roundPlayers.handicapIndex,
+      groupId: roundPlayers.groupId,
+    })
+    .from(roundPlayers)
+    .innerJoin(players, eq(players.id, roundPlayers.playerId))
+    .where(eq(roundPlayers.roundId, roundId)),
+
+    db.select({
+      playerId: holeScores.playerId,
+      holeNumber: holeScores.holeNumber,
+      grossScore: holeScores.grossScore,
+    })
+    .from(holeScores)
+    .where(eq(holeScores.roundId, roundId)),
+
+    db.select({
+      playerId: roundResults.playerId,
+      stablefordTotal: roundResults.stablefordTotal,
+      moneyTotal: roundResults.moneyTotal,
+    })
+    .from(roundResults)
+    .where(eq(roundResults.roundId, roundId)),
+
+    db.select({
+      holeNumber: wolfDecisions.holeNumber,
+      wolfPlayerId: wolfDecisions.wolfPlayerId,
+      decision: wolfDecisions.decision,
+      outcome: wolfDecisions.outcome,
+      bonusesJson: wolfDecisions.bonusesJson,
+    })
+    .from(wolfDecisions)
+    .where(eq(wolfDecisions.roundId, roundId)),
+  ]);
+
+  const nameMap = new Map(playerRows.map((p) => [p.playerId, p.name]));
+  const hiMap = new Map(playerRows.map((p) => [p.playerId, p.handicapIndex]));
+  const highlights: Highlight[] = [];
+
+  // --- Biggest money winner ---
+  if (resultRows.length > 0) {
+    const best = resultRows.reduce((a, b) => (b.moneyTotal > a.moneyTotal ? b : a));
+    if (best.moneyTotal > 0) {
+      highlights.push({
+        emoji: '💰',
+        title: 'Big Winner',
+        detail: `${nameMap.get(best.playerId)} walked away +$${best.moneyTotal}`,
+        category: 'money',
+      });
+    }
+
+    // --- Biggest money loser ---
+    const worst = resultRows.reduce((a, b) => (b.moneyTotal < a.moneyTotal ? b : a));
+    if (worst.moneyTotal < 0) {
+      highlights.push({
+        emoji: '🕳️',
+        title: 'Deepest Hole',
+        detail: `${nameMap.get(worst.playerId)} dropped -$${Math.abs(worst.moneyTotal)}`,
+        category: 'money',
+      });
+    }
+  }
+
+  // --- Most stableford points ---
+  if (resultRows.length > 0) {
+    const best = resultRows.reduce((a, b) => (b.stablefordTotal > a.stablefordTotal ? b : a));
+    highlights.push({
+      emoji: '⭐',
+      title: 'Points Leader',
+      detail: `${nameMap.get(best.playerId)} with ${best.stablefordTotal} stableford points`,
+      category: 'scoring',
+    });
+  }
+
+  // --- Best single hole (highest stableford on one hole) ---
+  let bestHoleScore: { playerId: number; hole: number; points: number; gross: number; par: number } | null = null;
+  for (const row of scoreRows) {
+    const hi = hiMap.get(row.playerId) ?? 0;
+    const ch = getCourseHole(row.holeNumber as Parameters<typeof getCourseHole>[0]);
+    const pts = calculateStablefordPoints(row.grossScore, hi, ch.par, ch.strokeIndex);
+    if (!bestHoleScore || pts > bestHoleScore.points || (pts === bestHoleScore.points && row.grossScore < bestHoleScore.gross)) {
+      bestHoleScore = { playerId: row.playerId, hole: row.holeNumber, points: pts, gross: row.grossScore, par: ch.par };
+    }
+  }
+  if (bestHoleScore && bestHoleScore.points >= 4) {
+    const diff = bestHoleScore.gross - bestHoleScore.par;
+    const shotName = diff <= -2 ? 'Eagle' : diff === -1 ? 'Birdie' : 'Net masterpiece';
+    highlights.push({
+      emoji: '🎯',
+      title: `${bestHoleScore.points} Points on One Hole`,
+      detail: `${nameMap.get(bestHoleScore.playerId)} — ${shotName} on Hole ${bestHoleScore.hole} (Par ${bestHoleScore.par})`,
+      category: 'scoring',
+    });
+  }
+
+  // --- Eagles and birdies ---
+  const birdies: { playerId: number; hole: number; par: number; gross: number }[] = [];
+  const eagles: { playerId: number; hole: number; par: number; gross: number }[] = [];
+  for (const row of scoreRows) {
+    const ch = getCourseHole(row.holeNumber as Parameters<typeof getCourseHole>[0]);
+    const diff = row.grossScore - ch.par;
+    if (diff <= -2) {
+      eagles.push({ playerId: row.playerId, hole: row.holeNumber, par: ch.par, gross: row.grossScore });
+    } else if (diff === -1) {
+      birdies.push({ playerId: row.playerId, hole: row.holeNumber, par: ch.par, gross: row.grossScore });
+    }
+  }
+
+  for (const e of eagles) {
+    highlights.push({
+      emoji: '🦅',
+      title: 'Eagle!',
+      detail: `${nameMap.get(e.playerId)} — ${e.gross} on Hole ${e.hole} (Par ${e.par})`,
+      category: 'scoring',
+    });
+  }
+
+  if (birdies.length > 0) {
+    if (birdies.length === 1) {
+      const b = birdies[0]!;
+      highlights.push({
+        emoji: '🐦',
+        title: 'Birdie',
+        detail: `${nameMap.get(b.playerId)} — ${b.gross} on Hole ${b.hole} (Par ${b.par})`,
+        category: 'scoring',
+      });
+    } else {
+      // Group by player
+      const byPlayer = new Map<number, number>();
+      for (const b of birdies) byPlayer.set(b.playerId, (byPlayer.get(b.playerId) ?? 0) + 1);
+      const entries = [...byPlayer.entries()].sort((a, b) => b[1] - a[1]);
+      const parts = entries.map(([pid, count]) => `${nameMap.get(pid)} ×${count}`);
+      highlights.push({
+        emoji: '🐦',
+        title: `${birdies.length} Birdies`,
+        detail: parts.join(', '),
+        category: 'scoring',
+      });
+    }
+  }
+
+  // --- Greenies and polies ---
+  const greenieCount = new Map<number, number>();
+  const polieCount = new Map<number, number>();
+  for (const dec of decisionRows) {
+    if (!dec.bonusesJson) continue;
+    try {
+      const parsed = JSON.parse(dec.bonusesJson) as { greenies?: number[]; polies?: number[] };
+      for (const pid of parsed.greenies ?? []) greenieCount.set(pid, (greenieCount.get(pid) ?? 0) + 1);
+      for (const pid of parsed.polies ?? []) polieCount.set(pid, (polieCount.get(pid) ?? 0) + 1);
+    } catch { /* skip malformed */ }
+  }
+
+  const totalGreenies = [...greenieCount.values()].reduce((a, b) => a + b, 0);
+  if (totalGreenies > 0) {
+    const best = [...greenieCount.entries()].sort((a, b) => b[1] - a[1]);
+    if (totalGreenies === 1) {
+      highlights.push({
+        emoji: '🟢',
+        title: 'Greenie',
+        detail: `${nameMap.get(best[0]![0])} found the green`,
+        category: 'bonus',
+      });
+    } else {
+      const parts = best.map(([pid, count]) => `${nameMap.get(pid)} ×${count}`);
+      highlights.push({
+        emoji: '🟢',
+        title: `${totalGreenies} Greenies`,
+        detail: parts.join(', '),
+        category: 'bonus',
+      });
+    }
+  }
+
+  const totalPolies = [...polieCount.values()].reduce((a, b) => a + b, 0);
+  if (totalPolies > 0) {
+    const best = [...polieCount.entries()].sort((a, b) => b[1] - a[1]);
+    if (totalPolies === 1) {
+      highlights.push({
+        emoji: '🎱',
+        title: 'Poly!',
+        detail: `${nameMap.get(best[0]![0])} drained it`,
+        category: 'bonus',
+      });
+    } else {
+      const parts = best.map(([pid, count]) => `${nameMap.get(pid)} ×${count}`);
+      highlights.push({
+        emoji: '🎱',
+        title: `${totalPolies} Polies`,
+        detail: parts.join(', '),
+        category: 'bonus',
+      });
+    }
+  }
+
+  // --- Lone wolf wins ---
+  const loneWolfWins: { playerId: number; hole: number; decision: string }[] = [];
+  for (const dec of decisionRows) {
+    if ((dec.decision === 'alone' || dec.decision === 'blind_wolf') && dec.outcome === 'win' && dec.wolfPlayerId) {
+      loneWolfWins.push({ playerId: dec.wolfPlayerId, hole: dec.holeNumber, decision: dec.decision });
+    }
+  }
+
+  for (const lw of loneWolfWins) {
+    highlights.push({
+      emoji: lw.decision === 'blind_wolf' ? '😎' : '🐺',
+      title: loneWolfWins.length === 1
+        ? 'Lone Wolf Victory'
+        : `Lone Wolf — Hole ${lw.hole}`,
+      detail: `${nameMap.get(lw.playerId)} took on the field and won`,
+      category: 'wolf',
+    });
+  }
+
+  return c.json({ highlights });
+});
+
 export default app;

@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wolf Cup — Player Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --green: #16a34a;
+    --green-dark: #15803d;
+    --green-deeper: #0f5c2e;
+    --gold: #f59e0b;
+    --dark: #0a0f0a;
+    --grey: #6b7280;
+  }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: white;
+    color: #1a1a1a;
+    line-height: 1.5;
+  }
+
+  @page {
+    size: letter;
+    margin: 0;
+  }
+
+  .page {
+    width: 8.5in;
+    height: 11in;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+
+  /* ===== COVER PAGE ===== */
+  .cover-page {
+    background: linear-gradient(165deg, var(--dark) 0%, #0d1f0d 40%, var(--green-deeper) 100%);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 0.8in;
+  }
+
+  .cover-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.8in;
+  }
+
+  .cover-top-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .cover-logo { font-size: 36px; }
+
+  .cover-brand {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--green);
+  }
+
+  .cover-asstv {
+    font-size: 14px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 1px;
+  }
+
+  .cover-headline {
+    font-size: 52px;
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -1.5px;
+    margin-bottom: 20px;
+  }
+
+  .cover-headline .accent { color: var(--green); }
+
+  .cover-sub {
+    font-size: 22px;
+    font-weight: 300;
+    color: rgba(255,255,255,0.7);
+    max-width: 5.5in;
+    line-height: 1.6;
+    margin-bottom: 0.6in;
+  }
+
+  .cover-toc {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .cover-toc li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.8);
+  }
+
+  .cover-toc li .toc-emoji { font-size: 22px; }
+  .cover-toc li .toc-num {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--green);
+    min-width: 18px;
+  }
+
+  .cover-bottom {
+    margin-top: auto;
+    text-align: center;
+    padding-top: 0.3in;
+  }
+
+  .cover-url { font-size: 26px; font-weight: 700; color: var(--green); }
+  .cover-note { font-size: 14px; color: rgba(255,255,255,0.4); margin-top: 6px; }
+
+  /* ===== CONTENT PAGES (light) ===== */
+  .content-page {
+    background: white;
+    padding: 0.55in 0.8in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.35in;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #f3f4f6;
+  }
+
+  .page-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--grey);
+  }
+
+  .page-header-right {
+    font-size: 12px;
+    color: #d1d5db;
+    font-weight: 600;
+  }
+
+  .section-icon { font-size: 32px; margin-bottom: 8px; }
+
+  .section-label {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 6px;
+  }
+
+  .section-title {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1.15;
+    color: var(--dark);
+    margin-bottom: 14px;
+  }
+
+  .section-desc {
+    font-size: 18px;
+    line-height: 1.65;
+    color: var(--grey);
+    margin-bottom: 24px;
+  }
+
+  /* Steps */
+  .steps {
+    list-style: none;
+    padding: 0;
+    counter-reset: step;
+  }
+
+  .steps li {
+    counter-increment: step;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 16px;
+    color: #374151;
+    line-height: 1.55;
+  }
+
+  .steps li:last-child { border-bottom: none; }
+
+  .steps li::before {
+    content: counter(step);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: var(--green);
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 800;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .steps li strong { color: var(--dark); }
+
+  /* Info cards */
+  .info-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 18px;
+  }
+
+  .info-card {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .info-card-icon { font-size: 24px; margin-bottom: 8px; }
+  .info-card h4 { font-size: 16px; font-weight: 700; color: var(--dark); margin-bottom: 5px; }
+  .info-card p { font-size: 14px; color: var(--grey); line-height: 1.5; }
+
+  /* Highlight box */
+  .highlight-box {
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+    border: 1px solid #bbf7d0;
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-top: 18px;
+  }
+
+  .highlight-box h4 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--green-dark);
+    margin-bottom: 6px;
+  }
+
+  .highlight-box p {
+    font-size: 14px;
+    color: #166534;
+    line-height: 1.55;
+  }
+
+  /* Dark content page */
+  .content-page-dark {
+    background: var(--dark);
+    color: white;
+    padding: 0.55in 0.8in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .content-page-dark .page-header {
+    border-bottom-color: rgba(255,255,255,0.08);
+  }
+
+  .content-page-dark .page-header-left { color: rgba(255,255,255,0.5); }
+  .content-page-dark .page-header-right { color: rgba(255,255,255,0.15); }
+  .content-page-dark .section-label { color: var(--gold); }
+  .content-page-dark .section-title { color: white; }
+  .content-page-dark .section-desc { color: rgba(255,255,255,0.55); }
+
+  .content-page-dark .steps li {
+    color: rgba(255,255,255,0.75);
+    border-bottom-color: rgba(255,255,255,0.06);
+  }
+
+  .content-page-dark .steps li strong { color: white; }
+
+  .content-page-dark .info-card {
+    background: rgba(255,255,255,0.04);
+    border-color: rgba(255,255,255,0.08);
+  }
+
+  .content-page-dark .info-card h4 { color: white; }
+  .content-page-dark .info-card p { color: rgba(255,255,255,0.5); }
+
+  .dark-highlight-box {
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.2);
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-top: 18px;
+  }
+
+  .dark-highlight-box h4 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--gold);
+    margin-bottom: 6px;
+  }
+
+  .dark-highlight-box p {
+    font-size: 14px;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.55;
+  }
+
+  /* Screenshot placeholder */
+  .screenshot-placeholder {
+    background: #f3f4f6;
+    border: 2px dashed #d1d5db;
+    border-radius: 14px;
+    padding: 40px 20px;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 14px;
+    font-weight: 500;
+    margin: 16px 0;
+  }
+
+  .content-page-dark .screenshot-placeholder {
+    background: rgba(255,255,255,0.03);
+    border-color: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.25);
+  }
+
+  /* Phone frame for screenshots */
+  .phone-frame {
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.1);
+    border: 2px solid #e5e7eb;
+  }
+
+  .phone-frame img { width: 100%; height: auto; display: block; }
+
+  /* Money table */
+  .money-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    margin-top: 14px;
+    font-size: 15px;
+  }
+
+  .money-table th {
+    background: var(--dark);
+    color: white;
+    padding: 10px 16px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .money-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #374151;
+  }
+
+  .money-table tr:last-child td { border-bottom: none; }
+  .money-table tr:nth-child(even) td { background: #f9fafb; }
+
+  .money-table .money-value {
+    font-weight: 700;
+    color: var(--green);
+  }
+
+  /* Footer */
+  .page-footer {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 12px;
+    border-top: 1px solid #f3f4f6;
+  }
+
+  .content-page-dark .page-footer {
+    border-top-color: rgba(255,255,255,0.06);
+  }
+
+  .page-footer-left {
+    font-size: 11px;
+    color: #d1d5db;
+  }
+
+  .page-footer-right {
+    font-size: 11px;
+    color: #d1d5db;
+  }
+
+  .content-page-dark .page-footer-left,
+  .content-page-dark .page-footer-right {
+    color: rgba(255,255,255,0.15);
+  }
+
+  @media print {
+    body { background: white; }
+    .page { margin: 0; box-shadow: none; }
+  }
+
+  @media screen {
+    body { background: #e5e7eb; }
+    .page { margin: 20px auto; box-shadow: 0 4px 30px rgba(0,0,0,0.15); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== PAGE 1: COVER ===== -->
+<div class="page cover-page">
+  <div class="cover-top">
+    <div class="cover-top-left">
+      <span class="cover-logo">🐺</span>
+      <span class="cover-brand">Wolf Cup</span>
+    </div>
+    <span class="cover-asstv">Ass<span style="color:#ef4444">TV</span> 🍑 Network</span>
+  </div>
+
+  <div class="cover-headline">
+    Your Guide to<br>
+    <span class="accent">the Wolf Cup App</span>
+  </div>
+
+  <p class="cover-sub">
+    Everything you need to know to score rounds, check standings,
+    and dominate the league — right from your phone.
+  </p>
+
+  <ul class="cover-toc">
+    <li><span class="toc-emoji">⛳</span> <span class="toc-num">01</span> Score Entry</li>
+    <li><span class="toc-emoji">🏆</span> <span class="toc-num">02</span> The Board</li>
+    <li><span class="toc-emoji">🐺</span> <span class="toc-num">03</span> Wolf & Skins</li>
+    <li><span class="toc-emoji">💰</span> <span class="toc-num">04</span> How Money Works</li>
+    <li><span class="toc-emoji">📊</span> <span class="toc-num">05</span> Standings</li>
+    <li><span class="toc-emoji">📈</span> <span class="toc-num">06</span> Stats & Awards</li>
+  </ul>
+
+  <div class="cover-bottom">
+    <div class="cover-url">wolf.dagle.cloud</div>
+    <div class="cover-note">Open on your phone · Works on any device · No app store required</div>
+  </div>
+</div>
+
+<!-- ===== PAGE 2: SCORE ENTRY ===== -->
+<div class="page content-page">
+  <div class="page-header">
+    <div class="page-header-left">🐺 Wolf Cup Player Guide</div>
+    <div class="page-header-right">01 — Score Entry</div>
+  </div>
+
+  <div class="section-icon">⛳</div>
+  <div class="section-label">Getting Started</div>
+  <div class="section-title">Entering Your Scores</div>
+  <p class="section-desc">
+    This is the screen you'll use every Friday. Open the app, join your group,
+    and enter scores hole by hole as you play.
+  </p>
+
+  <ol class="steps">
+    <li>Open <strong>wolf.dagle.cloud</strong> on your phone and tap the <strong>Score</strong> tab at the bottom.</li>
+    <li>You'll see today's round listed. Tap it to select it.</li>
+    <li>Enter your <strong>entry code</strong> — a 2-digit code the admin gives you before the round. This connects you to your group.</li>
+    <li>You'll land on <strong>Hole 1</strong>. Enter each player's <strong>gross score</strong> (actual strokes). Net scores and stableford points are calculated automatically from handicaps.</li>
+    <li>On <strong>par 3s</strong>, you'll see a toggle to mark <strong>greenies</strong> (hit the green in regulation). If a player one-putts after a greenie, mark the <strong>poly</strong> too.</li>
+    <li>Use the <strong>arrow buttons</strong> to move between holes, or tap the hole number bar to jump to any hole.</li>
+  </ol>
+
+  <div class="highlight-box">
+    <h4>💡 Scores save automatically</h4>
+    <p>You can close the app and come back any time — your session is remembered. If you lose cell service on the course, scores are queued offline and sync when you're back online.</p>
+  </div>
+
+  <div class="page-footer">
+    <span class="page-footer-left">Guyan Golf & Country Club</span>
+    <span class="page-footer-right">Page 2</span>
+  </div>
+</div>
+
+<!-- ===== PAGE 3: THE BOARD ===== -->
+<div class="page content-page-dark">
+  <div class="page-header">
+    <div class="page-header-left">🐺 Wolf Cup Player Guide</div>
+    <div class="page-header-right">02 — The Board</div>
+  </div>
+
+  <div class="section-icon">🏆</div>
+  <div class="section-label">Your Home Screen</div>
+  <div class="section-title">The Board</div>
+  <p class="section-desc">
+    The Board is the first thing you see when you open the app. It shows every
+    round this season — upcoming, in-progress, and finished.
+  </p>
+
+  <ol class="steps">
+    <li>Each round card shows the <strong>date</strong>, <strong>round number</strong>, and <strong>status</strong> (scheduled, active, or finalized).</li>
+    <li>Tap a <strong>finished round</strong> to expand it and see the full scorecard for each group.</li>
+    <li>The expanded view shows each player's <strong>stableford points</strong>, <strong>money won or lost</strong>, and who was wolf on each hole.</li>
+    <li>Swipe between rounds or use the <strong>arrow buttons</strong> to browse the season.</li>
+  </ol>
+
+  <div class="dark-highlight-box">
+    <h4>📱 Add to your home screen</h4>
+    <p>For the best experience, add the app to your phone's home screen. On iPhone: tap the share button → "Add to Home Screen." On Android: tap the menu → "Add to Home Screen." It'll look and feel like a real app.</p>
+  </div>
+
+  <div class="page-footer">
+    <span class="page-footer-left">Guyan Golf & Country Club</span>
+    <span class="page-footer-right">Page 3</span>
+  </div>
+</div>
+
+<!-- ===== PAGE 4: WOLF & SKINS ===== -->
+<div class="page content-page">
+  <div class="page-header">
+    <div class="page-header-left">🐺 Wolf Cup Player Guide</div>
+    <div class="page-header-right">03 — Wolf & Skins</div>
+  </div>
+
+  <div class="section-icon">🐺</div>
+  <div class="section-label">The Game</div>
+  <div class="section-title">Wolf & Skins</div>
+  <p class="section-desc">
+    The app tracks the wolf game automatically. Here's how it
+    works so you know what's happening on screen.
+  </p>
+
+  <ol class="steps">
+    <li>The <strong>batting order</strong> (set during ball draw) determines who is wolf each hole. Player 1 is wolf on hole 1, player 2 on hole 2, and so on — cycling through the group.</li>
+    <li>On wolf holes, the wolf watches each player tee off in order. After seeing the shots, the wolf either <strong>picks a partner</strong> (2v2) or goes <strong>lone wolf</strong> (1v3).</li>
+    <li>Going lone wolf is riskier but pays double if you win.</li>
+    <li>Holes <strong>17 &amp; 18</strong> are always <strong>skins</strong> — every player for themselves. Lowest net score wins.</li>
+    <li>The admin records wolf decisions in the app. You just play golf and enter scores!</li>
+  </ol>
+
+  <div class="info-cards">
+    <div class="info-card">
+      <div class="info-card-icon">🎯</div>
+      <h4>2v2 (Partner)</h4>
+      <p>Wolf picks a partner. Best net ball of each team wins the hole.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon">🐺</div>
+      <h4>Lone Wolf</h4>
+      <p>Wolf goes alone against the other 3. Higher risk, double reward.</p>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    <span class="page-footer-left">Guyan Golf & Country Club</span>
+    <span class="page-footer-right">Page 4</span>
+  </div>
+</div>
+
+<!-- ===== PAGE 5: HOW MONEY WORKS ===== -->
+<div class="page content-page-dark">
+  <div class="page-header">
+    <div class="page-header-left">🐺 Wolf Cup Player Guide</div>
+    <div class="page-header-right">04 — Money</div>
+  </div>
+
+  <div class="section-icon">💰</div>
+  <div class="section-label">The Stakes</div>
+  <div class="section-title">How Money Works</div>
+  <p class="section-desc">
+    The app calculates all money automatically — just enter the
+    scores and it handles the rest. Here's the breakdown.
+  </p>
+
+  <table class="money-table" style="border-color: rgba(255,255,255,0.1);">
+    <tr>
+      <th>Situation</th>
+      <th>What Happens</th>
+    </tr>
+    <tr style="background: rgba(255,255,255,0.02);">
+      <td style="color: rgba(255,255,255,0.75);">Wolf 2v2 (partner)</td>
+      <td style="color: rgba(255,255,255,0.75);">Winning team collects from losing team</td>
+    </tr>
+    <tr style="background: transparent;">
+      <td style="color: rgba(255,255,255,0.75);">Lone Wolf wins</td>
+      <td style="color: rgba(255,255,255,0.75);">Wolf collects double from all 3 opponents</td>
+    </tr>
+    <tr style="background: rgba(255,255,255,0.02);">
+      <td style="color: rgba(255,255,255,0.75);">Lone Wolf loses</td>
+      <td style="color: rgba(255,255,255,0.75);">Wolf pays double to all 3 opponents</td>
+    </tr>
+    <tr style="background: transparent;">
+      <td style="color: rgba(255,255,255,0.75);">Skins (holes 17-18)</td>
+      <td style="color: rgba(255,255,255,0.75);">Lowest net wins, collects from everyone</td>
+    </tr>
+    <tr style="background: rgba(255,255,255,0.02);">
+      <td style="color: rgba(255,255,255,0.75);"><strong style="color:var(--green)">Greenie</strong> (par 3)</td>
+      <td style="color: rgba(255,255,255,0.75);">Hit the green in reg — bonus from each player</td>
+    </tr>
+    <tr style="background: transparent;">
+      <td style="color: rgba(255,255,255,0.75);"><strong style="color:var(--gold)">Poly</strong> (par 3)</td>
+      <td style="color: rgba(255,255,255,0.75);">One-putt after a greenie — extra bonus</td>
+    </tr>
+  </table>
+
+  <div class="dark-highlight-box" style="margin-top: 24px;">
+    <h4>🧮 It's all automatic</h4>
+    <p>You never have to do math. The app tracks every dollar won and lost per hole, per round, and for the season. Check the round detail or your player stats to see where you stand.</p>
+  </div>
+
+  <div class="page-footer">
+    <span class="page-footer-left">Guyan Golf & Country Club</span>
+    <span class="page-footer-right">Page 5</span>
+  </div>
+</div>
+
+<!-- ===== PAGE 6: STANDINGS ===== -->
+<div class="page content-page">
+  <div class="page-header">
+    <div class="page-header-left">🐺 Wolf Cup Player Guide</div>
+    <div class="page-header-right">05 — Standings</div>
+  </div>
+
+  <div class="section-icon">📊</div>
+  <div class="section-label">The Season</div>
+  <div class="section-title">Standings & Harvey Cup</div>
+  <p class="section-desc">
+    Track your position in the league all season long. Two competitions
+    run simultaneously — and you can win both.
+  </p>
+
+  <div class="info-cards">
+    <div class="info-card">
+      <div class="info-card-icon">🏆</div>
+      <h4>Wolf Cup</h4>
+      <p>Based on <strong>stableford points</strong>. Your best 10 of 20 rounds count. Play well relative to your handicap and rack up points.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon">🎩</div>
+      <h4>Harvey Cup</h4>
+      <p>Based on <strong>head-to-head money results</strong> within your group each round. Beat the other guys, earn Harvey points.</p>
+    </div>
+  </div>
+
+  <ol class="steps" style="margin-top: 20px;">
+    <li>Tap the <strong>Standings</strong> tab to see the current season leaderboard for both competitions.</li>
+    <li>Your <strong>best 10 of 20</strong> rounds count for the Wolf Cup — so a bad week won't sink you.</li>
+    <li>The Harvey Cup ranks you by cumulative head-to-head performance all season.</li>
+    <li>Tap <strong>"History"</strong> at the top to see past champions and final standings from previous seasons.</li>
+  </ol>
+
+  <div class="highlight-box">
+    <h4>🏅 Two trophies, one season</h4>
+    <p>The Wolf Cup champion is the best overall player. The Harvey Cup champion is the best competitor in head-to-head matchups. You can win one, both, or neither — they're independent.</p>
+  </div>
+
+  <div class="page-footer">
+    <span class="page-footer-left">Guyan Golf & Country Club</span>
+    <span class="page-footer-right">Page 6</span>
+  </div>
+</div>
+
+<!-- ===== PAGE 7: STATS & AWARDS ===== -->
+<div class="page content-page-dark">
+  <div class="page-header">
+    <div class="page-header-left">🐺 Wolf Cup Player Guide</div>
+    <div class="page-header-right">06 — Stats & Awards</div>
+  </div>
+
+  <div class="section-icon">📈</div>
+  <div class="section-label">Your Legacy</div>
+  <div class="section-title">Stats & Awards</div>
+  <p class="section-desc">
+    The Stats page is where you see how everyone stacks up — and
+    the awards showcase celebrates the league's greatest moments.
+  </p>
+
+  <ol class="steps">
+    <li>Tap the <strong>Stats</strong> tab to see league-wide averages, money leaders, and the awards showcase.</li>
+    <li>Tap <strong>any player's name</strong> to open their drill-down — a deep look at their performance.</li>
+    <li>The drill-down shows their <strong>highlight reel</strong> (birdies, eagles, greenies, polies), <strong>partner chemistry</strong>, and <strong>batting order performance</strong>.</li>
+    <li>The <strong>awards showcase</strong> displays trophies and badges earned across all seasons — past champions, iron man streaks, and more.</li>
+  </ol>
+
+  <div class="info-cards">
+    <div class="info-card">
+      <div class="info-card-icon">🎖️</div>
+      <h4>Awards</h4>
+      <p>Champion trophies, Harvey Cup winners, OG badges for founding members, and more.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon">🔍</div>
+      <h4>Player Drill-Down</h4>
+      <p>Tap any player to see their personal stats, best/worst partners, and highlight reel.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon">🔥</div>
+      <h4>Hot Spots</h4>
+      <p>Repeated events on the same hole are flagged — like "Hole 7 ×4" for a greenie machine.</p>
+    </div>
+    <div class="info-card">
+      <div class="info-card-icon">🤝</div>
+      <h4>Partner Chemistry</h4>
+      <p>See who you win with most and who drags you down. Data-driven partner picks.</p>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    <span class="page-footer-left">Guyan Golf & Country Club</span>
+    <span class="page-footer-right">Page 7</span>
+  </div>
+</div>
+
+<!-- ===== PAGE 8: QUICK REFERENCE ===== -->
+<div class="page content-page">
+  <div class="page-header">
+    <div class="page-header-left">🐺 Wolf Cup Player Guide</div>
+    <div class="page-header-right">Quick Reference</div>
+  </div>
+
+  <div class="section-icon">⚡</div>
+  <div class="section-label">Cheat Sheet</div>
+  <div class="section-title">Quick Reference</div>
+  <p class="section-desc">
+    Everything you need at a glance. Keep this page handy for your first few rounds.
+  </p>
+
+  <div class="info-cards" style="grid-template-columns: 1fr;">
+    <div class="info-card">
+      <h4>📱 Getting to the App</h4>
+      <p>Open <strong>wolf.dagle.cloud</strong> in your phone's browser. Add it to your home screen for quick access — it works like a regular app.</p>
+    </div>
+    <div class="info-card">
+      <h4>⛳ On the Course</h4>
+      <p>Tap <strong>Score → select today's round → enter your 2-digit code</strong>. Enter gross scores for each player on each hole. Mark greenies and polies on par 3s. That's it!</p>
+    </div>
+    <div class="info-card">
+      <h4>📶 Lost Signal?</h4>
+      <p>No problem — scores queue locally and sync when you're back online. You'll see a red <strong>"Offline"</strong> indicator in the header.</p>
+    </div>
+    <div class="info-card">
+      <h4>🌙 Dark Mode</h4>
+      <p>Tap the moon/sun icon in the top-right corner to switch between light and dark mode. Great for bright days on the course.</p>
+    </div>
+    <div class="info-card">
+      <h4>❓ Need Help?</h4>
+      <p>Tap the <strong>help icon</strong> (circle with a question mark) in the header anytime to open the in-app guide.</p>
+    </div>
+    <div class="info-card">
+      <h4>✏️ Made a Mistake?</h4>
+      <p>Go back to any hole and re-enter the score while the round is active. After finalization, the admin can make corrections from the admin panel.</p>
+    </div>
+  </div>
+
+  <div style="text-align: center; margin-top: auto; padding-top: 24px; border-top: 2px solid #f3f4f6;">
+    <div style="font-size: 32px; margin-bottom: 8px;">🐺</div>
+    <div style="font-size: 22px; font-weight: 800; color: var(--dark); margin-bottom: 4px;">Wolf Cup 2026</div>
+    <div style="font-size: 15px; color: var(--grey); margin-bottom: 12px;">Guyan Golf & Country Club</div>
+    <div style="font-size: 22px; font-weight: 700; color: var(--green);">wolf.dagle.cloud</div>
+    <div style="font-size: 11px; color: #d1d5db; margin-top: 12px;">
+      ® Appalachian Sports Station TV Networks
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

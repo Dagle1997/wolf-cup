@@ -1,5 +1,6 @@
 import { createRootRoute, Outlet, Link } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
+import { CircleHelp } from 'lucide-react';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -93,6 +94,14 @@ function RootComponent() {
                 Offline
               </span>
             )}
+            <Link
+              to="/help"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="How to play"
+              aria-label="Help guide"
+            >
+              <CircleHelp className="h-[18px] w-[18px]" />
+            </Link>
             {/* AssTV logo block */}
             <div className="flex flex-col items-end select-none leading-none">
               <span className="text-sm font-black tracking-tight">

@@ -1,9 +1,24 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useState, useEffect, Fragment } from 'react';
-import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
+
+// ---------------------------------------------------------------------------
+// Types — Highlights
+// ---------------------------------------------------------------------------
+
+type Highlight = {
+  emoji: string;
+  title: string;
+  detail: string;
+  category: 'scoring' | 'money' | 'bonus' | 'wolf';
+};
+
+type HighlightsResponse = {
+  highlights: Highlight[];
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -485,6 +500,100 @@ function RankCell({ rank }: { rank: number }) {
 }
 
 // ---------------------------------------------------------------------------
+// HighlightReel — slideshow of round highlights
+// ---------------------------------------------------------------------------
+
+function HighlightReel({ roundId }: { roundId: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['highlights', roundId],
+    queryFn: () => apiFetch<HighlightsResponse>(`/rounds/${roundId}/highlights`),
+  });
+
+  const [current, setCurrent] = useState(0);
+  const items = data?.highlights ?? [];
+
+  // Auto-advance every 4 seconds
+  useEffect(() => {
+    if (items.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrent((prev) => (prev + 1) % items.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [items.length]);
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border bg-card p-4 mb-3 flex items-center justify-center">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  const item = items[current]!;
+  const catColor = {
+    scoring: 'bg-blue-500/10 border-blue-500/20',
+    money: 'bg-green-500/10 border-green-500/20',
+    bonus: 'bg-emerald-500/10 border-emerald-500/20',
+    wolf: 'bg-amber-500/10 border-amber-500/20',
+  }[item.category];
+
+  return (
+    <div className={`rounded-xl border ${catColor} p-4 mb-3 transition-all duration-300`}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+            Highlight Reel
+          </span>
+        </div>
+        {items.length > 1 && (
+          <div className="flex items-center gap-1">
+            {items.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrent(i)}
+                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                  i === current ? 'bg-foreground' : 'bg-foreground/20'
+                }`}
+                aria-label={`Highlight ${i + 1}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-start gap-3 mt-2">
+        <span className="text-2xl shrink-0 leading-none mt-0.5">{item.emoji}</span>
+        <div className="min-w-0">
+          <div className="font-bold text-sm leading-tight">{item.title}</div>
+          <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{item.detail}</div>
+        </div>
+      </div>
+      {items.length > 1 && (
+        <div className="flex justify-between mt-3">
+          <button
+            onClick={() => setCurrent((current - 1 + items.length) % items.length)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ‹ Prev
+          </button>
+          <span className="text-[10px] text-muted-foreground/60">
+            {current + 1} / {items.length}
+          </span>
+          <button
+            onClick={() => setCurrent((current + 1) % items.length)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Next ›
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // LeaderboardTable — shared between live and historical views
 // ---------------------------------------------------------------------------
 
@@ -748,6 +857,9 @@ function LeaderboardPage() {
       {/* Historical round view */}
       {isViewingHistory && currentData && currentRound && (
         <>
+          {currentRound.status === 'finalized' && (
+            <HighlightReel roundId={currentRound.id} />
+          )}
           {currentData.sideGame && (
             <div className="rounded-xl border bg-card p-3 mb-3">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
@@ -766,6 +878,9 @@ function LeaderboardPage() {
       {/* Live round view */}
       {!isViewingHistory && liveData && currentRound && (
         <>
+          {currentRound.status === 'finalized' && (
+            <HighlightReel roundId={currentRound.id} />
+          )}
           {liveData.sideGame && (
             <div className="rounded-xl border bg-card p-3 mb-3">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
