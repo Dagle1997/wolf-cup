@@ -467,3 +467,27 @@ export const scoreCorrections = sqliteTable(
     roundIdx: index('idx_score_corrections_round_id').on(t.roundId),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Gallery Photos
+// ---------------------------------------------------------------------------
+
+export const galleryPhotos = sqliteTable(
+  'gallery_photos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    roundId: integer('round_id').references(() => rounds.id),
+    playerId: integer('player_id').references(() => players.id),
+    r2Key: text('r2_key').notNull().unique(),
+    publicUrl: text('public_url').notNull(),
+    originalFilename: text('original_filename').notNull(),
+    mimeType: text('mime_type').notNull(),
+    fileSize: integer('file_size').notNull(),
+    caption: text('caption'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    roundIdx: index('idx_gallery_photos_round_id').on(t.roundId),
+    createdIdx: index('idx_gallery_photos_created').on(t.createdAt),
+  }),
+);

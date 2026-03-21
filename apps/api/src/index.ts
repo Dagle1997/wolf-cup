@@ -21,6 +21,7 @@ import adminHistoryRouter from './routes/admin/history.js';
 import attendanceRouter from './routes/attendance.js';
 import historyRouter from './routes/history.js';
 import pairingsRouter from './routes/pairings.js';
+import galleryRouter from './routes/gallery.js';
 import cron from 'node-cron';
 import { ghinClient } from './lib/ghin-client.js';
 import { roundPlayers as roundPlayersTable } from './db/schema.js';
@@ -47,6 +48,7 @@ app.route('/api', statsRouter);
 app.route('/api', attendanceRouter);
 app.route('/api', pairingsRouter);
 app.route('/api', historyRouter);
+app.route('/api', galleryRouter);
 
 // ---------------------------------------------------------------------------
 // Admin routes

@@ -1,6 +1,6 @@
 import { createRootRoute, Outlet, Link } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
-import { CircleHelp } from 'lucide-react';
+import { CircleHelp, Camera } from 'lucide-react';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -94,6 +94,14 @@ function RootComponent() {
                 Offline
               </span>
             )}
+            <Link
+              to="/gallery"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="Photo gallery"
+              aria-label="Photo gallery"
+            >
+              <Camera className="h-[18px] w-[18px]" />
+            </Link>
             <Link
               to="/help"
               className="text-muted-foreground hover:text-foreground transition-colors"
