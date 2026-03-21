@@ -16,6 +16,7 @@ type Round = {
   status: 'scheduled' | 'active' | 'finalized' | 'cancelled';
   scheduledDate: string;
   autoCalculateMoney: boolean;
+  roundNumber: number | null;
 };
 
 type RoundDetail = Round & {

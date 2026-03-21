@@ -373,7 +373,7 @@ function ViewGroupsLink({ friday }: { friday: string }) {
 
   return (
     <div className="mt-3">
-      <Link to={`/pairings/${round.id}`}>
+      <Link to="/pairings/$roundId" params={{ roundId: String(round.id) }}>
         <Button variant="outline" size="sm" className="w-full">
           <ExternalLink className="h-4 w-4 mr-2" />
           View Groups

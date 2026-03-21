@@ -594,7 +594,7 @@ function RoundRow({
       {/* Actions */}
       {editable && (
         <div className="flex items-center gap-1 px-3 py-2 flex-wrap">
-          <Link to={`/pairings/${round.id}`} target="_blank">
+          <Link to="/pairings/$roundId" params={{ roundId: String(round.id) }} target="_blank">
             <Button variant="outline" size="sm" aria-label="View pairings">
               <ExternalLink className="h-3 w-3" />
               <span className="ml-1">Pairings</span>
