@@ -1988,6 +1988,33 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     }
   }
 
+  // --- Sandbagger alert: net-to-par ≤ -4 ---
+  // Compute net-to-par per player from gross scores and handicap strokes
+  const grossByPlayer = new Map<number, { gross: number; par: number; holes: number }>();
+  for (const row of scoreRows) {
+    const ch = getCourseHole(row.holeNumber as Parameters<typeof getCourseHole>[0]);
+    const entry = grossByPlayer.get(row.playerId) ?? { gross: 0, par: 0, holes: 0 };
+    entry.gross += row.grossScore;
+    entry.par += ch.par;
+    entry.holes += 1;
+    grossByPlayer.set(row.playerId, entry);
+  }
+
+  for (const [pid, totals] of grossByPlayer) {
+    if (totals.holes < 18) continue; // only full rounds
+    const hi = hiMap.get(pid) ?? 0;
+    const courseHandicap = Math.round(hi); // simplified — CH ≈ HI for net-to-par check
+    const netToPar = totals.gross - courseHandicap - totals.par;
+    if (netToPar <= -4) {
+      highlights.push({
+        emoji: '🔥',
+        title: 'Round of the Day',
+        detail: `${nameMap.get(pid)} went ${netToPar} net — absolutely dialed in`,
+        category: 'scoring',
+      });
+    }
+  }
+
   return c.json({ highlights });
 });
 
