@@ -145,7 +145,14 @@ function HoleBadge({ gross, par, hasGreenie, hasPolie, relativeStrokes }: {
     </span>
   ) : null;
   const strokeDot = relativeStrokes ? (
-    <span className="absolute -top-[2px] -right-[2px] w-[4px] h-[4px] rounded-full bg-foreground/50" />
+    relativeStrokes >= 2 ? (
+      <span className="absolute -top-[2px] -right-[3px] flex gap-[1px]">
+        <span className="w-[4px] h-[4px] rounded-full bg-foreground/50" />
+        <span className="w-[4px] h-[4px] rounded-full bg-foreground/50" />
+      </span>
+    ) : (
+      <span className="absolute -top-[2px] -right-[2px] w-[4px] h-[4px] rounded-full bg-foreground/50" />
+    )
   ) : null;
 
   if (d <= -2) {
