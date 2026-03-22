@@ -81,6 +81,8 @@ type ScorecardHole = {
   relativeStrokes?: number;
   wolfDecision?: string | null;
   wolfRole?: 'wolf' | 'partner' | 'opponent' | null;
+  wolfPlayerName?: string | null;
+  partnerPlayerName?: string | null;
 };
 
 type ScorecardResponse = {
@@ -96,6 +98,10 @@ type ScorecardResponse = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function getInitials(name: string): string {
+  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+}
 
 function formatMoney(amount: number): string {
   if (amount > 0) return `+$${amount}`;
@@ -303,16 +309,18 @@ function ScorecardPanel({
                 const h = g(n);
                 const role = h?.wolfRole;
                 const dec = h?.wolfDecision;
+                const wolfInit = h?.wolfPlayerName ? getInitials(h.wolfPlayerName) : '';
+                const partnerInit = h?.partnerPlayerName ? getInitials(h.partnerPlayerName) : '';
                 return (
                   <td key={n} className={`${tdC} text-[9px]`}>
                     {role === 'wolf'
                       ? dec === 'alone' ? <span className="font-bold text-foreground">W</span>
                         : dec === 'blind_wolf' ? <span className="font-bold text-red-500">B</span>
-                        : dec === 'partner' ? <span className="font-bold text-green-600">2v2</span>
+                        : dec === 'partner' ? <span className="font-bold text-green-600">{partnerInit}</span>
                         : <span className="text-amber-500">🐺</span>
-                      : role === 'partner' ? <span className="font-bold text-green-600">2v2</span>
+                      : role === 'partner' ? <span className="font-bold text-green-600">{wolfInit}</span>
                       : role === 'opponent'
-                        ? dec === 'partner' ? <span className="font-bold text-red-500">vs</span>
+                        ? dec === 'partner' ? <span className="font-bold text-red-500">{partnerInit}</span>
                           : <span className="font-bold text-red-500">3v1</span>
                       : ''}
                   </td>
@@ -418,16 +426,18 @@ function ScorecardPanel({
                   const h = g(n);
                   const role = h?.wolfRole;
                   const dec = h?.wolfDecision;
+                  const wolfInit = h?.wolfPlayerName ? getInitials(h.wolfPlayerName) : '';
+                  const partnerInit = h?.partnerPlayerName ? getInitials(h.partnerPlayerName) : '';
                   return (
                     <td key={n} className={`${tdC} text-[9px]`}>
                       {role === 'wolf'
                         ? dec === 'alone' ? <span className="font-bold text-foreground">W</span>
                           : dec === 'blind_wolf' ? <span className="font-bold text-red-500">B</span>
-                          : dec === 'partner' ? <span className="font-bold text-green-600">2v2</span>
+                          : dec === 'partner' ? <span className="font-bold text-green-600">{partnerInit}</span>
                           : <span className="text-amber-500">🐺</span>
-                        : role === 'partner' ? <span className="font-bold text-green-600">2v2</span>
+                        : role === 'partner' ? <span className="font-bold text-green-600">{wolfInit}</span>
                         : role === 'opponent'
-                          ? dec === 'partner' ? <span className="font-bold text-red-500">vs</span>
+                          ? dec === 'partner' ? <span className="font-bold text-red-500">{partnerInit}</span>
                             : <span className="font-bold text-red-500">3v1</span>
                         : ''}
                     </td>
