@@ -87,13 +87,14 @@ async function buildLeaderboard(round: RoundRow) {
     autoCalculateMoney: Boolean(round.autoCalculateMoney),
   };
 
-  // Season — harveyLiveEnabled flag
+  // Season — harveyLiveEnabled flag (always enabled for casual/practice rounds)
+  const isCasual = round.type === 'casual';
   const season = await db
     .select({ harveyLiveEnabled: seasons.harveyLiveEnabled })
     .from(seasons)
     .where(eq(seasons.id, round.seasonId))
     .get();
-  const harveyLiveEnabled = Boolean(season?.harveyLiveEnabled);
+  const harveyLiveEnabled = isCasual || Boolean(season?.harveyLiveEnabled);
 
   // All round_players with group info and handicap
   const playerRows = await db
