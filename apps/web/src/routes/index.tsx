@@ -175,9 +175,9 @@ function HoleBadge({ gross, par, hasGreenie, hasPolie, relativeStrokes }: {
   if (d >= 2) {
     // Double bogey+: blue text with diagonal hash background
     return (
-      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] text-blue-600 text-[9px] font-bold leading-none"
-        style={{ background: 'repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 3px, transparent 3px, transparent 5px)' }}>
-        {gross}{bonusDots}{strokeDot}
+      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] text-blue-600 text-[9px] font-bold leading-none">
+        <span className="absolute inset-0 opacity-20" style={{ background: 'repeating-linear-gradient(135deg, transparent, transparent 2px, oklch(var(--foreground)) 2px, oklch(var(--foreground)) 3px, transparent 3px, transparent 5px)' }} />
+        <span className="relative">{gross}</span>{bonusDots}{strokeDot}
       </span>
     );
   }
