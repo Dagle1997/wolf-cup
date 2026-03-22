@@ -4,6 +4,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
+import { getSession } from '@/lib/session-store';
 
 // ---------------------------------------------------------------------------
 // Types — Highlights
@@ -727,10 +728,16 @@ function LeaderboardPage() {
   const [viewingRoundId, setViewingRoundId] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
+  // If the user has an active session, show their round instead of the generic "live" round
+  const session = getSession();
+  const sessionRoundId = session?.roundId ?? null;
+
   // Live leaderboard
   const { data: liveData, isLoading: liveLoading, isError: liveError, isFetching: liveFetching, refetch: liveRefetch } = useQuery({
-    queryKey: ['leaderboard'],
-    queryFn: () => apiFetch<LeaderboardResponse>('/leaderboard/live'),
+    queryKey: ['leaderboard', sessionRoundId ? `session-${sessionRoundId}` : 'live'],
+    queryFn: () => sessionRoundId
+      ? apiFetch<LeaderboardResponse>(`/leaderboard/${sessionRoundId}`)
+      : apiFetch<LeaderboardResponse>('/leaderboard/live'),
     refetchInterval: viewingRoundId ? false : 5000, // stop polling when viewing history
   });
 
