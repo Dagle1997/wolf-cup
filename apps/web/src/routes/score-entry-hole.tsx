@@ -361,6 +361,18 @@ function ScoreEntryHolePage() {
     },
   });
 
+  const completeMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ success: boolean }>(
+        `/rounds/${session!.roundId}/complete`,
+        { method: 'POST' },
+      ),
+    onSuccess: () => {
+      clearSession();
+      void router.navigate({ to: '/' });
+    },
+  });
+
   const quitMutation = useMutation({
     mutationFn: () =>
       apiFetch<{ success: boolean }>(
@@ -604,17 +616,43 @@ function ScoreEntryHolePage() {
           </table>
         </div>
         <div className="flex flex-col gap-2">
-          {roundData?.status !== 'finalized' && (
+          {roundData?.status !== 'finalized' && roundData?.status !== 'completed' && (
             <Button variant="outline" className="w-full min-h-11" onClick={() => setCurrentHole(18)}>
               <ChevronLeft className="w-4 h-4 mr-1" />
               Back to Hole 18
             </Button>
           )}
           <Link to="/">
-            <Button variant={roundData?.type === 'casual' ? 'default' : 'outline'} className="w-full min-h-12">
-              {roundData?.type === 'casual' ? 'Done — Back to Leaderboard' : 'View Leaderboard'}
+            <Button variant="outline" className="w-full min-h-12">
+              View Full Leaderboard
             </Button>
           </Link>
+          {roundData?.type === 'casual' && roundData?.status === 'active' && (
+            <Button
+              className="w-full min-h-12"
+              disabled={completeMutation.isPending}
+              onClick={() => completeMutation.mutate()}
+            >
+              {completeMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Ending Round…</>
+              ) : (
+                'End Round'
+              )}
+            </Button>
+          )}
+          {completeMutation.isError && (
+            <div className="flex items-center gap-2 text-destructive text-xs">
+              <AlertCircle className="w-3 h-3 shrink-0" />
+              Could not end round — please try again.
+            </div>
+          )}
+          {roundData?.type !== 'casual' && (
+            <Link to="/">
+              <Button variant="outline" className="w-full min-h-12">
+                View Leaderboard
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     );

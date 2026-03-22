@@ -339,7 +339,7 @@ app.get('/leaderboard/history', async (c) => {
         scheduledDate: rounds.scheduledDate,
       })
       .from(rounds)
-      .where(inArray(rounds.status, ['finalized', 'active']))
+      .where(inArray(rounds.status, ['finalized', 'active', 'completed']))
       .orderBy(desc(rounds.scheduledDate), desc(rounds.id));
 
     // Get player counts per round

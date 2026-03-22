@@ -290,6 +290,48 @@ app.post('/rounds/:id/cancel', async (c) => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /rounds/:id/complete — non-destructively end a casual round
+// Preserves all scores/wolf data. Removes from live leaderboard.
+// ---------------------------------------------------------------------------
+
+app.post('/rounds/:id/complete', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) {
+    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let round: { id: number; type: string; status: string } | undefined;
+  try {
+    round = await db
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status })
+      .from(rounds)
+      .where(eq(rounds.id, id))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  if (round.type !== 'casual') {
+    return c.json({ error: 'Only casual rounds can be completed this way', code: 'CASUAL_ONLY' }, 422);
+  }
+  if (round.status === 'completed') {
+    return c.json({ success: true }, 200); // idempotent
+  }
+  if (round.status !== 'active') {
+    return c.json({ error: 'Round is not active', code: 'ROUND_NOT_ACTIVE' }, 422);
+  }
+
+  try {
+    await db.update(rounds).set({ status: 'completed' }).where(eq(rounds.id, id));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ success: true }, 200);
+});
+
+// ---------------------------------------------------------------------------
 // POST /rounds/:id/groups/:groupId/quit — remove one group from a casual round
 // If this is the last group, the round is cancelled. Otherwise only this
 // group's data is deleted and the round stays active for other groups.
