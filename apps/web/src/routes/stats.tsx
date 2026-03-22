@@ -744,44 +744,43 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
               .filter((h) => h.count >= 2)
               .sort((a, b) => b.count - a.count);
 
+            // Compute totals and most-frequent hole per event type
+            const typeCounts = new Map<string, { total: number; holeFreq: Map<number, number> }>();
+            for (const ev of allEvents) {
+              const entry = typeCounts.get(ev.type) ?? { total: 0, holeFreq: new Map() };
+              entry.total++;
+              entry.holeFreq.set(ev.hole, (entry.holeFreq.get(ev.hole) ?? 0) + 1);
+              typeCounts.set(ev.type, entry);
+            }
+            const summaryTypes = ['eagle', 'birdie', 'greenie', 'polie'] as const;
+            const icons: Record<string, string> = { eagle: '🦅', birdie: '🐦', greenie: '🟢', polie: '🎯' };
+
             return (
               <div className="px-4 py-3 border-b">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Highlight Reel</p>
-
-                {/* Hot Spots — pattern detection */}
-                {hotSpots.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {hotSpots.map((hs) => {
-                      const icon = hs.type === 'eagle' ? '🦅' : hs.type === 'birdie' ? '🐦' : hs.type === 'greenie' ? '🟢' : '🎯';
-                      return (
-                        <span key={`${hs.type}-${hs.hole}`} className="inline-flex items-center gap-1 bg-muted/40 rounded-full px-2.5 py-1 text-[11px]">
-                          <span>{icon}</span>
-                          <span className="font-semibold">Hole {hs.hole}</span>
-                          <span className="text-muted-foreground">×{hs.count}</span>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
                 <div className="space-y-1">
-                  {allEvents
-                    .sort((a, b) => b.date.localeCompare(a.date) || b.hole - a.hole)
-                    .map((ev, i) => {
-                      const icon = ev.type === 'eagle' ? '🦅' : ev.type === 'birdie' ? '🐦' : ev.type === 'greenie' ? '🟢' : '🎯';
-                      const label = ev.type.charAt(0).toUpperCase() + ev.type.slice(1);
-                      const dateStr = new Date(ev.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                      return (
-                        <div key={`${ev.type}-${ev.roundId}-${ev.hole}-${i}`} className="flex items-center justify-between text-xs py-0.5">
-                          <span>
-                            <span className="mr-1">{icon}</span>
-                            <span className="font-medium">{label}</span>
-                            <span className="text-muted-foreground"> — Hole {ev.hole} (par {ev.par})</span>
-                          </span>
-                          <span className="text-muted-foreground/60 tabular-nums">{dateStr}</span>
-                        </div>
-                      );
-                    })}
+                  {summaryTypes.map((t) => {
+                    const entry = typeCounts.get(t);
+                    if (!entry || entry.total === 0) return null;
+                    // Find hole with most occurrences
+                    let topHole = 0;
+                    let topCount = 0;
+                    for (const [hole, count] of entry.holeFreq) {
+                      if (count > topCount) { topHole = hole; topCount = count; }
+                    }
+                    const label = t.charAt(0).toUpperCase() + t.slice(1) + (entry.total !== 1 ? 's' : '');
+                    return (
+                      <div key={t} className="flex items-center justify-between text-xs py-0.5">
+                        <span>
+                          <span className="mr-1">{icons[t]}</span>
+                          <span className="font-medium">{entry.total} {label}</span>
+                        </span>
+                        {topCount >= 2 && (
+                          <span className="text-muted-foreground">Most on hole {topHole}</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
