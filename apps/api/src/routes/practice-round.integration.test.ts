@@ -217,7 +217,7 @@ describe('1-group practice round — full 18-hole flow', () => {
   let roundTotals: RoundTotal[];
 
   beforeAll(async () => {
-    const res = await postJSON('/api/rounds/practice', { groupCount: 1 });
+    const res = await postJSON('/api/rounds/practice', { groupCount: 1, tee: 'blue' });
     expect(res.status).toBe(201);
     const data = (await res.json()) as { roundId: number; groups: Array<{ id: number }> };
     roundId = data.roundId;
@@ -266,7 +266,7 @@ describe('2-group practice round — independent group scoring', () => {
   let players2: number[];
 
   beforeAll(async () => {
-    const res = await postJSON('/api/rounds/practice', { groupCount: 2 });
+    const res = await postJSON('/api/rounds/practice', { groupCount: 2, tee: 'blue' });
     expect(res.status).toBe(201);
     const data = (await res.json()) as { roundId: number; groups: Array<{ id: number }> };
     roundId = data.roundId;
@@ -321,7 +321,7 @@ describe('4-group practice round — all groups independent', () => {
   let allPlayerIds: number[][];
 
   beforeAll(async () => {
-    const res = await postJSON('/api/rounds/practice', { groupCount: 4 });
+    const res = await postJSON('/api/rounds/practice', { groupCount: 4, tee: 'blue' });
     expect(res.status).toBe(201);
     const data = (await res.json()) as { roundId: number; groups: Array<{ id: number }> };
     roundId = data.roundId;
@@ -399,7 +399,7 @@ describe('blind wolf win & no-blood scenarios', () => {
   const HOLE3_GROSS = [3, 5, 5, 6]; // Alice net 3, others 4/4/5 — wolf wins
 
   beforeAll(async () => {
-    const res = await postJSON('/api/rounds/practice', { groupCount: 1 });
+    const res = await postJSON('/api/rounds/practice', { groupCount: 1, tee: 'blue' });
     expect(res.status).toBe(201);
     const data = (await res.json()) as { roundId: number; groups: Array<{ id: number }> };
     roundId = data.roundId;
@@ -490,7 +490,7 @@ describe('round quit — group and round lifecycle', () => {
   let group2Id: number;
 
   beforeAll(async () => {
-    const res = await postJSON('/api/rounds/practice', { groupCount: 2 });
+    const res = await postJSON('/api/rounds/practice', { groupCount: 2, tee: 'blue' });
     expect(res.status).toBe(201);
     const data = (await res.json()) as { roundId: number; groups: Array<{ id: number }> };
     roundId = data.roundId;

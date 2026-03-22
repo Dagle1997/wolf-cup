@@ -15,6 +15,12 @@ type PracticeResponse = {
   groups: Group[];
 };
 
+const TEE_OPTIONS = [
+  { tee: 'black' as const, label: 'Black', sub: '6,523 yds — 71.3 / 126' },
+  { tee: 'blue' as const, label: 'Blue', sub: '6,209 yds — 69.7 / 121' },
+  { tee: 'white' as const, label: 'White', sub: '5,795 yds — 67.4 / 118' },
+];
+
 const GROUP_OPTIONS = [
   { count: 1, label: '1 group', sub: '4 players' },
   { count: 2, label: '2 groups', sub: '8 players' },
@@ -24,7 +30,8 @@ const GROUP_OPTIONS = [
 
 function PracticeSetupPage() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<'count' | 'group-select'>('count');
+  const [step, setStep] = useState<'tee' | 'count' | 'group-select'>('tee');
+  const [selectedTee, setSelectedTee] = useState<'black' | 'blue' | 'white'>('blue');
   const [practiceData, setPracticeData] = useState<PracticeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,7 +42,7 @@ function PracticeSetupPage() {
     try {
       const result = await apiFetch<PracticeResponse>('/rounds/practice', {
         method: 'POST',
-        body: JSON.stringify({ groupCount }),
+        body: JSON.stringify({ groupCount, tee: selectedTee }),
       });
       if (result.groups.length === 1) {
         // Single group — go straight to ball-draw
@@ -59,7 +66,33 @@ function PracticeSetupPage() {
     await navigate({ to: '/ball-draw' });
   }
 
-  // Step 1: How many groups?
+  // Step 1: Which tees?
+  if (step === 'tee') {
+    return (
+      <div className="p-4 max-w-sm mx-auto flex flex-col gap-6 pt-8">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Practice Round</h1>
+          <p className="text-muted-foreground text-sm">Which tees are you playing?</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          {TEE_OPTIONS.map(({ tee, label, sub }) => (
+            <button
+              key={tee}
+              onClick={() => { setSelectedTee(tee); setStep('count'); }}
+              className="border rounded-xl p-4 text-left flex items-center justify-between hover:bg-muted transition-colors"
+            >
+              <div>
+                <p className="font-semibold">{label}</p>
+                <p className="text-sm text-muted-foreground">{sub}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Step 2: How many groups?
   if (step === 'count') {
     return (
       <div className="p-4 max-w-sm mx-auto flex flex-col gap-6 pt-8">

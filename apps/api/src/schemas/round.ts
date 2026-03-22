@@ -72,6 +72,7 @@ export type AddGuestBody = z.infer<typeof addGuestSchema>;
 
 export const createPracticeRoundSchema = z.object({
   groupCount: z.number().int().min(1).max(4),
+  tee: z.enum(['black', 'blue', 'white']),
 });
 export type CreatePracticeRoundBody = z.infer<typeof createPracticeRoundSchema>;
 

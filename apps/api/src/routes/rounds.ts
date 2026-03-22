@@ -572,7 +572,7 @@ app.post('/rounds/practice', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
   }
-  const { groupCount } = parsed.data;
+  const { groupCount, tee } = parsed.data;
 
   const today = new Date().toISOString().slice(0, 10);
   const now = Date.now();
@@ -613,7 +613,7 @@ app.post('/rounds/practice', async (c) => {
     const result = await db.transaction(async (tx) => {
       const [newRound] = await tx
         .insert(rounds)
-        .values({ seasonId, type: 'casual', status: 'active', scheduledDate: today, autoCalculateMoney: 1, createdAt: now })
+        .values({ seasonId, type: 'casual', status: 'active', scheduledDate: today, tee, autoCalculateMoney: 1, createdAt: now })
         .returning({ id: rounds.id });
       if (!newRound) throw new Error('Round insert failed');
 
