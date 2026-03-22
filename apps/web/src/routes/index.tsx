@@ -877,7 +877,7 @@ function LeaderboardPage() {
       {/* Historical round view */}
       {isViewingHistory && currentData && currentRound && (
         <>
-          {currentRound.status === 'finalized' && (
+          {(currentRound.status === 'finalized' || currentRound.status === 'completed') && (
             <HighlightReel roundId={currentRound.id} />
           )}
           {currentData.sideGame && (
@@ -898,7 +898,7 @@ function LeaderboardPage() {
       {/* Live round view */}
       {!isViewingHistory && liveData && currentRound && (
         <>
-          {currentRound.status === 'finalized' && (
+          {(currentRound.status === 'finalized' || currentRound.status === 'completed') && (
             <HighlightReel roundId={currentRound.id} />
           )}
           {liveData.sideGame && (

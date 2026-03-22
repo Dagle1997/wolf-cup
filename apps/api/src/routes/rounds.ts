@@ -1829,7 +1829,7 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     .from(rounds)
     .where(eq(rounds.id, roundId));
   if (!round) return c.json({ error: 'ROUND_NOT_FOUND' }, 404);
-  if (round.status !== 'finalized') return c.json({ highlights: [] });
+  if (round.status !== 'finalized' && round.status !== 'completed') return c.json({ highlights: [] });
 
   // Fetch all data in parallel
   const [playerRows, scoreRows, resultRows, decisionRows] = await Promise.all([
