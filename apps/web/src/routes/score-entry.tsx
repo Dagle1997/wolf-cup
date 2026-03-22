@@ -256,6 +256,14 @@ function ScoreEntryPage() {
             }}
           />
         ))}
+
+      {!isLoading && !isError && (
+        <Link to="/practice" className="w-full">
+          <Button variant="outline" className="min-h-12 w-full mt-2">
+            New Practice Round
+          </Button>
+        </Link>
+      )}
     </div>
   );
 }
