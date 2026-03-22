@@ -149,23 +149,23 @@ function HoleBadge({ gross, par, hasGreenie, hasPolie, relativeStrokes }: {
   ) : null;
 
   if (d <= -2) {
-    // Eagle or better: filled blue circle
+    // Eagle or better: filled red circle
     return (
-      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-blue-600 text-white text-[9px] font-black leading-none">
+      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-red-600 text-white text-[9px] font-black leading-none">
         {gross}{bonusDots}{strokeDot}
       </span>
     );
   }
   if (d === -1) {
-    // Birdie: blue circle outline
+    // Birdie: red circle outline
     return (
-      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.5px] border-blue-600 text-blue-600 text-[9px] font-bold leading-none">
+      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.5px] border-red-600 text-red-600 text-[9px] font-bold leading-none">
         {gross}{bonusDots}{strokeDot}
       </span>
     );
   }
   if (d === 1) {
-    // Bogey: amber square outline
+    // Bogey: orange square outline
     return (
       <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] border-[1.5px] border-amber-500 text-amber-600 text-[9px] font-medium leading-none">
         {gross}{bonusDots}{strokeDot}
@@ -173,9 +173,10 @@ function HoleBadge({ gross, par, hasGreenie, hasPolie, relativeStrokes }: {
     );
   }
   if (d >= 2) {
-    // Double bogey+: red text
+    // Double bogey+: blue text with diagonal hash background
     return (
-      <span className="relative inline-block text-[10px] font-medium text-destructive">
+      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] text-blue-600 text-[9px] font-bold leading-none"
+        style={{ background: 'repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 3px, transparent 3px, transparent 5px)' }}>
         {gross}{bonusDots}{strokeDot}
       </span>
     );
