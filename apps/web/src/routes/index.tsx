@@ -174,10 +174,11 @@ function HoleBadge({ gross, par, hasGreenie, hasPolie, relativeStrokes }: {
   }
   if (d >= 2) {
     // Double bogey+: blue text with diagonal hash background
+    const hashSvg = `url("data:image/svg+xml,%3Csvg width='6' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cline x1='0' y1='6' x2='6' y2='0' stroke='%23888' stroke-width='1'/%3E%3C/svg%3E")`;
     return (
-      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] text-blue-600 text-[9px] font-bold leading-none">
-        <span className="absolute inset-0 opacity-20" style={{ background: 'repeating-linear-gradient(135deg, transparent, transparent 2px, oklch(var(--foreground)) 2px, oklch(var(--foreground)) 3px, transparent 3px, transparent 5px)' }} />
-        <span className="relative">{gross}</span>{bonusDots}{strokeDot}
+      <span className="relative inline-flex items-center justify-center w-[18px] h-[18px] text-blue-600 text-[9px] font-bold leading-none"
+        style={{ backgroundImage: hashSvg, backgroundSize: '6px 6px' }}>
+        {gross}{bonusDots}{strokeDot}
       </span>
     );
   }
