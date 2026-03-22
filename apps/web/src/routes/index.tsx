@@ -329,7 +329,7 @@ function ScorecardPanel({
                         : <span className="text-amber-500">🐺</span>
                       : role === 'partner' ? <span className="font-bold text-green-600">{wolfInit}</span>
                       : role === 'opponent'
-                        ? dec === 'partner' ? <span className="font-bold text-red-500">{partnerInit}</span>
+                        ? dec === 'partner' ? <span className="font-bold text-red-500">{wolfInit}</span>
                           : <span className="font-bold text-red-500">3v1</span>
                       : ''}
                   </td>
@@ -446,7 +446,7 @@ function ScorecardPanel({
                           : <span className="text-amber-500">🐺</span>
                         : role === 'partner' ? <span className="font-bold text-green-600">{wolfInit}</span>
                         : role === 'opponent'
-                          ? dec === 'partner' ? <span className="font-bold text-red-500">{partnerInit}</span>
+                          ? dec === 'partner' ? <span className="font-bold text-red-500">{wolfInit}</span>
                             : <span className="font-bold text-red-500">3v1</span>
                         : ''}
                     </td>
