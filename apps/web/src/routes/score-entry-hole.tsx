@@ -35,6 +35,7 @@ type RoundDetail = {
   type: 'official' | 'casual';
   status: string;
   autoCalculateMoney: boolean;
+  allHole18Scored: boolean;
   groups: Group[];
 };
 
@@ -627,7 +628,7 @@ function ScoreEntryHolePage() {
               View Full Leaderboard
             </Button>
           </Link>
-          {roundData?.type === 'casual' && roundData?.status === 'active' && (
+          {roundData?.type === 'casual' && roundData?.status === 'active' && roundData?.allHole18Scored && (
             <Button
               className="w-full min-h-12"
               disabled={completeMutation.isPending}
@@ -639,6 +640,11 @@ function ScoreEntryHolePage() {
                 'End Round'
               )}
             </Button>
+          )}
+          {roundData?.type === 'casual' && roundData?.status === 'active' && !roundData?.allHole18Scored && (
+            <p className="text-xs text-muted-foreground text-center">
+              End Round available once all players finish hole 18.
+            </p>
           )}
           {completeMutation.isError && (
             <div className="flex items-center gap-2 text-destructive text-xs">

@@ -237,6 +237,18 @@ async function getRoundDetail(roundId: number) {
       .map((rp) => ({ id: rp.playerId, name: rp.name, handicapIndex: rp.handicapIndex })),
   }));
 
+  // Check if every player has a score for hole 18
+  const allPlayerIds = roundPlayerRows.map((rp) => rp.playerId);
+  let allHole18Scored = false;
+  if (allPlayerIds.length > 0) {
+    const hole18Scores = await db
+      .select({ playerId: holeScores.playerId })
+      .from(holeScores)
+      .where(and(eq(holeScores.roundId, roundId), eq(holeScores.holeNumber, 18)));
+    const hole18PlayerIds = new Set(hole18Scores.map((r) => r.playerId));
+    allHole18Scored = allPlayerIds.every((id) => hole18PlayerIds.has(id));
+  }
+
   return {
     id: round.id,
     roundNumber,
@@ -244,6 +256,7 @@ async function getRoundDetail(roundId: number) {
     status: round.status,
     scheduledDate: round.scheduledDate,
     autoCalculateMoney: Boolean(round.autoCalculateMoney),
+    allHole18Scored,
     groups: groupsWithPlayers,
   };
 }
