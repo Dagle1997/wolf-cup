@@ -1582,6 +1582,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       .select({
         holeNumber: wolfDecisions.holeNumber,
         decision: wolfDecisions.decision,
+        wolfPlayerId: wolfDecisions.wolfPlayerId,
         partnerPlayerId: wolfDecisions.partnerPlayerId,
         bonusesJson: wolfDecisions.bonusesJson,
       })
@@ -1626,6 +1627,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     hasPolie: boolean;
     relativeStrokes: number;
     wolfDecision: string | null;
+    wolfRole: 'wolf' | 'partner' | 'opponent' | null;
   }[] = [];
 
   for (let holeNum = 1; holeNum <= 18; holeNum++) {
@@ -1638,7 +1640,13 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     // Unplayed hole — still include par + stroke dots
     if (grossScore === null) {
       const dec = decisionByHole.get(holeNum);
-      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: dec?.decision ?? null });
+      let earlyWolfRole: 'wolf' | 'partner' | 'opponent' | null = null;
+      if (dec?.decision) {
+        if (dec.wolfPlayerId === playerId) earlyWolfRole = 'wolf';
+        else if (dec.decision === 'partner' && dec.partnerPlayerId === playerId) earlyWolfRole = 'partner';
+        else earlyWolfRole = 'opponent';
+      }
+      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: dec?.decision ?? null, wolfRole: earlyWolfRole });
       continue;
     }
 
@@ -1674,7 +1682,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       if (holeNum > 2) {
         if (!decisionRecord?.decision) {
           // Wolf hole with no decision recorded yet — push hole with $0 and move on
-          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: null });
+          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: null, wolfRole: null });
           continue;
         }
         wolfDecision = buildWolfDecision(
@@ -1701,7 +1709,18 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     const hasPolie = bonuses?.polies?.includes(playerId) ?? false;
 
     const decForHole = decisionByHole.get(holeNum);
-    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes, wolfDecision: decForHole?.decision ?? null });
+    // Determine this player's role on the hole
+    let wolfRole: 'wolf' | 'partner' | 'opponent' | null = null;
+    if (decForHole?.decision) {
+      if (decForHole.wolfPlayerId === playerId) {
+        wolfRole = 'wolf';
+      } else if (decForHole.decision === 'partner' && decForHole.partnerPlayerId === playerId) {
+        wolfRole = 'partner';
+      } else {
+        wolfRole = 'opponent';
+      }
+    }
+    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes, wolfDecision: decForHole?.decision ?? null, wolfRole });
   }
 
   // Compute which holes are this player's wolf holes

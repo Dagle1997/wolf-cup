@@ -80,6 +80,7 @@ type ScorecardHole = {
   hasPolie?: boolean;
   relativeStrokes?: number;
   wolfDecision?: string | null;
+  wolfRole?: 'wolf' | 'partner' | 'opponent' | null;
 };
 
 type ScorecardResponse = {
@@ -220,6 +221,7 @@ function ScorecardPanel({
   const holeMap = new Map(data.holes.map((h) => [h.holeNumber, h]));
   const g = (n: number) => holeMap.get(n) ?? null;
   const wolfSet = new Set(data.wolfHoles);
+  const hasAnyWolfDecision = data.holes.some((h) => h.wolfRole);
 
   const FRONT = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
   const BACK = [10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
@@ -293,21 +295,23 @@ function ScorecardPanel({
             })}
             <td className={tdTot}>{front9played.length > 0 ? fGross : '—'}</td>
           </tr>
-          {/* Wolf decision row — only show if any wolf hole has a decision */}
-          {data.wolfHoles.length > 0 && (
+          {/* Wolf decision row — show if any wolf decisions exist in group */}
+          {hasAnyWolfDecision && (
             <tr className="border-t border-border/30 bg-muted/30">
               <td className={tdL}>Wolf</td>
               {FRONT.map((n) => {
                 const h = g(n);
-                const isMyWolf = wolfSet.has(n);
+                const role = h?.wolfRole;
                 const dec = h?.wolfDecision;
                 return (
                   <td key={n} className={`${tdC} text-[9px]`}>
-                    {isMyWolf
+                    {role === 'wolf'
                       ? dec === 'alone' ? <span className="font-bold text-foreground">W</span>
                         : dec === 'blind_wolf' ? <span className="font-bold text-red-500">B</span>
                         : dec === 'partner' ? <span className="font-bold text-green-600">2v2</span>
                         : <span className="text-amber-500">🐺</span>
+                      : role === 'partner' ? <span className="font-bold text-green-600">2v2</span>
+                      : role === 'opponent' ? <span className="font-bold text-red-500">vs</span>
                       : ''}
                   </td>
                 );
@@ -405,20 +409,22 @@ function ScorecardPanel({
               <td className={tdTot}>{fGross + bGross}</td>
             </tr>
             {/* Wolf decision row — back 9 */}
-            {data.wolfHoles.length > 0 && (
+            {hasAnyWolfDecision && (
               <tr className="border-t border-border/30 bg-muted/30">
                 <td className={tdL}>Wolf</td>
                 {BACK.map((n) => {
                   const h = g(n);
-                  const isMyWolf = wolfSet.has(n);
+                  const role = h?.wolfRole;
                   const dec = h?.wolfDecision;
                   return (
                     <td key={n} className={`${tdC} text-[9px]`}>
-                      {isMyWolf
+                      {role === 'wolf'
                         ? dec === 'alone' ? <span className="font-bold text-foreground">W</span>
                           : dec === 'blind_wolf' ? <span className="font-bold text-red-500">B</span>
                           : dec === 'partner' ? <span className="font-bold text-green-600">2v2</span>
                           : <span className="text-amber-500">🐺</span>
+                        : role === 'partner' ? <span className="font-bold text-green-600">2v2</span>
+                        : role === 'opponent' ? <span className="font-bold text-red-500">vs</span>
                         : ''}
                     </td>
                   );
