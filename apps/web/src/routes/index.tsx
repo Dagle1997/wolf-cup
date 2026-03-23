@@ -320,7 +320,6 @@ function ScorecardPanel({
                 const role = h?.wolfRole;
                 const dec = h?.wolfDecision;
                 const tmInit = h?.teammateName ? getInitials(h.teammateName) : '';
-                const isWolfTeam = role === 'wolf' || role === 'partner';
                 return (
                   <td key={n} className={`${tdC} text-[9px]`}>
                     {role === 'wolf'

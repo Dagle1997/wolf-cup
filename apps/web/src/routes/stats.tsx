@@ -740,10 +740,6 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
               entry.count++;
               freqMap.set(key, entry);
             }
-            const hotSpots = [...freqMap.values()]
-              .filter((h) => h.count >= 2)
-              .sort((a, b) => b.count - a.count);
-
             // Compute totals and most-frequent hole per event type
             const typeCounts = new Map<string, { total: number; holeFreq: Map<number, number> }>();
             for (const ev of allEvents) {
