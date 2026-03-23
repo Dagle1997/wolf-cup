@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/index.js';
 import { admins, sessions } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
-import { loginSchema } from '../../schemas/admin.js';
+import { loginSchema, changePasswordSchema } from '../../schemas/admin.js';
 import type { Variables } from '../../types.js';
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -105,6 +105,67 @@ app.post('/login', async (c) => {
 app.get('/auth/check', adminAuthMiddleware, (c) => {
   return c.json({ authenticated: true }, 200);
 });
+
+// ---------------------------------------------------------------------------
+// POST /auth/change-password — change admin password (requires current password)
+// ---------------------------------------------------------------------------
+
+app.post('/auth/change-password', adminAuthMiddleware, async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
+  }
+
+  const parsed = changePasswordSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
+  }
+
+  const { currentPassword, newPassword } = parsed.data;
+  const adminId = c.get('adminId');
+
+  // Get current password hash
+  let admin: { id: number; passwordHash: string } | undefined;
+  try {
+    admin = await db
+      .select({ id: admins.id, passwordHash: admins.passwordHash })
+      .from(admins)
+      .where(eq(admins.id, adminId))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!admin) {
+    return c.json({ error: 'Admin not found', code: 'NOT_FOUND' }, 404);
+  }
+
+  // Verify current password
+  let match = false;
+  try {
+    match = await bcrypt.compare(currentPassword, admin.passwordHash);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!match) {
+    return c.json({ error: 'Current password is incorrect', code: 'INVALID_CREDENTIALS' }, 401);
+  }
+
+  // Hash and save new password
+  try {
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await db.update(admins).set({ passwordHash: newHash }).where(eq(admins.id, adminId));
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  return c.json({ success: true }, 200);
+});
+
+// ---------------------------------------------------------------------------
+// POST /logout
+// ---------------------------------------------------------------------------
 
 app.post('/logout', adminAuthMiddleware, async (c) => {
   const sessionId = getCookie(c, 'session');
