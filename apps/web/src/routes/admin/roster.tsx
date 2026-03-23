@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
-import { AlertCircle, Loader2, Pencil, Plus, RefreshCw, Search, Trash2, UserCheck, UserX } from 'lucide-react';
+import { AlertCircle, Loader2, Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { queryClient } from '@/lib/query-client';
@@ -10,6 +10,8 @@ import { queryClient } from '@/lib/query-client';
 // Types
 // ---------------------------------------------------------------------------
 
+type PlayerStatus = 'active' | 'sub' | 'inactive';
+
 type Player = {
   id: number;
   name: string;
@@ -17,6 +19,7 @@ type Player = {
   handicapIndex: number | null;
   isActive: number;
   isGuest: number;
+  status: PlayerStatus;
   createdAt: number;
 };
 
@@ -220,21 +223,27 @@ function AddPlayerForm() {
 // Player Table
 // ---------------------------------------------------------------------------
 
+const STATUS_CYCLE: Record<PlayerStatus, PlayerStatus> = {
+  active: 'sub',
+  sub: 'inactive',
+  inactive: 'active',
+};
+
 function PlayerTable({ players }: { players: Player[] }) {
   const navigate = useNavigate();
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [cyclingId, setCyclingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, isActive }: { id: number; isActive: 0 | 1 }) =>
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: PlayerStatus }) =>
       apiFetch<{ player: Player }>(`/admin/players/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ isActive }),
+        body: JSON.stringify({ status }),
       }),
-    onMutate: ({ id }) => setTogglingId(id),
-    onSettled: () => setTogglingId(null),
+    onMutate: ({ id }) => setCyclingId(id),
+    onSettled: () => setCyclingId(null),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-roster'] }),
     onError: (err: Error) => {
       if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
@@ -294,10 +303,13 @@ function PlayerTable({ players }: { players: Player[] }) {
               <PlayerRow
                 key={p.id}
                 player={p}
-                isToggling={togglingId === p.id}
+                isCycling={cyclingId === p.id}
                 isDeleting={deletingId === p.id}
                 onEdit={() => setEditingId(p.id)}
-                onToggle={(isActive) => toggleMutation.mutate({ id: p.id, isActive })}
+                onCycleStatus={() => {
+                  const current = p.status ?? (p.isActive === 0 ? 'inactive' : 'active');
+                  statusMutation.mutate({ id: p.id, status: STATUS_CYCLE[current] });
+                }}
                 onDelete={() => {
                   if (!window.confirm(`Delete ${p.name}? This cannot be undone.`)) return;
                   setDeleteError(null);
@@ -316,22 +328,39 @@ function PlayerTable({ players }: { players: Player[] }) {
 // Player Row
 // ---------------------------------------------------------------------------
 
+const STATUS_BADGE: Record<PlayerStatus, { label: string; className: string }> = {
+  active: {
+    label: 'Active',
+    className: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+  },
+  sub: {
+    label: 'Sub',
+    className: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400',
+  },
+  inactive: {
+    label: 'Inactive',
+    className: 'bg-muted text-muted-foreground',
+  },
+};
+
 function PlayerRow({
   player,
-  isToggling,
+  isCycling,
   isDeleting,
   onEdit,
-  onToggle,
+  onCycleStatus,
   onDelete,
 }: {
   player: Player;
-  isToggling: boolean;
+  isCycling: boolean;
   isDeleting: boolean;
   onEdit: () => void;
-  onToggle: (isActive: 0 | 1) => void;
+  onCycleStatus: () => void;
   onDelete: () => void;
 }) {
-  const inactive = player.isActive === 0;
+  const status: PlayerStatus = player.status ?? (player.isActive === 0 ? 'inactive' : 'active');
+  const inactive = status === 'inactive';
+  const badge = STATUS_BADGE[status];
   const [fetchState, setFetchState] = useState<'idle' | 'loading' | 'error'>('idle');
 
   async function handleFetchHI() {
@@ -394,43 +423,35 @@ function PlayerRow({
         </div>
       </td>
       <td className="py-2 px-3">
-        {inactive ? (
-          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            Inactive
-          </span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-medium text-green-700 dark:text-green-400">
-            Active
-          </span>
-        )}
+        <button
+          type="button"
+          onClick={onCycleStatus}
+          disabled={isCycling || isDeleting}
+          title={`Click to change status (${status} → ${STATUS_CYCLE[status]})`}
+          className="cursor-pointer"
+        >
+          {isCycling ? (
+            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+              <Loader2 className="h-3 w-3 animate-spin" />
+            </span>
+          ) : (
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}>
+              {badge.label}
+            </span>
+          )}
+        </button>
       </td>
       <td className="py-2 px-3">
         <div className="flex items-center justify-end gap-1">
-          <Button variant="outline" size="sm" onClick={onEdit} disabled={isToggling || isDeleting} aria-label="Edit player">
+          <Button variant="outline" size="sm" onClick={onEdit} disabled={isCycling || isDeleting} aria-label="Edit player">
             <Pencil className="h-3 w-3" />
             <span className="ml-1 hidden sm:inline">Edit</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => onToggle(inactive ? 1 : 0)}
-            disabled={isToggling || isDeleting}
-            aria-label={inactive ? 'Reactivate player' : 'Deactivate player'}
-          >
-            {isToggling ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : inactive ? (
-              <UserCheck className="h-3 w-3" />
-            ) : (
-              <UserX className="h-3 w-3" />
-            )}
-            <span className="ml-1 hidden sm:inline">{inactive ? 'Reactivate' : 'Deactivate'}</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
             onClick={onDelete}
-            disabled={isToggling || isDeleting}
+            disabled={isCycling || isDeleting}
             aria-label="Delete player"
             className="text-destructive hover:text-destructive"
           >

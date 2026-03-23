@@ -164,8 +164,17 @@ app.patch('/players/:id', adminAuthMiddleware, async (c) => {
   const updates: Partial<typeof players.$inferInsert> = {};
   if (result.data.name !== undefined) updates.name = result.data.name;
   if (result.data.ghinNumber !== undefined) updates.ghinNumber = result.data.ghinNumber;
-  if (result.data.isActive !== undefined) updates.isActive = result.data.isActive;
   if (result.data.handicapIndex !== undefined) updates.handicapIndex = result.data.handicapIndex;
+
+  // status takes precedence; keep isActive in sync
+  if (result.data.status !== undefined) {
+    updates.status = result.data.status;
+    updates.isActive = result.data.status === 'inactive' ? 0 : 1;
+  } else if (result.data.isActive !== undefined) {
+    // Legacy isActive support — map to status
+    updates.isActive = result.data.isActive;
+    updates.status = result.data.isActive === 1 ? 'active' : 'inactive';
+  }
 
   try {
     const updated = await db

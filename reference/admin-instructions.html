@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wolf Cup — Admin Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #0a0a0a; color: #e5e5e5; line-height: 1.6; }
+  .page { max-width: 700px; margin: 0 auto; padding: 32px 24px; }
+  .page-break { page-break-after: always; }
+
+  h1 { font-size: 2rem; font-weight: 800; color: #fff; margin-bottom: 4px; }
+  .subtitle { font-size: 0.95rem; color: #888; margin-bottom: 32px; }
+  h2 { font-size: 1.35rem; font-weight: 700; color: #22c55e; margin: 32px 0 16px; border-bottom: 1px solid #222; padding-bottom: 8px; }
+  h3 { font-size: 1.05rem; font-weight: 600; color: #fff; margin: 20px 0 8px; }
+
+  p, li { font-size: 0.9rem; color: #ccc; margin-bottom: 8px; }
+  ul, ol { padding-left: 24px; margin-bottom: 16px; }
+  li { margin-bottom: 6px; }
+
+  .step-grid { display: flex; flex-direction: column; gap: 12px; margin: 12px 0 20px; }
+  .step { display: flex; gap: 12px; align-items: flex-start; background: #161616; border: 1px solid #222; border-radius: 12px; padding: 14px 16px; }
+  .step-num { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: #000; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; }
+  .step-text { font-size: 0.9rem; color: #ddd; }
+  .step-text strong { color: #fff; }
+
+  .tip { background: #1a1a2e; border: 1px solid #2a2a4e; border-radius: 10px; padding: 12px 16px; margin: 12px 0; font-size: 0.85rem; color: #a8b4ff; }
+  .tip::before { content: '💡 '; }
+
+  .warn { background: #2e1a1a; border: 1px solid #4e2a2a; border-radius: 10px; padding: 12px 16px; margin: 12px 0; font-size: 0.85rem; color: #ffa8a8; }
+  .warn::before { content: '⚠️ '; }
+
+  .section-card { background: #111; border: 1px solid #222; border-radius: 14px; padding: 20px; margin: 16px 0; }
+
+  .nav-path { display: inline-block; background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 2px 8px; font-family: monospace; font-size: 0.8rem; color: #22c55e; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: #166534; color: #86efac; }
+  .badge-yellow { background: #713f12; color: #fde047; }
+  .badge-red { background: #7f1d1d; color: #fca5a5; }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.85rem; }
+  th { text-align: left; padding: 8px 12px; background: #161616; color: #888; font-weight: 600; border-bottom: 1px solid #333; }
+  td { padding: 8px 12px; border-bottom: 1px solid #1a1a1a; color: #ccc; }
+
+  @media print {
+    body { background: #fff; color: #111; }
+    .page { padding: 20px; }
+    h1 { color: #111; }
+    h2 { color: #16a34a; border-color: #ddd; }
+    h3 { color: #111; }
+    p, li, td { color: #333; }
+    .step { background: #f8f8f8; border-color: #ddd; }
+    .step-text, .step-text strong { color: #111; }
+    .tip { background: #f0f4ff; border-color: #c7d2fe; color: #3730a3; }
+    .warn { background: #fff5f5; border-color: #fecaca; color: #991b1b; }
+    .section-card { background: #fafafa; border-color: #e5e5e5; }
+    .nav-path { background: #f3f4f6; border-color: #d1d5db; color: #16a34a; }
+    th { background: #f3f4f6; color: #555; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <h1>🐺 Wolf Cup Admin Guide</h1>
+  <p class="subtitle">For the League Commissioner — wolf.dagle.cloud/admin</p>
+
+  <!-- ===== LOGIN ===== -->
+  <h2>1. Logging In</h2>
+  <div class="step-grid">
+    <div class="step">
+      <span class="step-num">1</span>
+      <span class="step-text">Go to <strong>wolf.dagle.cloud/admin</strong></span>
+    </div>
+    <div class="step">
+      <span class="step-num">2</span>
+      <span class="step-text">Enter the admin password and tap <strong>Login</strong></span>
+    </div>
+  </div>
+  <div class="tip">You stay logged in on your device. You shouldn't need to log in again unless you clear your browser data.</div>
+
+  <!-- ===== SEASON SETUP ===== -->
+  <h2>2. Season Setup (Once Per Year)</h2>
+  <p>Do this before the first round of the season.</p>
+
+  <div class="section-card">
+    <h3>Create the Season</h3>
+    <p><span class="nav-path">Admin → Season</span></p>
+    <div class="step-grid">
+      <div class="step">
+        <span class="step-num">1</span>
+        <span class="step-text">Tap <strong>Create Season</strong></span>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <span class="step-text">Set the <strong>name</strong> (e.g., "2026 Wolf Cup Season")</span>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <span class="step-text">Set <strong>start date</strong> (first Friday) and <strong>end date</strong> (last Friday)</span>
+      </div>
+      <div class="step">
+        <span class="step-num">4</span>
+        <span class="step-text">The system auto-creates a round for every Friday in that range with rotating tees (Black → Blue → White → repeat)</span>
+      </div>
+    </div>
+    <div class="tip">After creation, you'll see all Fridays listed with checkboxes. Uncheck any weeks that won't be played (e.g., Member-Guest week). You can also change the tee for any specific week.</div>
+  </div>
+
+  <div class="section-card">
+    <h3>Update the Roster</h3>
+    <p><span class="nav-path">Admin → Roster</span></p>
+    <div class="step-grid">
+      <div class="step">
+        <span class="step-num">1</span>
+        <span class="step-text">Add any <strong>new players</strong> — enter their name and GHIN number if they have one</span>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <span class="step-text">Set returning players to <strong>Active</strong>. Mark anyone not playing this year as <strong>Inactive</strong></span>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <span class="step-text">Tap <strong>Refresh All Handicaps</strong> to pull latest GHIN indexes for everyone</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== WEEKLY ROUND ===== -->
+  <h2>3. Running a Friday Round</h2>
+  <p>This is your weekly routine on game day.</p>
+
+  <div class="section-card">
+    <h3>Before the Round — Take Attendance</h3>
+    <p><span class="nav-path">Admin → Rounds</span> (or the upcoming round card)</p>
+    <div class="step-grid">
+      <div class="step">
+        <span class="step-num">1</span>
+        <span class="step-text">The upcoming Friday's round is already scheduled. Tap it.</span>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <span class="step-text">Check off who's <strong>playing today</strong>. Only active roster players appear.</span>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <span class="step-text">Need a sub? Tap <strong>Add Sub</strong> — search by name or GHIN number. Subs get a temporary entry.</span>
+      </div>
+      <div class="step">
+        <span class="step-num">4</span>
+        <span class="step-text">Tap <strong>Create Round</strong>. The system generates the entry code (the year, e.g. 2026) and activates the round.</span>
+      </div>
+    </div>
+    <div class="tip">Players headcount must be a multiple of 4 (groups of 4). If you have 10 players, either find 2 more or sit 2 out.</div>
+  </div>
+
+  <div class="section-card">
+    <h3>Players Join</h3>
+    <p>Tell the group:</p>
+    <div class="step-grid">
+      <div class="step">
+        <span class="step-num">1</span>
+        <span class="step-text">Go to <strong>wolf.dagle.cloud</strong> on your phone</span>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <span class="step-text">Tap <strong>Score</strong> in the bottom nav</span>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <span class="step-text">Enter the join code: <strong>2026</strong></span>
+      </div>
+      <div class="step">
+        <span class="step-num">4</span>
+        <span class="step-text">Select your name and which group you're in</span>
+      </div>
+    </div>
+    <p>One person per group runs the scoring — they'll do the ball draw and enter scores hole by hole.</p>
+  </div>
+
+  <div class="section-card">
+    <h3>Ball Draw &amp; Scoring</h3>
+    <p>The scorer for each group handles this:</p>
+    <div class="step-grid">
+      <div class="step">
+        <span class="step-num">1</span>
+        <span class="step-text"><strong>Ball Draw</strong> — add the 4 players, optionally shuffle the order with "Roll for Order", confirm</span>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <span class="step-text"><strong>Score each hole</strong> — enter gross scores for all 4 players, then choose the wolf decision (partner, alone, blind wolf)</span>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <span class="step-text">Mark <strong>greenies</strong> (par 3s) and <strong>polies</strong> (wolf holes 3+) when applicable</span>
+      </div>
+    </div>
+    <div class="tip">The leaderboard updates live as scores come in. Anyone can watch from the Board tab — no login needed.</div>
+  </div>
+
+  <div class="section-card">
+    <h3>After the Round — Finalize</h3>
+    <p><span class="nav-path">Admin → Rounds → [the round]</span></p>
+    <div class="step-grid">
+      <div class="step">
+        <span class="step-num">1</span>
+        <span class="step-text">Wait until <strong>all groups</strong> have finished hole 18</span>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <span class="step-text">Review the leaderboard — make sure scores look right</span>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <span class="step-text">Tap <strong>Finalize Round</strong></span>
+      </div>
+    </div>
+    <div class="warn">Finalization locks scores and computes Harvey Cup points. Only do this when you're confident the scores are correct. You can still make score corrections after finalizing.</div>
+  </div>
+
+  <!-- ===== SCORE CORRECTIONS ===== -->
+  <h2>4. Score Corrections</h2>
+  <p><span class="nav-path">Admin → Score Corrections</span></p>
+  <p>If someone reports a wrong score after finalization:</p>
+  <div class="step-grid">
+    <div class="step">
+      <span class="step-num">1</span>
+      <span class="step-text">Select the <strong>round</strong> and <strong>group</strong></span>
+    </div>
+    <div class="step">
+      <span class="step-num">2</span>
+      <span class="step-text">Find the hole and player with the wrong score</span>
+    </div>
+    <div class="step">
+      <span class="step-num">3</span>
+      <span class="step-text">Enter the <strong>correct gross score</strong> and a brief <strong>reason</strong></span>
+    </div>
+    <div class="step">
+      <span class="step-num">4</span>
+      <span class="step-text">The system automatically recalculates all money, stableford, and Harvey points for the entire group</span>
+    </div>
+  </div>
+  <div class="tip">Every correction is logged with a timestamp, old score, new score, and reason. Full audit trail.</div>
+
+  <!-- ===== PHOTOS ===== -->
+  <h2>5. Photos</h2>
+  <p>Anyone can upload photos by tapping the <strong>camera icon</strong> in the top header bar.</p>
+  <ul>
+    <li>Photos taken during an active round are automatically tagged to that round</li>
+    <li>You can upload multiple photos at once from your photo library</li>
+    <li>Photos appear in the gallery grouped by round</li>
+  </ul>
+
+  <!-- ===== QUICK REFERENCE ===== -->
+  <h2>6. Quick Reference</h2>
+
+  <table>
+    <tr><th>Task</th><th>Where</th></tr>
+    <tr><td>Add/remove players</td><td>Admin → Roster</td></tr>
+    <tr><td>Refresh handicap indexes</td><td>Admin → Roster → Refresh All</td></tr>
+    <tr><td>Skip a week (rainout, etc.)</td><td>Admin → Season → uncheck the Friday</td></tr>
+    <tr><td>Change tees for a week</td><td>Admin → Season → edit the week's tee</td></tr>
+    <tr><td>Take attendance / start round</td><td>Admin → Rounds → upcoming round</td></tr>
+    <tr><td>Finalize round</td><td>Admin → Rounds → active round → Finalize</td></tr>
+    <tr><td>Fix a score</td><td>Admin → Score Corrections</td></tr>
+    <tr><td>View standings</td><td>Standings tab (public, no login)</td></tr>
+    <tr><td>View stats &amp; awards</td><td>Stats tab (public, no login)</td></tr>
+  </table>
+
+  <h2>7. Troubleshooting</h2>
+
+  <div class="section-card">
+    <h3>Player can't join</h3>
+    <ul>
+      <li>Make sure the round is <strong>active</strong> (not just scheduled)</li>
+      <li>Confirm they're using the right entry code (this year: <strong>2026</strong>)</li>
+      <li>They may need to hard refresh their browser (pull down on mobile)</li>
+    </ul>
+  </div>
+
+  <div class="section-card">
+    <h3>Wrong score entered</h3>
+    <ul>
+      <li>During the round: the scorer can go back to any hole and change it</li>
+      <li>After finalization: use <strong>Score Corrections</strong> in admin</li>
+    </ul>
+  </div>
+
+  <div class="section-card">
+    <h3>Need to cancel a round</h3>
+    <ul>
+      <li>Admin → Rounds → the round → <strong>Cancel</strong></li>
+      <li>Cancelled rounds don't count for standings or Harvey Cup</li>
+    </ul>
+  </div>
+
+  <div class="section-card">
+    <h3>Handicaps look wrong</h3>
+    <ul>
+      <li>Handicap indexes are pulled from GHIN. Tap <strong>Refresh All Handicaps</strong> on the Roster page to get the latest.</li>
+      <li>Handicaps are snapshotted when the round is created — a mid-round GHIN change won't affect an active round.</li>
+    </ul>
+  </div>
+
+  <div style="margin-top: 48px; padding-top: 16px; border-top: 1px solid #222; text-align: center;">
+    <p style="font-size: 0.75rem; color: #555; letter-spacing: 2px;">APPALACHIAN SPORTS STATION TV NETWORKS</p>
+    <p style="font-size: 0.7rem; color: #444; margin-top: 4px;">wolf.dagle.cloud</p>
+  </div>
+</div>
+
+</body>
+</html>

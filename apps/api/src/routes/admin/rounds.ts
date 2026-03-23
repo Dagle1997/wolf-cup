@@ -1099,7 +1099,7 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
     const subIds = new Set(subRows.map((s) => s.playerId));
 
     // Generate entry code
-    const entryCode = String(Math.floor(10 + Math.random() * 90));
+    const entryCode = week.friday.slice(0, 4);
     const entryCodeHash = await bcrypt.hash(entryCode, 10);
 
     const now = Date.now();

@@ -112,7 +112,8 @@ function GalleryPage() {
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
   const [caption, setCaption] = useState('');
   const [showCaptionInput, setShowCaptionInput] = useState(false);
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['gallery'],
@@ -120,36 +121,44 @@ function GalleryPage() {
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => {
-      const formData = new FormData();
-      formData.append('photo', file);
-      if (caption.trim()) formData.append('caption', caption.trim());
-      return apiFetchFormData<UploadResponse>('/gallery/upload', formData);
+    mutationFn: async (files: File[]) => {
+      const total = files.length;
+      for (let i = 0; i < total; i++) {
+        setUploadProgress({ current: i + 1, total });
+        const formData = new FormData();
+        formData.append('photo', files[i]!);
+        if (caption.trim()) formData.append('caption', caption.trim());
+        await apiFetchFormData<UploadResponse>('/gallery/upload', formData);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['gallery'] });
       setCaption('');
       setShowCaptionInput(false);
-      setPendingFile(null);
+      setPendingFiles([]);
+      setUploadProgress(null);
+    },
+    onError: () => {
+      setUploadProgress(null);
     },
   });
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setPendingFile(file);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setPendingFiles(Array.from(files));
     setShowCaptionInput(true);
     // Reset input so same file can be re-selected
     e.target.value = '';
   };
 
   const handleUpload = () => {
-    if (!pendingFile) return;
-    uploadMutation.mutate(pendingFile);
+    if (pendingFiles.length === 0) return;
+    uploadMutation.mutate(pendingFiles);
   };
 
   const handleCancelUpload = () => {
-    setPendingFile(null);
+    setPendingFiles([]);
     setShowCaptionInput(false);
     setCaption('');
   };
@@ -205,24 +214,34 @@ function GalleryPage() {
           ref={fileInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={handleFileSelect}
         />
       </div>
 
       {/* Caption input + confirm (shown after file selected) */}
-      {showCaptionInput && pendingFile && (
+      {showCaptionInput && pendingFiles.length > 0 && (
         <div className="rounded-xl border bg-card p-4 mb-4 space-y-3">
           <div className="flex items-center gap-3">
-            <img
-              src={URL.createObjectURL(pendingFile)}
-              alt="Preview"
-              className="w-16 h-16 rounded-lg object-cover shrink-0"
-            />
+            <div className="flex -space-x-2 shrink-0">
+              {pendingFiles.slice(0, 3).map((file, i) => (
+                <img
+                  key={i}
+                  src={URL.createObjectURL(file)}
+                  alt="Preview"
+                  className="w-16 h-16 rounded-lg object-cover border-2 border-card"
+                />
+              ))}
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{pendingFile.name}</p>
+              <p className="text-sm font-medium truncate">
+                {pendingFiles.length === 1
+                  ? pendingFiles[0]!.name
+                  : `${pendingFiles.length} photos selected`}
+              </p>
               <p className="text-xs text-muted-foreground">
-                {(pendingFile.size / 1024 / 1024).toFixed(1)} MB
+                {(pendingFiles.reduce((sum, f) => sum + f.size, 0) / 1024 / 1024).toFixed(1)} MB total
               </p>
             </div>
           </div>
@@ -240,13 +259,15 @@ function GalleryPage() {
               onClick={handleUpload}
               disabled={uploadMutation.isPending}
             >
-              {uploadMutation.isPending ? (
+              {uploadMutation.isPending && uploadProgress ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                  Uploading…
+                  Uploading {uploadProgress.current} of {uploadProgress.total}…
                 </>
-              ) : (
+              ) : pendingFiles.length === 1 ? (
                 'Upload Photo'
+              ) : (
+                `Upload ${pendingFiles.length} Photos`
               )}
             </Button>
             <Button

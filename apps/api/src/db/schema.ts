@@ -117,8 +117,9 @@ export const players = sqliteTable('players', {
   name: text('name').notNull(),
   ghinNumber: text('ghin_number'),
   handicapIndex: real('handicap_index'), // last-known HI from GHIN; updated via roster admin
-  isActive: integer('is_active').notNull().default(1), // boolean 0/1
+  isActive: integer('is_active').notNull().default(1), // boolean 0/1; kept in sync with status
   isGuest: integer('is_guest').notNull().default(0), // boolean 0/1; guests are round-only, not roster
+  status: text('status').notNull().default('active'), // 'active' | 'sub' | 'inactive'
   createdAt: integer('created_at').notNull(),
 });
 

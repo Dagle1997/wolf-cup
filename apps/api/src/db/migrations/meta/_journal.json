@@ -134,6 +134,13 @@
       "when": 1774111891575,
       "tag": "0018_cute_hairball",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1774512000000,
+      "tag": "0019_player_status",
+      "breakpoints": true
     }
   ]
 }
