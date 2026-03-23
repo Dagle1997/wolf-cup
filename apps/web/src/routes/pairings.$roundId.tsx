@@ -1,7 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
-import { AlertCircle, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ChevronLeft, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -123,6 +123,17 @@ function PairingsPage() {
 
   return (
     <div className="p-3 max-w-2xl mx-auto pb-24">
+      {/* Back to Rounds (admin only) */}
+      {isAdmin && (
+        <Link
+          to="/admin/rounds"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-2"
+        >
+          <ChevronLeft className="w-3 h-3" />
+          Admin Rounds
+        </Link>
+      )}
+
       {/* Header */}
       <div className="text-center mb-3">
         <h1 className="text-lg font-bold tracking-tight">
