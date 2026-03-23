@@ -84,6 +84,7 @@ type ScorecardHole = {
   wolfRole?: 'wolf' | 'partner' | 'opponent' | null;
   wolfPlayerName?: string | null;
   partnerPlayerName?: string | null;
+  teammateName?: string | null;
 };
 
 type ScorecardResponse = {
@@ -318,18 +319,18 @@ function ScorecardPanel({
                 const h = g(n);
                 const role = h?.wolfRole;
                 const dec = h?.wolfDecision;
-                const wolfInit = h?.wolfPlayerName ? getInitials(h.wolfPlayerName) : '';
-                const partnerInit = h?.partnerPlayerName ? getInitials(h.partnerPlayerName) : '';
+                const tmInit = h?.teammateName ? getInitials(h.teammateName) : '';
+                const isWolfTeam = role === 'wolf' || role === 'partner';
                 return (
                   <td key={n} className={`${tdC} text-[9px]`}>
                     {role === 'wolf'
                       ? dec === 'alone' ? <span className="font-bold text-foreground">W</span>
                         : dec === 'blind_wolf' ? <span className="font-bold text-red-500">B</span>
-                        : dec === 'partner' ? <span className="font-bold text-green-600">{partnerInit}</span>
+                        : dec === 'partner' ? <span className="font-bold text-green-600">{tmInit}</span>
                         : <span className="text-amber-500">🐺</span>
-                      : role === 'partner' ? <span className="font-bold text-green-600">{wolfInit}</span>
+                      : role === 'partner' ? <span className="font-bold text-green-600">{tmInit}</span>
                       : role === 'opponent'
-                        ? dec === 'partner' ? <span className="font-bold text-red-500">{wolfInit}</span>
+                        ? dec === 'partner' ? <span className={`font-bold ${tmInit ? 'text-red-500' : ''}`}>{tmInit}</span>
                           : <span className="font-bold text-red-500">3v1</span>
                       : ''}
                   </td>
@@ -435,18 +436,17 @@ function ScorecardPanel({
                   const h = g(n);
                   const role = h?.wolfRole;
                   const dec = h?.wolfDecision;
-                  const wolfInit = h?.wolfPlayerName ? getInitials(h.wolfPlayerName) : '';
-                  const partnerInit = h?.partnerPlayerName ? getInitials(h.partnerPlayerName) : '';
+                  const tmInit = h?.teammateName ? getInitials(h.teammateName) : '';
                   return (
                     <td key={n} className={`${tdC} text-[9px]`}>
                       {role === 'wolf'
                         ? dec === 'alone' ? <span className="font-bold text-foreground">W</span>
                           : dec === 'blind_wolf' ? <span className="font-bold text-red-500">B</span>
-                          : dec === 'partner' ? <span className="font-bold text-green-600">{partnerInit}</span>
+                          : dec === 'partner' ? <span className="font-bold text-green-600">{tmInit}</span>
                           : <span className="text-amber-500">🐺</span>
-                        : role === 'partner' ? <span className="font-bold text-green-600">{wolfInit}</span>
+                        : role === 'partner' ? <span className="font-bold text-green-600">{tmInit}</span>
                         : role === 'opponent'
-                          ? dec === 'partner' ? <span className="font-bold text-red-500">{wolfInit}</span>
+                          ? dec === 'partner' ? <span className={`font-bold ${tmInit ? 'text-red-500' : ''}`}>{tmInit}</span>
                             : <span className="font-bold text-red-500">3v1</span>
                         : ''}
                     </td>

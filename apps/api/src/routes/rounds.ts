@@ -1692,7 +1692,22 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     wolfRole: 'wolf' | 'partner' | 'opponent' | null;
     wolfPlayerName: string | null;
     partnerPlayerName: string | null;
+    teammateName: string | null;
   }[] = [];
+
+  // Helper: find teammate name for a given hole's wolf decision
+  function getTeammateName(dec: typeof allDecisions[number] | undefined, role: 'wolf' | 'partner' | 'opponent' | null): string | null {
+    if (!dec?.decision || !role) return null;
+    if (role === 'wolf') return dec.partnerPlayerId ? playerNameMap.get(dec.partnerPlayerId) ?? null : null;
+    if (role === 'partner') return dec.wolfPlayerId ? playerNameMap.get(dec.wolfPlayerId) ?? null : null;
+    // opponent: teammate is the other opponent (not wolf, not partner, not self)
+    if (dec.decision === 'partner' && dec.partnerPlayerId) {
+      const otherOpponent = battingOrder.find((pid) => pid !== playerId && pid !== dec.wolfPlayerId && pid !== dec.partnerPlayerId);
+      return otherOpponent ? playerNameMap.get(otherOpponent) ?? null : null;
+    }
+    // alone/blind_wolf: 3v1, no specific teammate
+    return null;
+  }
 
   for (let holeNum = 1; holeNum <= 18; holeNum++) {
     const holeMap = scoresByHole.get(holeNum);
@@ -1710,7 +1725,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
         else if (dec.decision === 'partner' && dec.partnerPlayerId === playerId) earlyWolfRole = 'partner';
         else earlyWolfRole = 'opponent';
       }
-      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: dec?.decision ?? null, wolfRole: earlyWolfRole, wolfPlayerName: dec?.wolfPlayerId ? playerNameMap.get(dec.wolfPlayerId) ?? null : null, partnerPlayerName: dec?.partnerPlayerId ? playerNameMap.get(dec.partnerPlayerId) ?? null : null });
+      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: dec?.decision ?? null, wolfRole: earlyWolfRole, wolfPlayerName: dec?.wolfPlayerId ? playerNameMap.get(dec.wolfPlayerId) ?? null : null, partnerPlayerName: dec?.partnerPlayerId ? playerNameMap.get(dec.partnerPlayerId) ?? null : null, teammateName: getTeammateName(dec, earlyWolfRole) });
       continue;
     }
 
@@ -1746,7 +1761,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       if (holeNum > 2) {
         if (!decisionRecord?.decision) {
           // Wolf hole with no decision recorded yet — push hole with $0 and move on
-          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: null, wolfRole: null, wolfPlayerName: null, partnerPlayerName: null });
+          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: null, wolfRole: null, wolfPlayerName: null, partnerPlayerName: null, teammateName: null });
           continue;
         }
         wolfDecision = buildWolfDecision(
@@ -1784,7 +1799,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
         wolfRole = 'opponent';
       }
     }
-    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes, wolfDecision: decForHole?.decision ?? null, wolfRole, wolfPlayerName: decForHole?.wolfPlayerId ? playerNameMap.get(decForHole.wolfPlayerId) ?? null : null, partnerPlayerName: decForHole?.partnerPlayerId ? playerNameMap.get(decForHole.partnerPlayerId) ?? null : null });
+    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes, wolfDecision: decForHole?.decision ?? null, wolfRole, wolfPlayerName: decForHole?.wolfPlayerId ? playerNameMap.get(decForHole.wolfPlayerId) ?? null : null, partnerPlayerName: decForHole?.partnerPlayerId ? playerNameMap.get(decForHole.partnerPlayerId) ?? null : null, teammateName: getTeammateName(decForHole, wolfRole) });
   }
 
   // Compute which holes are this player's wolf holes
