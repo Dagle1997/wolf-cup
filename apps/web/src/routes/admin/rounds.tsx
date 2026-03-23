@@ -1026,9 +1026,12 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
         );
       }
 
-      // 4. Delete existing empty groups
-      // (Groups are re-created by apply, but we can't delete groups with the current API.
-      //  Instead, create new groups with correct numbers.)
+      // 4. Delete existing empty groups (now empty after step 3)
+      for (const g of groupList) {
+        try {
+          await apiFetch(`/admin/rounds/${roundId}/groups/${g.id}`, { method: 'DELETE' });
+        } catch { /* group may have already been deleted */ }
+      }
 
       // 5. Create new groups and add suggested players
       const subIdSet = new Set(subs.map((s) => s.id));
@@ -1072,6 +1075,7 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
     const sub = subs.find((s) => s.id === id);
     if (sub) return sub.name;
     return roster.find((p) => p.id === id)?.name
+      ?? allRoster.find((p) => p.id === id)?.name
       ?? roundPlayerList.find((p) => p.playerId === id)?.name
       ?? `Player ${id}`;
   }
