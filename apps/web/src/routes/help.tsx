@@ -101,8 +101,8 @@ function HelpPage() {
         </p>
         <Step n={1}>
           Go to the <strong>Score</strong> tab. You'll see today's round.
-          Enter your <strong>entry code</strong> — a 2-digit code the admin
-          gives you.
+          Enter the <strong>join code</strong> — it's the year (e.g.{' '}
+          <strong>2026</strong>).
         </Step>
         <Step n={2}>
           Pick your <strong>group</strong>. This takes you to the{' '}
