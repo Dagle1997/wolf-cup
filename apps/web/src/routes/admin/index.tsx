@@ -1,6 +1,6 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
-import { Users, CalendarDays, Trophy, FilePenLine, KeyRound, Loader2, Check } from 'lucide-react';
+import { Users, CalendarDays, Trophy, FilePenLine, KeyRound, LogOut, Loader2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -100,6 +100,37 @@ function ChangePasswordSection() {
   );
 }
 
+function LogoutButton() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+
+  async function handleLogout() {
+    setLoading(true);
+    try {
+      await apiFetch('/admin/auth/logout', { method: 'POST' });
+    } catch {
+      // Even if the server call fails, clear local session
+    }
+    void navigate({ to: '/admin/login' });
+  }
+
+  return (
+    <button
+      onClick={() => void handleLogout()}
+      disabled={loading}
+      className="border rounded-xl p-4 flex items-center gap-4 hover:bg-muted/50 transition-colors w-full text-left"
+    >
+      <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
+        <LogOut className="w-5 h-5 text-destructive" />
+      </div>
+      <div>
+        <p className="font-medium">Logout</p>
+        <p className="text-sm text-muted-foreground">Sign out of the admin dashboard</p>
+      </div>
+    </button>
+  );
+}
+
 function AdminDashboard() {
   return (
     <div className="p-4 flex flex-col gap-4">
@@ -119,6 +150,7 @@ function AdminDashboard() {
           </Link>
         ))}
         <ChangePasswordSection />
+        <LogoutButton />
       </div>
     </div>
   );
