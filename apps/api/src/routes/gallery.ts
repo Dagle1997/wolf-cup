@@ -63,28 +63,51 @@ app.post('/gallery/upload', async (c) => {
     return c.json({ error: 'ENTRY_CODE_REQUIRED' }, 401);
   }
 
-  // Find active round (if any)
-  const [activeRound] = await db
-    .select({
-      id: rounds.id,
-      entryCodeHash: rounds.entryCodeHash,
-    })
-    .from(rounds)
-    .where(eq(rounds.status, 'active'))
-    .limit(1);
+  // Accept explicit roundId from form data, or fall back to the caller's active round
+  const roundIdField = formData.get('roundId');
+  let roundId: number | null = null;
 
-  // Validate entry code against active round
-  if (activeRound?.entryCodeHash) {
+  if (roundIdField && String(roundIdField).trim()) {
+    const parsed = Number(roundIdField);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      return c.json({ error: 'INVALID_ROUND_ID' }, 400);
+    }
+    // Validate entry code against the specified round
+    const round = await db
+      .select({ id: rounds.id, entryCodeHash: rounds.entryCodeHash, status: rounds.status })
+      .from(rounds)
+      .where(eq(rounds.id, parsed))
+      .get();
+    if (!round) {
+      return c.json({ error: 'ROUND_NOT_FOUND' }, 404);
+    }
+    if (round.status !== 'active' && round.status !== 'completed') {
+      return c.json({ error: 'ROUND_NOT_ACTIVE' }, 422);
+    }
+    if (round.entryCodeHash) {
+      const codeValid = await bcrypt.compare(entryCode, round.entryCodeHash);
+      if (!codeValid) {
+        return c.json({ error: 'INVALID_ENTRY_CODE' }, 401);
+      }
+    }
+    roundId = round.id;
+  } else {
+    // No roundId specified — find the active round and validate
+    const [activeRound] = await db
+      .select({ id: rounds.id, entryCodeHash: rounds.entryCodeHash })
+      .from(rounds)
+      .where(eq(rounds.status, 'active'))
+      .limit(1);
+    if (!activeRound?.entryCodeHash) {
+      return c.json({ error: 'NO_ACTIVE_ROUND' }, 422);
+    }
     const codeValid = await bcrypt.compare(entryCode, activeRound.entryCodeHash);
     if (!codeValid) {
       return c.json({ error: 'INVALID_ENTRY_CODE' }, 401);
     }
-  } else {
-    // No active round — reject upload
-    return c.json({ error: 'NO_ACTIVE_ROUND' }, 422);
+    roundId = activeRound.id;
   }
 
-  const roundId = activeRound.id;
   const playerId: number | null = null;
 
   // Upload to R2

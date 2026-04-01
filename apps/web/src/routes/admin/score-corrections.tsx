@@ -357,8 +357,8 @@ function CorrectionForm({
       if (!playerId) { setSubmitError('Player is required.'); return; }
       if (!grossScore) { setSubmitError('Gross score is required.'); return; }
       const scoreNum = Number(grossScore);
-      if (!Number.isInteger(scoreNum) || scoreNum < 1 || scoreNum > 20) {
-        setSubmitError('Gross score must be a whole number between 1 and 20.');
+      if (!Number.isInteger(scoreNum) || scoreNum < 1 || scoreNum > 9) {
+        setSubmitError('Gross score must be a whole number between 1 and 9.');
         return;
       }
       body['playerId'] = Number(playerId);
@@ -482,12 +482,12 @@ function CorrectionForm({
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">
-              New Gross Score (1–20)
+              New Gross Score (1–9)
             </label>
             <input
               type="number"
               min={1}
-              max={20}
+              max={9}
               className="w-24 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               value={grossScore}
               onChange={(e) => setGrossScore(e.target.value)}

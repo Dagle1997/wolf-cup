@@ -45,7 +45,7 @@ type Round = {
   seasonId: number;
   roundNumber: number | null;
   type: 'official' | 'casual';
-  status: 'scheduled' | 'active' | 'finalized' | 'cancelled';
+  status: 'scheduled' | 'active' | 'finalized' | 'cancelled' | 'completed';
   scheduledDate: string;
   tee: 'black' | 'blue' | 'white' | null;
   autoCalculateMoney: number; // 0 | 1
@@ -109,6 +109,7 @@ const _STATUS_LABEL: Record<Round['status'], string> = {
   active: 'Active',
   finalized: 'Finalized',
   cancelled: 'Cancelled',
+  completed: 'Completed',
 };
 
 const STATUS_BADGE: Record<Round['status'], string> = {
@@ -116,6 +117,7 @@ const STATUS_BADGE: Record<Round['status'], string> = {
   active: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   finalized: 'bg-muted text-muted-foreground',
   cancelled: 'bg-muted text-muted-foreground',
+  completed: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
 const _TYPE_BADGE: Record<Round['type'], string> = {
@@ -496,7 +498,7 @@ function RoundRow({
   onToggleGroups: () => void;
 }) {
   const navigate = useNavigate();
-  const dimmed = round.status === 'cancelled' || round.status === 'finalized';
+  const dimmed = round.status === 'cancelled' || round.status === 'finalized' || round.status === 'completed';
   const editable = round.status === 'scheduled' || round.status === 'active';
   const { total, complete } = round.groupCompletion ?? { total: 0, complete: 0 };
   const allComplete = total > 0 && complete === total;
@@ -532,7 +534,7 @@ function RoundRow({
   });
 
   const isBusy = cancelMutation.isPending || finalizeMutation.isPending || deleteMutation.isPending;
-  const canDelete = round.status !== 'finalized';
+  const canDelete = round.status !== 'finalized' && round.status !== 'completed';
 
   function handleDelete() {
     if (!window.confirm(`Permanently delete round on ${formatDate(round.scheduledDate)}? This cannot be undone.`)) return;

@@ -288,8 +288,8 @@ app.post('/rounds/:id/cancel', async (c) => {
   if (round.status === 'cancelled') {
     return c.json({ success: true }, 200); // idempotent
   }
-  if (round.status === 'finalized') {
-    return c.json({ error: 'Cannot cancel a finalized round', code: 'ROUND_NOT_ACTIVE' }, 422);
+  if (round.status === 'finalized' || round.status === 'completed') {
+    return c.json({ error: 'Cannot cancel a finished round', code: 'ROUND_NOT_ACTIVE' }, 422);
   }
 
   try {
@@ -371,8 +371,8 @@ app.post('/rounds/:id/groups/:groupId/quit', async (c) => {
   if (round.type !== 'casual') {
     return c.json({ error: 'Only casual rounds can be quit', code: 'OFFICIAL_ONLY' }, 422);
   }
-  if (round.status === 'finalized') {
-    return c.json({ error: 'Cannot quit a finalized round', code: 'ROUND_FINALIZED' }, 422);
+  if (round.status === 'finalized' || round.status === 'completed') {
+    return c.json({ error: 'Cannot quit a finished round', code: 'ROUND_FINALIZED' }, 422);
   }
 
   try {
@@ -640,7 +640,7 @@ app.post('/rounds/:id/start', async (c) => {
   }
 
   // Finalized or cancelled rounds cannot be joined
-  if (round.status === 'finalized' || round.status === 'cancelled') {
+  if (round.status === 'finalized' || round.status === 'cancelled' || round.status === 'completed') {
     return c.json({ error: 'Round not joinable', code: 'ROUND_NOT_JOINABLE' }, 422);
   }
 
@@ -714,7 +714,7 @@ app.put('/rounds/:roundId/groups/:groupId/batting-order', async (c) => {
   }
 
   if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-  if (round.status === 'finalized' || round.status === 'cancelled') {
+  if (round.status === 'finalized' || round.status === 'cancelled' || round.status === 'completed') {
     return c.json({ error: 'Round not joinable', code: 'ROUND_NOT_JOINABLE' }, 422);
   }
 
@@ -860,7 +860,7 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/scores', async (c) 
   }
 
   if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-  if (round.status === 'finalized' || round.status === 'cancelled') {
+  if (round.status === 'finalized' || round.status === 'cancelled' || round.status === 'completed') {
     return c.json({ error: 'Round not active', code: 'ROUND_NOT_ACTIVE' }, 422);
   }
 
@@ -1093,7 +1093,7 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
   if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-  if (round.status === 'finalized' || round.status === 'cancelled') {
+  if (round.status === 'finalized' || round.status === 'cancelled' || round.status === 'completed') {
     return c.json({ error: 'Round not active', code: 'ROUND_NOT_ACTIVE' }, 422);
   }
 
@@ -1366,7 +1366,7 @@ app.post('/rounds/:roundId/groups/:groupId/guests', async (c) => {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
   if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-  if (round.status === 'finalized' || round.status === 'cancelled') {
+  if (round.status === 'finalized' || round.status === 'cancelled' || round.status === 'completed') {
     return c.json({ error: 'Round not active', code: 'ROUND_NOT_ACTIVE' }, 422);
   }
   if (round.type === 'official') {
@@ -1470,7 +1470,7 @@ app.delete('/rounds/:roundId/groups/:groupId/players/:playerId', async (c) => {
   if (round.type === 'official') {
     return c.json({ error: 'Can only remove players from casual rounds', code: 'CASUAL_ONLY' }, 422);
   }
-  if (round.status === 'finalized' || round.status === 'cancelled') {
+  if (round.status === 'finalized' || round.status === 'cancelled' || round.status === 'completed') {
     return c.json({ error: 'Round not active', code: 'ROUND_NOT_ACTIVE' }, 422);
   }
 

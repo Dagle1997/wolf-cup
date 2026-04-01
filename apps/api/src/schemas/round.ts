@@ -50,7 +50,7 @@ export const submitHoleScoresSchema = z.object({
     .array(
       z.object({
         playerId: z.number().int().positive(),
-        grossScore: z.number().int().min(1).max(20),
+        grossScore: z.number().int().min(1).max(9),
       }),
     )
     .length(4),

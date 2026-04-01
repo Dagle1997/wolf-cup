@@ -325,10 +325,10 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
     if (!row) return c.json({ error: 'Score not found', code: 'NOT_FOUND' }, 404);
 
     const parsed = Number(newValue);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) {
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 9) {
       return c.json({
         error: 'Validation error', code: 'VALIDATION_ERROR',
-        issues: [{ message: 'grossScore must be an integer 1–20' }],
+        issues: [{ message: 'grossScore must be an integer 1–9' }],
       }, 400);
     }
 

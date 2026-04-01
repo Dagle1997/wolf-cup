@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { Camera, Upload, Loader2, X, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch, apiFetchFormData } from '@/lib/api';
+import { getSession } from '@/lib/session-store';
 
 export const Route = createFileRoute('/gallery')({
   component: GalleryPage,
@@ -122,13 +123,17 @@ function GalleryPage() {
 
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
+      const session = getSession();
+      const headers: Record<string, string> = {};
+      if (session?.entryCode) headers['x-entry-code'] = session.entryCode;
       const total = files.length;
       for (let i = 0; i < total; i++) {
         setUploadProgress({ current: i + 1, total });
         const formData = new FormData();
         formData.append('photo', files[i]!);
         if (caption.trim()) formData.append('caption', caption.trim());
-        await apiFetchFormData<UploadResponse>('/gallery/upload', formData);
+        if (session?.roundId) formData.append('roundId', String(session.roundId));
+        await apiFetchFormData<UploadResponse>('/gallery/upload', formData, headers);
       }
     },
     onSuccess: () => {
