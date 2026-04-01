@@ -15,7 +15,6 @@ import type { Tee } from '@wolf-cup/engine';
 import { db } from '../db/index.js';
 import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults } from '../db/schema.js';
 import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema, createPracticeRoundSchema } from '../schemas/round.js';
-import { ghinClient } from '../lib/ghin-client.js';
 
 const app = new Hono();
 
@@ -453,59 +452,7 @@ app.get('/players/active', async (c) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// POST /players/refresh-handicaps — bulk-fetch fresh GHIN HIs for all active roster players
-// ---------------------------------------------------------------------------
-
-app.post('/players/refresh-handicaps', async (c) => {
-  if (!ghinClient) {
-    return c.json({ error: 'GHIN not configured', code: 'GHIN_NOT_CONFIGURED' }, 503);
-  }
-  const client = ghinClient;
-
-  let activePlayers: Array<{ id: number; name: string; ghinNumber: string | null; handicapIndex: number | null }>;
-  try {
-    activePlayers = await db
-      .select({ id: players.id, name: players.name, ghinNumber: players.ghinNumber, handicapIndex: players.handicapIndex })
-      .from(players)
-      .where(and(eq(players.isActive, 1), eq(players.isGuest, 0)));
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-
-  const ghinPlayers = activePlayers.filter((p) => p.ghinNumber);
-  const results = await Promise.allSettled(
-    ghinPlayers.map(async (p) => {
-      const { handicapIndex } = await client.getHandicap(Number(p.ghinNumber));
-      return { playerId: p.id, handicapIndex };
-    }),
-  );
-
-  let updated = 0;
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value.handicapIndex !== null) {
-      const { playerId, handicapIndex } = result.value;
-      try {
-        await db.update(players).set({ handicapIndex }).where(eq(players.id, playerId));
-        updated++;
-      } catch {
-        // Non-fatal
-      }
-    }
-  }
-
-  // Return the refreshed roster
-  try {
-    const rows = await db
-      .select({ id: players.id, name: players.name, handicapIndex: players.handicapIndex })
-      .from(players)
-      .where(and(eq(players.isActive, 1), eq(players.isGuest, 0)))
-      .orderBy(asc(players.name));
-    return c.json({ players: rows, updated }, 200);
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-});
+// POST /players/refresh-handicaps removed — use admin endpoint at /admin/players/refresh-handicaps
 
 // ---------------------------------------------------------------------------
 // GET /rounds — list scheduled/active rounds (past day through future)

@@ -25,8 +25,7 @@ async function upsertAdmin(username: string, password: string): Promise<void> {
   const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
   if (existing) {
-    await db.update(admins).set({ passwordHash }).where(eq(admins.username, username));
-    console.log(`  ✓ Admin '${username}' password updated`);
+    console.log(`  ✓ Admin '${username}' already exists — skipping (password unchanged)`);
     return;
   }
 

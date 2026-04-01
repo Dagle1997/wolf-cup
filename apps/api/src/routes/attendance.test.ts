@@ -438,7 +438,7 @@ describe('POST /admin/rounds/from-attendance', () => {
     };
     expect(body.groupCount).toBe(1);
     expect(body.playerCount).toBe(4);
-    expect(body.entryCode).toMatch(/^\d{2}$/);
+    expect(body.entryCode).toMatch(/^\d{4}$/); // entry code = year (e.g. "2026")
     expect(body.round.tee).toBe('blue'); // first week = blue
     expect(body.round.scheduledDate).toBe('2026-04-10');
   });

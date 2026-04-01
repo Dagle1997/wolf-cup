@@ -771,7 +771,7 @@ function ScoreEntryHolePage() {
           ))}
         </div>
 
-        {/* Bonuses — compact chip grid (Greenie on par-3s, Polie on wolf holes 3+) */}
+        {/* Bonuses — Greenie on par-3s only, Polie on any wolf hole (3+) */}
         {roundData.autoCalculateMoney && currentHole >= 3 && (
           <div className="border rounded-xl p-3 mb-3">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">

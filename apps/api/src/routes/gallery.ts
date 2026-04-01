@@ -57,6 +57,12 @@ app.post('/gallery/upload', async (c) => {
     return c.json({ error: 'FILE_TOO_LARGE', maxBytes: MAX_FILE_SIZE }, 400);
   }
 
+  // Require valid entry code — prevents anonymous uploads
+  const entryCode = c.req.header('x-entry-code');
+  if (!entryCode) {
+    return c.json({ error: 'ENTRY_CODE_REQUIRED' }, 401);
+  }
+
   // Find active round (if any)
   const [activeRound] = await db
     .select({
@@ -67,19 +73,19 @@ app.post('/gallery/upload', async (c) => {
     .where(eq(rounds.status, 'active'))
     .limit(1);
 
-  const roundId = activeRound?.id ?? null;
-
-  // Try to resolve player from entry code
-  const playerId: number | null = null;
-  const entryCode = c.req.header('x-entry-code');
-  if (entryCode && activeRound?.entryCodeHash) {
+  // Validate entry code against active round
+  if (activeRound?.entryCodeHash) {
     const codeValid = await bcrypt.compare(entryCode, activeRound.entryCodeHash);
-    if (codeValid) {
-      // We know they're in this round but can't identify which player from code alone
-      // Entry code is shared across the group, so player identity isn't resolvable this way
-      // Leave playerId null — could add player selection in frontend later
+    if (!codeValid) {
+      return c.json({ error: 'INVALID_ENTRY_CODE' }, 401);
     }
+  } else {
+    // No active round — reject upload
+    return c.json({ error: 'NO_ACTIVE_ROUND' }, 422);
   }
+
+  const roundId = activeRound.id;
+  const playerId: number | null = null;
 
   // Upload to R2
   const year = new Date().getFullYear();

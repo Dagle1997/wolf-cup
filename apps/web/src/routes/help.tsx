@@ -172,8 +172,8 @@ function HelpPage() {
           other player in the group pays you.
         </p>
         <p>
-          <strong>Polie</strong> (par 3s): Make a putt longer than the flagstick
-          pole — extra bonus paid by each opponent.
+          <strong>Polie</strong> (any hole): Make a putt longer than the flagstick
+          pole — extra bonus skin for your team.
         </p>
       </Section>
 

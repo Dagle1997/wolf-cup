@@ -143,7 +143,7 @@ function BallDrawPage() {
   useEffect(() => {
     if (hiRefreshedRef.current) return;
     hiRefreshedRef.current = true;
-    apiFetch<{ players: RosterPlayer[]; updated: number }>('/players/refresh-handicaps', { method: 'POST' })
+    apiFetch<{ players: RosterPlayer[]; updated: number }>('/admin/players/refresh-handicaps', { method: 'POST' })
       .then(() => refetchRoster())
       .catch(() => { /* best-effort */ })
       .finally(() => setHiRefreshing(false));

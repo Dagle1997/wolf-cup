@@ -151,7 +151,7 @@ export const rounds = sqliteTable(
     typeCheck: check('chk_rounds_type', sql`type IN ('official', 'casual')`),
     statusCheck: check(
       'chk_rounds_status',
-      sql`status IN ('scheduled', 'active', 'finalized', 'cancelled')`,
+      sql`status IN ('scheduled', 'active', 'finalized', 'cancelled', 'completed')`,
     ),
   }),
 );
