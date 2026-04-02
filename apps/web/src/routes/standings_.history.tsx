@@ -290,6 +290,7 @@ function AwardCard({ award }: { award: Award }) {
                   <span className="inline-flex flex-col items-center leading-none">
                     <span className="text-sm">{award.emoji}</span>
                     <span className="text-[8px] font-bold text-muted-foreground">{r.detail}</span>
+                    {r.years[0] && <span className="text-[8px] text-muted-foreground">'{String(r.years[0]).slice(2)}</span>}
                   </span>
                 </div>
               )}
