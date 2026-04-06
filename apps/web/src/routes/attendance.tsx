@@ -244,10 +244,19 @@ function AttendancePage() {
             )}
           </div>
 
-          {/* Confirmed count */}
-          <p className="text-sm mb-3">
-            <span className="font-semibold">{activeData.confirmed}/{activeData.total} confirmed</span>
-          </p>
+          {/* Confirmed count + response status */}
+          {(() => {
+            const unanswered = activeData.players.filter((p) => p.status === 'unset').length;
+            return (
+              <div className="text-sm mb-3 flex items-center gap-3">
+                <span className="font-semibold text-green-600 dark:text-green-400">{activeData.confirmed} in</span>
+                <span className="text-red-500">{activeData.players.filter((p) => p.status === 'out').length} out</span>
+                {unanswered > 0 && (
+                  <span className="text-muted-foreground">{unanswered} unanswered</span>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Player list */}
           <div className="rounded-md border overflow-hidden">
@@ -271,6 +280,7 @@ function AttendancePage() {
             <CreateRoundButton
               weekId={activeData.week.id}
               confirmed={activeData.confirmed}
+              allAnswered={activeData.players.every((p) => p.status !== 'unset')}
             />
           )}
 
@@ -305,7 +315,7 @@ function PlayerRow({
   isAdmin: boolean;
 }) {
   const toggleMutation = useMutation({
-    mutationFn: (status: 'in' | 'out') =>
+    mutationFn: (status: 'in' | 'out' | 'unset') =>
       apiFetch<{ status: string; confirmed: number; total: number }>(
         `/admin/attendance/${weekId}/players/${player.id}`,
         {
@@ -321,8 +331,9 @@ function PlayerRow({
 
   function handleToggle() {
     if (!isAdmin) return;
-    const newStatus = player.status === 'in' ? 'out' : 'in';
-    toggleMutation.mutate(newStatus);
+    // Three-state cycle: unset → in → out → unset
+    const next = player.status === 'unset' ? 'in' : player.status === 'in' ? 'out' : 'unset';
+    toggleMutation.mutate(next as 'in' | 'out');
   }
 
   const statusIcon =
@@ -330,7 +341,7 @@ function PlayerRow({
       ? 'bg-green-500'
       : player.status === 'out'
         ? 'bg-red-400'
-        : 'bg-gray-300 dark:bg-gray-600';
+        : 'border-2 border-gray-300 dark:border-gray-600';
 
   return (
     <button
@@ -387,7 +398,7 @@ function ViewGroupsLink({ friday }: { friday: string }) {
 // Create Round Button
 // ---------------------------------------------------------------------------
 
-function CreateRoundButton({ weekId, confirmed }: { weekId: number; confirmed: number }) {
+function CreateRoundButton({ weekId, confirmed, allAnswered }: { weekId: number; confirmed: number; allAnswered: boolean }) {
   const navigate = useNavigate();
   const [result, setResult] = useState<{ entryCode: string } | null>(null);
 
@@ -406,7 +417,7 @@ function CreateRoundButton({ weekId, confirmed }: { weekId: number; confirmed: n
     },
   });
 
-  const canCreate = confirmed > 0 && confirmed % 4 === 0;
+  const canCreate = allAnswered && confirmed > 0 && confirmed % 4 === 0;
   const remainder = confirmed % 4;
   const needed = remainder === 0 ? 0 : 4 - remainder;
 
@@ -441,9 +452,13 @@ function CreateRoundButton({ weekId, confirmed }: { weekId: number; confirmed: n
         ) : null}
         Create Round ({confirmed} players)
       </Button>
-      {!canCreate && confirmed > 0 && (
+      {!canCreate && (
         <p className="text-xs text-muted-foreground mt-1 text-center">
-          {needed} more needed for groups of 4
+          {!allAnswered
+            ? 'All players must be marked in or out'
+            : confirmed === 0
+              ? 'No players confirmed'
+              : `${needed} more needed for groups of 4`}
         </p>
       )}
       {createMutation.isError && (

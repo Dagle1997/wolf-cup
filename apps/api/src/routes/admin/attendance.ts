@@ -7,7 +7,7 @@ import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import type { Variables } from '../../types.js';
 
 const toggleStatusSchema = z.object({
-  status: z.enum(['in', 'out']),
+  status: z.enum(['in', 'out', 'unset']),
 });
 
 const addSubSchema = z.object({
@@ -150,19 +150,25 @@ app.patch('/attendance/:seasonWeekId/players/:playerId', adminAuthMiddleware, as
       return c.json({ error: 'Player not found', code: 'NOT_FOUND' }, 404);
     }
 
-    // Upsert attendance
-    await db
-      .insert(attendance)
-      .values({
-        seasonWeekId,
-        playerId,
-        status: result.data.status,
-        updatedAt: Date.now(),
-      })
-      .onConflictDoUpdate({
-        target: [attendance.seasonWeekId, attendance.playerId],
-        set: { status: result.data.status, updatedAt: Date.now() },
-      });
+    // Upsert attendance (unset = delete the row to return to default)
+    if (result.data.status === 'unset') {
+      await db
+        .delete(attendance)
+        .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.playerId, playerId)));
+    } else {
+      await db
+        .insert(attendance)
+        .values({
+          seasonWeekId,
+          playerId,
+          status: result.data.status,
+          updatedAt: Date.now(),
+        })
+        .onConflictDoUpdate({
+          target: [attendance.seasonWeekId, attendance.playerId],
+          set: { status: result.data.status, updatedAt: Date.now() },
+        });
+    }
 
     // Count confirmed for response
     const attendanceRows = await db
