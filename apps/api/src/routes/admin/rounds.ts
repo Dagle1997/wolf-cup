@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, and, desc, countDistinct, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults, galleryPhotos } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import {
   createRoundSchema,
@@ -389,6 +389,7 @@ app.delete('/rounds/:id', adminAuthMiddleware, async (c) => {
     }
 
     await db.transaction(async (tx) => {
+      await tx.update(galleryPhotos).set({ roundId: null }).where(eq(galleryPhotos.roundId, id));
       await tx.delete(scoreCorrections).where(eq(scoreCorrections.roundId, id));
       await tx.delete(wolfDecisions).where(eq(wolfDecisions.roundId, id));
       await tx.delete(harveyResults).where(eq(harveyResults.roundId, id));

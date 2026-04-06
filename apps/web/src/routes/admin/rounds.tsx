@@ -274,7 +274,7 @@ function CreateRoundForm({ seasons, isLoading }: { seasons: Season[]; isLoading:
   const [seasonId, setSeasonId] = useState('');
   const [roundType, setRoundType] = useState<'official' | 'casual'>('official');
   const [scheduledDate, setScheduledDate] = useState('');
-  const [entryCode, setEntryCode] = useState('');
+  const [entryCode, setEntryCode] = useState(String(new Date().getFullYear()));
   const [tee, setTee] = useState<'black' | 'blue' | 'white' | ''>('');
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -530,6 +530,7 @@ function RoundRow({
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-rounds'] }),
     onError: (err: Error) => {
       if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+      else alert(`Could not delete round: ${err.message}`);
     },
   });
 
