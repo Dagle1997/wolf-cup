@@ -8,6 +8,8 @@ import { getSession, clearSession } from '@/lib/session-store';
 import { enqueueScore } from '@/lib/offline-queue';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 import { cn } from '@/lib/utils';
+import { getWolfAssignment } from '@wolf-cup/engine';
+import type { HoleNumber } from '@wolf-cup/engine';
 
 // ---------------------------------------------------------------------------
 // Constants (from packages/engine/src/course.ts)
@@ -90,23 +92,15 @@ function isNetworkError(err: Error): boolean {
   return !navigator.onLine || err instanceof TypeError || err.message === 'Failed to fetch';
 }
 
-// Fixed wolf hole assignment table (matches packages/engine/src/wolf.ts WOLF_TABLE)
-const WOLF_TABLE: ReadonlyMap<number, number> = new Map([
-  [2, 0], [6, 0], [9, 0], [14, 0],
-  [4, 1], [7, 1], [10, 1], [16, 1],
-  [5, 2], [11, 2], [12, 2], [17, 2],
-  [8, 3], [13, 3], [15, 3], [18, 3],
-]);
-
 function buildWolfScheduleFromOrder(battingOrder: number[], players: Player[]): WolfHole[] {
   const nameMap = new Map(players.map((p) => [p.id, p.name]));
   return Array.from({ length: 18 }, (_, i) => {
-    const holeNumber = i + 1;
-    if (holeNumber === 1 || holeNumber === 3) {
+    const holeNumber = (i + 1) as HoleNumber;
+    const assignment = getWolfAssignment([0, 1, 2, 3], holeNumber);
+    if (assignment.type === 'skins') {
       return { holeNumber, type: 'skins' as const, wolfPlayerId: null, wolfPlayerName: null };
     }
-    const batterIndex = WOLF_TABLE.get(holeNumber) ?? 0;
-    const wolfPlayerId = battingOrder[batterIndex]!;
+    const wolfPlayerId = battingOrder[assignment.wolfBatterIndex]!;
     return {
       holeNumber,
       type: 'wolf' as const,
@@ -772,8 +766,8 @@ function ScoreEntryHolePage() {
           ))}
         </div>
 
-        {/* Bonuses — Greenie on par-3s only, Polie on any wolf hole (3+) */}
-        {roundData.autoCalculateMoney && currentHole >= 3 && (
+        {/* Bonuses — Greenie on par-3s only, Polie on any hole */}
+        {roundData.autoCalculateMoney && (
           <div className="border rounded-xl p-3 mb-3">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
               Bonuses

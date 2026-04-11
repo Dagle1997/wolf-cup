@@ -430,14 +430,14 @@ describe('PUT /rounds/:roundId/groups/:groupId/batting-order', () => {
     expect(body.group.id).toBe(groupOf4Id);
     expect(body.group.battingOrder).toEqual(order);
     expect(body.group.wolfSchedule).toHaveLength(18);
-    // Holes 1–2 are skins
+    // Holes 1 and 3 are skins
     expect(body.group.wolfSchedule[0]!.type).toBe('skins');
-    expect(body.group.wolfSchedule[1]!.type).toBe('skins');
+    expect(body.group.wolfSchedule[1]!.type).toBe('wolf');
     expect(body.group.wolfSchedule[0]!.wolfPlayerId).toBeNull();
-    // Hole 3: batter index 0 → p1Id
-    expect(body.group.wolfSchedule[2]!.type).toBe('wolf');
-    expect(body.group.wolfSchedule[2]!.wolfPlayerId).toBe(p1Id);
-    expect(body.group.wolfSchedule[2]!.wolfPlayerName).toBe('Jason Dagle');
+    // Hole 2: batter index 0 → p1Id
+    expect(body.group.wolfSchedule[1]!.wolfPlayerId).toBe(p1Id);
+    expect(body.group.wolfSchedule[1]!.wolfPlayerName).toBe('Jason Dagle');
+    expect(body.group.wolfSchedule[2]!.type).toBe('skins');
     // Hole 4: batter index 1 → p2Id
     expect(body.group.wolfSchedule[3]!.wolfPlayerId).toBe(p2Id);
   });
@@ -455,6 +455,21 @@ describe('PUT /rounds/:roundId/groups/:groupId/batting-order', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { group: { battingOrder: number[] } };
     expect(body.group.battingOrder).toEqual(order);
+  });
+
+  it('GET /rounds/:roundId/players/:playerId/scorecard includes hole 2 in wolfHoles for batting position 1', async () => {
+    const order = [p1Id, p2Id, p3Id, p4Id];
+    await db.update(groups).set({ battingOrder: JSON.stringify(order) }).where(eq(groups.id, groupOf4Id));
+
+    const res = await roundsApp.request(`/rounds/${officialRoundId}/players/${p1Id}/scorecard`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as {
+      battingPosition: number | null;
+      wolfHoles: number[];
+    };
+
+    expect(body.battingPosition).toBe(1);
+    expect(body.wolfHoles).toEqual([2, 6, 9, 14]);
   });
 
   it('returns 403 INVALID_ENTRY_CODE for official round with wrong code', async () => {
@@ -979,8 +994,8 @@ describe('Wolf decision endpoints', () => {
   let wGroupId: number;
   let wCasualGroupId: number;
 
-  // Batting order: w1Id=bat0(wolf on holes 3,7,11,15), w2Id=bat1(wolf on 4,8,12,16),
-  // w3Id=bat2(wolf on 5,9,13,17), w4Id=bat3(wolf on 6,10,14,18)
+  // Batting order: w1Id=bat0(wolf on holes 2,6,9,14), w2Id=bat1(wolf on 4,7,10,16),
+  // w3Id=bat2(wolf on 5,11,12,17), w4Id=bat3(wolf on 8,13,15,18)
   const WOLF_HOLE = 5; // wolf is w3Id (battingPos 2)
 
   beforeAll(async () => {
@@ -1174,15 +1189,15 @@ describe('Wolf decision endpoints', () => {
   });
 
   it('POST wolf-decision: skins hole with polies (no decision) → 200', async () => {
-    // Skins hole (hole 2) with just a polie — no decision field
-    const res = await roundsApp.request(wolfDecisionUrl(officialRoundId, wGroupId, 2), {
+    // Skins hole (hole 3) with just a polie — no decision field
+    const res = await roundsApp.request(wolfDecisionUrl(officialRoundId, wGroupId, 3), {
       method: 'POST',
       headers: { 'x-entry-code': ENTRY_CODE, 'Content-Type': 'application/json' },
       body: JSON.stringify({ polies: [w1Id] }),
     });
     expect(res.status).toBe(200);
     const body = await res.json() as { wolfDecision: { holeNumber: number; decision: null } };
-    expect(body.wolfDecision.holeNumber).toBe(2);
+    expect(body.wolfDecision.holeNumber).toBe(3);
     expect(body.wolfDecision.decision).toBeNull();
   });
 

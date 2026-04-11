@@ -11,6 +11,7 @@ import { resolve, dirname } from 'node:path';
 import { Hono } from 'hono';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { calculateStablefordPoints, getCourseHole, getWolfAssignment } from '@wolf-cup/engine';
+import type { HoleNumber } from '@wolf-cup/engine';
 
 // ---------------------------------------------------------------------------
 // DB mock — must be hoisted before any import that touches db
@@ -108,8 +109,8 @@ async function addGuests(roundId: number, groupId: number): Promise<PlayerRow[]>
  * playerIds[i] must correspond to PLAYER_DATA[i].
  *
  * Decision schedule:
- *   Holes 1–2:   skins only (no decision submitted unless greenie/polie present)
- *   Holes 3–4:   alone
+ *   Holes 1 and 3: skins only (no decision submitted unless greenie/polie present)
+ *   Holes 2 and 4: alone
  *   Holes 5–8:   partner  (next batter in rotating order)
  *   Holes 9–13:  blind_wolf
  *   Holes 14–18: alone
@@ -147,14 +148,13 @@ async function runGroupFlow(roundId: number, groupId: number, playerIds: number[
     const greenies = PAR3_HOLES.has(h) ? [playerIds[0]!] : [];
     const polies = h === 9 ? [playerIds[0]!] : [];
     const wolfBody: WolfBody = { greenies, polies };
+    const assignment = getWolfAssignment([0, 1, 2, 3], h as HoleNumber);
 
-    if (h >= 3) {
-      if (h <= 4) {
+    if (assignment.type === 'wolf') {
+      if (h === 2 || h === 4) {
         wolfBody.decision = 'alone';
       } else if (h <= 8) {
-        const assignment = getWolfAssignment([0, 1, 2, 3], h as 5 | 6 | 7 | 8);
-        const wolfIdx = assignment.type === 'wolf' ? assignment.wolfBatterIndex : 0;
-        const partnerIdx = (wolfIdx + 1) % 4;
+        const partnerIdx = (assignment.wolfBatterIndex + 1) % 4;
         wolfBody.decision = 'partner';
         wolfBody.partnerPlayerId = playerIds[partnerIdx]!;
       } else if (h <= 13) {
@@ -165,7 +165,7 @@ async function runGroupFlow(roundId: number, groupId: number, playerIds: number[
     }
 
     // Only POST wolf-decision when there is something to save
-    if (greenies.length > 0 || polies.length > 0 || h >= 3) {
+    if (greenies.length > 0 || polies.length > 0 || assignment.type === 'wolf') {
       const wRes = await postJSON(
         `/api/rounds/${roundId}/groups/${groupId}/holes/${h}/wolf-decision`,
         wolfBody,
@@ -389,14 +389,13 @@ describe('4-group practice round — all groups independent', () => {
 describe('blind wolf win & no-blood scenarios', () => {
   let roundId: number;
   let groupId: number;
-  let wolfId: number;    // Alice (batting position 0 — wolf on hole 3)
+  let wolfId: number;    // Alice (batting position 0 — wolf on hole 2)
   let oppIds: number[];  // Bob, Carol, Dave
   let playerIds: number[];
 
   // Custom per-hole gross scores (index = player position 0-3)
   const HOLE1_GROSS = [6, 6, 6, 7]; // all net 5 — no-blood
-  const HOLE2_GROSS = [5, 5, 5, 6]; // all net 4 — no-blood
-  const HOLE3_GROSS = [3, 5, 5, 6]; // Alice net 3, others 4/4/5 — wolf wins
+  const HOLE2_GROSS = [3, 5, 5, 6]; // Alice net 2, others 4/4/5 — wolf wins
 
   beforeAll(async () => {
     const res = await postJSON('/api/rounds/practice', { groupCount: 1, tee: 'blue' });
@@ -407,7 +406,7 @@ describe('blind wolf win & no-blood scenarios', () => {
 
     const guests = await addGuests(roundId, groupId);
     playerIds = guests.map((g) => g.id);
-    wolfId = playerIds[0]!;   // Alice is wolf for hole 3 (batting position (3-3)%4 = 0)
+    wolfId = playerIds[0]!;   // Alice is wolf for hole 2 (batting position 0)
     oppIds = playerIds.slice(1);
 
     const boRes = await putJSON(`/api/rounds/${roundId}/groups/${groupId}/batting-order`, {
@@ -441,7 +440,7 @@ describe('blind wolf win & no-blood scenarios', () => {
   });
 
   it('blind_wolf win awards wolf +$15, each opponent -$5, sum $0', async () => {
-    // Submit hole 2 — all net 4, tie
+    // Submit hole 2 — Alice gross 3 (net 2, uniquely lowest)
     const h2Scores = playerIds.map((pid, i) => ({ playerId: pid, grossScore: HOLE2_GROSS[i]! }));
     const s2Res = await postJSON(
       `/api/rounds/${roundId}/groups/${groupId}/holes/2/scores`,
@@ -449,24 +448,16 @@ describe('blind wolf win & no-blood scenarios', () => {
     );
     expect(s2Res.status, 'hole 2 scores').toBe(200);
 
-    // Submit hole 3 — Alice gross 3 (net 3, uniquely lowest)
-    const h3Scores = playerIds.map((pid, i) => ({ playerId: pid, grossScore: HOLE3_GROSS[i]! }));
-    const s3Res = await postJSON(
-      `/api/rounds/${roundId}/groups/${groupId}/holes/3/scores`,
-      { scores: h3Scores },
-    );
-    expect(s3Res.status, 'hole 3 scores').toBe(200);
-
-    // Hole 3 wolf-decision: Alice (batting pos 0) calls blind_wolf
+    // Hole 2 wolf-decision: Alice (batting pos 0) calls blind_wolf
     const wRes = await postJSON(
-      `/api/rounds/${roundId}/groups/${groupId}/holes/3/wolf-decision`,
+      `/api/rounds/${roundId}/groups/${groupId}/holes/2/wolf-decision`,
       { decision: 'blind_wolf', greenies: [], polies: [] },
     );
-    expect(wRes.status, 'hole 3 wolf-decision').toBe(200);
+    expect(wRes.status, 'hole 2 wolf-decision').toBe(200);
 
-    // Cumulative totals (holes 1+2 no-blood = $0, hole 3 blind wolf wins all 4 components + birdie bonus)
+    // Cumulative totals (hole 1 no-blood = $0, hole 2 blind wolf wins all 4 components + birdie bonus)
     // Base: wolf +$12 (4 components × $3), each opp -$4 (4 components × $1)
-    // Birdie bonus (net 3 on par 4): wolf +$3, each opp -$1
+    // Birdie bonus (net 2 on par 4): wolf +$3, each opp -$1
     // Total: wolf +$15, each opp -$5
     const wData = (await wRes.json()) as { moneyTotals: MoneyTotal[] };
     const wolfTotal = wData.moneyTotals.find((t) => t.playerId === wolfId)?.moneyTotal;

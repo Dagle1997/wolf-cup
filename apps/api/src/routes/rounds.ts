@@ -1752,7 +1752,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
   // Compute which holes are this player's wolf holes
   const wolfHoles: number[] = [];
   if (playerPos >= 0) {
-    for (let h = 3; h <= 18; h++) {
+    for (let h = 1; h <= 18; h++) {
       const assignment = buildHoleAssignment(h);
       if (assignment.type === 'wolf' && assignment.wolfBatterIndex === playerPos) {
         wolfHoles.push(h);

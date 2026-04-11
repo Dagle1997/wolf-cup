@@ -159,11 +159,11 @@ function HelpPage() {
           automatically — just enter scores.
         </p>
         <p>
-          <strong>Skins (Holes 1 &amp; 2):</strong> Every player for
+          <strong>Skins (Holes 1 &amp; 3):</strong> Every player for
           themselves. Lowest net score wins and collects from each opponent.
         </p>
         <p>
-          <strong>Wolf holes (3–18):</strong> Wolf team vs. non-wolf team.
+          <strong>Wolf holes:</strong> Every other hole is wolf team vs. non-wolf team.
           In a 2v2, the winning team collects from the losing team. Lone wolf
           wins or loses against all 3 opponents individually.
         </p>
