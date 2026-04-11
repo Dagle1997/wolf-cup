@@ -31,7 +31,7 @@ function cmp(a: number, b: number): -1 | 0 | 1 {
   return 0;
 }
 
-/** Resolve individual skin payout (+3 winner, -1 others) — used on skins holes (1-2). */
+/** Resolve individual skin payout (+3 winner, -1 others) — used on skins holes (1, 3). */
 function skinIndividual(
   netScores: readonly [number, number, number, number],
   par: number,
@@ -72,31 +72,30 @@ function skinTeam(
 
 /**
  * Resolve skin as a GROUP point (1v3).
+ * Follows the low-ball result: wolf vs opponents collectively.
+ * Gated by the winning side's low ball being ≤ par.
  * Wolf wins → wolf +3, each opp -1.
  * Opponents win → wolf -3, each opp +1.
+ * Tie → no skin.
  */
 function skinGroup(
   netScores: readonly [number, number, number, number],
   par: number,
   wolfIdx: BattingPosition,
   opps: readonly [BattingPosition, BattingPosition, BattingPosition],
+  lbResult: -1 | 0 | 1,
 ): readonly [number, number, number, number] {
-  const min = Math.min(netScores[0], netScores[1], netScores[2], netScores[3]);
-  if (min > par) return [0, 0, 0, 0];
-  const count = netScores.filter(s => s === min).length;
-  if (count !== 1) return [0, 0, 0, 0];
+  if (lbResult === 0) return [0, 0, 0, 0];
+  // Winning side's low score must be ≤ par
+  const winLow = lbResult === 1
+    ? netScores[wolfIdx]
+    : Math.min(netScores[opps[0]], netScores[opps[1]], netScores[opps[2]]);
+  if (winLow > par) return [0, 0, 0, 0];
   const result: [number, number, number, number] = [0, 0, 0, 0];
-  if (netScores[wolfIdx] === min) {
-    result[wolfIdx] = 3;
-    result[opps[0]] = -1;
-    result[opps[1]] = -1;
-    result[opps[2]] = -1;
-  } else {
-    result[wolfIdx] = -3;
-    result[opps[0]] = 1;
-    result[opps[1]] = 1;
-    result[opps[2]] = 1;
-  }
+  result[wolfIdx] = lbResult * 3;
+  result[opps[0]] = -lbResult;
+  result[opps[1]] = -lbResult;
+  result[opps[2]] = -lbResult;
   return result;
 }
 
@@ -108,7 +107,7 @@ function skinGroup(
  * Calculates per-player money results for a single hole.
  *
  * @param netScores      - Net score for each player (batting positions 0–3)
- * @param holeAssignment - Skins hole (1–2) or wolf hole (3–18) with wolf's batting position
+ * @param holeAssignment - Skins hole (1, 3) or wolf hole with wolf's batting position
  * @param wolfDecision   - Wolf's decision (null on skins holes): partner | alone | blind_wolf
  * @param par            - Hole par (3, 4, or 5)
  */
@@ -127,7 +126,7 @@ export function calculateHoleMoney(
 }
 
 // ---------------------------------------------------------------------------
-// Skins hole (holes 1–2) — individual skin payout only
+// Skins hole (holes 1, 3) — individual skin payout only
 // ---------------------------------------------------------------------------
 
 function calcSkinsHole(
@@ -144,7 +143,7 @@ function calcSkinsHole(
 }
 
 // ---------------------------------------------------------------------------
-// Wolf hole (holes 3–18) dispatch
+// Wolf hole dispatch
 // ---------------------------------------------------------------------------
 
 function calcWolfHole(
@@ -229,8 +228,8 @@ function calc1v3(
   const oppBest = Math.min(netScores[o0], netScores[o1], netScores[o2]);
   const lbResult = cmp(wolfNet, oppBest);
 
-  // Skin: group-based (wolf vs 3 opponents collectively)
-  const sk = skinGroup(netScores, par, wolfIdx, opps);
+  // Skin: group-based (wolf vs 3 opponents collectively), follows low ball result
+  const sk = skinGroup(netScores, par, wolfIdx, opps, lbResult);
 
   // Bonus mirrors low ball
   const bonusResult = lbResult;

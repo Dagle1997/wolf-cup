@@ -305,7 +305,7 @@ export const wolfDecisions = sqliteTable(
       .notNull()
       .references(() => groups.id),
     holeNumber: integer('hole_number').notNull(),
-    wolfPlayerId: integer('wolf_player_id').references(() => players.id), // null on skins holes 1–2
+    wolfPlayerId: integer('wolf_player_id').references(() => players.id), // null on skins holes (1, 3)
     decision: text('decision'), // null on skins holes; 'partner'|'alone'|'blind_wolf' on wolf holes
     partnerPlayerId: integer('partner_player_id').references(() => players.id),
     bonusesJson: text('bonuses_json'), // JSON {greenies:[playerId,...], polies:[playerId,...]}

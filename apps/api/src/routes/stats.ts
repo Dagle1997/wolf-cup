@@ -745,7 +745,7 @@ app.get('/stats/:playerId/detail', async (c) => {
       // Wolf record for holes where this player was wolf based on batting position
       const roundWolfDecs = wolfDecRows.filter((d) => d.roundId === gr.roundId && d.groupId === gr.groupId);
       for (const d of roundWolfDecs) {
-        if (d.holeNumber <= 2) continue; // skins holes
+        if (d.holeNumber === 1 || d.holeNumber === 3) continue; // skins holes
         const assignment = getWolfAssignment(battingArr as [number, number, number, number], d.holeNumber as Parameters<typeof getWolfAssignment>[1]);
         if (assignment.type === 'wolf' && assignment.wolfBatterIndex === posIdx) {
           // This player was wolf on this hole

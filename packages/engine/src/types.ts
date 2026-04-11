@@ -9,7 +9,7 @@ export type BattingPosition = 0 | 1 | 2 | 3;
 /** Four player IDs in batting draw order — generic to decouple engine from DB layer */
 export type BattingOrder<TPlayerId = string> = [TPlayerId, TPlayerId, TPlayerId, TPlayerId];
 
-/** Holes 1–2 are skins holes */
+/** Holes 1 and 3 are skins holes */
 export type SkinsHoleAssignment = { readonly type: 'skins' };
 
 /** Holes 3–18: one batter is wolf */

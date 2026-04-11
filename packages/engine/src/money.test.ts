@@ -287,12 +287,14 @@ describe('calculateHoleMoney — 1v3 lone wolf (alone)', () => {
     expect(r[0].total).toBe(-9);
   });
 
-  it('two opponents tie for absolute low ball → no skin ($0 on skin component)', () => {
-    // wolf: 5, opp1: 3, opp2: 3, opp3: 6  par-4 — tied low ball among opps
-    // Skin: 3 tied → no skin
+  it('two opponents tie for low ball → skin follows low ball result (opponents win)', () => {
+    // wolf: 5, opp1: 3, opp2: 3, opp3: 6  par-4 — opponents won low ball (3 < 5), 3 ≤ par
+    // Skin follows low ball: opponents win skin (wolf −3, each opp +1)
     const r = calculateHoleMoney([5, 3, 3, 6], WOLF(0), ALONE, 4);
-    expect(r[0].skin).toBe(0);
-    expect(r[1].skin).toBe(0);
+    expect(r[0].skin).toBe(-3);
+    expect(r[1].skin).toBe(1);
+    expect(r[2].skin).toBe(1);
+    expect(r[3].skin).toBe(1);
   });
 
   it('wolf at non-zero batting position', () => {

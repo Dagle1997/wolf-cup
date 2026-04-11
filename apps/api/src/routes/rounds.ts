@@ -137,7 +137,7 @@ async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'bl
     const decisionRecord = decisionByHole.get(holeNum);
 
     let wolfDecision: WolfDecision | null = null;
-    if (holeNum <= 2) {
+    if (holeAssignment.type === 'skins') {
       // Skins holes: no wolf decision needed
       wolfDecision = null;
     } else {
@@ -146,10 +146,10 @@ async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'bl
     }
 
     const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
-    // Skins holes (1-2): no bonus modifiers — just the base individual skin ($3/-$1 or $0).
-    // Wolf holes (3+): always apply bonus modifiers (birdie/eagle/double-birdie are score-detected).
+    // Skins holes: no bonus modifiers — just the base individual skin ($3/-$1 or $0).
+    // Wolf holes: always apply bonus modifiers (birdie/eagle/double-birdie are score-detected).
     let result = base;
-    if (holeNum >= 3) {
+    if (holeAssignment.type === 'wolf') {
       const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
       result = applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par);
     }
@@ -160,7 +160,7 @@ async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'bl
     }
 
     // Write wolf outcome for non-skins holes
-    if (holeNum >= 3 && holeAssignment.type === 'wolf') {
+    if (holeAssignment.type === 'wolf') {
       const wolfBatterIndex = holeAssignment.wolfBatterIndex;
       const wolfMoney = result[wolfBatterIndex]!.total;
       const outcome = wolfMoney > 0 ? 'win' : wolfMoney < 0 ? 'loss' : 'push';
@@ -1155,14 +1155,15 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
   const { decision, partnerPlayerId, greenies, polies } = parsed.data;
 
   // Business rule validation
-  const isSkinHole = holeNumber <= 2;
+  const assignment = getWolfAssignment([0, 1, 2, 3], holeNumber as HoleNumber);
+  const isSkinHole = assignment.type === 'skins';
 
-  // Skins holes (1-2): decision must not be present
+  // Skins holes: decision must not be present
   if (isSkinHole && decision !== undefined) {
     return c.json({ error: 'Invalid decision', code: 'INVALID_DECISION' }, 422);
   }
 
-  // Wolf holes (3-18): decision is required
+  // Wolf holes: decision is required
   if (!isSkinHole && decision === undefined) {
     return c.json({ error: 'Invalid decision', code: 'INVALID_DECISION' }, 422);
   }
@@ -1170,8 +1171,7 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
   // Partner decision: partnerPlayerId required and must be a non-wolf group member
   let wolfPlayerId: number | null = null;
   if (!isSkinHole) {
-    const wolfAssignment = getWolfAssignment([0, 1, 2, 3], holeNumber as HoleNumber);
-    const wolfBatterIndex = wolfAssignment.type === 'wolf' ? wolfAssignment.wolfBatterIndex : 0;
+    const wolfBatterIndex = assignment.type === 'wolf' ? assignment.wolfBatterIndex : 0;
     wolfPlayerId = battingOrder[wolfBatterIndex]!;
 
     if (decision === 'partner') {
@@ -1705,7 +1705,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       const decisionRecord = decisionByHole.get(holeNum);
 
       let wolfDecision: WolfDecision | null = null;
-      if (holeNum > 2) {
+      if (holeAssignment.type === 'wolf') {
         if (!decisionRecord?.decision) {
           // Wolf hole with no decision recorded yet — push hole with $0 and move on
           holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: null, wolfRole: null, wolfPlayerName: null, partnerPlayerName: null, teammateName: null });
@@ -1719,9 +1719,9 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       }
 
       const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
-      // Skins holes (1-2): no bonus modifiers. Wolf holes (3+): always apply.
+      // Skins holes: no bonus modifiers. Wolf holes: always apply.
       let result = base;
-      if (holeNum >= 3) {
+      if (holeAssignment.type === 'wolf') {
         const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
         result = applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par);
       }

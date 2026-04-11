@@ -5,13 +5,13 @@ import type { BattingOrder, HoleNumber } from './types.js';
 const ORDER: BattingOrder<string> = ['alice', 'bob', 'carol', 'dave'];
 
 describe('getWolfAssignment', () => {
-  describe('skins holes (1–2)', () => {
+  describe('skins holes (1, 3)', () => {
     it('hole 1 returns skins regardless of batting order', () => {
       expect(getWolfAssignment(ORDER, 1)).toEqual({ type: 'skins' });
     });
 
-    it('hole 2 returns skins regardless of batting order', () => {
-      expect(getWolfAssignment(ORDER, 2)).toEqual({ type: 'skins' });
+    it('hole 3 returns skins regardless of batting order', () => {
+      expect(getWolfAssignment(ORDER, 3)).toEqual({ type: 'skins' });
     });
 
     it('hole 1 returns skins for any batting order', () => {
@@ -20,9 +20,9 @@ describe('getWolfAssignment', () => {
     });
   });
 
-  describe('Batter 1 (index 0) wolf holes: 3, 6, 9, 14', () => {
-    it('hole 3 → wolfBatterIndex 0', () => {
-      expect(getWolfAssignment(ORDER, 3)).toEqual({ type: 'wolf', wolfBatterIndex: 0 });
+  describe('Batter 1 (index 0) wolf holes: 2, 6, 9, 14', () => {
+    it('hole 2 → wolfBatterIndex 0', () => {
+      expect(getWolfAssignment(ORDER, 2)).toEqual({ type: 'wolf', wolfBatterIndex: 0 });
     });
     it('hole 6 → wolfBatterIndex 0', () => {
       expect(getWolfAssignment(ORDER, 6)).toEqual({ type: 'wolf', wolfBatterIndex: 0 });
@@ -124,8 +124,8 @@ describe('getWolfAssignment', () => {
   });
 
   describe('wolfBatterIndex resolves to correct player in battingOrder', () => {
-    it('hole 3: batter index 0 → alice', () => {
-      const a = getWolfAssignment(ORDER, 3);
+    it('hole 2: batter index 0 → alice', () => {
+      const a = getWolfAssignment(ORDER, 2);
       expect(a.type).toBe('wolf');
       if (a.type === 'wolf') {
         expect(ORDER[a.wolfBatterIndex]).toBe('alice');

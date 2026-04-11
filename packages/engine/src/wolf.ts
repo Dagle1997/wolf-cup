@@ -2,16 +2,16 @@ import type { BattingOrder, BattingPosition, HoleAssignment, HoleNumber } from '
 
 /**
  * Fixed wolf hole assignment table.
- * Maps hole number → batting position index for holes 3–18.
- * Holes 1–2 are skins and not present in this map.
+ * Maps hole number → batting position index for the 16 wolf holes.
+ * Holes 1 and 3 are skins and not present in this map.
  *
- * Batter 1 (index 0): holes 3, 6, 9, 14
+ * Batter 1 (index 0): holes 2, 6, 9, 14
  * Batter 2 (index 1): holes 4, 7, 10, 16
  * Batter 3 (index 2): holes 5, 11, 12, 17
  * Batter 4 (index 3): holes 8, 13, 15, 18
  */
 const WOLF_TABLE = new Map<HoleNumber, BattingPosition>([
-  [3,  0], [6,  0], [9,  0], [14, 0],
+  [2,  0], [6,  0], [9,  0], [14, 0],
   [4,  1], [7,  1], [10, 1], [16, 1],
   [5,  2], [11, 2], [12, 2], [17, 2],
   [8,  3], [13, 3], [15, 3], [18, 3],
@@ -20,7 +20,7 @@ const WOLF_TABLE = new Map<HoleNumber, BattingPosition>([
 /**
  * Returns the wolf hole assignment for a given hole based on batting order.
  *
- * Holes 1–2 are skins holes. Holes 3–18 have a fixed wolf rotation
+ * Holes 1 and 3 are skins holes. The remaining 16 holes have a fixed wolf rotation
  * derived from the ball draw batting order.
  *
  * Pure function — deterministic, no side effects.
@@ -33,7 +33,7 @@ export function getWolfAssignment<TPlayerId>(
   _battingOrder: BattingOrder<TPlayerId>,
   holeNumber: HoleNumber,
 ): HoleAssignment {
-  if (holeNumber === 1 || holeNumber === 2) {
+  if (holeNumber === 1 || holeNumber === 3) {
     return { type: 'skins' };
   }
 

@@ -214,15 +214,15 @@ async function rescoreGroup(roundId: number, groupId: number, tee: Tee = 'blue')
     const decisionRecord = decisionByHole.get(holeNum);
 
     let wolfDecision: WolfDecision | null = null;
-    if (holeNum > 2) {
+    if (holeAssignment.type === 'wolf') {
       if (!decisionRecord?.decision) continue;
       wolfDecision = buildWolfDecision(decisionRecord.decision, decisionRecord.partnerPlayerId, battingOrder);
     }
 
     const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);
-    // Wolf holes (3+): always apply bonus modifiers (birdie/eagle/double-birdie are score-detected)
+    // Wolf holes: always apply bonus modifiers (birdie/eagle/double-birdie are score-detected)
     let result = base;
-    if (holeNum >= 3) {
+    if (holeAssignment.type === 'wolf') {
       const bonusInput = buildBonusInput(decisionRecord?.bonusesJson ?? null, battingOrder);
       result = applyBonusModifiers(base, netScores, grossScores, bonusInput, holeAssignment, wolfDecision, courseHole.par);
     }
@@ -233,7 +233,7 @@ async function rescoreGroup(roundId: number, groupId: number, tee: Tee = 'blue')
     }
 
     // Write wolf outcome for non-skins holes
-    if (holeNum >= 3 && holeAssignment.type === 'wolf') {
+    if (holeAssignment.type === 'wolf') {
       const wolfBatterIndex = holeAssignment.wolfBatterIndex;
       const wolfMoney = result[wolfBatterIndex]!.total;
       const outcome = wolfMoney > 0 ? 'win' : wolfMoney < 0 ? 'loss' : 'push';

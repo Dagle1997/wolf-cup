@@ -133,8 +133,8 @@ function HelpPage() {
       <Section emoji="🐺" title="The Wolf Game">
         <p>
           The batting order determines who is <strong>wolf</strong> on each
-          hole. Player 1 is wolf on hole 3, player 2 on hole 4, and so on —
-          cycling through the group. Holes <strong>1 &amp; 2</strong> are
+          hole. Player 1 is wolf on hole 2, player 2 on hole 4, and so on —
+          cycling through the group. Holes <strong>1 &amp; 3</strong> are
           always <strong>skins</strong> (everyone for themselves).
         </p>
         <p>

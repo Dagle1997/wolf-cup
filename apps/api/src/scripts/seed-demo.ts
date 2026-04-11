@@ -24,6 +24,7 @@ import {
   calculateStablefordPoints,
   calculateHoleMoney,
   calculateHarveyPoints,
+  getWolfAssignment,
 } from '@wolf-cup/engine';
 import type {
   HoleNumber,
@@ -214,13 +215,11 @@ async function seed() {
           stablefordMap.set(p.id, (stablefordMap.get(p.id) ?? 0) + pts);
         }
 
-        const holeAssignment: HoleAssignment = holeNum <= 2
-          ? { type: 'skins' }
-          : { type: 'wolf', wolfBatterIndex: ((holeNum - 3) % 4) as BattingPosition };
+        const holeAssignment: HoleAssignment = getWolfAssignment([0, 1, 2, 3] as const, holeNum as Parameters<typeof getWolfAssignment>[1]);
 
-        if (holeNum > 2) {
+        if (holeAssignment.type === 'wolf') {
           // Wolf hole — generate a decision
-          const wolfBatterIndex = ((holeNum - 3) % 4) as BattingPosition;
+          const wolfBatterIndex = holeAssignment.wolfBatterIndex;
           const wolfPlayerId = groupPlayerList[wolfBatterIndex]!.id;
           const roll = rng();
           let decisionStr: string;

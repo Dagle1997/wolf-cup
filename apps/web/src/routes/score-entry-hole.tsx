@@ -92,7 +92,7 @@ function isNetworkError(err: Error): boolean {
 
 // Fixed wolf hole assignment table (matches packages/engine/src/wolf.ts WOLF_TABLE)
 const WOLF_TABLE: ReadonlyMap<number, number> = new Map([
-  [3, 0], [6, 0], [9, 0], [14, 0],
+  [2, 0], [6, 0], [9, 0], [14, 0],
   [4, 1], [7, 1], [10, 1], [16, 1],
   [5, 2], [11, 2], [12, 2], [17, 2],
   [8, 3], [13, 3], [15, 3], [18, 3],
@@ -102,7 +102,7 @@ function buildWolfScheduleFromOrder(battingOrder: number[], players: Player[]): 
   const nameMap = new Map(players.map((p) => [p.id, p.name]));
   return Array.from({ length: 18 }, (_, i) => {
     const holeNumber = i + 1;
-    if (holeNumber <= 2) {
+    if (holeNumber === 1 || holeNumber === 3) {
       return { holeNumber, type: 'skins' as const, wolfPlayerId: null, wolfPlayerName: null };
     }
     const batterIndex = WOLF_TABLE.get(holeNumber) ?? 0;
@@ -329,7 +329,7 @@ function ScoreEntryHolePage() {
               grossScore,
             })),
             wolfDecision: {
-              decision: holeNum >= 3 ? decision : null,
+              decision: wolfSchedule[holeNum - 1]?.type === 'wolf' ? decision : null,
               partnerId,
               greenies,
               polies,
@@ -423,13 +423,14 @@ function ScoreEntryHolePage() {
 
       // Fire wolf decision POST if autoCalculateMoney and there's data to save
       const round = roundData;
-      const hasWolfDecision = round?.autoCalculateMoney && holeNum >= 3 && currentDecision !== null;
+      const isWolf = wolfSchedule[holeNum - 1]?.type === 'wolf';
+      const hasWolfDecision = round?.autoCalculateMoney && isWolf && currentDecision !== null;
       const hasGreeniesOrPolies = currentGreenies.size > 0 || currentPolies.size > 0;
 
       if (round?.autoCalculateMoney && (hasWolfDecision || hasGreeniesOrPolies)) {
         wolfDecisionMutation.mutate({
           holeNum,
-          decision: holeNum >= 3 ? currentDecision : null,
+          decision: wolfSchedule[holeNum - 1]?.type === 'wolf' ? currentDecision : null,
           partnerId: currentPartnerId,
           greenies: [...currentGreenies],
           polies: [...currentPolies],
@@ -449,7 +450,7 @@ function ScoreEntryHolePage() {
         // Network failure — queue locally and advance hole (data is safe in IndexedDB)
         const hasWolfData =
           roundData?.autoCalculateMoney &&
-          (holeNum >= 3 ? currentDecision !== null : currentGreenies.size > 0 || currentPolies.size > 0);
+          (wolfSchedule[holeNum - 1]?.type === 'wolf' ? currentDecision !== null : currentGreenies.size > 0 || currentPolies.size > 0);
         void enqueueScore({
           roundId: session!.roundId,
           groupId: session!.groupId!,
@@ -460,7 +461,7 @@ function ScoreEntryHolePage() {
           })),
           wolfDecision: hasWolfData
             ? {
-                decision: holeNum >= 3 ? currentDecision : null,
+                decision: wolfSchedule[holeNum - 1]?.type === 'wolf' ? currentDecision : null,
                 partnerId: currentPartnerId,
                 greenies: [...currentGreenies],
                 polies: [...currentPolies],
@@ -673,7 +674,7 @@ function ScoreEntryHolePage() {
   const si = HOLE_STROKE_INDEXES[currentHole - 1]!;
 
   // Determine if wolf decision is required and if this is a forced-wolf hole
-  const isWolfHole = currentHole >= 3 && roundData.autoCalculateMoney;
+  const isWolfHole = wolfHole.type === 'wolf' && roundData.autoCalculateMoney;
   const currentWolfPlayerId = wolfHole.wolfPlayerId;
 
   // Find all wolf holes for the current wolf player
