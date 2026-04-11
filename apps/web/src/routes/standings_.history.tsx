@@ -279,7 +279,7 @@ function AwardCard({ award }: { award: Award }) {
         {award.recipients.map((r) => {
           const cashRecord = ['biggest_season_win', 'biggest_season_loss'].includes(award.id);
           const cashPerYear = ['money_man', 'philanthropist'].includes(award.id);
-          const perSeason = ['ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance', 'the_ronnie', 'snow_cone'];
+          const perSeason = ['ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance', 'the_ronnie', 'snow_cone', 'every_season', 'og', 'the_founder'];
           const showYearEmojis = !cashRecord && !cashPerYear && perSeason.includes(award.id);
           const cashLabels = cashPerYear ? r.detail.split(', ') : [];
           return (
