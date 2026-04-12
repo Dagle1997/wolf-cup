@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { seasons, rounds, players, sideGames, sideGameResults } from '../../db/schema.js';
+import { seasons, rounds, players, sideGames, sideGameResults, seasonWeeks } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import {
   createSideGameSchema,
@@ -22,6 +22,9 @@ function toSideGameResponse(row: typeof sideGames.$inferSelect) {
     calculationType: row.calculationType ?? null,
     scheduledRoundIds: row.scheduledRoundIds
       ? (JSON.parse(row.scheduledRoundIds) as number[])
+      : [],
+    scheduledFridays: row.scheduledFridays
+      ? (JSON.parse(row.scheduledFridays) as string[])
       : [],
   };
 }
@@ -437,8 +440,20 @@ app.post('/seasons/:seasonId/side-games/initialize', adminAuthMiddleware, async 
     return c.json({ error: 'Season not found', code: 'NOT_FOUND' }, 404);
   }
 
-  // Get all official, non-cancelled rounds sorted by date
-  const seasonRounds = await db
+  // Rotation is anchored to active Fridays (season_weeks). Rounds are created
+  // week-by-week from attendance and back-filled into scheduledRoundIds later.
+  const activeWeeks = await db
+    .select({ friday: seasonWeeks.friday })
+    .from(seasonWeeks)
+    .where(and(eq(seasonWeeks.seasonId, seasonId), eq(seasonWeeks.isActive, 1)))
+    .orderBy(seasonWeeks.friday);
+
+  if (activeWeeks.length === 0) {
+    return c.json({ error: 'No active weeks found for this season', code: 'NO_WEEKS' }, 422);
+  }
+
+  // Resolve any already-existing official rounds to seed scheduledRoundIds
+  const existingRounds = await db
     .select({ id: rounds.id, scheduledDate: rounds.scheduledDate })
     .from(rounds)
     .where(
@@ -447,12 +462,8 @@ app.post('/seasons/:seasonId/side-games/initialize', adminAuthMiddleware, async 
         eq(rounds.type, 'official'),
         sql`${rounds.status} != 'cancelled'`,
       ),
-    )
-    .orderBy(rounds.scheduledDate, rounds.id);
-
-  if (seasonRounds.length === 0) {
-    return c.json({ error: 'No official rounds found for this season', code: 'NO_ROUNDS' }, 422);
-  }
+    );
+  const dateToRoundId = new Map(existingRounds.map((r) => [r.scheduledDate, r.id]));
 
   // Atomic check-and-insert inside a transaction to prevent TOCTOU race
   try {
@@ -471,9 +482,12 @@ app.post('/seasons/:seasonId/side-games/initialize', adminAuthMiddleware, async 
 
       for (let gameIdx = 0; gameIdx < SIDE_GAME_DEFINITIONS.length; gameIdx++) {
         const def = SIDE_GAME_DEFINITIONS[gameIdx]!;
-        const assignedRoundIds = seasonRounds
-          .filter((_, roundIdx) => roundIdx % 6 === gameIdx)
-          .map((r) => r.id);
+        const assignedFridays = activeWeeks
+          .filter((_, weekIdx) => weekIdx % 6 === gameIdx)
+          .map((w) => w.friday);
+        const assignedRoundIds = assignedFridays
+          .map((f) => dateToRoundId.get(f))
+          .filter((id): id is number => typeof id === 'number');
 
         const [inserted] = await tx
           .insert(sideGames)
@@ -482,6 +496,7 @@ app.post('/seasons/:seasonId/side-games/initialize', adminAuthMiddleware, async 
             name: def.name,
             format: def.format,
             calculationType: def.calculationType,
+            scheduledFridays: JSON.stringify(assignedFridays),
             scheduledRoundIds: JSON.stringify(assignedRoundIds),
             createdAt: now,
           })

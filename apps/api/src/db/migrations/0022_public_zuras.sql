@@ -1,0 +1,1 @@
+ALTER TABLE `side_games` ADD `scheduled_fridays` text;

@@ -17,6 +17,7 @@ import { calculateHarveyPoints } from '@wolf-cup/engine';
 import type { Tee } from '@wolf-cup/engine';
 import { ghinClient } from '../../lib/ghin-client.js';
 import { computeSideGameWinnerForRound } from '../../lib/side-game-calc-db.js';
+import { backfillSideGameRoundId } from '../../lib/side-game-backfill.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -273,6 +274,9 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
     const round = inserted[0];
     if (!round) {
       return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    }
+    if (type === 'official') {
+      await backfillSideGameRoundId(round.id, seasonId, scheduledDate);
     }
     return c.json({ round: toRoundResponse(round) }, 201);
   } catch {
@@ -1162,6 +1166,8 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
 
       return round;
     });
+
+    await backfillSideGameRoundId(txResult.id, week.seasonId, week.friday);
 
     return c.json(
       {

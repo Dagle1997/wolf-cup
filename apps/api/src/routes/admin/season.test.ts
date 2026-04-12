@@ -244,7 +244,7 @@ describe('POST /seasons', () => {
     expect(body.code).toBe('VALIDATION_ERROR');
   });
 
-  it('creating two seasons with same dates produces independent weeks', async () => {
+  it('creating two seasons in different years produces independent weeks', async () => {
     // Create first season
     const res1 = await seasonApp.request('/seasons', {
       method: 'POST',
@@ -252,8 +252,8 @@ describe('POST /seasons', () => {
       body: JSON.stringify({
         name: 'Test Season',
         year: 2077,
-        startDate: '2026-04-10',
-        endDate: '2026-04-17',
+        startDate: '2077-04-09',
+        endDate: '2077-04-16',
         playoffFormat: 'top4',
       }),
     });
@@ -269,8 +269,8 @@ describe('POST /seasons', () => {
       body: JSON.stringify({
         name: 'Test Season',
         year: 2078,
-        startDate: '2026-04-10',
-        endDate: '2026-04-17',
+        startDate: '2078-04-08',
+        endDate: '2078-04-15',
         playoffFormat: 'top4',
       }),
     });

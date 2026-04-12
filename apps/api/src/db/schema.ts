@@ -341,7 +341,8 @@ export const sideGames = sqliteTable(
     name: text('name').notNull(),
     format: text('format').notNull(),
     calculationType: text('calculation_type'), // auto_net_pars | auto_skins | auto_putts | auto_net_under_par | auto_polies | manual
-    scheduledRoundIds: text('scheduled_round_ids'), // JSON array of round IDs
+    scheduledRoundIds: text('scheduled_round_ids'), // JSON array of round IDs (backfilled as rounds are created)
+    scheduledFridays: text('scheduled_fridays'), // JSON array of ISO Friday dates — authoritative at season init
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
