@@ -26,6 +26,10 @@ export interface SideGameResult {
 
 // ---------------------------------------------------------------------------
 // Pure calculation functions
+//
+// All functions accept an optional `eligible` set. ALL players' scores
+// participate in the computation (subs can block skins, etc.), but only
+// eligible players can WIN. When omitted, all players are eligible.
 // ---------------------------------------------------------------------------
 
 /**
@@ -36,6 +40,7 @@ export function calcMostNetPars(
   scores: ScoreRow[],
   handicaps: PlayerHandicap[],
   tee: Tee,
+  eligible?: Set<number>,
 ): SideGameResult {
   const hiMap = new Map(handicaps.map((h) => [h.playerId, h.handicapIndex]));
   const counts = new Map<number, number>();
@@ -51,22 +56,25 @@ export function calcMostNetPars(
     }
   }
 
-  return pickWinners(counts, 'net pars', 'highest');
+  return pickWinners(counts, 'net pars', 'highest', eligible);
 }
 
 /**
  * Most Skins: for each hole, compute net score per player across ALL groups.
  * If exactly one player has the unique lowest net, they earn a skin.
+ * Subs participate in the field (their low score can block a skin), but
+ * only eligible players accumulate skin counts toward winning.
  * Uses FULL course handicap.
  */
 export function calcMostSkins(
   scores: ScoreRow[],
   handicaps: PlayerHandicap[],
   tee: Tee,
+  eligible?: Set<number>,
 ): SideGameResult {
   const hiMap = new Map(handicaps.map((h) => [h.playerId, h.handicapIndex]));
 
-  // Build net scores per hole across all players
+  // Build net scores per hole across all players (including subs)
   const holeNets = new Map<number, { playerId: number; net: number }[]>();
   for (const s of scores) {
     const hi = hiMap.get(s.playerId) ?? 0;
@@ -78,13 +86,20 @@ export function calcMostSkins(
     holeNets.get(s.holeNumber)!.push({ playerId: s.playerId, net });
   }
 
+  // Count skins — unique low across the ENTIRE field (subs included).
+  // If a sub has the unique low, that hole's skin is "blocked" — nobody gets it.
+  // Only eligible players accumulate skin counts.
   const skinCounts = new Map<number, number>();
   for (const [, entries] of holeNets) {
     const minNet = Math.min(...entries.map((e) => e.net));
     const winners = entries.filter((e) => e.net === minNet);
     if (winners.length === 1) {
       const wid = winners[0]!.playerId;
-      skinCounts.set(wid, (skinCounts.get(wid) ?? 0) + 1);
+      // Only count if the winner is eligible (not a sub)
+      if (!eligible || eligible.has(wid)) {
+        skinCounts.set(wid, (skinCounts.get(wid) ?? 0) + 1);
+      }
+      // If wid is a sub, the skin is blocked — nobody gets it
     }
   }
 
@@ -94,7 +109,10 @@ export function calcMostSkins(
 /**
  * Least Putts: sum putts per player. Lowest wins.
  */
-export function calcLeastPutts(scores: ScoreRow[]): SideGameResult {
+export function calcLeastPutts(
+  scores: ScoreRow[],
+  eligible?: Set<number>,
+): SideGameResult {
   const totals = new Map<number, number>();
   for (const s of scores) {
     if (s.putts === null || s.putts === undefined) continue;
@@ -103,7 +121,7 @@ export function calcLeastPutts(scores: ScoreRow[]): SideGameResult {
 
   if (totals.size === 0) return { winnerPlayerIds: [], detail: 'No putts data' };
 
-  return pickWinners(totals, 'putts', 'lowest');
+  return pickWinners(totals, 'putts', 'lowest', eligible);
 }
 
 /**
@@ -114,6 +132,7 @@ export function calcMostNetUnderPar(
   scores: ScoreRow[],
   handicaps: PlayerHandicap[],
   tee: Tee,
+  eligible?: Set<number>,
 ): SideGameResult {
   const hiMap = new Map(handicaps.map((h) => [h.playerId, h.handicapIndex]));
   const counts = new Map<number, number>();
@@ -129,14 +148,17 @@ export function calcMostNetUnderPar(
     }
   }
 
-  return pickWinners(counts, 'net under par', 'highest');
+  return pickWinners(counts, 'net under par', 'highest', eligible);
 }
 
 /**
  * Most Polies: count polies per player from bonusesJson across all wolf_decisions.
  * The player ID in bonusesJson.polies array is the RECIPIENT.
  */
-export function calcMostPolies(wolfDecisions: WolfDecisionRow[]): SideGameResult {
+export function calcMostPolies(
+  wolfDecisions: WolfDecisionRow[],
+  eligible?: Set<number>,
+): SideGameResult {
   const counts = new Map<number, number>();
 
   for (const wd of wolfDecisions) {
@@ -151,21 +173,31 @@ export function calcMostPolies(wolfDecisions: WolfDecisionRow[]): SideGameResult
     } catch { /* skip malformed */ }
   }
 
-  return pickWinners(counts, 'polies', 'highest');
+  return pickWinners(counts, 'polies', 'highest', eligible);
 }
 
 // ---------------------------------------------------------------------------
 // Helper: pick winners from a count/total map
+//
+// When `eligible` is provided, only those player IDs can win. The "best"
+// value is computed only among eligible players. This means a sub with a
+// higher count is skipped — the best eligible player wins.
 // ---------------------------------------------------------------------------
 
 function pickWinners(
   values: Map<number, number>,
   unit: string,
   mode: 'highest' | 'lowest',
+  eligible?: Set<number>,
 ): SideGameResult {
-  if (values.size === 0) return { winnerPlayerIds: [], detail: `0 ${unit}` };
+  // Filter to eligible players if set is provided
+  const candidates = eligible
+    ? new Map([...values.entries()].filter(([id]) => eligible.has(id)))
+    : values;
 
-  const nums = [...values.values()];
+  if (candidates.size === 0) return { winnerPlayerIds: [], detail: `0 ${unit}` };
+
+  const nums = [...candidates.values()];
   const best = mode === 'highest' ? Math.max(...nums) : Math.min(...nums);
 
   // No-contest: if the winning count is zero, nobody earned the award
@@ -173,7 +205,7 @@ function pickWinners(
     return { winnerPlayerIds: [], detail: `0 ${unit}` };
   }
 
-  const winners = [...values.entries()]
+  const winners = [...candidates.entries()]
     .filter(([, v]) => v === best)
     .map(([id]) => id);
 

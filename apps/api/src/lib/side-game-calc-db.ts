@@ -14,6 +14,10 @@ import type { Tee } from '@wolf-cup/engine';
 /**
  * Compute and store side game results for a round.
  * Called after finalization (non-fatal).
+ *
+ * ALL players' scores participate in the computation (subs can block skins,
+ * affect unique-low determinations, etc.). But only active (non-sub) players
+ * are eligible to WIN. Subs didn't pay into the prize money.
  */
 export async function computeSideGameWinnerForRound(
   roundId: number,
@@ -37,7 +41,7 @@ export async function computeSideGameWinnerForRound(
     } catch { continue; }
     if (!scheduledIds.includes(roundId)) continue;
 
-    // Fetch all scores for this round
+    // Fetch ALL scores for this round (subs included — their scores affect the field)
     const scores = await db
       .select({
         playerId: holeScores.playerId,
@@ -48,7 +52,7 @@ export async function computeSideGameWinnerForRound(
       .from(holeScores)
       .where(eq(holeScores.roundId, roundId));
 
-    // Fetch handicaps for all players in the round (exclude subs — subs cannot win side games)
+    // Fetch ALL players + handicaps (subs included for net score computation)
     const allRoundPlayers = await db
       .select({
         playerId: roundPlayers.playerId,
@@ -57,46 +61,52 @@ export async function computeSideGameWinnerForRound(
       })
       .from(roundPlayers)
       .where(eq(roundPlayers.roundId, roundId));
-    const playerHandicaps = allRoundPlayers
-      .filter((p) => !p.isSub)
-      .map((p) => ({ playerId: p.playerId, handicapIndex: p.handicapIndex }));
 
-    // Verify all eligible (non-sub) players have 18 holes scored
-    const playerIds = [...new Set(playerHandicaps.map((p) => p.playerId))];
-    // Filter scores to only eligible players
-    const eligibleScores = scores.filter((s) => playerIds.includes(s.playerId));
-    const allComplete = playerIds.every((pid) => {
-      const playerScores = eligibleScores.filter((s) => s.playerId === pid);
+    // ALL handicaps (including subs — needed for net score computation)
+    const handicaps: PlayerHandicap[] = allRoundPlayers.map((p) => ({
+      playerId: p.playerId,
+      handicapIndex: p.handicapIndex,
+    }));
+
+    // Eligible = active (non-sub) players only — subs can't win
+    const eligible = new Set(
+      allRoundPlayers.filter((p) => !p.isSub).map((p) => p.playerId),
+    );
+    if (eligible.size === 0) continue;
+
+    // Verify all players have 18 holes scored (completeness check on full field)
+    const allPlayerIds = [...new Set(allRoundPlayers.map((p) => p.playerId))];
+    const allComplete = allPlayerIds.every((pid) => {
+      const playerScores = scores.filter((s) => s.playerId === pid);
       return playerScores.length >= 18;
     });
-    if (!allComplete || playerIds.length === 0) continue;
+    if (!allComplete) continue;
 
-    // For putts weeks, also verify all 18 putts entries exist
+    // For putts weeks, also verify all 18 putts entries exist for eligible players
     if (calcType === 'auto_putts') {
-      const allPuttsComplete = playerIds.every((pid) => {
-        const playerScores = eligibleScores.filter((s) => s.playerId === pid);
+      const allPuttsComplete = [...eligible].every((pid) => {
+        const playerScores = scores.filter((s) => s.playerId === pid);
         return playerScores.every((s) => s.putts !== null && s.putts !== undefined);
       });
       if (!allPuttsComplete) continue;
     }
 
-    // Compute result (only eligible non-sub players)
-    const scoreRows: ScoreRow[] = eligibleScores;
-    const handicaps: PlayerHandicap[] = playerHandicaps;
+    // Compute result — ALL scores in the field, only eligible players can win
+    const scoreRows: ScoreRow[] = scores;
     let result: { winnerPlayerIds: number[]; detail: string };
 
     switch (calcType) {
       case 'auto_net_pars':
-        result = calcMostNetPars(scoreRows, handicaps, tee);
+        result = calcMostNetPars(scoreRows, handicaps, tee, eligible);
         break;
       case 'auto_skins':
-        result = calcMostSkins(scoreRows, handicaps, tee);
+        result = calcMostSkins(scoreRows, handicaps, tee, eligible);
         break;
       case 'auto_putts':
-        result = calcLeastPutts(scoreRows);
+        result = calcLeastPutts(scoreRows, eligible);
         break;
       case 'auto_net_under_par':
-        result = calcMostNetUnderPar(scoreRows, handicaps, tee);
+        result = calcMostNetUnderPar(scoreRows, handicaps, tee, eligible);
         break;
       case 'auto_polies': {
         const decisions = await db
@@ -112,7 +122,7 @@ export async function computeSideGameWinnerForRound(
           holeNumber: d.holeNumber,
           bonusesJson: d.bonusesJson,
         }));
-        result = calcMostPolies(wdRows);
+        result = calcMostPolies(wdRows, eligible);
         break;
       }
       default:
