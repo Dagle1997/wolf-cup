@@ -68,6 +68,7 @@ export type WolfDecisionBody = z.infer<typeof wolfDecisionSchema>;
 export const addGuestSchema = z.object({
   name: z.string().trim().min(1).max(100),
   handicapIndex: z.number().min(0).max(54),
+  playerId: z.number().int().positive().optional(),
 });
 export type AddGuestBody = z.infer<typeof addGuestSchema>;
 

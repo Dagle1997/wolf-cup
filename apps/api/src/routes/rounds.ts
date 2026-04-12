@@ -1442,12 +1442,13 @@ app.post('/rounds/:roundId/groups/:groupId/guests', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
   }
-  const { name, handicapIndex } = parsed.data;
+  const { name, handicapIndex, playerId: rosterPlayerId } = parsed.data;
 
   // Capacity check + both inserts in one transaction to prevent race conditions
   // and ensure no orphaned player rows if the round_players insert fails.
   const now = Date.now();
   let newPlayerId: number;
+  let resolvedName = name;
   try {
     const result = await db.transaction(async (tx) => {
       const countRow = await tx
@@ -1457,28 +1458,58 @@ app.post('/rounds/:roundId/groups/:groupId/guests', async (c) => {
         .get();
       if ((countRow?.count ?? 0) >= 4) return 'GROUP_FULL' as const;
 
-      const [newPlayer] = await tx
-        .insert(players)
-        .values({ name, ghinNumber: null, isActive: 1, isGuest: 1, createdAt: now })
-        .returning({ id: players.id });
-      if (!newPlayer) throw new Error('Insert returned no row');
+      let playerIdToUse: number;
+      if (rosterPlayerId != null) {
+        // Roster player selected — reuse existing player row.
+        const existing = await tx
+          .select({ id: players.id, name: players.name, isGuest: players.isGuest })
+          .from(players)
+          .where(eq(players.id, rosterPlayerId))
+          .get();
+        if (!existing) return 'ROSTER_NOT_FOUND' as const;
+        if (existing.isGuest) return 'ROSTER_NOT_FOUND' as const;
+
+        // Prevent adding same roster player twice to this round.
+        const dup = await tx
+          .select({ id: roundPlayers.id })
+          .from(roundPlayers)
+          .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, rosterPlayerId)))
+          .get();
+        if (dup) return 'PLAYER_ALREADY_IN_ROUND' as const;
+
+        playerIdToUse = existing.id;
+        resolvedName = existing.name;
+      } else {
+        const [newPlayer] = await tx
+          .insert(players)
+          .values({ name, ghinNumber: null, isActive: 1, isGuest: 1, createdAt: now })
+          .returning({ id: players.id });
+        if (!newPlayer) throw new Error('Insert returned no row');
+        playerIdToUse = newPlayer.id;
+      }
 
       await tx
         .insert(roundPlayers)
-        .values({ roundId, playerId: newPlayer.id, groupId, handicapIndex, isSub: 0 });
+        .values({ roundId, playerId: playerIdToUse, groupId, handicapIndex, isSub: 0 });
 
-      return newPlayer.id;
+      return playerIdToUse;
     });
 
     if (result === 'GROUP_FULL') {
       return c.json({ error: 'Group already has 4 players', code: 'GROUP_FULL' }, 422);
+    }
+    if (result === 'ROSTER_NOT_FOUND') {
+      return c.json({ error: 'Roster player not found', code: 'ROSTER_NOT_FOUND' }, 404);
+    }
+    if (result === 'PLAYER_ALREADY_IN_ROUND') {
+      return c.json({ error: 'Player already in round', code: 'PLAYER_ALREADY_IN_ROUND' }, 422);
     }
     newPlayerId = result;
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
 
-  return c.json({ player: { id: newPlayerId, name, handicapIndex } }, 200);
+  return c.json({ player: { id: newPlayerId, name: resolvedName, handicapIndex } }, 200);
 });
 
 // ---------------------------------------------------------------------------

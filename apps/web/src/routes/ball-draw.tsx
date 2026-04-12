@@ -213,12 +213,12 @@ function BallDrawPage() {
       : null;
 
   const guestMutation = useMutation({
-    mutationFn: ({ name, handicapIndex }: { name: string; handicapIndex: number }) =>
+    mutationFn: ({ name, handicapIndex, playerId }: { name: string; handicapIndex: number; playerId?: number }) =>
       apiFetch<{ player: Player }>(
         `/rounds/${session!.roundId}/groups/${selectedGroupId!}/guests`,
         {
           method: 'POST',
-          body: JSON.stringify({ name, handicapIndex }),
+          body: JSON.stringify(playerId != null ? { name, handicapIndex, playerId } : { name, handicapIndex }),
         },
       ),
     onSuccess: (data) => {
@@ -561,12 +561,14 @@ function BallDrawPage() {
               !guestHandicap ||
               guestMutation.isPending
             }
-            onClick={() =>
+            onClick={() => {
+              const isRoster = selectedRosterId !== '' && selectedRosterId !== 'guest';
               guestMutation.mutate({
                 name: resolvedName.trim(),
                 handicapIndex: Number(guestHandicap),
-              })
-            }
+                playerId: isRoster ? Number(selectedRosterId) : undefined,
+              });
+            }}
           >
             {guestMutation.isPending ? (
               <>

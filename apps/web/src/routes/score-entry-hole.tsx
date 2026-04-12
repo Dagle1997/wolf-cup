@@ -1054,6 +1054,11 @@ function ScoreEntryHolePage() {
           onClick={() => {
             setSubmitError(null);
             setWolfError(null);
+            // iOS Safari only opens the on-screen keyboard when focus() is called
+            // inside a user-gesture handler. Focus the first score input here so
+            // that when the mutation resolves and the hole advances, the same
+            // DOM input (reused by React via stable key) keeps the keyboard open.
+            scoreInputRefs.current[0]?.focus();
             submitMutation.mutate({ holeNum: currentHole, inputs: currentInputs, puttsInputs: currentPutts });
           }}
         >
