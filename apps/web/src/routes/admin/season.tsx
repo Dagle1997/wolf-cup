@@ -49,6 +49,7 @@ type SideGame = {
   format: string;
   calculationType: string | null;
   scheduledRoundIds: number[];
+  scheduledFridays: string[];
 };
 
 type Round = {
@@ -608,6 +609,16 @@ function SeasonWeeksCalendar({ seasonId }: { seasonId: number }) {
     retry: false,
   });
 
+  const sideGamesQuery = useQuery({
+    queryKey: ['admin-side-games', seasonId],
+    queryFn: () => apiFetch<{ items: SideGame[] }>(`/admin/seasons/${seasonId}/side-games`),
+    retry: false,
+  });
+  const fridayToGame = new Map<string, string>();
+  for (const g of sideGamesQuery.data?.items ?? []) {
+    for (const f of g.scheduledFridays ?? []) fridayToGame.set(f, g.name);
+  }
+
   const toggleMutation = useMutation({
     mutationFn: ({ weekId, isActive }: { weekId: number; isActive: boolean }) =>
       apiFetch<{
@@ -730,11 +741,16 @@ function SeasonWeeksCalendar({ seasonId }: { seasonId: number }) {
               disabled={toggleMutation.isPending}
               className="rounded"
             />
-            <span className={`flex items-center gap-2 ${week.isActive === 0 ? 'line-through' : ''}`}>
+            <span className={`flex items-center gap-2 flex-wrap ${week.isActive === 0 ? 'line-through' : ''}`}>
               <span className="font-medium">Week {week.weekNumber}</span>
               {' — '}
               {formatShortDate(week.friday)}
               {week.tee && <TeeBadge tee={week.tee} />}
+              {fridayToGame.get(week.friday) && (
+                <span className="rounded bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+                  {fridayToGame.get(week.friday)}
+                </span>
+              )}
             </span>
           </label>
         ))}
