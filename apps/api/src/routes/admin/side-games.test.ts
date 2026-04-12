@@ -74,13 +74,14 @@ beforeAll(async () => {
     .returning();
   testPlayerId = player!.id;
 
-  // Seed baseline side game for result tests
+  // Seed baseline side game for result tests (scheduledRoundIds includes testRoundId)
   const [game] = await db
     .insert(sideGames)
     .values({
       seasonId: testSeasonId,
       name: 'Closest to Pin',
       format: 'manual',
+      scheduledRoundIds: JSON.stringify([testRoundId]),
       createdAt: Date.now(),
     })
     .returning();

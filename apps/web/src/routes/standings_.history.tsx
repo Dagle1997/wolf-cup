@@ -22,12 +22,22 @@ type Standing = {
   points: number | null;
 };
 
+type SideGameResultEntry = {
+  gameName: string;
+  winnerDisplayName: string;
+  winnerPlayerId: number | null;
+  roundDate: string;
+  notes: string | null;
+  source: string | null;
+};
+
 type HistorySeason = {
   id: number;
   name: string;
   year: number;
   champion: Champion | null;
   standings: Standing[];
+  sideGameResults?: SideGameResultEntry[];
 };
 
 type ChampionshipCount = {
@@ -279,7 +289,7 @@ function AwardCard({ award }: { award: Award }) {
         {award.recipients.map((r) => {
           const cashRecord = ['biggest_season_win', 'biggest_season_loss'].includes(award.id);
           const cashPerYear = ['money_man', 'philanthropist'].includes(award.id);
-          const perSeason = ['ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance', 'the_ronnie', 'snow_cone', 'every_season', 'og', 'the_founder'];
+          const perSeason = ['ironman', 'dynasty', 'back_to_back', 'rickie_fowler', 'ph_balance', 'the_ronnie', 'snow_cone', 'every_season', 'og', 'the_founder', 'side_game_champion'];
           const showYearEmojis = !cashRecord && !cashPerYear && perSeason.includes(award.id);
           const cashLabels = cashPerYear ? r.detail.split(', ') : [];
           return (
@@ -375,6 +385,21 @@ function SeasonCard({ season, defaultExpanded }: { season: HistorySeason; defaul
                 ))}
               </tbody>
             </table>
+          )}
+          {(season.sideGameResults?.length ?? 0) > 0 && (
+            <div className="border-t px-4 py-3">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Side Games</p>
+              <div className="space-y-1">
+                {season.sideGameResults!.map((r, i) => (
+                  <div key={i} className="flex items-baseline gap-2 text-xs">
+                    <span className="text-muted-foreground shrink-0">{r.roundDate}</span>
+                    <span className="text-muted-foreground">{r.gameName}:</span>
+                    <span className="font-medium">{r.winnerDisplayName}</span>
+                    {r.notes && <span className="text-muted-foreground">({r.notes})</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

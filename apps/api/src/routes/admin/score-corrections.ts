@@ -27,6 +27,7 @@ import {
 } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { createScoreCorrectionSchema } from '../../schemas/score-correction.js';
+import { computeSideGameWinnerForRound } from '../../lib/side-game-calc-db.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -294,7 +295,7 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
   }
 
   const round = await db
-    .select({ id: rounds.id, status: rounds.status, tee: rounds.tee })
+    .select({ id: rounds.id, status: rounds.status, tee: rounds.tee, seasonId: rounds.seasonId })
     .from(rounds)
     .where(eq(rounds.id, roundId))
     .get();
@@ -445,6 +446,33 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
     rescoreGroupId = row.groupId;
 
   // -------------------------------------------------------------------------
+  } else if (fieldName === 'putts') {
+    const row = await db
+      .select({ putts: holeScores.putts, id: holeScores.id, groupId: holeScores.groupId })
+      .from(holeScores)
+      .where(
+        and(
+          eq(holeScores.roundId, roundId),
+          eq(holeScores.playerId, playerId!),
+          eq(holeScores.holeNumber, holeNumber),
+        ),
+      )
+      .get();
+    if (!row) return c.json({ error: 'Score not found', code: 'NOT_FOUND' }, 404);
+
+    const parsed = Number(newValue);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 9) {
+      return c.json({
+        error: 'Validation error', code: 'VALIDATION_ERROR',
+        issues: [{ message: 'putts must be an integer 0–9' }],
+      }, 400);
+    }
+
+    oldValue = row.putts !== null ? String(row.putts) : 'null';
+    await db.update(holeScores).set({ putts: parsed, updatedAt: Date.now() }).where(eq(holeScores.id, row.id));
+    rescoreGroupId = row.groupId;
+
+  // -------------------------------------------------------------------------
   } else {
     // handicapIndex — holeNumber is 0 (round-wide sentinel)
     const rpRow = await db
@@ -479,6 +507,14 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
   } catch (err) {
     console.error('Failed to recompute Harvey after correction:', err);
     return c.json({ error: 'Correction applied but Harvey recomputation failed', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  // Recompute side game results (non-fatal)
+  try {
+    const roundTee = (round.tee as Tee) ?? 'blue';
+    await computeSideGameWinnerForRound(roundId, round.seasonId, roundTee);
+  } catch (err) {
+    console.error('Failed to recompute side game after correction (non-fatal):', err);
   }
 
   const [correction] = await db

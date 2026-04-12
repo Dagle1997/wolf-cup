@@ -51,6 +51,7 @@ export const submitHoleScoresSchema = z.object({
       z.object({
         playerId: z.number().int().positive(),
         grossScore: z.number().int().min(1).max(9),
+        putts: z.number().int().min(0).max(9).optional(),
       }),
     )
     .length(4),

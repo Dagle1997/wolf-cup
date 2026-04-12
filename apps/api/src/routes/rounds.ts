@@ -13,7 +13,7 @@ import {
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
 import type { Tee } from '@wolf-cup/engine';
 import { db } from '../db/index.js';
-import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults } from '../db/schema.js';
+import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults, sideGames } from '../db/schema.js';
 import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema, createPracticeRoundSchema } from '../schemas/round.js';
 
 const app = new Hono();
@@ -248,6 +248,26 @@ async function getRoundDetail(roundId: number) {
     allHole18Scored = allPlayerIds.every((id) => hole18PlayerIds.has(id));
   }
 
+  // Active side game for this round
+  const allSideGamesForRound = await db
+    .select({
+      name: sideGames.name,
+      format: sideGames.format,
+      calculationType: sideGames.calculationType,
+      scheduledRoundIds: sideGames.scheduledRoundIds,
+    })
+    .from(sideGames)
+    .where(eq(sideGames.seasonId, round.seasonId));
+  const activeSg = allSideGamesForRound.find((sg) => {
+    try {
+      const ids = JSON.parse(sg.scheduledRoundIds ?? '[]') as number[];
+      return ids.includes(roundId);
+    } catch { return false; }
+  });
+  const sideGame = activeSg
+    ? { name: activeSg.name, format: activeSg.format, calculationType: activeSg.calculationType ?? null }
+    : null;
+
   return {
     id: round.id,
     roundNumber,
@@ -256,6 +276,7 @@ async function getRoundDetail(roundId: number) {
     scheduledDate: round.scheduledDate,
     autoCalculateMoney: Boolean(round.autoCalculateMoney),
     allHole18Scored,
+    sideGame,
     groups: groupsWithPlayers,
   };
 }
@@ -847,11 +868,11 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/scores', async (c) 
 
   // Fetch round
   let round:
-    | { id: number; type: string; status: string; entryCodeHash: string | null }
+    | { id: number; type: string; status: string; entryCodeHash: string | null; seasonId: number }
     | undefined;
   try {
     round = await db
-      .select({ id: rounds.id, type: rounds.type, status: rounds.status, entryCodeHash: rounds.entryCodeHash })
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status, entryCodeHash: rounds.entryCodeHash, seasonId: rounds.seasonId })
       .from(rounds)
       .where(eq(rounds.id, roundId))
       .get();
@@ -928,16 +949,40 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/scores', async (c) 
     return c.json({ error: 'Invalid scores', code: 'INVALID_SCORES' }, 422);
   }
 
+  // Check if putts are required (Least Putts week)
+  let isPuttsWeek = false;
+  try {
+    const seasonSideGames = await db
+      .select({ calculationType: sideGames.calculationType, scheduledRoundIds: sideGames.scheduledRoundIds })
+      .from(sideGames)
+      .where(eq(sideGames.seasonId, round.seasonId));
+    isPuttsWeek = seasonSideGames.some((sg) => {
+      if (sg.calculationType !== 'auto_putts') return false;
+      try {
+        const ids = JSON.parse(sg.scheduledRoundIds ?? '[]') as number[];
+        return ids.includes(roundId);
+      } catch { return false; }
+    });
+  } catch { /* non-fatal — if lookup fails, don't block scoring */ }
+
+  if (isPuttsWeek) {
+    for (const s of scores) {
+      if (s.putts === undefined || s.putts === null) {
+        return c.json({ error: 'Putts required for Least Putts week', code: 'VALIDATION_ERROR' }, 422);
+      }
+    }
+  }
+
   // Upsert hole scores (idempotent)
   const now = Date.now();
   try {
-    for (const { playerId, grossScore } of scores) {
+    for (const { playerId, grossScore, putts } of scores) {
       await db
         .insert(holeScores)
-        .values({ roundId, groupId, playerId, holeNumber, grossScore, createdAt: now, updatedAt: now })
+        .values({ roundId, groupId, playerId, holeNumber, grossScore, putts: putts ?? null, createdAt: now, updatedAt: now })
         .onConflictDoUpdate({
           target: [holeScores.roundId, holeScores.playerId, holeScores.holeNumber],
-          set: { grossScore, updatedAt: now },
+          set: { grossScore, putts: putts ?? null, updatedAt: now },
         });
     }
   } catch {

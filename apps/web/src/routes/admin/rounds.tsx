@@ -643,6 +643,56 @@ function RoundRow({
           </Button>
         </div>
       )}
+      {round.status === 'finalized' && (
+        <SideGameResultSection roundId={round.id} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Side Game Result — shown after finalization on admin round detail
+// ---------------------------------------------------------------------------
+
+function SideGameResultSection({ roundId }: { roundId: number }) {
+  type ResultRow = {
+    id: number; sideGameId: number; displayName: string; gameName: string;
+    gameCalcType: string | null; notes: string | null; source: string | null;
+  };
+  const resultsQuery = useQuery({
+    queryKey: ['admin-side-game-results', roundId],
+    queryFn: () => apiFetch<{ items: ResultRow[] }>(`/admin/rounds/${roundId}/side-game-results`),
+    retry: false,
+  });
+
+  if (resultsQuery.isLoading || resultsQuery.isError) return null;
+  const results = resultsQuery.data?.items ?? [];
+  if (results.length === 0) {
+    return (
+      <div className="px-3 py-2 text-xs text-muted-foreground border-t">
+        Side game: No winner recorded yet.
+      </div>
+    );
+  }
+
+  // Group by game
+  const byGame = new Map<string, ResultRow[]>();
+  for (const r of results) {
+    if (!byGame.has(r.gameName)) byGame.set(r.gameName, []);
+    byGame.get(r.gameName)!.push(r);
+  }
+
+  return (
+    <div className="px-3 py-2 border-t">
+      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game Result</p>
+      {[...byGame.entries()].map(([gameName, rows]) => (
+        <div key={gameName} className="text-xs mb-1">
+          <span className="text-muted-foreground">{gameName}:</span>{' '}
+          <span className="font-medium">{rows.map((r) => r.displayName).join(' & ')}</span>
+          {rows[0]?.notes && <span className="text-muted-foreground ml-1">({rows[0].notes})</span>}
+          {rows[0]?.source === 'auto' && <span className="text-muted-foreground ml-1">[auto]</span>}
+        </div>
+      ))}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { eq, isNotNull, desc, asc, count, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { seasons, seasonStandings, players } from '../db/schema.js';
+import { seasons, seasonStandings, players, sideGameResults, sideGames, rounds } from '../db/schema.js';
 import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS } from '../db/history-data.js';
 import { computeAllAwards } from '../lib/badges.js';
 
@@ -103,13 +103,72 @@ app.get('/history', async (c) => {
     }));
     championshipCounts.sort((a, b) => b.wins - a.wins);
 
-    // 7. Compute awards from historical data
+    // 7. Query side game results for Side Game Champion
+    const sideGameResultRows = await db
+      .select({
+        winnerPlayerId: sideGameResults.winnerPlayerId,
+        winnerName: sideGameResults.winnerName,
+        playerName: players.name,
+        year: seasons.year,
+        gameName: sideGames.name,
+        roundDate: rounds.scheduledDate,
+        notes: sideGameResults.notes,
+        source: sideGameResults.source,
+      })
+      .from(sideGameResults)
+      .innerJoin(sideGames, eq(sideGameResults.sideGameId, sideGames.id))
+      .innerJoin(rounds, eq(sideGameResults.roundId, rounds.id))
+      .innerJoin(seasons, eq(rounds.seasonId, seasons.id))
+      .leftJoin(players, eq(sideGameResults.winnerPlayerId, players.id));
+
+    // Aggregate wins per player per season (only roster players)
+    const winCountMap = new Map<string, { playerName: string; year: number; wins: number }>();
+    for (const r of sideGameResultRows) {
+      if (r.winnerPlayerId === null) continue;
+      const key = `${r.winnerPlayerId}-${r.year}`;
+      const name = r.playerName ?? 'Unknown';
+      if (!winCountMap.has(key)) {
+        winCountMap.set(key, { playerName: name, year: r.year, wins: 0 });
+      }
+      winCountMap.get(key)!.wins++;
+    }
+    const sideGameWins = [...winCountMap.values()];
+
+    // Build per-season side game results for frontend
+    const sideGameResultsBySeason = new Map<number, Array<{
+      gameName: string;
+      winnerDisplayName: string;
+      winnerPlayerId: number | null;
+      roundDate: string;
+      notes: string | null;
+      source: string | null;
+    }>>();
+    for (const r of sideGameResultRows) {
+      if (!sideGameResultsBySeason.has(r.year)) sideGameResultsBySeason.set(r.year, []);
+      sideGameResultsBySeason.get(r.year)!.push({
+        gameName: r.gameName,
+        winnerDisplayName: r.playerName ?? r.winnerName ?? 'Unknown',
+        winnerPlayerId: r.winnerPlayerId,
+        roundDate: r.roundDate,
+        notes: r.notes,
+        source: r.source,
+      });
+    }
+
+    // Add sideGameResults to each season
+    const seasonsWithSideGames = seasonResults.map((sr) => ({
+      ...sr,
+      sideGameResults: sideGameResultsBySeason.get(sr.year) ?? [],
+    }));
+
+    // 8. Compute awards from historical data + side game wins
     const awards = computeAllAwards(
       HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS,
       HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS,
+      sideGameWins,
     );
 
-    return c.json({ seasons: seasonResults, championshipCounts, awards }, 200);
+    return c.json({ seasons: seasonsWithSideGames, championshipCounts, awards }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }

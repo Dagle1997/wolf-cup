@@ -9,7 +9,7 @@ export interface QueueEntry {
   roundId: number;
   groupId: number;
   holeNumber: number; // primary sort key for drain order
-  scores: Array<{ playerId: number; grossScore: number }>;
+  scores: Array<{ playerId: number; grossScore: number; putts?: number }>;
   wolfDecision: {
     decision: 'alone' | 'partner' | 'blind_wolf' | null;
     partnerId: number | null;

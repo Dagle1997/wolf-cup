@@ -11,6 +11,7 @@ import {
   harveyResults,
   seasons,
   sideGames,
+  sideGameResults,
 } from '../db/schema.js';
 import { getCourseHole, getHandicapStrokes, calculateHarveyPoints } from '@wolf-cup/engine';
 import type { HoleNumber } from '@wolf-cup/engine';
@@ -38,6 +39,7 @@ type LeaderboardPlayer = {
   harveyStableford: number | null;
   harveyMoney: number | null;
   harveyTotal: number | null;
+  totalPutts: number | null;
 };
 
 type RoundRow = {
@@ -119,6 +121,7 @@ async function buildLeaderboard(round: RoundRow) {
       groupId: holeScores.groupId,
       holeNumber: holeScores.holeNumber,
       grossScore: holeScores.grossScore,
+      putts: holeScores.putts,
     })
     .from(holeScores)
     .where(eq(holeScores.roundId, round.id));
@@ -195,8 +198,10 @@ async function buildLeaderboard(round: RoundRow) {
   // Active side game
   const allSideGames = await db
     .select({
+      id: sideGames.id,
       name: sideGames.name,
       format: sideGames.format,
+      calculationType: sideGames.calculationType,
       scheduledRoundIds: sideGames.scheduledRoundIds,
     })
     .from(sideGames)
@@ -210,7 +215,7 @@ async function buildLeaderboard(round: RoundRow) {
     }
   });
   const sideGame = activeSideGame
-    ? { name: activeSideGame.name, format: activeSideGame.format }
+    ? { name: activeSideGame.name, format: activeSideGame.format, calculationType: activeSideGame.calculationType ?? null }
     : null;
 
   // Rank assignments
@@ -245,6 +250,51 @@ async function buildLeaderboard(round: RoundRow) {
     ? assignRanks(playerRows.map((p) => ({ playerId: p.playerId, total: harveyTotalMap.get(p.playerId) ?? 0 })))
     : netToParRanks;
 
+  // Putts totals (only on Least Putts weeks)
+  const isPuttsWeek = sideGame?.calculationType === 'auto_putts';
+  const puttsTotalMap = new Map<number, number>();
+  if (isPuttsWeek) {
+    for (const score of allHoleScoreRows) {
+      if (score.putts !== null && score.putts !== undefined) {
+        puttsTotalMap.set(score.playerId, (puttsTotalMap.get(score.playerId) ?? 0) + score.putts);
+      }
+    }
+  }
+
+  // Side game winner (after finalization)
+  let sideGameWinner: { playerName: string; detail: string } | null = null;
+  if (activeSideGame && round.status === 'finalized') {
+    const results = await db
+      .select({
+        winnerPlayerId: sideGameResults.winnerPlayerId,
+        winnerName: sideGameResults.winnerName,
+        notes: sideGameResults.notes,
+      })
+      .from(sideGameResults)
+      .where(
+        and(
+          eq(sideGameResults.sideGameId, activeSideGame.id),
+          eq(sideGameResults.roundId, round.id),
+        ),
+      );
+    if (results.length > 0) {
+      // Join player names
+      const winnerNames: string[] = [];
+      for (const r of results) {
+        if (r.winnerPlayerId) {
+          const player = playerRows.find((p) => p.playerId === r.winnerPlayerId);
+          winnerNames.push(player?.name ?? 'Unknown');
+        } else if (r.winnerName) {
+          winnerNames.push(r.winnerName);
+        }
+      }
+      sideGameWinner = {
+        playerName: winnerNames.join(' & '),
+        detail: results[0]?.notes ?? '',
+      };
+    }
+  }
+
   const leaderboard: LeaderboardPlayer[] = playerRows
     .map((p) => {
       const result = resultMap.get(p.playerId);
@@ -267,11 +317,12 @@ async function buildLeaderboard(round: RoundRow) {
         harveyStableford: harveyLiveEnabled ? (harvey?.stablefordPoints ?? null) : null,
         harveyMoney: harveyLiveEnabled ? (harvey?.moneyPoints ?? null) : null,
         harveyTotal: harveyLiveEnabled ? (harveyTotalMap.get(p.playerId) ?? null) : null,
+        totalPutts: isPuttsWeek ? (puttsTotalMap.get(p.playerId) ?? null) : null,
       };
     })
     .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
 
-  return { round: roundInfo, harveyLiveEnabled, sideGame, leaderboard, lastUpdated: new Date().toISOString() };
+  return { round: roundInfo, harveyLiveEnabled, sideGame, sideGameWinner, leaderboard, lastUpdated: new Date().toISOString() };
 }
 
 // ---------------------------------------------------------------------------

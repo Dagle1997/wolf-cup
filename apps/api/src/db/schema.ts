@@ -222,6 +222,7 @@ export const holeScores = sqliteTable(
       .references(() => players.id),
     holeNumber: integer('hole_number').notNull(),
     grossScore: integer('gross_score').notNull(),
+    putts: integer('putts'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -339,6 +340,7 @@ export const sideGames = sqliteTable(
       .references(() => seasons.id),
     name: text('name').notNull(),
     format: text('format').notNull(),
+    calculationType: text('calculation_type'), // auto_net_pars | auto_skins | auto_putts | auto_net_under_par | auto_polies | manual
     scheduledRoundIds: text('scheduled_round_ids'), // JSON array of round IDs
     createdAt: integer('created_at').notNull(),
   },
@@ -364,6 +366,7 @@ export const sideGameResults = sqliteTable(
     winnerPlayerId: integer('winner_player_id').references(() => players.id),
     winnerName: text('winner_name'), // for guest winners not in roster
     notes: text('notes'),
+    source: text('source'), // 'auto' | 'manual'
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({

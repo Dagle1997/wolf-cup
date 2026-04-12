@@ -1,0 +1,167 @@
+import { eq, and } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { sideGames, sideGameResults, holeScores, roundPlayers, wolfDecisions } from '../db/schema.js';
+import {
+  calcMostNetPars,
+  calcMostSkins,
+  calcLeastPutts,
+  calcMostNetUnderPar,
+  calcMostPolies,
+} from './side-game-calc.js';
+import type { ScoreRow, PlayerHandicap, WolfDecisionRow } from './side-game-calc.js';
+import type { Tee } from '@wolf-cup/engine';
+
+/**
+ * Compute and store side game results for a round.
+ * Called after finalization (non-fatal).
+ */
+export async function computeSideGameWinnerForRound(
+  roundId: number,
+  seasonId: number,
+  tee: Tee,
+): Promise<void> {
+  // Find side games scheduled for this round
+  const allGames = await db
+    .select()
+    .from(sideGames)
+    .where(eq(sideGames.seasonId, seasonId));
+
+  for (const game of allGames) {
+    const calcType = game.calculationType;
+    if (!calcType || calcType === 'manual') continue;
+
+    // Check if this game is scheduled for this round
+    let scheduledIds: number[];
+    try {
+      scheduledIds = JSON.parse(game.scheduledRoundIds ?? '[]') as number[];
+    } catch { continue; }
+    if (!scheduledIds.includes(roundId)) continue;
+
+    // Fetch all scores for this round
+    const scores = await db
+      .select({
+        playerId: holeScores.playerId,
+        holeNumber: holeScores.holeNumber,
+        grossScore: holeScores.grossScore,
+        putts: holeScores.putts,
+      })
+      .from(holeScores)
+      .where(eq(holeScores.roundId, roundId));
+
+    // Fetch handicaps for all players in the round (exclude subs — subs cannot win side games)
+    const allRoundPlayers = await db
+      .select({
+        playerId: roundPlayers.playerId,
+        handicapIndex: roundPlayers.handicapIndex,
+        isSub: roundPlayers.isSub,
+      })
+      .from(roundPlayers)
+      .where(eq(roundPlayers.roundId, roundId));
+    const playerHandicaps = allRoundPlayers
+      .filter((p) => !p.isSub)
+      .map((p) => ({ playerId: p.playerId, handicapIndex: p.handicapIndex }));
+
+    // Verify all eligible (non-sub) players have 18 holes scored
+    const playerIds = [...new Set(playerHandicaps.map((p) => p.playerId))];
+    // Filter scores to only eligible players
+    const eligibleScores = scores.filter((s) => playerIds.includes(s.playerId));
+    const allComplete = playerIds.every((pid) => {
+      const playerScores = eligibleScores.filter((s) => s.playerId === pid);
+      return playerScores.length >= 18;
+    });
+    if (!allComplete || playerIds.length === 0) continue;
+
+    // For putts weeks, also verify all 18 putts entries exist
+    if (calcType === 'auto_putts') {
+      const allPuttsComplete = playerIds.every((pid) => {
+        const playerScores = eligibleScores.filter((s) => s.playerId === pid);
+        return playerScores.every((s) => s.putts !== null && s.putts !== undefined);
+      });
+      if (!allPuttsComplete) continue;
+    }
+
+    // Compute result (only eligible non-sub players)
+    const scoreRows: ScoreRow[] = eligibleScores;
+    const handicaps: PlayerHandicap[] = playerHandicaps;
+    let result: { winnerPlayerIds: number[]; detail: string };
+
+    switch (calcType) {
+      case 'auto_net_pars':
+        result = calcMostNetPars(scoreRows, handicaps, tee);
+        break;
+      case 'auto_skins':
+        result = calcMostSkins(scoreRows, handicaps, tee);
+        break;
+      case 'auto_putts':
+        result = calcLeastPutts(scoreRows);
+        break;
+      case 'auto_net_under_par':
+        result = calcMostNetUnderPar(scoreRows, handicaps, tee);
+        break;
+      case 'auto_polies': {
+        const decisions = await db
+          .select({
+            wolfPlayerId: wolfDecisions.wolfPlayerId,
+            holeNumber: wolfDecisions.holeNumber,
+            bonusesJson: wolfDecisions.bonusesJson,
+          })
+          .from(wolfDecisions)
+          .where(eq(wolfDecisions.roundId, roundId));
+        const wdRows: WolfDecisionRow[] = decisions.map((d) => ({
+          wolfPlayerId: d.wolfPlayerId ?? 0,
+          holeNumber: d.holeNumber,
+          bonusesJson: d.bonusesJson,
+        }));
+        result = calcMostPolies(wdRows);
+        break;
+      }
+      default:
+        continue;
+    }
+
+    // No-contest: no winners
+    if (result.winnerPlayerIds.length === 0) {
+      // Delete any previous auto results for this game+round (idempotent)
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(sideGameResults)
+          .where(
+            and(
+              eq(sideGameResults.sideGameId, game.id),
+              eq(sideGameResults.roundId, roundId),
+              eq(sideGameResults.source, 'auto'),
+            ),
+          );
+      });
+      continue;
+    }
+
+    // Transactional delete+insert for idempotent recomputation
+    await db.transaction(async (tx) => {
+      // Delete only auto results (preserve manual overrides)
+      await tx
+        .delete(sideGameResults)
+        .where(
+          and(
+            eq(sideGameResults.sideGameId, game.id),
+            eq(sideGameResults.roundId, roundId),
+            eq(sideGameResults.source, 'auto'),
+          ),
+        );
+
+      // Insert one row per winner
+      const now = Date.now();
+      for (const winnerId of result.winnerPlayerIds) {
+        await tx.insert(sideGameResults).values({
+          sideGameId: game.id,
+          roundId,
+          winnerPlayerId: winnerId,
+          winnerName: null,
+          notes: result.detail,
+          source: 'auto',
+          createdAt: now,
+        });
+      }
+    });
+  }
+}

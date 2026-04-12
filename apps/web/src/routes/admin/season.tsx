@@ -47,6 +47,7 @@ type SideGame = {
   seasonId: number;
   name: string;
   format: string;
+  calculationType: string | null;
   scheduledRoundIds: number[];
 };
 
@@ -783,10 +784,20 @@ function SideGamesSection({ seasonId, rounds }: { seasonId: number; rounds: Roun
 
   const sideGames = sideGamesQuery.data?.items ?? [];
 
+  const initializeMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ items: SideGame[] }>(`/admin/seasons/${seasonId}/side-games/initialize`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-side-games', seasonId] });
+    },
+  });
+
   return (
     <div>
       <h3 className="text-base font-semibold mb-3">Side Games</h3>
-      <AddSideGameForm seasonId={seasonId} />
       <div className="mt-4">
         {sideGamesQuery.isLoading ? (
           <div className="animate-pulse space-y-2">
@@ -795,7 +806,22 @@ function SideGamesSection({ seasonId, rounds }: { seasonId: number; rounds: Roun
             ))}
           </div>
         ) : sideGames.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No side games yet.</p>
+          <div className="text-center py-4">
+            <p className="text-sm text-muted-foreground mb-3">No side games configured yet.</p>
+            <Button
+              onClick={() => initializeMutation.mutate()}
+              disabled={initializeMutation.isPending}
+            >
+              {initializeMutation.isPending ? 'Initializing...' : 'Initialize Side Game Rotation'}
+            </Button>
+            {initializeMutation.isError && (
+              <p className="text-sm text-destructive mt-2">
+                {(initializeMutation.error as Error).message === 'ALREADY_EXISTS'
+                  ? 'Side games already initialized.'
+                  : 'Failed to initialize — make sure rounds are created first.'}
+              </p>
+            )}
+          </div>
         ) : (
           <div className="rounded-md border overflow-hidden">
             {sideGames.map((g) =>
@@ -832,79 +858,6 @@ function SideGamesSection({ seasonId, rounds }: { seasonId: number; rounds: Roun
         )}
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Add Side Game Form
-// ---------------------------------------------------------------------------
-
-function AddSideGameForm({ seasonId }: { seasonId: number }) {
-  const navigate = useNavigate();
-  const [name, setName] = useState('');
-  const [format, setFormat] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const addMutation = useMutation({
-    mutationFn: (body: { name: string; format: string }) =>
-      apiFetch<{ sideGame: SideGame }>(`/admin/seasons/${seasonId}/side-games`, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['admin-side-games', seasonId] });
-      setName('');
-      setFormat('');
-      setFormError(null);
-    },
-    onError: (err: Error) => {
-      if (err.message === 'UNAUTHORIZED') {
-        void navigate({ to: '/admin/login' });
-        return;
-      }
-      setFormError('Could not add side game — try again.');
-    },
-  });
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) { setFormError('Name is required.'); return; }
-    if (!format.trim()) { setFormError('Format is required.'); return; }
-    setFormError(null);
-    addMutation.mutate({ name: name.trim(), format: format.trim() });
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="rounded-md border p-3 bg-muted/20">
-      <h4 className="text-xs font-semibold mb-2">Add Side Game</h4>
-      <div className="flex flex-col sm:flex-row gap-2">
-        <input
-          type="text"
-          placeholder="Name *"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={addMutation.isPending}
-          className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        <input
-          type="text"
-          placeholder="Format *"
-          value={format}
-          onChange={(e) => setFormat(e.target.value)}
-          disabled={addMutation.isPending}
-          className="flex-1 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-        <Button type="submit" size="sm" disabled={addMutation.isPending} className="shrink-0">
-          {addMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4" />
-          )}
-          <span className="ml-1">Add</span>
-        </Button>
-      </div>
-      {formError && <p className="mt-1 text-sm text-destructive">{formError}</p>}
-    </form>
   );
 }
 

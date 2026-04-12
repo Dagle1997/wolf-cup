@@ -10,6 +10,7 @@ export const createScoreCorrectionSchema = z
       'wolfPartnerId',
       'greenie',
       'polie',
+      'putts',
       'handicapIndex',
     ]),
     playerId: z.number().int().positive().optional(),
@@ -18,7 +19,7 @@ export const createScoreCorrectionSchema = z
   })
   .refine(
     (data) =>
-      !['grossScore', 'greenie', 'polie', 'handicapIndex'].includes(data.fieldName) ||
+      !['grossScore', 'greenie', 'polie', 'putts', 'handicapIndex'].includes(data.fieldName) ||
       data.playerId !== undefined,
     { message: 'playerId is required for this correction type' },
   )

@@ -202,6 +202,8 @@ export function computeIronman(ironmanData: IronmanEntry[]): { playerName: strin
 // Aggregate: compute all awards
 // ---------------------------------------------------------------------------
 
+export type SideGameWinEntry = { playerName: string; year: number; wins: number };
+
 export function computeAllAwards(
   champions: Champion[],
   standings: Standing[],
@@ -209,6 +211,7 @@ export function computeAllAwards(
   cashData: CashEntry[],
   ironmanData: IronmanEntry[],
   cashRecords?: { biggestWin: CashRecord; biggestLoss: CashRecord },
+  sideGameWins?: SideGameWinEntry[],
 ): Award[] {
   const awards: Award[] = [];
 
@@ -395,6 +398,45 @@ export function computeAllAwards(
     });
   }
 
+  // Side Game Champion
+  if (sideGameWins && sideGameWins.length > 0) {
+    // Group by year, find max wins per year
+    const yearMap = new Map<number, SideGameWinEntry[]>();
+    for (const entry of sideGameWins) {
+      if (!yearMap.has(entry.year)) yearMap.set(entry.year, []);
+      yearMap.get(entry.year)!.push(entry);
+    }
+
+    const recipients: { playerName: string; years: number[]; detail: string }[] = [];
+    for (const [year, entries] of yearMap) {
+      const maxWins = Math.max(...entries.map((e) => e.wins));
+      if (maxWins === 0) continue;
+      const winners = entries.filter((e) => e.wins === maxWins);
+      for (const w of winners) {
+        const existing = recipients.find((r) => r.playerName === w.playerName);
+        if (existing) {
+          existing.years.push(year);
+          // Show max wins across all years
+          const maxAcrossYears = Math.max(Number(existing.detail.split(' ')[0]), w.wins);
+          existing.detail = `${maxAcrossYears} wins`;
+        } else {
+          recipients.push({ playerName: w.playerName, years: [year], detail: `${w.wins} wins` });
+        }
+      }
+    }
+
+    if (recipients.length > 0) {
+      awards.push({
+        id: 'side_game_champion',
+        emoji: '🏅',
+        name: 'Side Game Champion',
+        category: 'superlatives',
+        description: 'Most side game wins in a season.',
+        recipients,
+      });
+    }
+  }
+
   // Custom/joke awards
   for (const custom of CUSTOM_AWARDS) {
     awards.push({ ...custom, recipients: custom.recipients.map((r) => ({ ...r })) });
@@ -415,7 +457,7 @@ export function computeAllAwards(
 // ---------------------------------------------------------------------------
 
 /** Badge IDs that only appear on the Awards Wall, not on stats page cards */
-const AWARDS_WALL_ONLY = ['dynasty', 'biggest_season_win', 'biggest_season_loss', 'ph_balance', 'rickie_fowler', 'snow_cone', 'the_ronnie', 'back_to_back', 'ironman'];
+const AWARDS_WALL_ONLY = ['dynasty', 'biggest_season_win', 'biggest_season_loss', 'ph_balance', 'rickie_fowler', 'snow_cone', 'the_ronnie', 'back_to_back', 'ironman', 'side_game_champion'];
 
 export function computePlayerBadges(
   playerName: string,

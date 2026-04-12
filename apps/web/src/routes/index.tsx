@@ -42,6 +42,7 @@ type LeaderboardPlayer = {
   harveyStableford: number | null;
   harveyMoney: number | null;
   harveyTotal: number | null;
+  totalPutts: number | null;
 };
 
 type LeaderboardResponse = {
@@ -53,7 +54,8 @@ type LeaderboardResponse = {
     autoCalculateMoney: boolean;
   } | null;
   harveyLiveEnabled: boolean;
-  sideGame: { name: string; format: string } | null;
+  sideGame: { name: string; format: string; calculationType?: string | null } | null;
+  sideGameWinner: { playerName: string; detail: string } | null;
   leaderboard: LeaderboardPlayer[];
   lastUpdated: string;
 };
@@ -679,6 +681,9 @@ function LeaderboardTable({
                     <div className="font-semibold leading-tight">{player.name}</div>
                     <div className="text-[11px] text-muted-foreground mt-0.5">
                       HCP {Math.round(player.handicapIndex * 10) / 10} · {formatThru(player.thruHole)}
+                      {player.totalPutts !== null && (
+                        <span className="ml-1.5 text-blue-600 font-medium">Putts: {player.totalPutts}</span>
+                      )}
                     </div>
                   </td>
                   <td className={`py-2.5 pr-2 text-right tabular-nums text-base ${toParColor}`}>
@@ -894,7 +899,14 @@ function LeaderboardPage() {
           {(currentRound.status === 'finalized' || currentRound.status === 'completed') && (
             <HighlightReel roundId={currentRound.id} />
           )}
-          {currentData.sideGame && (
+          {currentData.sideGameWinner && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 mb-3 text-center">
+              <p className="text-sm font-semibold text-amber-900">
+                {currentData.sideGame?.name} Winner: {currentData.sideGameWinner.playerName}{currentData.sideGameWinner.detail ? ` (${currentData.sideGameWinner.detail})` : ''}
+              </p>
+            </div>
+          )}
+          {currentData.sideGame && !currentData.sideGameWinner && (
             <div className="rounded-xl border bg-card p-3 mb-3">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
               <p className="font-semibold">{currentData.sideGame.name}</p>
@@ -915,7 +927,14 @@ function LeaderboardPage() {
           {(currentRound.status === 'finalized' || currentRound.status === 'completed') && (
             <HighlightReel roundId={currentRound.id} />
           )}
-          {liveData.sideGame && (
+          {liveData.sideGameWinner && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 mb-3 text-center">
+              <p className="text-sm font-semibold text-amber-900">
+                {liveData.sideGame?.name} Winner: {liveData.sideGameWinner.playerName}{liveData.sideGameWinner.detail ? ` (${liveData.sideGameWinner.detail})` : ''}
+              </p>
+            </div>
+          )}
+          {liveData.sideGame && !liveData.sideGameWinner && (
             <div className="rounded-xl border bg-card p-3 mb-3">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
               <p className="font-semibold">{liveData.sideGame.name}</p>

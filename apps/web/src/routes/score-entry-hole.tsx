@@ -38,6 +38,7 @@ type RoundDetail = {
   status: string;
   autoCalculateMoney: boolean;
   allHole18Scored: boolean;
+  sideGame: { name: string; format: string; calculationType: string | null } | null;
   groups: Group[];
 };
 
@@ -133,6 +134,7 @@ function ScoreEntryHolePage() {
   const [moneyTotals, setMoneyTotals] = useState<Map<number, number>>(new Map());
   const [holeDecisions, setHoleDecisions] = useState<Map<number, StoredWolfDecision>>(new Map());
   const [currentInputs, setCurrentInputs] = useState<Record<number, string>>({});
+  const [currentPutts, setCurrentPutts] = useState<Record<number, string>>({});
   const scoreInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [currentDecision, setCurrentDecision] = useState<'alone' | 'partner' | 'blind_wolf' | null>(null);
   const [currentPartnerId, setCurrentPartnerId] = useState<number | null>(null);
@@ -247,6 +249,7 @@ function ScoreEntryHolePage() {
       setCurrentInputs(inputs);
     } else {
       setCurrentInputs({});
+      setCurrentPutts({});
     }
 
     // Pre-populate wolf decision
@@ -305,6 +308,7 @@ function ScoreEntryHolePage() {
       if (holeNum < 18) {
         setCurrentHole(holeNum + 1);
         setCurrentInputs({});
+      setCurrentPutts({});
       } else {
         setCurrentHole(19);
       }
@@ -341,6 +345,7 @@ function ScoreEntryHolePage() {
         if (holeNum < 18) {
           setCurrentHole(holeNum + 1);
           setCurrentInputs({});
+      setCurrentPutts({});
         } else {
           setCurrentHole(19);
         }
@@ -380,8 +385,10 @@ function ScoreEntryHolePage() {
     },
   });
 
+  const isPuttsWeek = roundData?.sideGame?.calculationType === 'auto_putts';
+
   const submitMutation = useMutation({
-    mutationFn: ({ holeNum, inputs }: { holeNum: number; inputs: Record<number, string> }) => {
+    mutationFn: ({ holeNum, inputs, puttsInputs }: { holeNum: number; inputs: Record<number, string>; puttsInputs: Record<number, string> }) => {
       if (!session) throw new Error('No session');
       return apiFetch<SubmitResponse>(
         `/rounds/${session.roundId}/groups/${session.groupId}/holes/${holeNum}/scores`,
@@ -392,6 +399,9 @@ function ScoreEntryHolePage() {
             scores: orderedPlayers.map((p) => ({
               playerId: p.id,
               grossScore: Number(inputs[p.id]),
+              ...(isPuttsWeek && puttsInputs[p.id] !== undefined && puttsInputs[p.id] !== ''
+                ? { putts: Number(puttsInputs[p.id]) }
+                : {}),
             })),
           }),
         },
@@ -434,12 +444,13 @@ function ScoreEntryHolePage() {
         if (holeNum < 18) {
           setCurrentHole(holeNum + 1);
           setCurrentInputs({});
+      setCurrentPutts({});
         } else {
           setCurrentHole(19);
         }
       }
     },
-    onError: (err: Error, { holeNum, inputs }) => {
+    onError: (err: Error, { holeNum, inputs, puttsInputs }) => {
       if (isNetworkError(err)) {
         // Network failure — queue locally and advance hole (data is safe in IndexedDB)
         const hasWolfData =
@@ -452,6 +463,9 @@ function ScoreEntryHolePage() {
           scores: orderedPlayers.map((p) => ({
             playerId: p.id,
             grossScore: Number(inputs[p.id]),
+            ...(isPuttsWeek && puttsInputs[p.id] !== undefined && puttsInputs[p.id] !== ''
+              ? { putts: Number(puttsInputs[p.id]) }
+              : {}),
           })),
           wolfDecision: hasWolfData
             ? {
@@ -471,6 +485,7 @@ function ScoreEntryHolePage() {
             if (holeNum < 18) {
               setCurrentHole(holeNum + 1);
               setCurrentInputs({});
+      setCurrentPutts({});
             } else {
               setCurrentHole(19);
             }
@@ -695,7 +710,14 @@ function ScoreEntryHolePage() {
     const val = currentInputs[p.id];
     if (!val) return false;
     const n = Number(val);
-    return Number.isInteger(n) && n >= 1 && n <= 20;
+    if (!Number.isInteger(n) || n < 1 || n > 20) return false;
+    if (isPuttsWeek) {
+      const pv = currentPutts[p.id];
+      if (!pv && pv !== '0') return false;
+      const pn = Number(pv);
+      if (!Number.isInteger(pn) || pn < 0 || pn > 9) return false;
+    }
+    return true;
   });
 
   const isPending = submitMutation.isPending || wolfDecisionMutation.isPending;
@@ -734,6 +756,14 @@ function ScoreEntryHolePage() {
           </div>
         </div>
 
+        {/* Side game banner */}
+        {roundData.sideGame && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-xs px-3 py-2 mb-2">
+            This week's side game: <span className="font-semibold">{roundData.sideGame.name}</span>
+            {isPuttsWeek && ' — enter putts for each hole.'}
+          </div>
+        )}
+
         {/* Score inputs — compact card per player, auto-advance on digit entry */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           {orderedPlayers.map((player, idx) => (
@@ -762,6 +792,24 @@ function ScoreEntryHolePage() {
                   }
                 }}
               />
+              {isPuttsWeek && (
+                <div className="mt-1.5">
+                  <label className="text-[10px] text-muted-foreground">Putts</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={1}
+                    className="w-full border rounded-lg p-1.5 text-center text-sm font-semibold bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={currentPutts[player.id] ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw !== '' && !/^[0-9]$/.test(raw)) return;
+                      setCurrentPutts((prev) => ({ ...prev, [player.id]: raw }));
+                    }}
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1006,7 +1054,7 @@ function ScoreEntryHolePage() {
           onClick={() => {
             setSubmitError(null);
             setWolfError(null);
-            submitMutation.mutate({ holeNum: currentHole, inputs: currentInputs });
+            submitMutation.mutate({ holeNum: currentHole, inputs: currentInputs, puttsInputs: currentPutts });
           }}
         >
           {isPending ? (
@@ -1023,7 +1071,19 @@ function ScoreEntryHolePage() {
             variant="outline"
             className="flex-1 min-h-10"
             disabled={currentHole === 1}
-            onClick={() => setCurrentHole((h) => h - 1)}
+            onClick={() => {
+              const prevHole = currentHole - 1;
+              const holeMap = submittedScores.get(prevHole);
+              if (holeMap) {
+                const inputs: Record<number, string> = {};
+                for (const [pid, gs] of holeMap) inputs[pid] = String(gs);
+                setCurrentInputs(inputs);
+              } else {
+                setCurrentInputs({});
+              }
+              setCurrentPutts({});
+              setCurrentHole(prevHole);
+            }}
           >
             <ChevronLeft className="w-4 h-4 mr-1" />
             Prev
@@ -1032,7 +1092,19 @@ function ScoreEntryHolePage() {
             variant="outline"
             className="flex-1 min-h-10"
             disabled={currentHole + 1 > firstUnscoredHole}
-            onClick={() => setCurrentHole((h) => h + 1)}
+            onClick={() => {
+              const nextHole = currentHole + 1;
+              const holeMap = submittedScores.get(nextHole);
+              if (holeMap) {
+                const inputs: Record<number, string> = {};
+                for (const [pid, gs] of holeMap) inputs[pid] = String(gs);
+                setCurrentInputs(inputs);
+              } else {
+                setCurrentInputs({});
+              }
+              setCurrentPutts({});
+              setCurrentHole(nextHole);
+            }}
           >
             Next
             <ChevronRight className="w-4 h-4 ml-1" />

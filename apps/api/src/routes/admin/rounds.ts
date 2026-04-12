@@ -14,7 +14,9 @@ import {
 } from '../../schemas/round.js';
 import { updateHandicapSchema } from '../../schemas/handicap.js';
 import { calculateHarveyPoints } from '@wolf-cup/engine';
+import type { Tee } from '@wolf-cup/engine';
 import { ghinClient } from '../../lib/ghin-client.js';
+import { computeSideGameWinnerForRound } from '../../lib/side-game-calc-db.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -712,10 +714,10 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
   }
 
-  let round: { id: number; seasonId: number; type: string; status: string } | undefined;
+  let round: { id: number; seasonId: number; type: string; status: string; tee: string | null } | undefined;
   try {
     round = await db
-      .select({ id: rounds.id, seasonId: rounds.seasonId, type: rounds.type, status: rounds.status })
+      .select({ id: rounds.id, seasonId: rounds.seasonId, type: rounds.type, status: rounds.status, tee: rounds.tee })
       .from(rounds)
       .where(eq(rounds.id, id))
       .get();
@@ -752,6 +754,14 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     await recordPairings(round.seasonId, id);
   } catch (err) {
     console.error('Failed to record pairings (non-fatal):', err);
+  }
+
+  // Auto-calculate side game results (non-fatal — doesn't affect standings)
+  try {
+    const roundTee = (round.tee as Tee) ?? 'blue';
+    await computeSideGameWinnerForRound(id, round.seasonId, roundTee);
+  } catch (err) {
+    console.error('Failed to compute side game results (non-fatal):', err);
   }
 
   return c.json({ id, status: 'finalized' }, 200);

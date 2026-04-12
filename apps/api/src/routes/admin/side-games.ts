@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { db } from '../../db/index.js';
 import { seasons, rounds, players, sideGames, sideGameResults } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
@@ -19,6 +19,7 @@ function toSideGameResponse(row: typeof sideGames.$inferSelect) {
     seasonId: row.seasonId,
     name: row.name,
     format: row.format,
+    calculationType: row.calculationType ?? null,
     scheduledRoundIds: row.scheduledRoundIds
       ? (JSON.parse(row.scheduledRoundIds) as number[])
       : [],
@@ -238,11 +239,11 @@ app.post('/rounds/:roundId/side-game-results', adminAuthMiddleware, async (c) =>
     return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
   }
 
-  // Check side game exists
-  let sideGame: { id: number } | undefined;
+  // Check side game exists and is scheduled for this round
+  let sideGame: { id: number; scheduledRoundIds: string | null } | undefined;
   try {
     sideGame = await db
-      .select({ id: sideGames.id })
+      .select({ id: sideGames.id, scheduledRoundIds: sideGames.scheduledRoundIds })
       .from(sideGames)
       .where(eq(sideGames.id, result.data.sideGameId))
       .get();
@@ -251,6 +252,22 @@ app.post('/rounds/:roundId/side-game-results', adminAuthMiddleware, async (c) =>
   }
   if (!sideGame) {
     return c.json({ error: 'Side game not found', code: 'NOT_FOUND' }, 404);
+  }
+
+  // Validate side game is scheduled for this round
+  try {
+    const scheduledIds = JSON.parse(sideGame.scheduledRoundIds ?? '[]') as number[];
+    if (!scheduledIds.includes(roundId)) {
+      return c.json(
+        { error: 'Side game is not scheduled for this round', code: 'VALIDATION_ERROR' },
+        422,
+      );
+    }
+  } catch {
+    return c.json(
+      { error: 'Side game is not scheduled for this round', code: 'VALIDATION_ERROR' },
+      422,
+    );
   }
 
   // If winnerPlayerId provided, check player exists
@@ -281,6 +298,7 @@ app.post('/rounds/:roundId/side-game-results', adminAuthMiddleware, async (c) =>
         winnerPlayerId: winnerPlayerId ?? null,
         winnerName: winnerName ?? null,
         notes: notes ?? null,
+        source: 'manual',
         createdAt: Date.now(),
       })
       .returning();
@@ -340,12 +358,146 @@ app.get('/rounds/:roundId/side-game-results', adminAuthMiddleware, async (c) => 
         roundId: sideGameResults.roundId,
         winnerPlayerId: sideGameResults.winnerPlayerId,
         winnerName: sideGameResults.winnerName,
+        playerName: players.name,
+        gameName: sideGames.name,
+        gameCalcType: sideGames.calculationType,
         notes: sideGameResults.notes,
+        source: sideGameResults.source,
       })
       .from(sideGameResults)
+      .innerJoin(sideGames, eq(sideGameResults.sideGameId, sideGames.id))
+      .leftJoin(players, eq(sideGameResults.winnerPlayerId, players.id))
       .where(eq(sideGameResults.roundId, roundId));
-    return c.json({ items: allResults }, 200);
+    return c.json({
+      items: allResults.map((r) => ({
+        ...r,
+        displayName: r.playerName ?? r.winnerName ?? 'Unknown',
+      })),
+    }, 200);
   } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /rounds/:roundId/side-game-results/:resultId — delete a result
+// ---------------------------------------------------------------------------
+
+app.delete('/rounds/:roundId/side-game-results/:resultId', adminAuthMiddleware, async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  const resultId = Number(c.req.param('resultId'));
+  if (!Number.isInteger(roundId) || roundId <= 0 || !Number.isInteger(resultId) || resultId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  try {
+    const existing = await db
+      .select({ id: sideGameResults.id, roundId: sideGameResults.roundId })
+      .from(sideGameResults)
+      .where(eq(sideGameResults.id, resultId))
+      .get();
+
+    if (!existing || existing.roundId !== roundId) {
+      return c.json({ error: 'Result not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    await db.delete(sideGameResults).where(eq(sideGameResults.id, resultId));
+    return c.json({ success: true }, 200);
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /seasons/:seasonId/side-games/initialize — auto-create 6-game rotation
+// ---------------------------------------------------------------------------
+
+const SIDE_GAME_DEFINITIONS = [
+  { name: 'Most Net Pars', format: 'Most holes at net par', calculationType: 'auto_net_pars' },
+  { name: 'Closest to Pin', format: 'Closest tee shot on par 3s', calculationType: 'manual' },
+  { name: 'Most Skins', format: 'Lowest unique net score on any hole — all players, all 18 holes', calculationType: 'auto_skins' },
+  { name: 'Least Putts', format: 'Fewest total putts', calculationType: 'auto_putts' },
+  { name: 'Most Net Under Par', format: 'Most holes under net par', calculationType: 'auto_net_under_par' },
+  { name: 'Most Polies', format: 'Most polies in the round', calculationType: 'auto_polies' },
+] as const;
+
+app.post('/seasons/:seasonId/side-games/initialize', adminAuthMiddleware, async (c) => {
+  const seasonId = Number(c.req.param('seasonId'));
+  if (!Number.isInteger(seasonId) || seasonId <= 0) {
+    return c.json({ error: 'Invalid season ID', code: 'INVALID_ID' }, 400);
+  }
+
+  // Check season exists
+  const season = await db
+    .select({ id: seasons.id })
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .get();
+  if (!season) {
+    return c.json({ error: 'Season not found', code: 'NOT_FOUND' }, 404);
+  }
+
+  // Get all official, non-cancelled rounds sorted by date
+  const seasonRounds = await db
+    .select({ id: rounds.id, scheduledDate: rounds.scheduledDate })
+    .from(rounds)
+    .where(
+      and(
+        eq(rounds.seasonId, seasonId),
+        eq(rounds.type, 'official'),
+        sql`${rounds.status} != 'cancelled'`,
+      ),
+    )
+    .orderBy(rounds.scheduledDate, rounds.id);
+
+  if (seasonRounds.length === 0) {
+    return c.json({ error: 'No official rounds found for this season', code: 'NO_ROUNDS' }, 422);
+  }
+
+  // Atomic check-and-insert inside a transaction to prevent TOCTOU race
+  try {
+    const createdGames = await db.transaction(async (tx) => {
+      // Guard against double-initialization
+      const existing = await tx
+        .select({ id: sideGames.id })
+        .from(sideGames)
+        .where(eq(sideGames.seasonId, seasonId));
+      if (existing.length > 0) {
+        throw new Error('ALREADY_EXISTS');
+      }
+
+      const now = Date.now();
+      const games = [];
+
+      for (let gameIdx = 0; gameIdx < SIDE_GAME_DEFINITIONS.length; gameIdx++) {
+        const def = SIDE_GAME_DEFINITIONS[gameIdx]!;
+        const assignedRoundIds = seasonRounds
+          .filter((_, roundIdx) => roundIdx % 6 === gameIdx)
+          .map((r) => r.id);
+
+        const [inserted] = await tx
+          .insert(sideGames)
+          .values({
+            seasonId,
+            name: def.name,
+            format: def.format,
+            calculationType: def.calculationType,
+            scheduledRoundIds: JSON.stringify(assignedRoundIds),
+            createdAt: now,
+          })
+          .returning();
+
+        if (inserted) games.push(toSideGameResponse(inserted));
+      }
+
+      return games;
+    });
+
+    return c.json({ items: createdGames }, 201);
+  } catch (err) {
+    if (err instanceof Error && err.message === 'ALREADY_EXISTS') {
+      return c.json({ error: 'Side games already initialized for this season', code: 'ALREADY_EXISTS' }, 409);
+    }
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
 });
