@@ -9,7 +9,6 @@ function isFriday(dateStr: string): boolean {
 export const createSeasonSchema = z
   .object({
     name: z.string().min(1),
-    year: z.number().int().min(2014).max(2100),
     startDate: z
       .string()
       .regex(dateRegex)
