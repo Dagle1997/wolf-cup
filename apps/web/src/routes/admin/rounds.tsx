@@ -843,7 +843,13 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
 // ---------------------------------------------------------------------------
 
 type SuggestedGroup = { groupNumber: number; playerIds: number[] };
-type SuggestResponse = { groups: SuggestedGroup[]; remainder: number[]; totalCost: number };
+type SuggestResponse = {
+  groups: SuggestedGroup[];
+  remainder: number[];
+  totalCost: number;
+  requestWarnings?: string[];
+  honoredRequests?: { playerId: number; groupNumber: number }[];
+};
 type SubEntry = { id: number; name: string; hi: number; isNew: boolean };
 
 let nextTempId = -1;
@@ -1516,6 +1522,19 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
             <div className="text-xs text-muted-foreground">
               Repeat pairing cost: <span className={heatColor(suggestions.totalCost)}>{suggestions.totalCost}</span>
             </div>
+            {suggestions.honoredRequests && suggestions.honoredRequests.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                Honored requests:{' '}
+                {suggestions.honoredRequests
+                  .map((r) => `${playerName(r.playerId)} → Group ${r.groupNumber}`)
+                  .join(', ')}
+              </div>
+            )}
+            {suggestions.requestWarnings && suggestions.requestWarnings.length > 0 && (
+              <div className="text-xs text-amber-600 dark:text-amber-400">
+                {suggestions.requestWarnings.join(' · ')}
+              </div>
+            )}
           </div>
           {applyError && <p className="text-xs text-destructive mt-1">{applyError}</p>}
         </div>

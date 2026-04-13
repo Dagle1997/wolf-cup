@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { eq, and, or, inArray } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { pairingHistory, rounds } from '../../db/schema.js';
+import { pairingHistory, rounds, seasonWeeks, attendance } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { suggestGroupsSchema } from '../../schemas/pairing.js';
 import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
@@ -102,11 +102,11 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
 
   const { playerIds, pins: rawPins } = parsed.data;
 
-  // Get round's seasonId
-  let round: { seasonId: number } | undefined;
+  // Get round's seasonId + scheduledDate (for attendance group-request lookup)
+  let round: { seasonId: number; scheduledDate: string } | undefined;
   try {
     round = await db
-      .select({ seasonId: rounds.seasonId })
+      .select({ seasonId: rounds.seasonId, scheduledDate: rounds.scheduledDate })
       .from(rounds)
       .where(eq(rounds.id, roundId))
       .get();
@@ -116,6 +116,63 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
 
   if (!round) {
     return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  }
+
+  const groupSize = 4;
+  const numGroups = Math.floor(playerIds.length / groupSize);
+
+  // Load attendance group-requests for the matching season_week, if any.
+  // Translate: 'first' → group 0, 'last' → group (numGroups - 1).
+  // Cap at groupSize players per position — excess requesters are ignored
+  // and reported as warnings so the admin knows.
+  const requestWarnings: string[] = [];
+  const requestPins = new Map<number, number>();
+  if (numGroups > 0) {
+    try {
+      const week = await db
+        .select({ id: seasonWeeks.id })
+        .from(seasonWeeks)
+        .where(
+          and(
+            eq(seasonWeeks.seasonId, round.seasonId),
+            eq(seasonWeeks.friday, round.scheduledDate),
+          ),
+        )
+        .get();
+
+      if (week) {
+        const rows = await db
+          .select({ playerId: attendance.playerId, groupRequest: attendance.groupRequest })
+          .from(attendance)
+          .where(eq(attendance.seasonWeekId, week.id));
+
+        const pidSet = new Set(playerIds);
+        const firsts: number[] = [];
+        const lasts: number[] = [];
+        for (const r of rows) {
+          if (!pidSet.has(r.playerId)) continue;
+          if (r.groupRequest === 'first') firsts.push(r.playerId);
+          else if (r.groupRequest === 'last') lasts.push(r.playerId);
+        }
+
+        if (firsts.length > groupSize) {
+          requestWarnings.push(
+            `${firsts.length} players requested First group — only the first ${groupSize} honored`,
+          );
+        }
+        for (const pid of firsts.slice(0, groupSize)) requestPins.set(pid, 0);
+
+        const lastIdx = numGroups - 1;
+        if (lasts.length > groupSize) {
+          requestWarnings.push(
+            `${lasts.length} players requested Last group — only the first ${groupSize} honored`,
+          );
+        }
+        for (const pid of lasts.slice(0, groupSize)) requestPins.set(pid, lastIdx);
+      }
+    } catch {
+      // Non-fatal: group requests are a convenience; fall through without them
+    }
   }
 
   // Fetch pairing history for these players
@@ -138,8 +195,8 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
     matrix.set(pairKey(row.playerAId, row.playerBId), row.pairCount);
   }
 
-  // Convert pins from Record<string, number> to Map<number, number>
-  const pinMap = new Map<number, number>();
+  // Start from attendance group-requests, then let explicit admin pins override.
+  const pinMap = new Map<number, number>(requestPins);
   if (rawPins) {
     for (const [pidStr, gIdx] of Object.entries(rawPins)) {
       pinMap.set(Number(pidStr), gIdx);
@@ -169,7 +226,19 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
     };
   });
 
-  return c.json({ groups: groupsOut, remainder: [...result.remainder], totalCost: result.totalCost }, 200);
+  return c.json(
+    {
+      groups: groupsOut,
+      remainder: [...result.remainder],
+      totalCost: result.totalCost,
+      requestWarnings,
+      honoredRequests: [...requestPins.entries()].map(([playerId, groupIdx]) => ({
+        playerId,
+        groupNumber: groupIdx + 1,
+      })),
+    },
+    200,
+  );
 });
 
 export default app;
