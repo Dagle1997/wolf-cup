@@ -5,6 +5,8 @@ import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
 import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults, galleryPhotos } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
+import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
+import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
 import {
   createRoundSchema,
   updateRoundSchema,
@@ -1120,6 +1122,38 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
     const now = Date.now();
     const groupCount = confirmedIds.length / 4;
 
+    // Build pairing matrix from history for this season — minimizes repeats.
+    const historyRows = await db
+      .select({ playerAId: pairingHistory.playerAId, playerBId: pairingHistory.playerBId, pairCount: pairingHistory.pairCount })
+      .from(pairingHistory)
+      .where(eq(pairingHistory.seasonId, week.seasonId));
+    const pidSet = new Set(confirmedIds);
+    const matrix: PairingMatrix = new Map();
+    for (const row of historyRows) {
+      if (pidSet.has(row.playerAId) && pidSet.has(row.playerBId)) {
+        matrix.set(pairKey(row.playerAId, row.playerBId), row.pairCount);
+      }
+    }
+
+    // Honor First/Last requests from the Attend page as hard pins.
+    const { pins } = await buildGroupRequestPins({
+      seasonId: week.seasonId,
+      scheduledDate: week.friday,
+      playerIds: confirmedIds,
+    });
+
+    // Run the same engine the Suggest button uses.
+    const suggestion = suggestGroups({ matrix, playerIds: confirmedIds, pins });
+
+    // Build playerId → 0-based group index map from the suggestion.
+    const playerToGroupIdx = new Map<number, number>();
+    suggestion.groups.forEach((g, idx) => {
+      for (const pid of g) playerToGroupIdx.set(pid, idx);
+    });
+    // Anyone the engine couldn't place (shouldn't happen with %4 == 0) gets
+    // distributed round-robin across groups so we never insert an orphan.
+    let fallbackCursor = 0;
+
     const txResult = await db.transaction(async (tx) => {
       // Create round
       const [round] = await tx
@@ -1150,11 +1184,15 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
         groupIds.push(g!.id);
       }
 
-      // Add players (round-robin across groups)
-      for (let i = 0; i < confirmedIds.length; i++) {
-        const pid = confirmedIds[i]!;
+      // Add players using the engine's optimized assignment
+      for (const pid of confirmedIds) {
         const player = playerRows.find((p) => p.id === pid);
-        const groupId = groupIds[i % groupCount]!;
+        let gIdx = playerToGroupIdx.get(pid);
+        if (gIdx === undefined) {
+          gIdx = fallbackCursor % groupCount;
+          fallbackCursor++;
+        }
+        const groupId = groupIds[gIdx]!;
         await tx.insert(roundPlayers).values({
           roundId: round.id,
           playerId: pid,

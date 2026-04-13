@@ -627,6 +627,61 @@ describe('GET /pairings/:roundId', () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /admin/rounds/from-attendance — also honors attendance group_request
+// ---------------------------------------------------------------------------
+
+describe('Create Round from Attendance honors group_request', () => {
+  it('places a player with groupRequest=last into the last group at creation', async () => {
+    // 12 players, 3 groups
+    const extras: number[] = [];
+    for (const name of ['Eve', 'Frank', 'Grace', 'Hank', 'Ivy', 'Jack', 'Kate', 'Leo']) {
+      const [p] = await db
+        .insert(players)
+        .values({ name, handicapIndex: 12.0, createdAt: Date.now() })
+        .returning();
+      extras.push(p!.id);
+    }
+    const all = [player1Id, player2Id, player3Id, player4Id, ...extras];
+
+    for (const id of all) {
+      await app.request(`/api/admin/attendance/${weekId}/players/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in' }),
+      });
+    }
+
+    // player1 wants Last
+    await app.request(
+      `/api/admin/attendance/${weekId}/players/${player1Id}/group-request`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupRequest: 'last' }),
+      },
+    );
+
+    const rRes = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+    expect(rRes.status).toBe(201);
+    const { round } = (await rRes.json()) as { round: { id: number } };
+
+    // Inspect the actual round_players assignment in the DB
+    const grps = await db.select().from(groups).where(eq(groups.roundId, round.id)).orderBy(groups.groupNumber);
+    expect(grps.length).toBe(3);
+    const lastGroup = grps[2]!;
+    const lastGroupPlayers = await db
+      .select({ playerId: roundPlayers.playerId })
+      .from(roundPlayers)
+      .where(eq(roundPlayers.groupId, lastGroup.id));
+    expect(lastGroupPlayers.map((p) => p.playerId)).toContain(player1Id);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /admin/rounds/:roundId/suggest-groups — honors attendance group_request
 // ---------------------------------------------------------------------------
 

@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { eq, and, or, inArray } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { pairingHistory, rounds, seasonWeeks, attendance } from '../../db/schema.js';
+import { pairingHistory, rounds } from '../../db/schema.js';
+import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { suggestGroupsSchema } from '../../schemas/pairing.js';
 import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
@@ -118,98 +119,11 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
     return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
   }
 
-  const groupSize = 4;
-  const numGroups = Math.floor(playerIds.length / groupSize);
-
-  // Load attendance group-requests for the matching season_week, if any.
-  // Translate: 'first' → group 0, 'last' → group (numGroups - 1).
-  // Cap at groupSize players per position — excess requesters are ignored
-  // and reported as warnings so the admin knows.
-  const requestWarnings: string[] = [];
-  const requestPins = new Map<number, number>();
-  if (numGroups > 0) {
-    try {
-      const week = await db
-        .select({ id: seasonWeeks.id })
-        .from(seasonWeeks)
-        .where(
-          and(
-            eq(seasonWeeks.seasonId, round.seasonId),
-            eq(seasonWeeks.friday, round.scheduledDate),
-          ),
-        )
-        .get();
-
-      if (week) {
-        const rows = await db
-          .select({
-            playerId: attendance.playerId,
-            groupRequest: attendance.groupRequest,
-            groupRequestAt: attendance.groupRequestAt,
-          })
-          .from(attendance)
-          .where(eq(attendance.seasonWeekId, week.id));
-
-        const pidSet = new Set(playerIds);
-        type Req = { playerId: number; at: number };
-        const firsts: Req[] = [];
-        const lasts: Req[] = [];
-        for (const r of rows) {
-          if (!pidSet.has(r.playerId)) continue;
-          // Rows missing a timestamp (legacy / unset) sort last — explicit clicks win
-          const at = r.groupRequestAt ?? Number.MAX_SAFE_INTEGER;
-          if (r.groupRequest === 'first') firsts.push({ playerId: r.playerId, at });
-          else if (r.groupRequest === 'last') lasts.push({ playerId: r.playerId, at });
-        }
-
-        // Earlier requesters win preferred position; overflow cascades outward.
-        firsts.sort((a, b) => a.at - b.at);
-        lasts.sort((a, b) => a.at - b.at);
-
-        const pinnedCount = new Array<number>(numGroups).fill(0);
-
-        // "First" requesters walk 0, 1, 2, ... for overflow
-        let firstPreferred = 0;
-        let firstBumped = 0;
-        for (const req of firsts) {
-          let g = 0;
-          while (g < numGroups && pinnedCount[g]! >= groupSize) g++;
-          if (g >= numGroups) break; // every group saturated; nothing to pin
-          requestPins.set(req.playerId, g);
-          pinnedCount[g]!++;
-          if (g === 0) firstPreferred++;
-          else firstBumped++;
-        }
-
-        // "Last" requesters walk N-1, N-2, ... for overflow
-        const lastIdx = numGroups - 1;
-        let lastPreferred = 0;
-        let lastBumped = 0;
-        for (const req of lasts) {
-          let g = lastIdx;
-          while (g >= 0 && pinnedCount[g]! >= groupSize) g--;
-          if (g < 0) break;
-          requestPins.set(req.playerId, g);
-          pinnedCount[g]!++;
-          if (g === lastIdx) lastPreferred++;
-          else lastBumped++;
-        }
-
-        if (firstBumped > 0) {
-          requestWarnings.push(
-            `${firsts.length} players requested First group — ${firstPreferred} honored in Group 1, ${firstBumped} moved to the next available group`,
-          );
-        }
-        if (lastBumped > 0) {
-          requestWarnings.push(
-            `${lasts.length} players requested Last group — ${lastPreferred} honored in Group ${numGroups}, ${lastBumped} moved to the next available group`,
-          );
-        }
-      }
-    } catch {
-      // Non-fatal: group requests are a convenience; fall through without them
-    }
-  }
+  const { pins: requestPins, warnings: requestWarnings } = await buildGroupRequestPins({
+    seasonId: round.seasonId,
+    scheduledDate: round.scheduledDate,
+    playerIds,
+  });
 
   // Fetch pairing history for these players
   let historyRows;
