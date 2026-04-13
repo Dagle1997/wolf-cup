@@ -234,14 +234,6 @@ describe('eligible player filtering (subs excluded)', () => {
   });
 
   it('sub unique low on a hole blocks the skin — active player does not inherit it', () => {
-    const handicaps: PlayerHandicap[] = [
-      { playerId: 1, handicapIndex: 0 }, // sub — scratch golfer
-      { playerId: 2, handicapIndex: 20 }, // active
-    ];
-    // Hole 1 (par 5, SI 3): player 1 scores 3 (eagle), player 2 scores 5 (par)
-    // Player 1 net: 3 - 0 strokes (CH ~-1, no strokes) = actually 3+1=4 net. Wait, need to be careful.
-    // Let's use white tee for simpler math. CH for HI 0 white = round(0*118/113 + (67.4-71)) = round(-3.6) = -4
-    // CH for HI 20 white = round(20*118/113 + (67.4-71)) = round(20.88 - 3.6) = round(17.28) = 17
     // Use blue tee. HI 10 for both to make it simpler.
     // Player 1 (HI 10, sub): CH 9. Player 2 (HI 10, active): CH 9. Same handicap.
     // Player 1 birdies hole 1 (scores 4 on par 5), player 2 scores par (5).
