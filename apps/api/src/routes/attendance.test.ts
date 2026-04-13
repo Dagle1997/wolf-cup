@@ -695,6 +695,61 @@ describe('Suggest groups honors attendance group_request', () => {
     expect(body.requestWarnings).toEqual([]);
   });
 
+  it('pins last-requested player into group 3 when 12 players (3 groups)', async () => {
+    // Seed 8 more players so we have 12 total (= 3 groups of 4)
+    const extras: number[] = [];
+    for (const name of ['Eve', 'Frank', 'Grace', 'Hank', 'Ivy', 'Jack', 'Kate', 'Leo']) {
+      const [p] = await db
+        .insert(players)
+        .values({ name, handicapIndex: 12.0, createdAt: Date.now() })
+        .returning();
+      extras.push(p!.id);
+    }
+    const all = [player1Id, player2Id, player3Id, player4Id, ...extras];
+
+    for (const id of all) {
+      await app.request(`/api/admin/attendance/${weekId}/players/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in' }),
+      });
+    }
+
+    // Bonner-analog requests last group
+    await app.request(
+      `/api/admin/attendance/${weekId}/players/${player1Id}/group-request`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupRequest: 'last' }),
+      },
+    );
+
+    const rRes = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+    const { round } = (await rRes.json()) as { round: { id: number } };
+
+    const res = await app.request(`/api/admin/rounds/${round.id}/suggest-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerIds: all }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      groups: { groupNumber: number; playerIds: number[] }[];
+      honoredRequests: { playerId: number; groupNumber: number }[];
+    };
+
+    expect(body.groups.length).toBe(3);
+    const lastGroup = body.groups.find((g) => g.groupNumber === 3)!;
+    expect(lastGroup.playerIds).toContain(player1Id);
+    expect(body.honoredRequests).toEqual([{ playerId: player1Id, groupNumber: 3 }]);
+  });
+
   it('lets explicit admin pin override an attendance group_request', async () => {
     const { roundId, allPlayerIds } = await seedEightInPlayersWithRequest(player1Id);
 
