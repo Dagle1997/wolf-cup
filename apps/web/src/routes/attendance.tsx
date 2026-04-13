@@ -438,13 +438,29 @@ function ViewGroupsLink({ friday }: { friday: string }) {
 // Create Round Button
 // ---------------------------------------------------------------------------
 
+type CreateRoundResponse = {
+  round: Record<string, unknown>;
+  entryCode: string;
+  totalCost?: number;
+  honoredRequests?: { playerId: number; groupNumber: number }[];
+  requestWarnings?: string[];
+};
+
 function CreateRoundButton({ weekId, confirmed, allAnswered }: { weekId: number; confirmed: number; allAnswered: boolean }) {
   const navigate = useNavigate();
-  const [result, setResult] = useState<{ entryCode: string } | null>(null);
+  const [result, setResult] = useState<CreateRoundResponse | null>(null);
+
+  // Look up player names so we can render honoredRequests with names
+  const rosterQuery = useQuery({
+    queryKey: ['attendance-default'],
+    queryFn: () => apiFetch<{ players: { id: number; name: string }[] }>('/attendance'),
+  });
+  const playerName = (id: number) =>
+    rosterQuery.data?.players.find((p) => p.id === id)?.name ?? `Player ${id}`;
 
   const createMutation = useMutation({
     mutationFn: () =>
-      apiFetch<{ round: Record<string, unknown>; entryCode: string }>(
+      apiFetch<CreateRoundResponse>(
         '/admin/rounds/from-attendance',
         {
           method: 'POST',
@@ -452,7 +468,7 @@ function CreateRoundButton({ weekId, confirmed, allAnswered }: { weekId: number;
         },
       ),
     onSuccess: (data) => {
-      setResult({ entryCode: data.entryCode });
+      setResult(data);
       void queryClient.invalidateQueries({ queryKey: ['admin-rounds'] });
     },
   });
@@ -463,10 +479,29 @@ function CreateRoundButton({ weekId, confirmed, allAnswered }: { weekId: number;
 
   if (result) {
     return (
-      <div className="mt-3 rounded-md border p-3 bg-green-50 dark:bg-green-900/20 text-sm">
+      <div className="mt-3 rounded-md border p-3 bg-green-50 dark:bg-green-900/20 text-sm space-y-1.5">
         <p className="font-medium text-green-700 dark:text-green-400">
           Round created! Entry code: <span className="font-mono text-lg">{result.entryCode}</span>
         </p>
+        {typeof result.totalCost === 'number' && (
+          <p className="text-xs text-muted-foreground">
+            Repeat pairing cost: <span className="font-semibold">{result.totalCost}</span>
+            <span className="opacity-60"> (sum of past pairings within new groups; lower = fresher matchups)</span>
+          </p>
+        )}
+        {result.honoredRequests && result.honoredRequests.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Honored requests:{' '}
+            {result.honoredRequests
+              .map((r) => `${playerName(r.playerId)} → Group ${r.groupNumber}`)
+              .join(', ')}
+          </p>
+        )}
+        {result.requestWarnings && result.requestWarnings.length > 0 && (
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            {result.requestWarnings.join(' · ')}
+          </p>
+        )}
         <Button
           variant="outline"
           size="sm"

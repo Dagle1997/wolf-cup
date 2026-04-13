@@ -842,7 +842,13 @@ function EditRow({ round, onClose }: { round: Round; onClose: () => void }) {
 // Groups Panel
 // ---------------------------------------------------------------------------
 
-type SuggestedGroup = { groupNumber: number; playerIds: number[] };
+type PairCount = { playerA: number; playerB: number; count: number };
+type SuggestedGroup = {
+  groupNumber: number;
+  playerIds: number[];
+  pairCounts?: PairCount[];
+  maxPairCount?: number;
+};
 type SuggestResponse = {
   groups: SuggestedGroup[];
   remainder: number[];
@@ -1512,6 +1518,14 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
                       );
                     })}
                   </div>
+                  {sg.pairCounts && sg.pairCounts.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Repeats:{' '}
+                      {sg.pairCounts
+                        .map((p) => `${playerName(p.playerA)}–${playerName(p.playerB)} ×${p.count}`)
+                        .join(', ')}
+                    </p>
+                  )}
                 </div>
             ))}
             {suggestions.remainder.length > 0 && (

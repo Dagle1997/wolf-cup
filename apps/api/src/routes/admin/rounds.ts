@@ -1136,7 +1136,7 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
     }
 
     // Honor First/Last requests from the Attend page as hard pins.
-    const { pins } = await buildGroupRequestPins({
+    const { pins, warnings: requestWarnings, honoredRequests } = await buildGroupRequestPins({
       seasonId: week.seasonId,
       scheduledDate: week.friday,
       playerIds: confirmedIds,
@@ -1213,6 +1213,9 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
         entryCode,
         groupCount,
         playerCount: confirmedIds.length,
+        totalCost: suggestion.totalCost,
+        honoredRequests,
+        requestWarnings,
       },
       201,
     );
