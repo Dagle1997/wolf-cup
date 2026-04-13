@@ -31,6 +31,7 @@ type AttendancePlayer = {
   name: string;
   handicapIndex: number | null;
   status: 'in' | 'out' | 'unset';
+  groupRequest: 'first' | 'last' | null;
 };
 
 type AttendanceResponse = {
@@ -329,6 +330,21 @@ function PlayerRow({
     },
   });
 
+  const groupRequestMutation = useMutation({
+    mutationFn: (groupRequest: 'first' | 'last' | null) =>
+      apiFetch<{ groupRequest: 'first' | 'last' | null }>(
+        `/admin/attendance/${weekId}/players/${player.id}/group-request`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ groupRequest }),
+        },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['attendance-default'] });
+      void queryClient.invalidateQueries({ queryKey: ['attendance-week', weekId] });
+    },
+  });
+
   function handleToggle() {
     if (!isAdmin) return;
     // Three-state cycle: unset → in → out → unset
@@ -343,26 +359,50 @@ function PlayerRow({
         ? 'bg-red-400'
         : 'border-2 border-gray-300 dark:border-gray-600';
 
+  const showGroupRequest = isAdmin && player.status === 'in';
+
   return (
-    <button
-      type="button"
-      onClick={handleToggle}
-      disabled={!isAdmin || toggleMutation.isPending}
-      className={`w-full flex items-center gap-3 px-4 py-3 border-b last:border-0 text-sm text-left transition-colors ${
-        isAdmin ? 'cursor-pointer hover:bg-muted/30 active:bg-muted/50' : 'cursor-default'
-      } ${player.status === 'out' ? 'text-muted-foreground' : ''}`}
+    <div
+      className={`w-full flex items-center gap-3 px-4 py-3 border-b last:border-0 text-sm ${
+        player.status === 'out' ? 'text-muted-foreground' : ''
+      }`}
     >
-      <span className={`w-3 h-3 rounded-full shrink-0 ${statusIcon}`} />
-      <span className="flex-1 font-medium">{player.name}</span>
-      {player.handicapIndex !== null && (
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {player.handicapIndex.toFixed(1)}
-        </span>
+      <button
+        type="button"
+        onClick={handleToggle}
+        disabled={!isAdmin || toggleMutation.isPending}
+        className={`flex-1 flex items-center gap-3 text-left min-w-0 ${
+          isAdmin ? 'cursor-pointer' : 'cursor-default'
+        }`}
+      >
+        <span className={`w-3 h-3 rounded-full shrink-0 ${statusIcon}`} />
+        <span className="flex-1 font-medium truncate">{player.name}</span>
+        {player.handicapIndex !== null && (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {player.handicapIndex.toFixed(1)}
+          </span>
+        )}
+        {toggleMutation.isPending && (
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+        )}
+      </button>
+      {showGroupRequest && (
+        <select
+          value={player.groupRequest ?? ''}
+          onChange={(e) => {
+            const v = e.target.value;
+            groupRequestMutation.mutate(v === '' ? null : (v as 'first' | 'last'));
+          }}
+          disabled={groupRequestMutation.isPending}
+          className="shrink-0 rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Group preference"
+        >
+          <option value="">—</option>
+          <option value="first">First</option>
+          <option value="last">Last</option>
+        </select>
       )}
-      {toggleMutation.isPending && (
-        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-      )}
-    </button>
+    </div>
   );
 }
 

@@ -415,6 +415,7 @@ export const attendance = sqliteTable(
       .notNull()
       .references(() => players.id),
     status: text('status').notNull(), // 'in' | 'out'
+    groupRequest: text('group_request'), // null | 'first' | 'last'
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => ({

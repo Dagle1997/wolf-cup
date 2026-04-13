@@ -563,11 +563,12 @@ function BallDrawPage() {
             }
             onClick={() => {
               const isRoster = selectedRosterId !== '' && selectedRosterId !== 'guest';
-              guestMutation.mutate({
+              const payload: { name: string; handicapIndex: number; playerId?: number } = {
                 name: resolvedName.trim(),
                 handicapIndex: Number(guestHandicap),
-                playerId: isRoster ? Number(selectedRosterId) : undefined,
-              });
+              };
+              if (isRoster) payload.playerId = Number(selectedRosterId);
+              guestMutation.mutate(payload);
             }}
           >
             {guestMutation.isPending ? (

@@ -10,6 +10,10 @@ const toggleStatusSchema = z.object({
   status: z.enum(['in', 'out', 'unset']),
 });
 
+const groupRequestSchema = z.object({
+  groupRequest: z.enum(['first', 'last']).nullable(),
+});
+
 const addSubSchema = z.object({
   name: z.string().trim().min(1),
   ghinNumber: z.string().optional(),
@@ -52,11 +56,30 @@ app.get('/attendance/:seasonWeekId', adminAuthMiddleware, async (c) => {
       .orderBy(seasonWeeks.friday);
     const weekNumber = allWeeks.findIndex((w) => w.id === week.id) + 1;
 
-    // Get active roster players
-    const rosterPlayers = await db
+    // Active roster members
+    const activeRoster = await db
       .select()
       .from(players)
-      .where(and(eq(players.isActive, 1), eq(players.isGuest, 0)))
+      .where(and(eq(players.status, 'active'), eq(players.isGuest, 0)))
+      .orderBy(players.name);
+
+    // Bench subs added for this specific week
+    const weekSubs = await db
+      .select({
+        id: players.id,
+        name: players.name,
+        handicapIndex: players.handicapIndex,
+      })
+      .from(subBench)
+      .innerJoin(players, eq(subBench.playerId, players.id))
+      .innerJoin(
+        attendance,
+        and(
+          eq(attendance.playerId, players.id),
+          eq(attendance.seasonWeekId, seasonWeekId),
+        ),
+      )
+      .where(eq(subBench.seasonId, week.seasonId))
       .orderBy(players.name);
 
     // Get attendance records for this week
@@ -66,13 +89,22 @@ app.get('/attendance/:seasonWeekId', adminAuthMiddleware, async (c) => {
       .where(eq(attendance.seasonWeekId, seasonWeekId));
 
     const statusMap = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
+    const requestMap = new Map(attendanceRows.map((a) => [a.playerId, a.groupRequest]));
 
-    const playerList = rosterPlayers.map((p) => ({
-      id: p.id,
-      name: p.name,
-      handicapIndex: p.handicapIndex,
-      status: statusMap.get(p.id) ?? 'unset',
-    }));
+    const seen = new Set<number>();
+    const playerList = [...activeRoster, ...weekSubs]
+      .filter((p) => {
+        if (seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      })
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        handicapIndex: p.handicapIndex,
+        status: statusMap.get(p.id) ?? 'unset',
+        groupRequest: requestMap.get(p.id) ?? null,
+      }));
 
     const confirmed = playerList.filter((p) => p.status === 'in').length;
 
@@ -178,11 +210,11 @@ app.patch('/attendance/:seasonWeekId/players/:playerId', adminAuthMiddleware, as
 
     const confirmed = attendanceRows.filter((a) => a.status === 'in').length;
 
-    // Count total roster players
+    // Count total roster players (active only, for progress indicator)
     const rosterPlayers = await db
       .select({ id: players.id })
       .from(players)
-      .where(and(eq(players.isActive, 1), eq(players.isGuest, 0)));
+      .where(and(eq(players.status, 'active'), eq(players.isGuest, 0)));
 
     return c.json(
       {
@@ -196,6 +228,67 @@ app.patch('/attendance/:seasonWeekId/players/:playerId', adminAuthMiddleware, as
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
 });
+
+// ---------------------------------------------------------------------------
+// PATCH /attendance/:seasonWeekId/players/:playerId/group-request
+// ---------------------------------------------------------------------------
+
+app.patch(
+  '/attendance/:seasonWeekId/players/:playerId/group-request',
+  adminAuthMiddleware,
+  async (c) => {
+    const seasonWeekId = Number(c.req.param('seasonWeekId'));
+    const playerId = Number(c.req.param('playerId'));
+    if (
+      !Number.isInteger(seasonWeekId) || seasonWeekId <= 0 ||
+      !Number.isInteger(playerId) || playerId <= 0
+    ) {
+      return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(
+        { error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] },
+        400,
+      );
+    }
+
+    const parsed = groupRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        { error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues },
+        400,
+      );
+    }
+
+    try {
+      const existing = await db
+        .select()
+        .from(attendance)
+        .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.playerId, playerId)))
+        .get();
+
+      if (!existing) {
+        return c.json(
+          { error: 'Player must be marked in or out first', code: 'NO_ATTENDANCE' },
+          422,
+        );
+      }
+
+      await db
+        .update(attendance)
+        .set({ groupRequest: parsed.data.groupRequest, updatedAt: Date.now() })
+        .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.playerId, playerId)));
+
+      return c.json({ groupRequest: parsed.data.groupRequest }, 200);
+    } catch {
+      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // GET /seasons/:seasonId/subs — list bench subs for a season
@@ -283,6 +376,7 @@ app.post('/seasons/:seasonId/subs', adminAuthMiddleware, async (c) => {
           handicapIndex: result.data.handicapIndex ?? null,
           isActive: 1,
           isGuest: 0,
+          status: 'sub',
           createdAt: now,
         })
         .returning();
