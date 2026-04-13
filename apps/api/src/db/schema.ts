@@ -416,6 +416,7 @@ export const attendance = sqliteTable(
       .references(() => players.id),
     status: text('status').notNull(), // 'in' | 'out'
     groupRequest: text('group_request'), // null | 'first' | 'last'
+    groupRequestAt: integer('group_request_at'), // epoch ms; used to break ties when overflow
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => ({

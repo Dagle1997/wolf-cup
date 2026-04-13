@@ -771,12 +771,30 @@ describe('Suggest groups honors attendance group_request', () => {
     expect(firstGroup.playerIds).toContain(player1Id);
   });
 
-  it('warns when more than 4 players request the same position', async () => {
-    // Mark all 8 in, then flag 5 of them as "first"
-    const { roundId, allPlayerIds } = await seedEightInPlayersWithRequest(player1Id);
+  it('earliest clicks win; 5th overflows to next group and surfaces a warning', async () => {
+    // 12 players, 3 groups. 5 people click "first" — the 5th (by timestamp)
+    // should be bumped into group 2.
+    const extras: number[] = [];
+    for (const name of ['Eve', 'Frank', 'Grace', 'Hank', 'Ivy', 'Jack', 'Kate', 'Leo']) {
+      const [p] = await db
+        .insert(players)
+        .values({ name, handicapIndex: 12.0, createdAt: Date.now() })
+        .returning();
+      extras.push(p!.id);
+    }
+    const all = [player1Id, player2Id, player3Id, player4Id, ...extras];
 
-    // Override the initial "last" for player1 and set 5 others to "first"
-    for (const pid of allPlayerIds.slice(0, 5)) {
+    for (const id of all) {
+      await app.request(`/api/admin/attendance/${weekId}/players/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in' }),
+      });
+    }
+
+    // Click order determines winners. First 4 in this list keep Group 1; the 5th is bumped.
+    const firstRequesters = [player1Id, player2Id, player3Id, player4Id, extras[0]!];
+    for (const pid of firstRequesters) {
       await app.request(
         `/api/admin/attendance/${weekId}/players/${pid}/group-request`,
         {
@@ -785,25 +803,39 @@ describe('Suggest groups honors attendance group_request', () => {
           body: JSON.stringify({ groupRequest: 'first' }),
         },
       );
+      // Tiny delay so timestamps are strictly ordered
+      await new Promise((r) => setTimeout(r, 5));
     }
 
-    const res = await app.request(`/api/admin/rounds/${roundId}/suggest-groups`, {
+    const rRes = await app.request('/api/admin/rounds/from-attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerIds: allPlayerIds }),
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+    const { round } = (await rRes.json()) as { round: { id: number } };
+
+    const res = await app.request(`/api/admin/rounds/${round.id}/suggest-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerIds: all }),
     });
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
+      groups: { groupNumber: number; playerIds: number[] }[];
       honoredRequests: { playerId: number; groupNumber: number }[];
       requestWarnings: string[];
     };
 
+    // 4 honored in Group 1, 1 bumped to Group 2
+    const inGroup1 = body.honoredRequests.filter((h) => h.groupNumber === 1).map((h) => h.playerId);
+    const inGroup2 = body.honoredRequests.filter((h) => h.groupNumber === 2).map((h) => h.playerId);
+    expect(inGroup1.sort()).toEqual(firstRequesters.slice(0, 4).sort());
+    expect(inGroup2).toEqual([extras[0]!]);
+
     expect(body.requestWarnings.length).toBe(1);
     expect(body.requestWarnings[0]).toContain('5 players requested First');
-    // Only 4 honored
-    const firstHonored = body.honoredRequests.filter((h) => h.groupNumber === 1);
-    expect(firstHonored.length).toBe(4);
+    expect(body.requestWarnings[0]).toContain('moved to the next available group');
   });
 });
 

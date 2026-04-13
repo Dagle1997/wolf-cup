@@ -142,33 +142,69 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
 
       if (week) {
         const rows = await db
-          .select({ playerId: attendance.playerId, groupRequest: attendance.groupRequest })
+          .select({
+            playerId: attendance.playerId,
+            groupRequest: attendance.groupRequest,
+            groupRequestAt: attendance.groupRequestAt,
+          })
           .from(attendance)
           .where(eq(attendance.seasonWeekId, week.id));
 
         const pidSet = new Set(playerIds);
-        const firsts: number[] = [];
-        const lasts: number[] = [];
+        type Req = { playerId: number; at: number };
+        const firsts: Req[] = [];
+        const lasts: Req[] = [];
         for (const r of rows) {
           if (!pidSet.has(r.playerId)) continue;
-          if (r.groupRequest === 'first') firsts.push(r.playerId);
-          else if (r.groupRequest === 'last') lasts.push(r.playerId);
+          // Rows missing a timestamp (legacy / unset) sort last — explicit clicks win
+          const at = r.groupRequestAt ?? Number.MAX_SAFE_INTEGER;
+          if (r.groupRequest === 'first') firsts.push({ playerId: r.playerId, at });
+          else if (r.groupRequest === 'last') lasts.push({ playerId: r.playerId, at });
         }
 
-        if (firsts.length > groupSize) {
-          requestWarnings.push(
-            `${firsts.length} players requested First group — only the first ${groupSize} honored`,
-          );
-        }
-        for (const pid of firsts.slice(0, groupSize)) requestPins.set(pid, 0);
+        // Earlier requesters win preferred position; overflow cascades outward.
+        firsts.sort((a, b) => a.at - b.at);
+        lasts.sort((a, b) => a.at - b.at);
 
+        const pinnedCount = new Array<number>(numGroups).fill(0);
+
+        // "First" requesters walk 0, 1, 2, ... for overflow
+        let firstPreferred = 0;
+        let firstBumped = 0;
+        for (const req of firsts) {
+          let g = 0;
+          while (g < numGroups && pinnedCount[g]! >= groupSize) g++;
+          if (g >= numGroups) break; // every group saturated; nothing to pin
+          requestPins.set(req.playerId, g);
+          pinnedCount[g]!++;
+          if (g === 0) firstPreferred++;
+          else firstBumped++;
+        }
+
+        // "Last" requesters walk N-1, N-2, ... for overflow
         const lastIdx = numGroups - 1;
-        if (lasts.length > groupSize) {
+        let lastPreferred = 0;
+        let lastBumped = 0;
+        for (const req of lasts) {
+          let g = lastIdx;
+          while (g >= 0 && pinnedCount[g]! >= groupSize) g--;
+          if (g < 0) break;
+          requestPins.set(req.playerId, g);
+          pinnedCount[g]!++;
+          if (g === lastIdx) lastPreferred++;
+          else lastBumped++;
+        }
+
+        if (firstBumped > 0) {
           requestWarnings.push(
-            `${lasts.length} players requested Last group — only the first ${groupSize} honored`,
+            `${firsts.length} players requested First group — ${firstPreferred} honored in Group 1, ${firstBumped} moved to the next available group`,
           );
         }
-        for (const pid of lasts.slice(0, groupSize)) requestPins.set(pid, lastIdx);
+        if (lastBumped > 0) {
+          requestWarnings.push(
+            `${lasts.length} players requested Last group — ${lastPreferred} honored in Group ${numGroups}, ${lastBumped} moved to the next available group`,
+          );
+        }
       }
     } catch {
       // Non-fatal: group requests are a convenience; fall through without them

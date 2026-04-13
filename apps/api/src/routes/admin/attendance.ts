@@ -278,9 +278,14 @@ app.patch(
         );
       }
 
+      const now = Date.now();
       await db
         .update(attendance)
-        .set({ groupRequest: parsed.data.groupRequest, updatedAt: Date.now() })
+        .set({
+          groupRequest: parsed.data.groupRequest,
+          groupRequestAt: parsed.data.groupRequest === null ? null : now,
+          updatedAt: now,
+        })
         .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.playerId, playerId)));
 
       return c.json({ groupRequest: parsed.data.groupRequest }, 200);
