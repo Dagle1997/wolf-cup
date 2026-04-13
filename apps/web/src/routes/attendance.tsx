@@ -377,11 +377,6 @@ function PlayerRow({
       >
         <span className={`w-3 h-3 rounded-full shrink-0 ${statusIcon}`} />
         <span className="flex-1 font-medium truncate">{player.name}</span>
-        {player.handicapIndex !== null && (
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {player.handicapIndex.toFixed(1)}
-          </span>
-        )}
         {toggleMutation.isPending && (
           <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
         )}
@@ -401,6 +396,11 @@ function PlayerRow({
           <option value="first">First</option>
           <option value="last">Last</option>
         </select>
+      )}
+      {player.handicapIndex !== null && (
+        <span className="shrink-0 w-10 text-right text-xs text-muted-foreground tabular-nums">
+          {player.handicapIndex.toFixed(1)}
+        </span>
       )}
     </div>
   );
