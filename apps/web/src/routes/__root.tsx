@@ -1,6 +1,7 @@
 import { createRootRoute, Outlet, Link } from '@tanstack/react-router';
-import { useState, useEffect } from 'react';
-import { CircleHelp, Camera } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { CircleHelp, Camera, RefreshCw } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -15,6 +16,33 @@ function getInitialDark(): boolean {
 function RootComponent() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [isDark, setIsDark] = useState(getInitialDark);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const initialVersionRef = useRef<number | null>(null);
+
+  // Poll API version every 60s; if it changes vs the first value seen, the
+  // server has been redeployed and we prompt the user to refresh.
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      try {
+        const res = await apiFetch<{ version: number }>('/version');
+        if (cancelled) return;
+        if (initialVersionRef.current === null) {
+          initialVersionRef.current = res.version;
+        } else if (res.version !== initialVersionRef.current) {
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // Network blip — try again next tick
+      }
+    }
+    void check();
+    const id = window.setInterval(check, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   // Apply dark class whenever isDark changes
   useEffect(() => {
@@ -59,6 +87,18 @@ function RootComponent() {
       >
         <span className="text-[35vw] opacity-[0.02]">🍑</span>
       </div>
+
+      {/* Update-available banner */}
+      {updateAvailable && (
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="shrink-0 w-full bg-green-600 text-white text-sm font-medium px-4 py-2 flex items-center justify-center gap-2 hover:bg-green-700 transition-colors"
+        >
+          <RefreshCw className="h-4 w-4" />
+          New version available — tap to refresh
+        </button>
+      )}
 
       {/* Green broadcast accent bar */}
       <div className="h-[3px] shrink-0 bg-gradient-to-r from-green-800 via-green-500 to-green-800" />

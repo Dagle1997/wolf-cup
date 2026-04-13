@@ -37,6 +37,10 @@ app.get('/api/health', (c) => {
   return c.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Version stamp — clients poll this to detect new deploys and prompt refresh.
+const STARTUP_TIME = Date.now();
+app.get('/api/version', (c) => c.json({ version: STARTUP_TIME }));
+
 // ---------------------------------------------------------------------------
 // Public rounds routes
 // ---------------------------------------------------------------------------
