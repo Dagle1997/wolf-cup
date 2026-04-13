@@ -26,6 +26,7 @@ import { Hono } from 'hono';
 import attendanceRouter from './attendance.js';
 import adminAttendanceRouter from './admin/attendance.js';
 import adminRoundsRouter from './admin/rounds.js';
+import adminPairingRouter from './admin/pairing.js';
 import pairingsRouter from './pairings.js';
 import { db } from '../db/index.js';
 import { seasons, seasonWeeks, players, attendance, subBench, rounds, groups, roundPlayers } from '../db/schema.js';
@@ -39,6 +40,7 @@ const app = new Hono();
 app.route('/api', attendanceRouter);
 app.route('/api/admin', adminAttendanceRouter);
 app.route('/api/admin', adminRoundsRouter);
+app.route('/api/admin', adminPairingRouter);
 app.route('/api', pairingsRouter);
 
 let seasonId: number;
@@ -621,6 +623,132 @@ describe('GET /pairings/:roundId', () => {
   it('returns 404 for non-existent round', async () => {
     const res = await app.request('/api/pairings/99999', { method: 'GET' });
     expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/rounds/:roundId/suggest-groups — honors attendance group_request
+// ---------------------------------------------------------------------------
+
+describe('Suggest groups honors attendance group_request', () => {
+  async function seedEightInPlayersWithRequest(lastPid: number) {
+    // Seed 4 more players so we have 8 total (= 2 groups of 4)
+    const [p5] = await db.insert(players).values({ name: 'Eve', handicapIndex: 14.0, createdAt: Date.now() }).returning();
+    const [p6] = await db.insert(players).values({ name: 'Frank', handicapIndex: 9.3, createdAt: Date.now() }).returning();
+    const [p7] = await db.insert(players).values({ name: 'Grace', handicapIndex: 18.1, createdAt: Date.now() }).returning();
+    const [p8] = await db.insert(players).values({ name: 'Hank', handicapIndex: 11.6, createdAt: Date.now() }).returning();
+    const extraIds = [p5!.id, p6!.id, p7!.id, p8!.id];
+    const all = [player1Id, player2Id, player3Id, player4Id, ...extraIds];
+
+    for (const id of all) {
+      await app.request(`/api/admin/attendance/${weekId}/players/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in' }),
+      });
+    }
+
+    // Set the requested player to 'last'
+    const reqRes = await app.request(
+      `/api/admin/attendance/${weekId}/players/${lastPid}/group-request`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupRequest: 'last' }),
+      },
+    );
+    expect(reqRes.status).toBe(200);
+
+    // Create the round from attendance
+    const rRes = await app.request('/api/admin/rounds/from-attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seasonWeekId: weekId }),
+    });
+    expect(rRes.status).toBe(201);
+    const { round } = (await rRes.json()) as { round: { id: number } };
+
+    return { roundId: round.id, allPlayerIds: all };
+  }
+
+  it('pins a player with groupRequest=last into the last group', async () => {
+    // Bonner-analog: player1 is the one requesting "last"
+    const { roundId, allPlayerIds } = await seedEightInPlayersWithRequest(player1Id);
+
+    const res = await app.request(`/api/admin/rounds/${roundId}/suggest-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerIds: allPlayerIds }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      groups: { groupNumber: number; playerIds: number[] }[];
+      honoredRequests: { playerId: number; groupNumber: number }[];
+      requestWarnings: string[];
+    };
+
+    expect(body.groups.length).toBe(2);
+    const lastGroup = body.groups.find((g) => g.groupNumber === 2)!;
+    expect(lastGroup.playerIds).toContain(player1Id);
+    expect(body.honoredRequests).toEqual([{ playerId: player1Id, groupNumber: 2 }]);
+    expect(body.requestWarnings).toEqual([]);
+  });
+
+  it('lets explicit admin pin override an attendance group_request', async () => {
+    const { roundId, allPlayerIds } = await seedEightInPlayersWithRequest(player1Id);
+
+    // Admin explicitly pins player1 to group 1 (index 0), overriding "last"
+    const res = await app.request(`/api/admin/rounds/${roundId}/suggest-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerIds: allPlayerIds,
+        pins: { [String(player1Id)]: 0 },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      groups: { groupNumber: number; playerIds: number[] }[];
+    };
+    const firstGroup = body.groups.find((g) => g.groupNumber === 1)!;
+    expect(firstGroup.playerIds).toContain(player1Id);
+  });
+
+  it('warns when more than 4 players request the same position', async () => {
+    // Mark all 8 in, then flag 5 of them as "first"
+    const { roundId, allPlayerIds } = await seedEightInPlayersWithRequest(player1Id);
+
+    // Override the initial "last" for player1 and set 5 others to "first"
+    for (const pid of allPlayerIds.slice(0, 5)) {
+      await app.request(
+        `/api/admin/attendance/${weekId}/players/${pid}/group-request`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupRequest: 'first' }),
+        },
+      );
+    }
+
+    const res = await app.request(`/api/admin/rounds/${roundId}/suggest-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerIds: allPlayerIds }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      honoredRequests: { playerId: number; groupNumber: number }[];
+      requestWarnings: string[];
+    };
+
+    expect(body.requestWarnings.length).toBe(1);
+    expect(body.requestWarnings[0]).toContain('5 players requested First');
+    // Only 4 honored
+    const firstHonored = body.honoredRequests.filter((h) => h.groupNumber === 1);
+    expect(firstHonored.length).toBe(4);
   });
 });
 
