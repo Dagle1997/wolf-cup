@@ -280,6 +280,7 @@ async function getRoundDetail(roundId: number) {
     status: round.status,
     scheduledDate: round.scheduledDate,
     autoCalculateMoney: Boolean(round.autoCalculateMoney),
+    tee: round.tee,
     allHole18Scored,
     sideGame,
     groups: groupsWithPlayers,
