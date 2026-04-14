@@ -671,9 +671,10 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 - **T3.2 [new]** Event creation wizard (name, date range, timezone, round-course-tees picker) → saves event + rounds.
 - **T3.3 [new]** Group CRUD UI (name, members with name + optional GHIN + handicap + money-visibility posture).
 - **T3.4 [port]** GHIN client copied verbatim from Wolf Cup (read-only) + manual-override path.
-- **T3.5 [new]** Rule-set editor: 2v2 best ball preset with sandies toggle + auto-press trigger + press multiplier + individual-bet list + money-visibility posture selector (`open` only in v1, others stubbed).
-- **T3.6 [new]** Invite-link generation + first-arrival roster-confirmation screen; lazy auth (password deferred to first mutation).
-- **T3.7 [new]** Device-binding flow: first-arrival click on "that's me, I'm X" sets a cookie mapping device → player id. Any subsequent visit auto-views that player's stats. One-tap override: "that's not me."
+- **T3.5 [new]** *(revised 2026-04-14, FD-8/11/12)* Rule-set editor (tenant-scoped, revisioned): 2v2 best-ball preset with sandies toggle, auto-press trigger, press multiplier, `greenie_carryover` toggle, `greenie_validation` enum, individual-bet list, money-visibility posture (`open` v1 only, others stubbed). Saves create a new `rule_set_revision`; rounds pin `rule_set_revision_id`.
+- **T3.6 [new]** Invite-link generation + first-arrival flow: link tap → Google SSO (or magic-link email) → GHIN lookup + confirm → bind; FR-E10 manual-HI bailout on lookup failure (FD-13 guardrail 2).
+- **T3.7 [new]** *(revised 2026-04-14, FD-4 SSO-first)* Post-SSO device cookie: session cookie ties device to `players.google_sub` / `players.apple_sub`. One-tap "that's not me" re-runs SSO flow.
+- **T3.9 [new]** *(FD-10, new)* Sub-game opt-in UI on round setup: per-round, per-player opt-in toggle for each recognized sub-game type (v1 exposes skins only; schema supports ctp/sandies/putting-contest). Pot buy-in field per sub-game.
 - **T3.8 [new]** Permissions middleware enforcing FR-H1–H7 role matrix on every route.
 
 **Exit:** Pinehurst Event + Group exist in prod with 8 players, one saved rule set, and an invite link that opens a read-only schedule view.
@@ -712,6 +713,7 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 - **T5.8 [new]** Round lifecycle state machine (FR-B9): transitions gated and logged; `finalized` is immutable via normal paths (only correction-with-audit).
 - **T5.9 [port]** Score correction endpoint with audit log: port `admin/score-corrections.ts` behavior, add FR-B8 actor+prior+new persistence, add FR-D9 visibility filtering.
 - **T5.10 [new]** Airplane-mode drill script + checklist (NFR-R2 validation gate). Scripted manual test, not automated.
+- **T5.11 [new]** *(FD-13 guardrail 1, new)* Mid-event rule-edit endpoint + UI: organizer edits a rule-set param after round has started; endpoint creates new `rule_set_revision` with effective-hole boundary, stamps audit log, triggers engine recompute from boundary forward, emits in-app event (consumed by T8) so all participants see a visible diff banner.
 
 **Exit:** 9-hole practice foursome scored end-to-end, including ≥3 offline holes, merged on reconnect. Leaderboard visible to non-scorer.
 
@@ -734,6 +736,10 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 - **T6.8 [new]** *[target-miss tolerable]* Dedicated Bets page UI (per-player live standings). Same data visible via Money page until this ships.
 - **T6.9 [new]** Hand-calc money fixture validation (NFR-C1 gate): build one Pinehurst-plausible fixture, hand-calculate, match. Golden-file checked in.
 - **T6.10 [new]** Leaderboard tie-break implementation (FR-C5) with unit tests covering each break step.
+- **T6.11 [new]** *(FD-11, new)* Engine: Skins in `packages/engine/src/formats/skins.ts` — pure function `calcSkins(holeScores, mode, participants, buyIn) → { holeWinners, carries, potShares }`. Modes: `gross`, `net`, `gross_beats_net`. Ties carry to next hole; last-hole unclaimed pot splits per config (split-among-winners or carry-to-next-round). Golden-file fixtures: 3+ hand-worked scorecards per mode, including carry chains and last-hole unclaimed.
+- **T6.12 [new]** *(FD-12, new)* Engine: carry-over greenies in `best-ball-2v2.ts` — rule-param-driven; unclaimed/unvalidated greenie rolls to next par 3; last par 3 accumulates up to 4× base value. Golden-file fixture covers the carry chain end-to-end.
+- **T6.13 [new]** *(FD-10/11, new)* Sub-game framework API: `sub_games` table (round-scoped, type-tagged, config JSON), `sub_game_participants` (player opt-ins + buy-in), `sub_game_results` (computed at round close). API route `POST /rounds/:id/sub-games/:type/compute` dispatches to engine per type. v1 dispatches to skins only; ctp/sandies/putting-contest are schema stubs with 501 responses.
+- **T6.14 [new]** *(FD-11, new)* Skins leaderboard column + settle-up drill-down entry; UI integrates with FR-D6 head-to-head matrix (skins pot contributes to per-player net).
 
 **Exit:** Golden-file tests pass. One full 4-player, 4-round, multi-bet Pinehurst-shaped fixture computes identically to hand-calc spreadsheet.
 
@@ -751,6 +757,8 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 - **T7.3 [new]** Course preview: per-hole detail page (par/yardage/SI + hero image).
 - **T7.4 [port]** Per-Event photo gallery — port Wolf Cup's R2 upload + camera icon + lightbox + multi-photo sequential upload (commit history: 2026-03-22). Reuse same R2 bucket with per-Event prefix. Low effort.
 - **T7.5 [new]** Raw-state JSON export endpoint (NFR-B1): organizer-only, downloads scores + rounds + players + rule config + money ledger + audit log.
+- **T7.6 [new]** *(FD-14, new)* In-app install prompt: triggers after first SSO; iOS shows animated "Share → Add to Home Screen" card; Android wires `beforeinstallprompt` for one-tap install. Dismissable; reappears at most once on 2nd open; suppressed after install completes (detect via `display-mode: standalone` media query).
+- **T7.7 [new]** *(FD-14, new)* Browser-tab read-only fallback audit: verify leaderboard/standings/pairings/schedule render without error in non-installed Safari/Chrome tab; scorer surfaces show "install to score" prompt instead of silently failing.
 
 **Exit:** Mark's journey works end-to-end: invite link → confirm → browse schedule → view leaderboard → see money. Zero confusion.
 
@@ -805,25 +813,28 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 
 **Trip-critical hard blockers** (slip = defer the trip, not ship partial):
 - **T1.1–T1.7** foundation + SSO auth + CI (no rename per FD-1)
-- **T5.1–T5.9** scoring including single-writer auth, handoff, lifecycle, audit log
-- **T6.1–T6.6, T6.9, T6.10** money correctness + tie-break + hand-calc validation
+- **T5.1–T5.9, T5.11** scoring including single-writer auth, handoff, lifecycle, audit log, **mid-event rule-edit** (FD-13)
+- **T6.1–T6.6, T6.9, T6.10, T6.11–T6.14** money correctness + tie-break + hand-calc validation + **skins engine/UI + carry-greenies + sub-game framework** (FD-10/11/12)
 - **T4.2, T4.3** manual pairings UI + PDF fallback
+- **T3.5, T3.9** rule-set editor (revisioned) + sub-game opt-in (FD-8/10)
+- **T3.6** SSO + GHIN bind with manual-HI bailout (FD-4/13)
 - **T3.8** permissions matrix enforcement
+- **T7.6, T7.7** install prompt + browser-tab graceful (FD-14)
 - **T9.1, T9.2** validation
 
 ## Story Count Summary
 
-| Epic | Stories | Tag mix |
-|---|---|---|
-| T1 Foundation | 7 | 2 port, 2 extract, 3 new |
-| T2 Courses | 5 | 5 new |
-| T3 Event/Group/Rules/Invites/Permissions | 8 | 1 port, 7 new |
-| T4 Pairings | 3 | 1 port, 2 new |
-| T5 Scoring/Leaderboard | 10 | 4 port, 1 extract, 5 new |
-| T6 Rules/Money/Bets | 10 | 1 extract, 9 new |
-| T7 Player UX | 5 | 1 port, 4 new |
-| T8 Notifications | 2 | 2 new |
-| T9 Validation | 3 | 3 new |
-| **Total** | **53** | **9 port, 4 extract, 40 new** |
+| Epic | Stories | Tag mix | Change since 2026-04-13 |
+|---|---|---|---|
+| T1 Foundation | 7 | 7 new | T1.1/T1.6 rewritten for FD-1/FD-4 |
+| T2 Courses | 5 | 5 new | unchanged |
+| T3 Event/Group/Rules/Invites/Permissions | 9 | 1 port, 8 new | +T3.9 sub-game opt-in; T3.5/T3.6/T3.7 revised |
+| T4 Pairings | 3 | 1 port, 2 new | unchanged |
+| T5 Scoring/Leaderboard | 11 | 3 port, 1 extract, 7 new | +T5.11 mid-event rule edit |
+| T6 Rules/Money/Bets | 14 | 1 extract, 13 new | +T6.11 skins engine, +T6.12 carry-greenies, +T6.13 sub-game framework API, +T6.14 skins UI |
+| T7 Player UX | 7 | 1 port, 6 new | +T7.6 install prompt, +T7.7 browser-tab audit |
+| T8 In-App Engagement | 4 | 4 new | Epic rewritten FD-5; expanded from 2→4 stories |
+| T9 Validation | 3 | 3 new | unchanged |
+| **Total** | **63** | **6 port, 2 extract, 55 new** | +10 stories from party-session FDs |
 
-**Reuse payoff:** 13 of 53 stories (~25%) are port or extract work that leverages Wolf Cup's shipped code — offline queue, PDF generation, GHIN client, photo gallery, scorer UI iOS fix, auth middleware, audit log pattern, `stableford.ts` engine primitive. The real engineering surface is closer to 40 novel stories, mostly concentrated in tournament-specific rules/money logic, permissions, and cross-event identity — exactly where the product wedge lives.
+**Reuse payoff:** 8 of 63 stories (~13%) are port or extract work that leverages Wolf Cup's shipped code — offline queue, PDF generation, GHIN client, photo gallery, scorer UI iOS fix, audit log pattern, `stableford.ts` engine primitive. Ratio shifted toward "new" as party-session scope (SSO auth, sub-game framework, skins engine, in-app engagement spine, mid-event rule edit, install prompt) is net-new surface without Wolf Cup precedent. The real engineering surface is ~55 novel stories, concentrated in tournament-specific rules/money logic, sub-game framework, SSO identity, and in-app engagement — exactly where the product wedge lives.
