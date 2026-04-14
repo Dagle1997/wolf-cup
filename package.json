@@ -10,7 +10,7 @@
   },
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm --filter @wolf-cup/engine test",
+    "test": "pnpm --filter @wolf-cup/engine test && pnpm --filter @wolf-cup/api test",
     "lint": "pnpm -r lint",
     "build": "pnpm -r build"
   },
