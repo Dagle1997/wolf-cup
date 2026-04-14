@@ -55,6 +55,8 @@ export const seasons = sqliteTable(
     playoffFormat: text('playoff_format').notNull(),
     harveyLiveEnabled: integer('harvey_live_enabled').notNull().default(0), // boolean 0/1
     championPlayerId: integer('champion_player_id').references(() => players.id),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
@@ -100,6 +102,8 @@ export const seasonWeeks = sqliteTable(
     friday: text('friday').notNull(), // ISO YYYY-MM-DD, must be a Friday
     isActive: integer('is_active').notNull().default(1), // 0=skipped, 1=active
     tee: text('tee'), // 'blue' | 'black' | 'white' | null (null for skipped weeks)
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
@@ -112,16 +116,31 @@ export const seasonWeeks = sqliteTable(
 // players
 // ---------------------------------------------------------------------------
 
-export const players = sqliteTable('players', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(),
-  ghinNumber: text('ghin_number'),
-  handicapIndex: real('handicap_index'), // last-known HI from GHIN; updated via roster admin
-  isActive: integer('is_active').notNull().default(1), // boolean 0/1; kept in sync with status
-  isGuest: integer('is_guest').notNull().default(0), // boolean 0/1; guests are round-only, not roster
-  status: text('status').notNull().default('active'), // 'active' | 'sub' | 'inactive'
-  createdAt: integer('created_at').notNull(),
-});
+export const players = sqliteTable(
+  'players',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    ghinNumber: text('ghin_number'),
+    handicapIndex: real('handicap_index'), // last-known HI from GHIN; updated via roster admin
+    isActive: integer('is_active').notNull().default(1), // boolean 0/1; kept in sync with status
+    isGuest: integer('is_guest').notNull().default(0), // boolean 0/1; guests are round-only, not roster
+    status: text('status').notNull().default('active'), // 'active' | 'sub' | 'inactive'
+    appleSub: text('apple_sub'),
+    googleSub: text('google_sub'),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => ({
+    appleSubUniq: uniqueIndex('players_apple_sub_idx')
+      .on(t.appleSub)
+      .where(sql`${t.appleSub} IS NOT NULL`),
+    googleSubUniq: uniqueIndex('players_google_sub_idx')
+      .on(t.googleSub)
+      .where(sql`${t.googleSub} IS NOT NULL`),
+  }),
+);
 
 // ---------------------------------------------------------------------------
 // rounds
@@ -144,6 +163,8 @@ export const rounds = sqliteTable(
     headcount: integer('headcount'),
     cancellationReason: text('cancellation_reason'), // set when status='cancelled'
     handicapUpdatedAt: integer('handicap_updated_at'), // timestamp of last HI refresh
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
@@ -170,6 +191,8 @@ export const groups = sqliteTable(
     groupNumber: integer('group_number').notNull(),
     battingOrder: text('batting_order'), // JSON array of player IDs
     tee: text('tee'), // 'black' | 'blue' | 'white' — nullable, set at ball-draw time
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
   },
   (t) => ({
     roundIdx: index('idx_groups_round_id').on(t.roundId),
@@ -195,6 +218,8 @@ export const roundPlayers = sqliteTable(
       .references(() => groups.id),
     handicapIndex: real('handicap_index').notNull(),
     isSub: integer('is_sub').notNull().default(0), // boolean 0/1
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
   },
   (t) => ({
     roundPlayerUniq: uniqueIndex('uniq_round_players').on(t.roundId, t.playerId),
@@ -223,6 +248,8 @@ export const holeScores = sqliteTable(
     holeNumber: integer('hole_number').notNull(),
     grossScore: integer('gross_score').notNull(),
     putts: integer('putts'),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -257,6 +284,8 @@ export const roundResults = sqliteTable(
       .references(() => players.id),
     stablefordTotal: integer('stableford_total').notNull(),
     moneyTotal: integer('money_total').notNull(), // whole dollars
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => ({
@@ -283,6 +312,8 @@ export const harveyResults = sqliteTable(
     moneyRank: integer('money_rank').notNull(),
     stablefordPoints: real('stableford_points').notNull(), // can be 0.5 increments
     moneyPoints: real('money_points').notNull(),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => ({
@@ -311,6 +342,8 @@ export const wolfDecisions = sqliteTable(
     partnerPlayerId: integer('partner_player_id').references(() => players.id),
     bonusesJson: text('bonuses_json'), // JSON {greenies:[playerId,...], polies:[playerId,...]}
     outcome: text('outcome'), // 'win' | 'loss' | 'push' | null
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
@@ -343,6 +376,8 @@ export const sideGames = sqliteTable(
     calculationType: text('calculation_type'), // auto_net_pars | auto_skins | auto_putts | auto_net_under_par | auto_polies | manual
     scheduledRoundIds: text('scheduled_round_ids'), // JSON array of round IDs (backfilled as rounds are created)
     scheduledFridays: text('scheduled_fridays'), // JSON array of ISO Friday dates — authoritative at season init
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
@@ -368,6 +403,8 @@ export const sideGameResults = sqliteTable(
     winnerName: text('winner_name'), // for guest winners not in roster
     notes: text('notes'),
     source: text('source'), // 'auto' | 'manual'
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({
@@ -393,6 +430,8 @@ export const pairingHistory = sqliteTable(
       .notNull()
       .references(() => players.id),
     pairCount: integer('pair_count').notNull().default(0),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
   },
   (t) => ({
     pairUniq: uniqueIndex('uniq_pairing_history').on(t.seasonId, t.playerAId, t.playerBId),
@@ -417,6 +456,8 @@ export const attendance = sqliteTable(
     status: text('status').notNull(), // 'in' | 'out'
     groupRequest: text('group_request'), // null | 'first' | 'last'
     groupRequestAt: integer('group_request_at'), // epoch ms; used to break ties when overflow
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     updatedAt: integer('updated_at').notNull(),
   },
   (t) => ({
@@ -440,6 +481,8 @@ export const subBench = sqliteTable(
       .notNull()
       .references(() => players.id),
     roundCount: integer('round_count').notNull().default(0),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },
@@ -468,6 +511,8 @@ export const scoreCorrections = sqliteTable(
     fieldName: text('field_name').notNull(),
     oldValue: text('old_value').notNull(),
     newValue: text('new_value').notNull(),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     correctedAt: integer('corrected_at').notNull(),
   },
   (t) => ({
@@ -491,6 +536,8 @@ export const galleryPhotos = sqliteTable(
     mimeType: text('mime_type').notNull(),
     fileSize: integer('file_size').notNull(),
     caption: text('caption'),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
     createdAt: integer('created_at').notNull(),
   },
   (t) => ({

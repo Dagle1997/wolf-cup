@@ -176,6 +176,13 @@
       "when": 1776110000000,
       "tag": "0024_attendance_group_request_at",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1776470400000,
+      "tag": "0025_ecosystem_foundation",
+      "breakpoints": true
     }
   ]
 }
