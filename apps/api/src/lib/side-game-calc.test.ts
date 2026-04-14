@@ -188,8 +188,8 @@ describe('calcMostNetUnderPar', () => {
 describe('calcMostPolies', () => {
   it('counts polies by recipient from bonusesJson', () => {
     const decisions: WolfDecisionRow[] = [
-      { wolfPlayerId: 10, holeNumber: 1, bonusesJson: JSON.stringify({ polies: [1, 2] }) },
-      { wolfPlayerId: 10, holeNumber: 2, bonusesJson: JSON.stringify({ polies: [1] }) },
+      { wolfPlayerId: 10, holeNumber: 1, bonusesJson: JSON.stringify({ polies: [1, 2], sandies: [] }) },
+      { wolfPlayerId: 10, holeNumber: 2, bonusesJson: JSON.stringify({ polies: [1], sandies: [] }) },
       { wolfPlayerId: 10, holeNumber: 3, bonusesJson: null },
     ];
     const result = calcMostPolies(decisions);
@@ -207,7 +207,7 @@ describe('calcMostPolies', () => {
 
   it('co-winners when tied', () => {
     const decisions: WolfDecisionRow[] = [
-      { wolfPlayerId: 10, holeNumber: 1, bonusesJson: JSON.stringify({ polies: [1, 2] }) },
+      { wolfPlayerId: 10, holeNumber: 1, bonusesJson: JSON.stringify({ polies: [1, 2], sandies: [] }) },
     ];
     const result = calcMostPolies(decisions);
     expect(result.winnerPlayerIds.sort()).toEqual([1, 2]);
@@ -278,8 +278,8 @@ describe('eligible player filtering (subs excluded)', () => {
 
   it('sub excluded from polies — active player wins', () => {
     const decisions: WolfDecisionRow[] = [
-      { wolfPlayerId: 10, holeNumber: 1, bonusesJson: JSON.stringify({ polies: [1, 2] }) }, // sub 1 and active 2 each get a polie
-      { wolfPlayerId: 10, holeNumber: 2, bonusesJson: JSON.stringify({ polies: [1] }) }, // sub 1 gets another
+      { wolfPlayerId: 10, holeNumber: 1, bonusesJson: JSON.stringify({ polies: [1, 2], sandies: [] }) }, // sub 1 and active 2 each get a polie
+      { wolfPlayerId: 10, holeNumber: 2, bonusesJson: JSON.stringify({ polies: [1], sandies: [] }) }, // sub 1 gets another
     ];
     const eligible = new Set([2]);
     const result = calcMostPolies(decisions, eligible);

@@ -29,6 +29,7 @@ type PlayerStats = {
   eagles: number;
   greenies: number;
   polies: number;
+  sandies: number;
   totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
@@ -153,15 +154,17 @@ app.get('/stats', async (c) => {
       wolfMap.set(row.wolfPlayerId, s);
     }
 
-    // Step 6: Greenies + polies from bonusesJson
+    // Step 6: Greenies + polies + sandies from bonusesJson
     const greenieMap = new Map<number, number>();
     const polieMap = new Map<number, number>();
+    const sandieMap = new Map<number, number>();
     for (const row of wdRows) {
       if (!row.bonusesJson) continue;
       try {
-        const b = JSON.parse(row.bonusesJson) as { greenies?: number[]; polies?: number[] };
+        const b = JSON.parse(row.bonusesJson) as { greenies?: number[]; polies?: number[]; sandies?: number[] };
         for (const pid of b.greenies ?? []) greenieMap.set(pid, (greenieMap.get(pid) ?? 0) + 1);
         for (const pid of b.polies ?? []) polieMap.set(pid, (polieMap.get(pid) ?? 0) + 1);
+        for (const pid of b.sandies ?? []) sandieMap.set(pid, (sandieMap.get(pid) ?? 0) + 1);
       } catch {
         // ignore malformed JSON
       }
@@ -269,6 +272,7 @@ app.get('/stats', async (c) => {
         eagles: eagleMap.get(p.id) ?? 0,
         greenies: greenieMap.get(p.id) ?? 0,
         polies: polieMap.get(p.id) ?? 0,
+        sandies: sandieMap.get(p.id) ?? 0,
         totalMoney: totalMoneyMap.get(p.id) ?? 0,
         biggestRoundWin: winMap.get(p.id) ?? 0,
         biggestRoundLoss: lossMap.get(p.id) ?? 0,
@@ -665,17 +669,20 @@ app.get('/stats/:playerId/detail', async (c) => {
         isNotNull(wolfDecisions.bonusesJson),
       ));
 
-    const bonusEvents: { type: 'greenie' | 'polie'; hole: number; par: number; roundId: number; date: string }[] = [];
+    const bonusEvents: { type: 'greenie' | 'polie' | 'sandie'; hole: number; par: number; roundId: number; date: string }[] = [];
     for (const row of bonusDecisionRows) {
       if (!row.bonusesJson) continue;
       try {
-        const parsed = JSON.parse(row.bonusesJson) as { greenies?: number[]; polies?: number[] };
+        const parsed = JSON.parse(row.bonusesJson) as { greenies?: number[]; polies?: number[]; sandies?: number[] };
         const courseHoleData = getCourseHole(row.holeNumber as Parameters<typeof getCourseHole>[0]);
         if (parsed.greenies?.includes(playerId)) {
           bonusEvents.push({ type: 'greenie', hole: row.holeNumber, par: courseHoleData.par, roundId: row.roundId, date: roundDateMap.get(row.roundId) ?? '' });
         }
         if (parsed.polies?.includes(playerId)) {
           bonusEvents.push({ type: 'polie', hole: row.holeNumber, par: courseHoleData.par, roundId: row.roundId, date: roundDateMap.get(row.roundId) ?? '' });
+        }
+        if (parsed.sandies?.includes(playerId)) {
+          bonusEvents.push({ type: 'sandie', hole: row.holeNumber, par: courseHoleData.par, roundId: row.roundId, date: roundDateMap.get(row.roundId) ?? '' });
         }
       } catch { /* skip malformed JSON */ }
     }

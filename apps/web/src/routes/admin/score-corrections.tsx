@@ -56,7 +56,7 @@ type ScoreCorrection = {
   correctedAt: number;
 };
 
-type FieldName = 'grossScore' | 'wolfDecision' | 'wolfPartnerId' | 'greenie' | 'polie' | 'handicapIndex';
+type FieldName = 'grossScore' | 'wolfDecision' | 'wolfPartnerId' | 'greenie' | 'polie' | 'sandie' | 'handicapIndex';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,6 +102,7 @@ const FIELD_LABELS: Record<string, string> = {
   wolfPartnerId: 'Wolf Partner',
   greenie: 'Greenie',
   polie: 'Polie',
+  sandie: 'Sandie',
   handicapIndex: 'Handicap Index',
 };
 
@@ -388,6 +389,13 @@ function CorrectionForm({
       body['groupId'] = Number(groupId);
       body['newValue'] = bonusAction;
 
+    } else if (fieldName === 'sandie') {
+      if (!playerId) { setSubmitError('Player is required.'); return; }
+      if (!groupId) { setSubmitError('Group is required.'); return; }
+      body['playerId'] = Number(playerId);
+      body['groupId'] = Number(groupId);
+      body['newValue'] = bonusAction;
+
     } else {
       // handicapIndex — holeNumber must be 0 (round-wide sentinel)
       if (!playerId) { setSubmitError('Player is required.'); return; }
@@ -564,8 +572,8 @@ function CorrectionForm({
         </div>
       )}
 
-      {/* greenie / polie */}
-      {(fieldName === 'greenie' || fieldName === 'polie') && (
+      {/* greenie / polie / sandie */}
+      {(fieldName === 'greenie' || fieldName === 'polie' || fieldName === 'sandie') && (
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div className="flex-1">
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Player</label>

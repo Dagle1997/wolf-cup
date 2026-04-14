@@ -129,14 +129,16 @@ function buildHoleAssignment(holeNumber: number): HoleAssignment {
 }
 
 function buildBonusInput(bonusesJson: string | null, battingOrder: number[]): BonusInput {
-  if (!bonusesJson) return { greenies: [], polies: [] };
-  const { greenies = [], polies = [] } = JSON.parse(bonusesJson) as {
+  if (!bonusesJson) return { greenies: [], polies: [], sandies: [] };
+  const { greenies = [], polies = [], sandies = [] } = JSON.parse(bonusesJson) as {
     greenies?: number[];
     polies?: number[];
+    sandies?: number[];
   };
   return {
     greenies: greenies.map((id) => battingOrder.indexOf(id) as BattingPosition).filter((p) => p >= 0),
     polies: polies.map((id) => battingOrder.indexOf(id) as BattingPosition).filter((p) => p >= 0),
+    sandies: sandies.map((id) => battingOrder.indexOf(id) as BattingPosition).filter((p) => p >= 0),
   };
 }
 
@@ -400,7 +402,7 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
     rescoreGroupId = row.groupId;
 
   // -------------------------------------------------------------------------
-  } else if (fieldName === 'greenie' || fieldName === 'polie') {
+  } else if (fieldName === 'greenie' || fieldName === 'polie' || fieldName === 'sandie') {
     if (fieldName === 'greenie' && !PAR3_HOLES.has(holeNumber)) {
       return c.json({ error: 'Greenie only valid on par-3 holes (6, 7, 12, 15)', code: 'VALIDATION_ERROR' }, 422);
     }
@@ -425,9 +427,12 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
     if (!row) return c.json({ error: 'Wolf decision not found for this hole/group', code: 'NOT_FOUND' }, 404);
 
     const bonuses = row.bonusesJson
-      ? (JSON.parse(row.bonusesJson) as { greenies?: number[]; polies?: number[] })
-      : { greenies: [], polies: [] };
-    const arr = fieldName === 'greenie' ? (bonuses.greenies ?? []) : (bonuses.polies ?? []);
+      ? (JSON.parse(row.bonusesJson) as { greenies?: number[]; polies?: number[]; sandies?: number[] })
+      : { greenies: [], polies: [], sandies: [] };
+    const arr =
+      fieldName === 'greenie' ? (bonuses.greenies ?? [])
+        : fieldName === 'polie' ? (bonuses.polies ?? [])
+        : (bonuses.sandies ?? []);
     oldValue = JSON.stringify(arr);
 
     const newArr = newValue === 'add'
@@ -435,9 +440,10 @@ app.post('/rounds/:roundId/corrections', adminAuthMiddleware, async (c) => {
       : arr.filter((id) => id !== playerId!);
 
     if (fieldName === 'greenie') bonuses.greenies = newArr;
-    else bonuses.polies = newArr;
+    else if (fieldName === 'polie') bonuses.polies = newArr;
+    else bonuses.sandies = newArr;
 
-    const newBonusesJson = ((bonuses.greenies?.length ?? 0) > 0 || (bonuses.polies?.length ?? 0) > 0)
+    const newBonusesJson = ((bonuses.greenies?.length ?? 0) > 0 || (bonuses.polies?.length ?? 0) > 0 || (bonuses.sandies?.length ?? 0) > 0)
       ? JSON.stringify(bonuses)
       : null;
 

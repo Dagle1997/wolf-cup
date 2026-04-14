@@ -30,6 +30,7 @@ type PlayerStats = {
   eagles: number;
   greenies: number;
   polies: number;
+  sandies: number;
   totalMoney: number;
   biggestRoundWin: number;
   biggestRoundLoss: number;
@@ -105,7 +106,7 @@ type StatEvent = {
 };
 
 type BonusEvent = {
-  type: 'greenie' | 'polie';
+  type: 'greenie' | 'polie' | 'sandie';
   hole: number;
   par: number;
   roundId: number;
@@ -466,6 +467,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
           <StatCell label="Eagles" value={String(p.eagles)} highlight={p.eagles > 0} />
           <StatCell label="Greenies" value={String(p.greenies)} />
           <StatCell label="Polies" value={String(p.polies)} />
+          <StatCell label="Sandies" value={String(p.sandies)} />
           <StatCell
             label="Best Rd"
             value={formatMoney(p.biggestRoundWin)}
@@ -748,8 +750,8 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
               entry.holeFreq.set(ev.hole, (entry.holeFreq.get(ev.hole) ?? 0) + 1);
               typeCounts.set(ev.type, entry);
             }
-            const summaryTypes = ['eagle', 'birdie', 'greenie', 'polie'] as const;
-            const icons: Record<string, string> = { eagle: '🦅', birdie: '🐦', greenie: '🟢', polie: '🎯' };
+            const summaryTypes = ['eagle', 'birdie', 'greenie', 'polie', 'sandie'] as const;
+            const icons: Record<string, string> = { eagle: '🦅', birdie: '🐦', greenie: '🟢', polie: '🎯', sandie: '🏖️' };
 
             return (
               <div className="px-4 py-3 border-b">
@@ -948,6 +950,7 @@ function CompareView({ playerA, playerB, allNames, onClose }: { playerA: PlayerS
         <CompareRow label="Birdies" a={playerA.birdies} b={playerB.birdies} />
         <CompareRow label="Greenies" a={playerA.greenies} b={playerB.greenies} />
         <CompareRow label="Polies" a={playerA.polies} b={playerB.polies} />
+        <CompareRow label="Sandies" a={playerA.sandies} b={playerB.sandies} />
         <CompareRow label="Money" a={playerA.totalMoney} b={playerB.totalMoney} />
         <CompareRow label="Best Rd" a={playerA.biggestRoundWin} b={playerB.biggestRoundWin} />
 

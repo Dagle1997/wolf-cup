@@ -263,7 +263,7 @@ describe('GET /stats', () => {
       wolfPlayerId: p1Id,
       decision: 'alone',
       partnerPlayerId: null,
-      bonusesJson: JSON.stringify({ greenies: [p1Id], polies: [p1Id, p2Id] }),
+      bonusesJson: JSON.stringify({ greenies: [p1Id], polies: [p1Id, p2Id], sandies: [] }),
       outcome: 'win',
       createdAt: now,
     });
@@ -288,7 +288,7 @@ describe('GET /stats', () => {
       wolfPlayerId: p2Id,
       decision: 'alone',
       partnerPlayerId: null,
-      bonusesJson: JSON.stringify({ greenies: [p1Id], polies: [p1Id] }),
+      bonusesJson: JSON.stringify({ greenies: [p1Id], polies: [p1Id], sandies: [] }),
       outcome: 'win',
       createdAt: now,
     });

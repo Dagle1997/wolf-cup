@@ -62,6 +62,7 @@ export const wolfDecisionSchema = z.object({
   partnerPlayerId: z.number().int().positive().optional(),
   greenies: z.array(z.number().int().positive()).optional().default([]),
   polies: z.array(z.number().int().positive()).optional().default([]),
+  sandies: z.array(z.number().int().positive()).optional().default([]),
 });
 export type WolfDecisionBody = z.infer<typeof wolfDecisionSchema>;
 

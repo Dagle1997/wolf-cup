@@ -68,6 +68,7 @@ type StoredWolfDecision = {
   partnerPlayerId: number | null;
   greenies: number[];
   polies: number[];
+  sandies: number[];
 };
 
 type WolfDecisionsResponse = { wolfDecisions: StoredWolfDecision[] };
@@ -140,6 +141,7 @@ function ScoreEntryHolePage() {
   const [currentPartnerId, setCurrentPartnerId] = useState<number | null>(null);
   const [currentGreenies, setCurrentGreenies] = useState<Set<number>>(new Set());
   const [currentPolies, setCurrentPolies] = useState<Set<number>>(new Set());
+  const [currentSandies, setCurrentSandies] = useState<Set<number>>(new Set());
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [wolfError, setWolfError] = useState<string | null>(null);
   const [showEndRoundConfirm, setShowEndRoundConfirm] = useState(false);
@@ -259,26 +261,29 @@ function ScoreEntryHolePage() {
       setCurrentPartnerId(dec.partnerPlayerId);
       setCurrentGreenies(new Set(dec.greenies));
       setCurrentPolies(new Set(dec.polies));
+      setCurrentSandies(new Set(dec.sandies ?? []));
     } else {
       setCurrentDecision(null);
       setCurrentPartnerId(null);
       setCurrentGreenies(new Set());
       setCurrentPolies(new Set());
+      setCurrentSandies(new Set());
     }
     setSubmitError(null);
     setWolfError(null);
   }, [currentHole, submittedScores, holeDecisions]);
 
   const wolfDecisionMutation = useMutation({
-    mutationFn: ({ holeNum, decision, partnerId, greenies, polies }: {
+    mutationFn: ({ holeNum, decision, partnerId, greenies, polies, sandies }: {
       holeNum: number;
       decision: 'alone' | 'partner' | 'blind_wolf' | null;
       partnerId: number | null;
       greenies: number[];
       polies: number[];
+      sandies: number[];
     }) => {
       if (!session) throw new Error('No session');
-      const body: Record<string, unknown> = { greenies, polies };
+      const body: Record<string, unknown> = { greenies, polies, sandies };
       if (decision !== null) {
         body['decision'] = decision;
         if (decision === 'partner' && partnerId !== null) {
@@ -313,7 +318,7 @@ function ScoreEntryHolePage() {
         setCurrentHole(19);
       }
     },
-    onError: (err: Error, { holeNum, decision, partnerId, greenies, polies }) => {
+    onError: (err: Error, { holeNum, decision, partnerId, greenies, polies, sandies }) => {
       if (isNetworkError(err)) {
         // Score was already persisted; re-queue score (idempotent) + wolf decision together
         const holeScoreMap = submittedScores.get(holeNum);
@@ -331,6 +336,7 @@ function ScoreEntryHolePage() {
               partnerId,
               greenies,
               polies,
+              sandies,
             },
             autoCalculateMoney: roundData?.autoCalculateMoney ?? false,
             entryCode: session!.entryCode ?? null,
@@ -429,15 +435,16 @@ function ScoreEntryHolePage() {
       const round = roundData;
       const isWolf = wolfSchedule[holeNum - 1]?.type === 'wolf';
       const hasWolfDecision = round?.autoCalculateMoney && isWolf && currentDecision !== null;
-      const hasGreeniesOrPolies = currentGreenies.size > 0 || currentPolies.size > 0;
+      const hasBonusEvents = currentGreenies.size > 0 || currentPolies.size > 0 || currentSandies.size > 0;
 
-      if (round?.autoCalculateMoney && (hasWolfDecision || hasGreeniesOrPolies)) {
+      if (round?.autoCalculateMoney && (hasWolfDecision || hasBonusEvents)) {
         wolfDecisionMutation.mutate({
           holeNum,
           decision: wolfSchedule[holeNum - 1]?.type === 'wolf' ? currentDecision : null,
           partnerId: currentPartnerId,
           greenies: [...currentGreenies],
           polies: [...currentPolies],
+          sandies: [...currentSandies],
         });
       } else {
         // No wolf decision to save — advance hole directly
@@ -455,7 +462,7 @@ function ScoreEntryHolePage() {
         // Network failure — queue locally and advance hole (data is safe in IndexedDB)
         const hasWolfData =
           roundData?.autoCalculateMoney &&
-          (wolfSchedule[holeNum - 1]?.type === 'wolf' ? currentDecision !== null : currentGreenies.size > 0 || currentPolies.size > 0);
+          (wolfSchedule[holeNum - 1]?.type === 'wolf' ? currentDecision !== null : currentGreenies.size > 0 || currentPolies.size > 0 || currentSandies.size > 0);
         void enqueueScore({
           roundId: session!.roundId,
           groupId: session!.groupId!,
@@ -473,6 +480,7 @@ function ScoreEntryHolePage() {
                 partnerId: currentPartnerId,
                 greenies: [...currentGreenies],
                 polies: [...currentPolies],
+                sandies: [...currentSandies],
               }
             : null,
           autoCalculateMoney: roundData?.autoCalculateMoney ?? false,
@@ -864,11 +872,29 @@ function ScoreEntryHolePage() {
                   >
                     P
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const s = new Set(currentSandies);
+                      if (s.has(p.id)) s.delete(p.id);
+                      else s.add(p.id);
+                      setCurrentSandies(s);
+                    }}
+                    className={cn(
+                      'w-8 h-8 rounded-lg text-xs font-bold border transition-colors',
+                      currentSandies.has(p.id)
+                        ? 'bg-amber-500 text-white border-amber-500'
+                        : 'border-border text-muted-foreground hover:border-amber-400',
+                    )}
+                    title={`Sandie — ${p.name}`}
+                  >
+                    S
+                  </button>
                 </div>
               ))}
             </div>
             <p className="text-[10px] text-muted-foreground/50 mt-2">
-              {PAR3_HOLES.has(currentHole) ? 'G = Greenie · ' : ''}P = Polie
+              {PAR3_HOLES.has(currentHole) ? 'G = Greenie · ' : ''}P = Polie · S = Sandie
             </p>
           </div>
         )}

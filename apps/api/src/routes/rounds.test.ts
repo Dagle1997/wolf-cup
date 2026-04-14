@@ -1170,7 +1170,7 @@ describe('Wolf decision endpoints', () => {
     const res = await roundsApp.request(wolfDecisionUrl(officialRoundId, wGroupId, WOLF_HOLE), {
       method: 'POST',
       headers: { 'x-entry-code': ENTRY_CODE, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision: 'alone', polies: [99999] }),
+      body: JSON.stringify({ decision: 'alone', polies: [99999], sandies: [] }),
     });
     expect(res.status).toBe(422);
     const body = await res.json() as { code: string };
@@ -1193,7 +1193,7 @@ describe('Wolf decision endpoints', () => {
     const res = await roundsApp.request(wolfDecisionUrl(officialRoundId, wGroupId, 3), {
       method: 'POST',
       headers: { 'x-entry-code': ENTRY_CODE, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ polies: [w1Id] }),
+      body: JSON.stringify({ polies: [w1Id], sandies: [] }),
     });
     expect(res.status).toBe(200);
     const body = await res.json() as { wolfDecision: { holeNumber: number; decision: null } };

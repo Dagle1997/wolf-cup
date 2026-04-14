@@ -120,9 +120,9 @@ function HelpPage() {
           net scores and stableford points automatically using your handicaps.
         </Step>
         <Step n={5}>
-          On <strong>par 3s</strong>, mark <strong>greenies</strong> and{' '}
-          <strong>polies</strong> for any player who earned them (see Money
-          section below).
+          On <strong>par 3s</strong>, mark <strong>greenies</strong>. On any
+          hole, mark <strong>polies</strong> and <strong>sandies</strong> for
+          players who earned them (see Money section below).
         </Step>
         <Step n={6}>
           Use the <strong>arrow buttons</strong> to move between holes, or tap
@@ -174,6 +174,13 @@ function HelpPage() {
         <p>
           <strong>Polie</strong> (any hole): Make a putt longer than the flagstick
           pole — extra bonus skin for your team.
+        </p>
+        <p>
+          <strong>Sandie</strong> (any hole): Up and down from the sand — one
+          shot out of the bunker and one putt in. Worth $1 per sandie (same team
+          and wolf logic as polies — sandies on opposite teams net to zero).
+          Polies and sandies are tracked on hole 1 and 3 for stats but do not
+          pay out on skins holes.
         </p>
       </Section>
 

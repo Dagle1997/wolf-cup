@@ -58,6 +58,7 @@ function applyIndividual(
   }
   for (const p of bonusInput.polies) events[p] += 1;
   for (const p of bonusInput.greenies) events[p] += 1;
+  for (const p of bonusInput.sandies) events[p] += 1;
   const total = events[0] + events[1] + events[2] + events[3];
   for (const i of ALL_POSITIONS) {
     // Winner of each event: +3; loser: -1 per event they didn't win.
@@ -171,6 +172,12 @@ function apply2v2(
     else skinsB += 1;
   }
 
+  // Sandie skins: 1 per player (same nets-to-zero behavior as polies)
+  for (const p of bonusInput.sandies) {
+    if (teamASet.has(p)) skinsA += 1;
+    else skinsB += 1;
+  }
+
   // Net result — each team member gets net differential
   for (const p of teamA) bonusSkins[p] = skinsA - skinsB;
   for (const p of teamB) bonusSkins[p] = skinsB - skinsA;
@@ -194,6 +201,7 @@ function apply1v3(
   let W = skinCount(detectBonusLevel(netScores[wolfIdx], par));
   if (bonusInput.polies.includes(wolfIdx)) W += 1;
   if (bonusInput.greenies.includes(wolfIdx)) W += 1;
+  if (bonusInput.sandies.includes(wolfIdx)) W += 1;
 
   // Opponent bonus events (each counted individually; no double bonus in 1v3)
   let O = 0;
@@ -201,6 +209,7 @@ function apply1v3(
     O += skinCount(detectBonusLevel(netScores[opp], par));
     if (bonusInput.polies.includes(opp)) O += 1;
     if (bonusInput.greenies.includes(opp)) O += 1;
+    if (bonusInput.sandies.includes(opp)) O += 1;
   }
 
   // Group skin payout: wolf × 3, each opp × 1

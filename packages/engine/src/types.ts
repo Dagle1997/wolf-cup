@@ -95,6 +95,8 @@ export type BonusInput = {
   readonly greenies: readonly BattingPosition[];
   /** Batting positions credited with a valid polie (first putt >flagstick length, or chip-in from off green) */
   readonly polies: readonly BattingPosition[];
+  /** Batting positions credited with a valid sandie (up and down from the sand — 1 shot out + 1 putt) */
+  readonly sandies: readonly BattingPosition[];
 };
 
 /** Thrown when a money result violates the zero-sum constraint */

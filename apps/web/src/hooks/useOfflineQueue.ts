@@ -51,8 +51,8 @@ export function useOfflineQueue(roundId: number, groupId: number) {
 
         // 2. POST wolf decision if bundled (idempotent — onConflictDoUpdate on round_id, group_id, hole_number)
         if (entry.wolfDecision && entry.autoCalculateMoney) {
-          const { decision, partnerId, greenies, polies } = entry.wolfDecision;
-          const body: Record<string, unknown> = { greenies, polies };
+          const { decision, partnerId, greenies, polies, sandies } = entry.wolfDecision;
+          const body: Record<string, unknown> = { greenies, polies, sandies: sandies ?? [] };
           if (decision !== null) {
             body['decision'] = decision;
             if (decision === 'partner' && partnerId !== null) {

@@ -44,16 +44,20 @@ function buildHoleAssignment(holeNumber: number): HoleAssignment {
 }
 
 function buildBonusInput(bonusesJson: string | null, battingOrder: number[]): BonusInput {
-  if (!bonusesJson) return { greenies: [], polies: [] };
-  const { greenies = [], polies = [] } = JSON.parse(bonusesJson) as {
+  if (!bonusesJson) return { greenies: [], polies: [], sandies: [] };
+  const { greenies = [], polies = [], sandies = [] } = JSON.parse(bonusesJson) as {
     greenies?: number[];
     polies?: number[];
+    sandies?: number[];
   };
   return {
     greenies: greenies
       .map((id) => battingOrder.indexOf(id) as BattingPosition)
       .filter((p) => p >= 0),
     polies: polies
+      .map((id) => battingOrder.indexOf(id) as BattingPosition)
+      .filter((p) => p >= 0),
+    sandies: sandies
       .map((id) => battingOrder.indexOf(id) as BattingPosition)
       .filter((p) => p >= 0),
   };
@@ -1197,7 +1201,7 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
   if (!parsed.success) {
     return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
   }
-  const { decision, partnerPlayerId, greenies, polies } = parsed.data;
+  const { decision, partnerPlayerId, greenies, polies, sandies } = parsed.data;
 
   // Business rule validation
   const assignment = getWolfAssignment([0, 1, 2, 3], holeNumber as HoleNumber);
@@ -1248,9 +1252,18 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
     }
   }
 
+  // Validate sandies: all must be group members
+  for (const pid of sandies) {
+    if (!validPlayerIds.has(pid)) {
+      return c.json({ error: 'Invalid decision', code: 'INVALID_DECISION' }, 422);
+    }
+  }
+
   // Build bonusesJson
   const bonusesJson =
-    greenies.length > 0 || polies.length > 0 ? JSON.stringify({ greenies, polies }) : null;
+    greenies.length > 0 || polies.length > 0 || sandies.length > 0
+      ? JSON.stringify({ greenies, polies, sandies })
+      : null;
 
   // Upsert wolf_decisions row (idempotent)
   const now = Date.now();
@@ -1315,6 +1328,7 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
         partnerPlayerId: partnerPlayerId ?? null,
         greenies,
         polies,
+        sandies,
       },
       moneyTotals: moneyTotalsResponse,
     },
@@ -1370,14 +1384,15 @@ app.get('/rounds/:roundId/groups/:groupId/wolf-decisions', async (c) => {
 
     const result = rows.map((r) => {
       const bonuses = r.bonusesJson
-        ? (JSON.parse(r.bonusesJson) as { greenies?: number[]; polies?: number[] })
-        : { greenies: [], polies: [] };
+        ? (JSON.parse(r.bonusesJson) as { greenies?: number[]; polies?: number[]; sandies?: number[] })
+        : { greenies: [], polies: [], sandies: [] };
       return {
         holeNumber: r.holeNumber,
         decision: r.decision,
         partnerPlayerId: r.partnerPlayerId,
         greenies: bonuses.greenies ?? [],
         polies: bonuses.polies ?? [],
+        sandies: bonuses.sandies ?? [],
       };
     });
 
@@ -1710,6 +1725,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
     moneyNet: number;
     hasGreenie: boolean;
     hasPolie: boolean;
+    hasSandie: boolean;
     relativeStrokes: number;
     wolfDecision: string | null;
     wolfRole: 'wolf' | 'partner' | 'opponent' | null;
@@ -1748,7 +1764,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
         else if (dec.decision === 'partner' && dec.partnerPlayerId === playerId) earlyWolfRole = 'partner';
         else earlyWolfRole = 'opponent';
       }
-      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: dec?.decision ?? null, wolfRole: earlyWolfRole, wolfPlayerName: dec?.wolfPlayerId ? playerNameMap.get(dec.wolfPlayerId) ?? null : null, partnerPlayerName: dec?.partnerPlayerId ? playerNameMap.get(dec.partnerPlayerId) ?? null : null, teammateName: getTeammateName(dec, earlyWolfRole) });
+      holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore: null, netScore: null, stablefordPoints: null, moneyNet: 0, hasGreenie: false, hasPolie: false, hasSandie: false, relativeStrokes: relStrokes, wolfDecision: dec?.decision ?? null, wolfRole: earlyWolfRole, wolfPlayerName: dec?.wolfPlayerId ? playerNameMap.get(dec.wolfPlayerId) ?? null : null, partnerPlayerName: dec?.partnerPlayerId ? playerNameMap.get(dec.partnerPlayerId) ?? null : null, teammateName: getTeammateName(dec, earlyWolfRole) });
       continue;
     }
 
@@ -1784,7 +1800,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       if (holeAssignment.type === 'wolf') {
         if (!decisionRecord?.decision) {
           // Wolf hole with no decision recorded yet — push hole with $0 and move on
-          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, relativeStrokes: relStrokes, wolfDecision: null, wolfRole: null, wolfPlayerName: null, partnerPlayerName: null, teammateName: null });
+          holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet: 0, hasGreenie: false, hasPolie: false, hasSandie: false, relativeStrokes: relStrokes, wolfDecision: null, wolfRole: null, wolfPlayerName: null, partnerPlayerName: null, teammateName: null });
           continue;
         }
         wolfDecision = buildWolfDecision(
@@ -1804,11 +1820,12 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       moneyNet = result[playerPos]!.total;
     }
 
-    // Check if this player has a greenie or polie on this hole
+    // Check if this player has a greenie, polie, or sandie on this hole
     const decRecord = decisionByHole.get(holeNum);
-    const bonuses = decRecord?.bonusesJson ? JSON.parse(decRecord.bonusesJson) as { greenies?: number[]; polies?: number[] } : null;
+    const bonuses = decRecord?.bonusesJson ? JSON.parse(decRecord.bonusesJson) as { greenies?: number[]; polies?: number[]; sandies?: number[] } : null;
     const hasGreenie = bonuses?.greenies?.includes(playerId) ?? false;
     const hasPolie = bonuses?.polies?.includes(playerId) ?? false;
+    const hasSandie = bonuses?.sandies?.includes(playerId) ?? false;
 
     const decForHole = decisionByHole.get(holeNum);
     // Determine this player's role on the hole
@@ -1822,7 +1839,7 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
         wolfRole = 'opponent';
       }
     }
-    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, relativeStrokes: relStrokes, wolfDecision: decForHole?.decision ?? null, wolfRole, wolfPlayerName: decForHole?.wolfPlayerId ? playerNameMap.get(decForHole.wolfPlayerId) ?? null : null, partnerPlayerName: decForHole?.partnerPlayerId ? playerNameMap.get(decForHole.partnerPlayerId) ?? null : null, teammateName: getTeammateName(decForHole, wolfRole) });
+    holes.push({ holeNumber: holeNum, par: courseHole.par, grossScore, netScore, stablefordPoints, moneyNet, hasGreenie, hasPolie, hasSandie, relativeStrokes: relStrokes, wolfDecision: decForHole?.decision ?? null, wolfRole, wolfPlayerName: decForHole?.wolfPlayerId ? playerNameMap.get(decForHole.wolfPlayerId) ?? null : null, partnerPlayerName: decForHole?.partnerPlayerId ? playerNameMap.get(decForHole.partnerPlayerId) ?? null : null, teammateName: getTeammateName(decForHole, wolfRole) });
   }
 
   // Compute which holes are this player's wolf holes
@@ -2014,15 +2031,17 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     }
   }
 
-  // --- Greenies and polies ---
+  // --- Greenies, polies, and sandies ---
   const greenieCount = new Map<number, number>();
   const polieCount = new Map<number, number>();
+  const sandieCount = new Map<number, number>();
   for (const dec of decisionRows) {
     if (!dec.bonusesJson) continue;
     try {
-      const parsed = JSON.parse(dec.bonusesJson) as { greenies?: number[]; polies?: number[] };
+      const parsed = JSON.parse(dec.bonusesJson) as { greenies?: number[]; polies?: number[]; sandies?: number[] };
       for (const pid of parsed.greenies ?? []) greenieCount.set(pid, (greenieCount.get(pid) ?? 0) + 1);
       for (const pid of parsed.polies ?? []) polieCount.set(pid, (polieCount.get(pid) ?? 0) + 1);
+      for (const pid of parsed.sandies ?? []) sandieCount.set(pid, (sandieCount.get(pid) ?? 0) + 1);
     } catch { /* skip malformed */ }
   }
 
@@ -2062,6 +2081,27 @@ app.get('/rounds/:roundId/highlights', async (c) => {
       highlights.push({
         emoji: '🎱',
         title: `${totalPolies} Polies`,
+        detail: parts.join(', '),
+        category: 'bonus',
+      });
+    }
+  }
+
+  const totalSandies = [...sandieCount.values()].reduce((a, b) => a + b, 0);
+  if (totalSandies > 0) {
+    const best = [...sandieCount.entries()].sort((a, b) => b[1] - a[1]);
+    if (totalSandies === 1) {
+      highlights.push({
+        emoji: '🏖️',
+        title: 'Sandie!',
+        detail: `${nameMap.get(best[0]![0])} up & down from the sand`,
+        category: 'bonus',
+      });
+    } else {
+      const parts = best.map(([pid, count]) => `${nameMap.get(pid)} ×${count}`);
+      highlights.push({
+        emoji: '🏖️',
+        title: `${totalSandies} Sandies`,
         detail: parts.join(', '),
         category: 'bonus',
       });

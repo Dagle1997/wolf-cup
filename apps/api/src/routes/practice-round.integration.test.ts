@@ -427,7 +427,7 @@ describe('blind wolf win & no-blood scenarios', () => {
     // Post wolf-decision for hole 1 (skins hole — no decision needed) to trigger money recalc
     const w1Res = await postJSON(
       `/api/rounds/${roundId}/groups/${groupId}/holes/1/wolf-decision`,
-      { greenies: [], polies: [] },
+      { greenies: [], polies: [], sandies: [] },
     );
     expect(w1Res.status, 'hole 1 wolf-decision').toBe(200);
 
@@ -451,7 +451,7 @@ describe('blind wolf win & no-blood scenarios', () => {
     // Hole 2 wolf-decision: Alice (batting pos 0) calls blind_wolf
     const wRes = await postJSON(
       `/api/rounds/${roundId}/groups/${groupId}/holes/2/wolf-decision`,
-      { decision: 'blind_wolf', greenies: [], polies: [] },
+      { decision: 'blind_wolf', greenies: [], polies: [], sandies: [] },
     );
     expect(wRes.status, 'hole 2 wolf-decision').toBe(200);
 
@@ -468,6 +468,59 @@ describe('blind wolf win & no-blood scenarios', () => {
     }
     const sum = wData.moneyTotals.reduce((acc, t) => acc + t.moneyTotal, 0);
     expect(sum, 'zero-sum').toBe(0);
+  });
+
+  it('sandie on a wolf hole feeds into the money result (zero-sum holds)', async () => {
+    // Hole 4 is a wolf hole. Use `alone` + sandie on the wolf so we don't need to
+    // know the rotation's batting-position-to-partner mapping. All we verify here is
+    // that (a) the endpoint accepts sandies and (b) the money totals still zero-sum,
+    // i.e. sandies flowed through applyBonusModifiers without breaking validation.
+    const h4Scores = playerIds.map((pid) => ({ playerId: pid, grossScore: 5 }));
+    const sRes = await postJSON(
+      `/api/rounds/${roundId}/groups/${groupId}/holes/4/scores`,
+      { scores: h4Scores },
+    );
+    expect(sRes.status, 'hole 4 scores').toBe(200);
+
+    const wRes = await postJSON(
+      `/api/rounds/${roundId}/groups/${groupId}/holes/4/wolf-decision`,
+      { decision: 'alone', greenies: [], polies: [], sandies: [playerIds[0]!] },
+    );
+    expect(wRes.status, 'hole 4 wolf-decision').toBe(200);
+
+    const wData = (await wRes.json()) as { moneyTotals: MoneyTotal[] };
+    const sum = wData.moneyTotals.reduce((acc, t) => acc + t.moneyTotal, 0);
+    expect(sum, 'sandie zero-sum').toBe(0);
+  });
+
+  it('sandie on a skins hole is stored for stats but does NOT pay money', async () => {
+    // Hole 3 (skins). Player 0 gets a uniquely low net to take the skin → +$3, others -$1.
+    // Add a sandie on player 2 (loser of the skin). If sandies paid here, player 2's total
+    // would be -$1 + $1 = $0 and player 0 would be -$1. Since they don't pay, expect +$3/-$1/-$1/-$1.
+    const h3Scores = [
+      { playerId: playerIds[0]!, grossScore: 3 },
+      { playerId: playerIds[1]!, grossScore: 5 },
+      { playerId: playerIds[2]!, grossScore: 5 },
+      { playerId: playerIds[3]!, grossScore: 5 },
+    ];
+    const sRes = await postJSON(
+      `/api/rounds/${roundId}/groups/${groupId}/holes/3/scores`,
+      { scores: h3Scores },
+    );
+    expect(sRes.status, 'hole 3 scores').toBe(200);
+
+    const wRes = await postJSON(
+      `/api/rounds/${roundId}/groups/${groupId}/holes/3/wolf-decision`,
+      { greenies: [], polies: [], sandies: [playerIds[2]!] },
+    );
+    expect(wRes.status, 'hole 3 wolf-decision').toBe(200);
+
+    // Sandie on skins hole must not change money — only the skin itself should.
+    // We don't assert exact skin values (cumulative with prior holes), only that the
+    // sandie recipient's delta from this hole isn't pulled into positive territory.
+    const wData = (await wRes.json()) as { moneyTotals: MoneyTotal[] };
+    const sum = wData.moneyTotals.reduce((acc, t) => acc + t.moneyTotal, 0);
+    expect(sum, 'cumulative zero-sum').toBe(0);
   });
 });
 

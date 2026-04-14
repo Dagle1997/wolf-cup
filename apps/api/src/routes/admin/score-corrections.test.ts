@@ -704,7 +704,7 @@ describe('POST /rounds/:roundId/corrections — greenie', () => {
 
   it('removes a greenie and returns 201', async () => {
     // First add
-    await db.update(wolfDecisions).set({ bonusesJson: JSON.stringify({ greenies: [testPlayerId], polies: [] }) }).where(eq(wolfDecisions.id, greenieWolfDecisionId));
+    await db.update(wolfDecisions).set({ bonusesJson: JSON.stringify({ greenies: [testPlayerId], polies: [], sandies: [] }) }).where(eq(wolfDecisions.id, greenieWolfDecisionId));
 
     const res = await scoreCorrectionsApp.request(`/rounds/${testRoundId}/corrections`, {
       method: 'POST',

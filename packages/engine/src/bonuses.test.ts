@@ -11,7 +11,7 @@ const WOLF = (wolfBatterIndex: 0 | 1 | 2 | 3): HoleAssignment => ({ type: 'wolf'
 const PARTNER = (partnerBatterIndex: 0 | 1 | 2 | 3): WolfDecision => ({ type: 'partner', partnerBatterIndex });
 const ALONE: WolfDecision = { type: 'alone' };
 const BLIND: WolfDecision = { type: 'blind_wolf' };
-const NO_BONUS: BonusInput = { greenies: [], polies: [] };
+const NO_BONUS: BonusInput = { greenies: [], polies: [], sandies: [] };
 
 /** All-zero base result — lets bonus tests verify the delta in isolation. */
 function zeroBase(): HoleMoneyResult {
@@ -150,42 +150,62 @@ describe('applyBonusModifiers — 2v2 (wolf=0, partner=1)', () => {
   });
 
   it('greenie on wolf team (pos0) → +1/+1/−1/−1 bonus skin', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [0], polies: [] }, WOLF(0), PARTNER(1), 3);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [0], polies: [], sandies: [] }, WOLF(0), PARTNER(1), 3);
     expect(bs(r)).toEqual([1, 1, -1, -1]);
   });
 
   it('double greenie (both pos0 and pos1 in greenies) → 2 bonus skins', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [0, 1], polies: [] }, WOLF(0), PARTNER(1), 3);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [0, 1], polies: [], sandies: [] }, WOLF(0), PARTNER(1), 3);
     expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
 
   it('greenie on opponent team → −1/−1/+1/+1', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [2], polies: [] }, WOLF(0), PARTNER(1), 3);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [2], polies: [], sandies: [] }, WOLF(0), PARTNER(1), 3);
     expect(bs(r)).toEqual([-1, -1, 1, 1]);
   });
 
   it('polie on wolf team (pos0) → +1/+1/−1/−1 bonus skin', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0] }, WOLF(0), PARTNER(1), par);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0], sandies: [] }, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([1, 1, -1, -1]);
   });
 
   it('two polies on same team (pos0, pos1) → 2 bonus skins (+2/+2/−2/−2)', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0, 1] }, WOLF(0), PARTNER(1), par);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0, 1], sandies: [] }, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
 
   it('two polies on different teams (pos0, pos2) → cancel ($0 all)', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0, 2] }, WOLF(0), PARTNER(1), par);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0, 2], sandies: [] }, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('sandie on wolf team (pos0) → +1/+1/−1/−1 (mirrors polie)', () => {
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [], sandies: [0] }, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([1, 1, -1, -1]);
+  });
+
+  it('sandies on opposing teams cancel ($0 all)', () => {
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [], sandies: [0, 2] }, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('polie + sandie on same team stack (+2/+2/−2/−2)', () => {
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0], sandies: [1] }, WOLF(0), PARTNER(1), par);
+    expect(bs(r)).toEqual([2, 2, -2, -2]);
+  });
+
+  it('user scenario: team A gets 2 sandies, team B gets 2 sandies → nets to $0', () => {
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [], sandies: [0, 1, 2, 3] }, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([0, 0, 0, 0]);
   });
 
   it('multiple bonuses stack: net birdie + polie on wolf team → 2 skins', () => {
-    const r = applyBonusModifiers(zeroBase(), [3, 5, 5, 5], [3, 5, 5, 5], { greenies: [], polies: [0] }, WOLF(0), PARTNER(1), par);
+    const r = applyBonusModifiers(zeroBase(), [3, 5, 5, 5], [3, 5, 5, 5], { greenies: [], polies: [0], sandies: [] }, WOLF(0), PARTNER(1), par);
     expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
 
   it('bonusSkins sums to $0 across all 4 players', () => {
-    const r = applyBonusModifiers(zeroBase(), [3, 4, 5, 6], [3, 4, 5, 6], { greenies: [0], polies: [2] }, WOLF(0), PARTNER(1), par);
+    const r = applyBonusModifiers(zeroBase(), [3, 4, 5, 6], [3, 4, 5, 6], { greenies: [0], polies: [2], sandies: [] }, WOLF(0), PARTNER(1), par);
     const sum = r[0].bonusSkins + r[1].bonusSkins + r[2].bonusSkins + r[3].bonusSkins;
     expect(sum).toBe(0);
   });
@@ -249,7 +269,7 @@ describe('applyBonusModifiers — 2v2 (wolf=0, partner=1)', () => {
     // Competitive score skins: birdie level tie → no blood ($0).
     // Polies: 2 on Team A → +2/+2/-2/-2. Total: +3/+3/-3/-3.
     const base = calculateHoleMoney([3, 3, 3, 5], WOLF(0), PARTNER(1), 4);
-    const r = applyBonusModifiers(base, [3, 3, 3, 5], [3, 3, 3, 5], { greenies: [], polies: [0, 1] }, WOLF(0), PARTNER(1), par);
+    const r = applyBonusModifiers(base, [3, 3, 3, 5], [3, 3, 3, 5], { greenies: [], polies: [0, 1], sandies: [] }, WOLF(0), PARTNER(1), par);
     expect([r[0].total, r[1].total, r[2].total, r[3].total]).toEqual([3, 3, -3, -3]);
     expect(r[0].lowBall).toBe(0);
     expect(r[0].skin).toBe(0);
@@ -301,12 +321,12 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
   });
 
   it('two opponents each have a polie → 2 separate group skins (wolf −6, each opp +2)', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [1, 2] }, WOLF(0), ALONE, par);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [1, 2], sandies: [] }, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([-6, 2, 2, 2]);
   });
 
   it('opponent net eagle (opp1) + polie → 3 group skins (wolf −9, each opp +3)', () => {
-    const r = applyBonusModifiers(zeroBase(), [5, 2, 5, 5], [5, 2, 5, 5], { greenies: [], polies: [1] }, WOLF(0), ALONE, par);
+    const r = applyBonusModifiers(zeroBase(), [5, 2, 5, 5], [5, 2, 5, 5], { greenies: [], polies: [1], sandies: [] }, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([-9, 3, 3, 3]);
   });
 
@@ -316,7 +336,7 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
   });
 
   it('wolf polie → wolf +3, each opp −1', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0] }, WOLF(0), ALONE, par);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0], sandies: [] }, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([3, -1, -1, -1]);
   });
 
@@ -326,7 +346,7 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
   });
 
   it('bonusSkins component sums to $0 in 1v3', () => {
-    const r = applyBonusModifiers(zeroBase(), [2, 3, 5, 5], [2, 3, 5, 5], { greenies: [], polies: [2] }, WOLF(0), ALONE, par);
+    const r = applyBonusModifiers(zeroBase(), [2, 3, 5, 5], [2, 3, 5, 5], { greenies: [], polies: [2], sandies: [] }, WOLF(0), ALONE, par);
     const sum = r[0].bonusSkins + r[1].bonusSkins + r[2].bonusSkins + r[3].bonusSkins;
     expect(sum).toBe(0);
   });
@@ -355,22 +375,22 @@ describe('applyBonusModifiers — skins holes (individual structure)', () => {
   });
 
   it('polie on skins hole → winner +3, others −1', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [2] }, SKINS, null, par);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [2], sandies: [] }, SKINS, null, par);
     expect(bs(r)).toEqual([-1, -1, 3, -1]);
   });
 
   it('greenie on skins hole → individual: winner +3, others −1', () => {
-    const r = applyBonusModifiers(zeroBase(), [3, 3, 3, 3], NO_BONUS_GROSS, { greenies: [1], polies: [] }, SKINS, null, 3);
+    const r = applyBonusModifiers(zeroBase(), [3, 3, 3, 3], NO_BONUS_GROSS, { greenies: [1], polies: [], sandies: [] }, SKINS, null, 3);
     expect(bs(r)).toEqual([-1, 3, -1, -1]);
   });
 
   it('two players have a bonus each on skins hole → correct net', () => {
-    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0, 1] }, SKINS, null, par);
+    const r = applyBonusModifiers(zeroBase(), [4, 4, 4, 4], NO_BONUS_GROSS, { greenies: [], polies: [0, 1], sandies: [] }, SKINS, null, par);
     expect(bs(r)).toEqual([2, 2, -2, -2]);
   });
 
   it('bonusSkins sums to $0 on skins hole', () => {
-    const r = applyBonusModifiers(zeroBase(), [2, 5, 5, 5], [2, 5, 5, 5], { greenies: [], polies: [1] }, SKINS, null, par);
+    const r = applyBonusModifiers(zeroBase(), [2, 5, 5, 5], [2, 5, 5, 5], { greenies: [], polies: [1], sandies: [] }, SKINS, null, par);
     const sum = r[0].bonusSkins + r[1].bonusSkins + r[2].bonusSkins + r[3].bonusSkins;
     expect(sum).toBe(0);
   });
@@ -388,7 +408,7 @@ describe('applyBonusModifiers — $21 wolf loss verification', () => {
 
     const r = applyBonusModifiers(
       base, net, gross,
-      { greenies: [], polies: [1, 2] },
+      { greenies: [], polies: [1, 2], sandies: [] },
       WOLF(0), ALONE, 4,
     );
 

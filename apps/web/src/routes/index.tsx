@@ -81,6 +81,7 @@ type ScorecardHole = {
   moneyNet: number;
   hasGreenie?: boolean;
   hasPolie?: boolean;
+  hasSandie?: boolean;
   relativeStrokes?: number;
   wolfDecision?: string | null;
   wolfRole?: 'wolf' | 'partner' | 'opponent' | null;
@@ -135,16 +136,17 @@ function formatRoundDate(dateStr: string): string {
 // HoleBadge — compact golf notation for horizontal scorecard
 // ---------------------------------------------------------------------------
 
-function HoleBadge({ gross, par, hasGreenie, hasPolie, relativeStrokes }: {
+function HoleBadge({ gross, par, hasGreenie, hasPolie, hasSandie, relativeStrokes }: {
   gross: number; par: number;
-  hasGreenie?: boolean | undefined; hasPolie?: boolean | undefined;
+  hasGreenie?: boolean | undefined; hasPolie?: boolean | undefined; hasSandie?: boolean | undefined;
   relativeStrokes?: number | undefined;
 }) {
   const d = gross - par; // gross-based styling
-  const bonusDots = (hasGreenie || hasPolie) ? (
+  const bonusDots = (hasGreenie || hasPolie || hasSandie) ? (
     <span className="absolute -bottom-[2px] left-1/2 -translate-x-1/2 flex gap-[1px]">
       {hasGreenie && <span className="w-[4px] h-[4px] rounded-full bg-emerald-500" />}
       {hasPolie && <span className="w-[4px] h-[4px] rounded-full bg-amber-400" />}
+      {hasSandie && <span className="w-[4px] h-[4px] rounded-full bg-orange-500" />}
     </span>
   ) : null;
   const strokeDot = relativeStrokes ? (
@@ -302,7 +304,7 @@ function ScorecardPanel({
               return (
                 <td key={n} className={tdC}>
                   {h?.grossScore != null
-                    ? <HoleBadge gross={h.grossScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} relativeStrokes={h.relativeStrokes} />
+                    ? <HoleBadge gross={h.grossScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} hasSandie={h.hasSandie} relativeStrokes={h.relativeStrokes} />
                     : <span className="relative inline-block text-muted-foreground/50 text-[10px]">
                         —
                         {h?.relativeStrokes ? <span className="absolute -top-[2px] -right-[4px] w-[4px] h-[4px] rounded-full bg-foreground/50" /> : null}
@@ -417,7 +419,7 @@ function ScorecardPanel({
                 return (
                   <td key={n} className={tdC}>
                     {h?.grossScore != null
-                      ? <HoleBadge gross={h.grossScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} relativeStrokes={h.relativeStrokes} />
+                      ? <HoleBadge gross={h.grossScore} par={h.par} hasGreenie={h.hasGreenie} hasPolie={h.hasPolie} hasSandie={h.hasSandie} relativeStrokes={h.relativeStrokes} />
                       : <span className="relative inline-block text-muted-foreground/50 text-[10px]">
                           —
                           {h?.relativeStrokes ? <span className="absolute -top-[2px] -right-[4px] w-[4px] h-[4px] rounded-full bg-foreground/50" /> : null}

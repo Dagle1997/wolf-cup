@@ -134,7 +134,7 @@ async function seedLive() {
   const stablefordMap = new Map<number, number>(roundPlayerList.map(p => [p.id, 0]));
   const moneyMap = new Map<number, number>(roundPlayerList.map(p => [p.id, 0]));
 
-  // Bonus event specs: { gIdx, holeNum, greenies: [pos], polies: [pos] }
+  // Bonus event specs: { gIdx, holeNum, greenies: [pos], polies: [pos], sandies: [] }
   // Greenie on group 1 (gIdx=0), hole 7 (par 3) — player at position 2
   // Polie on group 1 (gIdx=0), hole 10 — player at position 0
   // Polie on group 2 (gIdx=1), hole 8 — player at position 3
@@ -229,7 +229,7 @@ async function seedLive() {
         // Check for bonus events on this hole
         const bonusSpec = bonusEvents.find(b => b.gIdx === gIdx && b.holeNum === holeNum);
         let bonusesJson: string | null = null;
-        let bonusInput: BonusInput = { greenies: [], polies: [] };
+        let bonusInput: BonusInput = { greenies: [], polies: [], sandies: [] };
 
         if (bonusSpec) {
           const greeniePlayerIds: number[] = [];
@@ -248,7 +248,7 @@ async function seedLive() {
             poliePositions.push(bonusSpec.poliePos);
           }
           bonusesJson = JSON.stringify({ greenies: greeniePlayerIds, polies: poliePlayerIds });
-          bonusInput = { greenies: greeniePositions, polies: poliePositions };
+          bonusInput = { greenies: greeniePositions, polies: poliePositions, sandies: [] };
         }
 
         const base = calculateHoleMoney(netScores, holeAssignment, wolfDecision, courseHole.par);

@@ -10,6 +10,7 @@ export const createScoreCorrectionSchema = z
       'wolfPartnerId',
       'greenie',
       'polie',
+      'sandie',
       'putts',
       'handicapIndex',
     ]),
@@ -19,13 +20,13 @@ export const createScoreCorrectionSchema = z
   })
   .refine(
     (data) =>
-      !['grossScore', 'greenie', 'polie', 'putts', 'handicapIndex'].includes(data.fieldName) ||
+      !['grossScore', 'greenie', 'polie', 'sandie', 'putts', 'handicapIndex'].includes(data.fieldName) ||
       data.playerId !== undefined,
     { message: 'playerId is required for this correction type' },
   )
   .refine(
     (data) =>
-      !['wolfDecision', 'wolfPartnerId', 'greenie', 'polie'].includes(data.fieldName) ||
+      !['wolfDecision', 'wolfPartnerId', 'greenie', 'polie', 'sandie'].includes(data.fieldName) ||
       data.groupId !== undefined,
     { message: 'groupId is required for wolf/bonus field corrections' },
   )

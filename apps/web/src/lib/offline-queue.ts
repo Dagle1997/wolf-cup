@@ -15,6 +15,7 @@ export interface QueueEntry {
     partnerId: number | null;
     greenies: number[];
     polies: number[];
+    sandies: number[];
   } | null; // null when no wolf data to replay
   autoCalculateMoney: boolean;
   entryCode: string | null; // from session.entryCode
