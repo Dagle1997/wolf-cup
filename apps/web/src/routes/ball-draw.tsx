@@ -433,7 +433,7 @@ function BallDrawPage() {
   // Casual round: tee selection screen (before any players added)
   // ---------------------------------------------------------------------------
 
-  if (isCasual && selectedTee === null && localPlayers.length === 0 && !group.battingOrder) {
+  if (isCasual && selectedTee === null && !data.tee && localPlayers.length === 0 && !group.battingOrder) {
     return (
       <div className="p-4 flex flex-col gap-4">
         <h2 className="text-xl font-semibold">Which tees are you playing today?</h2>
