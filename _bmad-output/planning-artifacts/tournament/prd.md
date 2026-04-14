@@ -838,3 +838,41 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 | **Total** | **63** | **6 port, 2 extract, 55 new** | +10 stories from party-session FDs |
 
 **Reuse payoff:** 8 of 63 stories (~13%) are port or extract work that leverages Wolf Cup's shipped code — offline queue, PDF generation, GHIN client, photo gallery, scorer UI iOS fix, audit log pattern, `stableford.ts` engine primitive. Ratio shifted toward "new" as party-session scope (SSO auth, sub-game framework, skins engine, in-app engagement spine, mid-event rule edit, install prompt) is net-new surface without Wolf Cup precedent. The real engineering surface is ~55 novel stories, concentrated in tournament-specific rules/money logic, sub-game framework, SSO identity, and in-app engagement — exactly where the product wedge lives.
+
+## BMAD Step 7–11 Coverage
+
+Per FD-15, formal Step 7 (Technical Decisions), Step 8 (Out of Scope), Step 9 (Assumptions & Dependencies), Step 10 (Final Risks), and Step 11 (Handoff) artifacts are produced by the **`create-architecture` BMAD workflow**, not by extending this PRD. This PRD contains the decisions that workflow inherits.
+
+| BMAD step | Where the content lives now | Where formal write-up will live |
+|---|---|---|
+| Step 7 Technical Decisions | **Foundation Decisions** section (FD-1..FD-15) — 15 locked calls with rationale | `tournament/architecture.md` §Tech-Decisions (formal expansion with alternatives & tradeoffs) |
+| Step 8 Out of Scope | **Product Scope** (Growth Features + Explicitly out of v1) + **Design Principles** (what the app refuses to be) | `tournament/architecture.md` §Scope-Boundaries (numbered hard-outs) |
+| Step 9 Assumptions & Dependencies | **Success Criteria** + **Trip-Critical Scope Lock** + embedded in FDs (e.g., FD-13 Pinehurst reality, FD-14 install-capable crew) | `tournament/architecture.md` §Assumptions |
+| Step 10 Risks (final) | **Risks & Mitigations** table (with retired rows marked) | `tournament/architecture.md` §Risks (expanded + tiered per solution-surface) |
+| Step 11 Handoff | This section + FD-15 | `tournament/architecture.md` §Handoff-to-Implementation (story sequencing, gating criteria) |
+
+### Superseded draft
+
+An earlier draft `drafts/step-07-11-draft.md` (2026-04-13) is **superseded** by this PRD's FDs and by FD-15's workflow choice. It is retained as a drafting artifact only, with a SUPERSEDED banner noting which of its decisions were reversed by the 2026-04-13/14 party-mode sessions. Do not merge its content.
+
+### Handoff readiness checklist
+
+- [x] Every FR traces to a journey, an FD, or a Codex-surfaced gap
+- [x] Every NFR has a testable threshold or qualitative bar
+- [x] Every story carries a reuse tag
+- [x] Critical-path distinguishes trip-critical from target-miss-tolerable
+- [x] Risks have mitigations; retired risks are marked, not deleted
+- [x] Assumptions are explicit, not buried
+- [x] Out-of-scope is explicit (numbered lists + design principles)
+- [x] Reviewer note explains Wolf Cup inheritance (FD-1 no-rename + FD-2 copy-posture)
+- [x] All 10 party-session topics resolved (FD-1..FD-15)
+- [x] Superseded draft is banner-marked, not merged
+- [ ] `create-architecture` workflow kicked off (next step)
+
+### Open items before architecture kickoff (non-blocking)
+
+1. **App name finalization** — "Tournament" is the working name (brief §4.12). Not a blocker.
+2. **June trip details** — if May 7 slips, next target date + format. Affects T9 timing only.
+3. **Rule-set naming constraint** — length / uniqueness rules for user-named rule sets. Minor UI decision.
+4. **R2 bucket sharing** — same bucket as Wolf Cup with Event-id prefix, or separate. Ops decision.
+5. **`context_id` + `tenant_id` naming policy** — loose convention vs. enforced. Currently loose per FD-6. Revisit if multi-tenant expansion happens.
