@@ -197,6 +197,7 @@ async function getRoundDetail(roundId: number) {
       status: rounds.status,
       scheduledDate: rounds.scheduledDate,
       autoCalculateMoney: rounds.autoCalculateMoney,
+      tee: rounds.tee,
     })
     .from(rounds)
     .where(eq(rounds.id, roundId))

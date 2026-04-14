@@ -44,6 +44,7 @@ type RoundDetail = {
   status: string;
   scheduledDate: string;
   autoCalculateMoney: boolean;
+  tee: Tee | null;
   groups: Group[];
 };
 
@@ -170,6 +171,11 @@ function BallDrawPage() {
       setSelectedGroupId(data.groups[0]!.id);
     }
   }, [data, selectedGroupId]);
+
+  // Hydrate selectedTee from the round (practice.tsx already saved it at creation)
+  useEffect(() => {
+    if (data?.tee && selectedTee === null) setSelectedTee(data.tee);
+  }, [data, selectedTee]);
 
   // Initialize localPlayers from group data when a group is first selected.
   // The ref guard prevents overwriting locally-added guests on query refetch.
