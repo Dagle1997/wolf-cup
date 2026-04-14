@@ -189,6 +189,12 @@ This section names what the app **must do well** to be a real tournament app at 
 10. Score correction audit log.
 11. Round lifecycle states (not_started / in_progress / complete_editable / finalized).
 12. Live 9-hole validation round before target Event date.
+13. **Skins pot runnable alongside 2v2 on day 1** (FD-11): gross / net / gross-beats-net modes, participant-scoped opt-in, carries on hole ties.
+14. **Carry-over greenies** (FD-12): 2-putt validation; unclaimed rolls to next par 3.
+15. **SSO + GHIN bind** (FD-4) with manual-HI bailout (FD-13 guardrail 2) — auth must not fail the trip on captive-portal wifi.
+16. **Mid-event rule-edit path** (FD-13 guardrail 1) — organizer can fix a wrong param day 2 without DB surgery.
+17. **In-app engagement surfaces** (FD-5) — no push, SMS, or email ever; event spine + toast/banner/feed must work.
+18. **In-app install prompt** (FD-14) + browser-tab read-only graceful degradation.
 
 ### Can miss target, ship in next window
 
@@ -199,6 +205,13 @@ This section names what the app **must do well** to be a real tournament app at 
 6. Manual-press UI polish (capability must ship; aesthetic refinement can lag).
 7. Photo gallery, course preview richness, advanced spectator features.
 8. Cross-event stats surfaces (schema foundation is v1; stats UI is v1.5+).
+
+### Design Principles (PRD-level, added 2026-04-13/14)
+
+1. **App creates pull, not push** (FD-5). Engagement surfaces live inside the app; no OS push, no SMS, no email.
+2. **Data-entry cost paid only by participants who benefit** (FD-10). Optional data fields (putts, sandies, etc.) asked only of opted-in participants; rejected otherwise.
+3. **Stats + gallery = retention thesis.** The off-season compound surface is what keeps groups in the app between trips. Business Success tests against it.
+4. **The app remembers how this group plays golf.** Primary wedge. Group memory (rosters, rule sets, pairings patterns, history) is the thing no competitor centers.
 
 ### Explicitly out of v1
 
@@ -313,7 +326,7 @@ Each requirement is testable and traceable to a Step 4 journey (J1–J4) or Step
 
 Roles: **organizer** (event creator), **scorer** (designated per foursome per round), **participant** (player on the roster), **spectator** (invite-link read-only, non-roster).
 
-- **FR-H1** Edit event, rules, pairings — organizer only.
+- **FR-H1** Edit event, rules, pairings — organizer only. **Rule-config is editable mid-event** (FD-13 guardrail 1): change is audit-logged, stamped with effective-hole boundary, applies forward; engine recomputes money/leaderboard from boundary forward. A visible diff banner surfaces to all participants so no silent drift occurs.
 - **FR-H2** Assign/transfer scorer role — organizer, or current scorer (transfer only).
 - **FR-H3** Commit/correct gross scores for a foursome — designated scorer only (FR-B10).
 - **FR-H4** Generate PDF schedule/pairings — any participant (read-only artifact).
@@ -331,10 +344,13 @@ Roles: **organizer** (event creator), **scorer** (designated per foursome per ro
 
 #### FR-D — Rules, Money & Bets
 
-- **FR-D1** System shall support 2v2 best ball as the v1 team format, parameterized over: **sandies (on/off, v1)**, auto-press trigger (N-down), press multiplier. *(J1)*
+- **FR-D1** System shall support 2v2 best ball (the "Guyan Game") as the v1 team format, parameterized over: **sandies (on/off, v1)**, auto-press trigger (N-down), press multiplier, **`greenie_carryover` (boolean, default off; FD-12)**, **`greenie_validation` enum `'2-putt' | 'none'` (default `'2-putt'` when carryover on)**. When `greenie_carryover` is on, an unclaimed or unvalidated greenie rolls to the next par 3; last par 3 can accumulate up to 4× base value. *(J1)*
 - **FR-D2** System shall support manual press via one-tap button by any player in a foursome, undoable before the next hole is scored.
 - **FR-D3** System shall support cross-foursome individual bets between any two Event participants, regardless of whether they share a foursome on any given round. *(J4)*
 - **FR-D4** Supported individual-bet types v1: match play $/hole, match play with auto-press at N-down.
+- **FR-D10** *(FD-10/11, new)* System shall support **sub-games** as first-class, round-scoped, participant-scoped entities. Any subset of a round's participants may opt into any sub-game; pot = sum of opt-in buy-ins. Each sub-game type declares its data requirements (data-entry cost principle: optional fields asked only of opted-in participants).
+- **FR-D11** *(FD-11, new)* System shall support **Skins** as the v1 sub-game. Per-hole outright-winner scan across the whole group; modes `gross`, `net`, `gross_beats_net` (gross skin wins outright; net applies only when no gross skin). Ties carry to the next hole; unclaimed pot at hole 18 splits proportionally among the rounds' skin winners (or rolls to next round of the same Event — organizer choice captured in sub-game config). Polies/greenies as tiebreakers deferred v1.1.
+- **FR-D12** *(FD-10, schema)* Sub-game types recognized by schema in v1 (scaffolded, not implemented beyond Skins): `skins`, `ctp` (closest-to-pin), `sandies`, `putting_contest`. Only `skins` has implementation code in v1; others are schema stubs so future work is additive, not migrational.
 - **FR-D5** Auto-press engine shall evaluate trigger conditions after every hole-score commit and fire silently (no confirmation prompt); firing shall produce a visible banner on affected players' devices. *(J2, J4)*
 - **FR-D6** System shall compute a head-to-head money matrix across all Event participants, including pairs that never shared a foursome, as the sum of all applicable team-game results + individual bets across all rounds. *(J1, J4)*
 - **FR-D7** Settle-up view shall show per-player net balance and a drill-down of hole-by-hole bet/team contributions.
@@ -343,8 +359,11 @@ Roles: **organizer** (event creator), **scorer** (designated per foursome per ro
 
 #### FR-E — Player Experience
 
-- **FR-E1** First-arrival flow from invite link shall reach "you're in, here's the schedule" in ≤3 taps without requiring password creation. *(J3)*
-- **FR-E2** Password creation shall be deferred until a user takes a mutating action (scoring, creating/editing). Read-only access is available pre-auth via invite link.
+- **FR-E1** First-arrival flow from invite link shall reach "you're in, here's the schedule" in ≤3 taps: invite-link tap → Google SSO (or magic-link email fallback) → one-time GHIN lookup + confirm → done. *(J3, FD-4)*
+- **FR-E2** Read-only access (schedule, pairings, course previews) shall be available pre-SSO via the raw invite link. Mutating actions (scoring, creating/editing) require completed SSO + GHIN bind.
+- **FR-E8** *(FD-14, new)* System shall show an **in-app install prompt** after first SSO: iOS animated "Tap Share → Add to Home Screen" instruction card; Android uses `beforeinstallprompt` for one-tap install. Dismissable; reappears at most once on 2nd open; never after install completes.
+- **FR-E9** *(FD-14, new)* Browser-tab (non-installed) usage shall render read-only leaderboard / standings / pairings / schedule without error. Scorer flow requires PWA install for offline-queue reliability; UI surfaces a clear "install to score" prompt when a non-installed user opens a scorer surface.
+- **FR-E10** *(FD-4, new)* If GHIN lookup fails (captive portal, hotel wifi, GHIN outage), system shall provide a **manual-entry bailout**: enter handicap index manually, proceed; flag for later reconciliation when network returns.
 - **FR-E3** Schedule view shall display each round's date, course (with hero image), tee times, and the viewer's pairing for that round.
 - **FR-E4** Course preview shall include per-hole detail (par, yardage, SI) and at least a hero image for the course.
 - **FR-E5** System shall support per-Event photo gallery with R2 storage (reusing Wolf Cup gallery pattern).
@@ -477,6 +496,97 @@ Decisions that shape v1 schema and architecture. Recording here so Step 7 (Techn
 - Not shared in `packages/*`. Only `packages/engine` pure functions are shared.
 - Rationale: Wolf Cup is in maintenance mode (rules change ~once/year by vote); tournament is in discovery mode with hundreds of unknowns. Shared code would tax Wolf Cup with churn it doesn't need.
 - Rule-of-three trigger: extract when the same file has been copy-modified 3+ times.
+
+### FD-3: Scoring — hole-level soft-lock + full audit log
+
+- Replaces drafted "strict scorer-auth enforcement."
+- First-writer-to-a-hole claims it; subsequent writers get **"Alan entered hole 3, overwrite?"** confirmation.
+- Full audit log on every touch: original value, new value, who, when.
+- Identity for the audit entry comes via device cookie + SSO (FD-4).
+- Tournament-mode peer-attestation deferred to v1.5 — schema supports it via `scoring_mode` enum + `attestor_user_id` nullable column.
+
+### FD-5: Notifications — app-internal engagement only (core design principle)
+
+- **No push notifications. No SMS. No email notifications.**
+- Every social moment (birdies, presses firing, leaderboard changes, award triggers) surfaces **inside the app** as toasts, banners, animations, feed entries.
+- Rationale: lock-screen buzzes yank users to the Messages app where work texts live, killing trip headspace. The app creates pull, not push.
+- This is a **core design principle**, not a v1 choice — every future notification decision tests against it.
+- Saves all push infrastructure work. Simplifies architecture considerably.
+
+### FD-7: Round is the atomic stats unit
+
+- Seasons, events, series are **optional groupers**, not required parents.
+- `rounds.season_id`, `rounds.event_id` nullable.
+- A Sunday round at Guyan with no season membership is still a full stats-producing unit.
+
+### FD-8: Rule sets are tenant-scoped, named, revisioned
+
+- `rule_sets` table at **tenant scope** (not Group scope as drafted in earlier FR-A7 text).
+- "Rick's Nassau" is one row, referenced by multiple Groups / Events within the tenant.
+- **Rule-set revisions** (same pattern as course revisions): rule config evolves, rounds pin a specific `rule_set_revision_id`, historical rounds stay accurate.
+- Enables stats aggregation either by rule-set identity (all versions of Rick's Nassau) or by exact revision (this precise config).
+
+### FD-9: Filter cube for stats
+
+Primary filter = **date range / year** (Sunday end-of-year dinner use case: this-year real, prior-years proven-over-time).
+
+Full filter dimensions (v1.5+ UI):
+- Date range / day-of-week / season
+- Contexts (multi-select)
+- Rule sets (multi-select, with or without revision specificity)
+- Participants / partners / opponents
+- Stakes / monetary threshold
+- Courses / venues
+
+### FD-10: Sub-games are first-class, participant-scoped
+
+- Any subset of a round's players can opt into any sub-game.
+- Sub-game types (`skins`, `ctp`, `sandies`, `putting_contest`, future) each declare their data requirements.
+- **Data-entry cost principle**: optional data fields are asked only of opted-in participants. GIR / fairway tracking **rejected** on this principle. Putts for putting-contest participants **accepted** (participants pay, participants benefit).
+- **Sub-games are round-scoped, not group-scoped.** Rick in Group 1 + Scott in Group 2 can run a putting contest; each scorer prompts for putts for their group's participants only; engine federates at compute time. Same pattern as cross-foursome $/hole matches.
+
+### FD-11: Skins in v1 as the first concrete sub-game
+
+- 2v2 "Guyan Game" (Wolf-rules-derived best ball with parameter toggles per FR-D1) is the primary format.
+- **Skins** is a per-hole outright-winner scan across the whole group — same shape as Wolf Cup's side-game skins calc. Runs alongside 2v2; independent pot.
+- **Three modes** (rule-config toggle): `gross`, `net`, `gross_beats_net` (gross wins outright; falls back to net if no gross skin).
+- Participant-scoped per FD-10: subset opts in, pot splits among opt-ins, carries on hole ties.
+- Polies/greenies as tiebreaker: deferred to v1.1.
+- Engine cost: ~150 LOC, new `packages/engine/src/formats/skins.ts`, golden-file tested. 1-2 days.
+- UI cost: opt-in toggle on round setup + skins column on leaderboard. Half day.
+
+### FD-12: v1 bet menu stays lean; carry-over greenies as 2v2 rule param
+
+Pinehurst crew is small-stakes; big-trip bet menu deferred.
+- **v1 bets**: press + auto-press (FR-D1), cross-foursome individual bets (FR-D3/D4), skins (FD-11), **carry-over greenies** as new 2v2 rule param (FR-D1 `greenie_carryover` / `greenie_validation`).
+- **Carry-over greenies**: toggle on/off; 2-putt validation required to claim; unclaimed/unvalidated rolls to next par 3; last par 3 can accumulate up to 4× base value. Engine change ~50 LOC in `best-ball-2v2.ts` + golden-file tests for the carry chain.
+- **DEFER to v1.1** (tracked in OOS, not forgotten): cross-group "two best balls" pot (gross/gross, gross/net, net/net modes), match-play points + team-win pot, Nassau, BBB, low-round-of-day.
+
+### FD-13: Single-admin v1 with four guardrails
+
+Pinehurst reality: Josh is sole organizer; 5hr car ride with 4 players = onboarding runway; Eric pre-briefed at work = de facto scorer for the other foursome. No co-organizer UI in v1.
+
+- **Guardrail 1 (mid-event rule edit)**: Rule-config editable mid-event; change audit-logged, effective-hole boundary, applies forward; engine recomputes money/leaderboard from boundary forward; visible diff banner to participants. Golden-file fixture includes a mid-event edit scenario. (FR-H1)
+- **Guardrail 2 (GHIN bailout)**: GHIN lookup failure has explicit manual-HI-entry bailout (captive-portal / hotel-wifi mitigation). (FR-E10)
+- **Guardrail 3 (scorer handoff)**: Scorer is per-foursome, not per-user. Phone-dies handoff: anyone in the foursome SSOs and picks up scoring; FD-3 soft-lock + audit log cover it.
+- **Guardrail 4 (role collapse)**: Organizer = scorer = same person in v1. No role split. Scorer identity via device cookie + SSO (FD-3 + FD-4).
+- **DEFER v1.5+**: explicit co-organizer role, mid-event organizer transfer, scorer permission scopes.
+
+### FD-14: PWA-primary holds; two cheap additions
+
+Pinehurst crew = 8 install-capable; Josh on-site. No Bobby-equivalent. No install-cliff engineering.
+
+- **Addition 1 (install prompt)**: In-app install prompt after first SSO — iOS animated "Share → Add to Home Screen" card; Android `beforeinstallprompt` one-tap. Dismissable; reappears at most once on 2nd open. (FR-E8)
+- **Addition 2 (browser-tab graceful)**: Non-installed browser-tab users see read-only leaderboard / standings / pairings / schedule without error; scorer flow requires PWA install for offline-queue reliability. (FR-E9)
+- **DEFER**: physical QR-at-breakfast on-ramp, install wizard for Bobby-equivalents, full browser-tab offline tolerance.
+
+### FD-15: Handoff via full BMAD architecture workflow
+
+Josh chose Path A — "do it right for the future" — consistent with foundation-first posture and no-hard-deadline reality (June trip as fallback if May 7 slips).
+
+- **Sequence**: (1) commit Pass 1–5 PRD updates; (2) `create-architecture` → `tournament/architecture.md`; (3) `create-epics-and-stories` → formal epic + story breakdown (may supersede this PRD's embedded epic list); (4) `create-story` + `dev-story` loop per story; (5) retrospective after epic 1.
+- **Tradeoff accepted**: ~2-3 weeks of design work before first production code. Pinehurst 2026-05-07 likely slips; June trip becomes the realistic first-test window.
+- **Scope that benefits most from design-first**: sub-game framework (FD-10/11), context_id + tenant_id ecosystem hooks (FD-6), rule-set revisioning (FD-8), skins + carry-greenies engine (FD-11/12), mid-event rule-edit guardrail (FD-13).
 
 ---
 
