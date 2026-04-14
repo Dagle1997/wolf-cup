@@ -42,5 +42,8 @@ apps/web/.vite/
 # Reference videos / large media (local only)
 reference/videos/
 
+# Scratch / work-in-progress scorecards (use reference/ for canonical copies)
+_tmp_scorecards/
+
 # Claude Code local config (not source)
 .claude/

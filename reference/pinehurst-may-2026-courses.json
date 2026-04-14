@@ -1,0 +1,178 @@
+{
+  "_meta": {
+    "trip": "Pinehurst May 2026",
+    "extracted": "2026-04-13",
+    "source_note": "Pine Needles + Mid Pines from official club scorecard PDFs (vision parse). Talamore from course.bluegolf.com (PDF on club site was image-only and off a different property). Tobacco Road from official club scorecard PDF.",
+    "validation": "All courses: pars in {3,4,5}, stroke indexes 1-18 unique per card, front/back par totals match printed Out/In."
+  },
+  "courses": [
+    {
+      "name": "Pine Needles Lodge & Golf Club",
+      "location": "Southern Pines, NC",
+      "designer": "Donald Ross",
+      "par": 71,
+      "source": "https://www.pineneedleslodge.com/wp-content/uploads/2025/08/PN-Scorecard-1.pdf",
+      "tees": [
+        { "name": "Medal",     "rating": 74.7, "slope": 141, "yardage": 7025 },
+        { "name": "Ross",      "rating": 71.9, "slope": 138, "yardage": 6450 },
+        { "name": "White",     "rating": 70.0, "slope": 133, "yardage": 6050 },
+        { "name": "Executive", "rating": 66.4, "slope": 124, "yardage": 5495 },
+        { "name": "Forward",   "rating": 69.2, "slope": 125, "yardage": 4940 }
+      ],
+      "holes": [
+        { "hole": 1,  "par": 5, "si": 11, "yardages": { "Medal": 505, "Ross": 485, "White": 470, "Executive": 455, "Forward": 420 } },
+        { "hole": 2,  "par": 4, "si": 5,  "yardages": { "Medal": 475, "Ross": 450, "White": 435, "Executive": 410, "Forward": 375 } },
+        { "hole": 3,  "par": 3, "si": 17, "yardages": { "Medal": 145, "Ross": 135, "White": 125, "Executive": 115, "Forward": 110 } },
+        { "hole": 4,  "par": 4, "si": 9,  "yardages": { "Medal": 400, "Ross": 375, "White": 335, "Executive": 315, "Forward": 265 } },
+        { "hole": 5,  "par": 3, "si": 7,  "yardages": { "Medal": 220, "Ross": 185, "White": 170, "Executive": 120, "Forward": 115 } },
+        { "hole": 6,  "par": 4, "si": 1,  "yardages": { "Medal": 455, "Ross": 410, "White": 375, "Executive": 315, "Forward": 305 } },
+        { "hole": 7,  "par": 4, "si": 3,  "yardages": { "Medal": 450, "Ross": 405, "White": 365, "Executive": 345, "Forward": 315 } },
+        { "hole": 8,  "par": 4, "si": 15, "yardages": { "Medal": 365, "Ross": 350, "White": 320, "Executive": 300, "Forward": 290 } },
+        { "hole": 9,  "par": 4, "si": 13, "yardages": { "Medal": 380, "Ross": 370, "White": 350, "Executive": 260, "Forward": 250 } },
+        { "hole": 10, "par": 5, "si": 4,  "yardages": { "Medal": 525, "Ross": 480, "White": 460, "Executive": 440, "Forward": 350 } },
+        { "hole": 11, "par": 4, "si": 12, "yardages": { "Medal": 415, "Ross": 375, "White": 345, "Executive": 315, "Forward": 290 } },
+        { "hole": 12, "par": 4, "si": 14, "yardages": { "Medal": 435, "Ross": 350, "White": 325, "Executive": 310, "Forward": 250 } },
+        { "hole": 13, "par": 3, "si": 16, "yardages": { "Medal": 210, "Ross": 185, "White": 160, "Executive": 135, "Forward": 125 } },
+        { "hole": 14, "par": 4, "si": 2,  "yardages": { "Medal": 450, "Ross": 400, "White": 395, "Executive": 375, "Forward": 335 } },
+        { "hole": 15, "par": 5, "si": 6,  "yardages": { "Medal": 535, "Ross": 485, "White": 465, "Executive": 455, "Forward": 395 } },
+        { "hole": 16, "par": 3, "si": 18, "yardages": { "Medal": 180, "Ross": 170, "White": 165, "Executive": 130, "Forward": 120 } },
+        { "hole": 17, "par": 4, "si": 8,  "yardages": { "Medal": 460, "Ross": 440, "White": 415, "Executive": 370, "Forward": 330 } },
+        { "hole": 18, "par": 4, "si": 10, "yardages": { "Medal": 420, "Ross": 400, "White": 375, "Executive": 330, "Forward": 300 } }
+      ]
+    },
+    {
+      "name": "Mid Pines Inn & Golf Club",
+      "location": "Southern Pines, NC",
+      "designer": "Donald Ross",
+      "par": 72,
+      "source": "https://www.midpinesinn.com/wp-content/uploads/2025/08/MP-Scorecard-1.pdf",
+      "tees": [
+        { "name": "Medal",     "rating": 73.5, "slope": 142, "yardage": 6710 },
+        { "name": "Ross",      "rating": 72.3, "slope": 138, "yardage": 6430 },
+        { "name": "Regular",   "rating": 70.4, "slope": 136, "yardage": 6100 },
+        { "name": "Executive", "rating": 67.8, "slope": 129, "yardage": 5540 },
+        { "name": "Forward",   "rating": 64.7, "slope": 118, "yardage": 4900 }
+      ],
+      "holes": [
+        { "hole": 1,  "par": 4, "si": 5,  "yardages": { "Medal": 405, "Ross": 375, "Regular": 365, "Executive": 345, "Forward": 315 } },
+        { "hole": 2,  "par": 3, "si": 15, "yardages": { "Medal": 185, "Ross": 185, "Regular": 165, "Executive": 155, "Forward": 155 } },
+        { "hole": 3,  "par": 4, "si": 7,  "yardages": { "Medal": 435, "Ross": 405, "Regular": 385, "Executive": 245, "Forward": 245 } },
+        { "hole": 4,  "par": 4, "si": 13, "yardages": { "Medal": 315, "Ross": 295, "Regular": 285, "Executive": 265, "Forward": 255 } },
+        { "hole": 5,  "par": 5, "si": 9,  "yardages": { "Medal": 475, "Ross": 465, "Regular": 445, "Executive": 415, "Forward": 375 } },
+        { "hole": 6,  "par": 5, "si": 1,  "yardages": { "Medal": 495, "Ross": 475, "Regular": 465, "Executive": 445, "Forward": 385 } },
+        { "hole": 7,  "par": 4, "si": 3,  "yardages": { "Medal": 395, "Ross": 385, "Regular": 365, "Executive": 355, "Forward": 305 } },
+        { "hole": 8,  "par": 3, "si": 17, "yardages": { "Medal": 175, "Ross": 175, "Regular": 155, "Executive": 145, "Forward": 125 } },
+        { "hole": 9,  "par": 4, "si": 11, "yardages": { "Medal": 325, "Ross": 325, "Regular": 315, "Executive": 305, "Forward": 295 } },
+        { "hole": 10, "par": 5, "si": 2,  "yardages": { "Medal": 515, "Ross": 495, "Regular": 485, "Executive": 425, "Forward": 375 } },
+        { "hole": 11, "par": 3, "si": 18, "yardages": { "Medal": 175, "Ross": 155, "Regular": 145, "Executive": 135, "Forward": 115 } },
+        { "hole": 12, "par": 4, "si": 8,  "yardages": { "Medal": 405, "Ross": 395, "Regular": 365, "Executive": 345, "Forward": 275 } },
+        { "hole": 13, "par": 3, "si": 10, "yardages": { "Medal": 235, "Ross": 215, "Regular": 195, "Executive": 175, "Forward": 135 } },
+        { "hole": 14, "par": 4, "si": 16, "yardages": { "Medal": 365, "Ross": 355, "Regular": 345, "Executive": 325, "Forward": 275 } },
+        { "hole": 15, "par": 5, "si": 12, "yardages": { "Medal": 555, "Ross": 535, "Regular": 485, "Executive": 445, "Forward": 375 } },
+        { "hole": 16, "par": 4, "si": 6,  "yardages": { "Medal": 445, "Ross": 425, "Regular": 385, "Executive": 355, "Forward": 305 } },
+        { "hole": 17, "par": 4, "si": 14, "yardages": { "Medal": 395, "Ross": 365, "Regular": 365, "Executive": 345, "Forward": 325 } },
+        { "hole": 18, "par": 4, "si": 4,  "yardages": { "Medal": 415, "Ross": 405, "Regular": 385, "Executive": 315, "Forward": 315 } }
+      ]
+    },
+    {
+      "name": "Talamore Golf Resort",
+      "location": "Southern Pines, NC",
+      "par": 71,
+      "source": "https://course.bluegolf.com/bluegolf/course/course/talamoreresortcourse/detailedscorecard.htm",
+      "tees": [
+        { "name": "Gold", "rating": 73.3, "slope": 138, "yardage": 6681 },
+        { "name": "Blue", "rating": 70.9, "slope": 134, "yardage": 6268 },
+        { "name": "Red",  "rating": 68.2, "slope": 121, "yardage": 4714, "gender": "F" }
+      ],
+      "holes": [
+        { "hole": 1,  "par": 5, "si": 4,  "yardages": { "Gold": 614, "Blue": 593, "Red": 423 } },
+        { "hole": 2,  "par": 3, "si": 16, "yardages": { "Gold": 196, "Blue": 176, "Red": 118 } },
+        { "hole": 3,  "par": 4, "si": 6,  "yardages": { "Gold": 412, "Blue": 385, "Red": 316 } },
+        { "hole": 4,  "par": 5, "si": 14, "yardages": { "Gold": 504, "Blue": 484, "Red": 399 } },
+        { "hole": 5,  "par": 3, "si": 18, "yardages": { "Gold": 142, "Blue": 138, "Red": 98  } },
+        { "hole": 6,  "par": 4, "si": 12, "yardages": { "Gold": 334, "Blue": 309, "Red": 254 } },
+        { "hole": 7,  "par": 4, "si": 2,  "yardages": { "Gold": 441, "Blue": 396, "Red": 238 } },
+        { "hole": 8,  "par": 4, "si": 8,  "yardages": { "Gold": 404, "Blue": 382, "Red": 299 } },
+        { "hole": 9,  "par": 4, "si": 10, "yardages": { "Gold": 356, "Blue": 328, "Red": 207 } },
+        { "hole": 10, "par": 4, "si": 7,  "yardages": { "Gold": 367, "Blue": 348, "Red": 273 } },
+        { "hole": 11, "par": 5, "si": 15, "yardages": { "Gold": 531, "Blue": 510, "Red": 444 } },
+        { "hole": 12, "par": 4, "si": 5,  "yardages": { "Gold": 416, "Blue": 399, "Red": 346 } },
+        { "hole": 13, "par": 3, "si": 17, "yardages": { "Gold": 175, "Blue": 154, "Red": 82  } },
+        { "hole": 14, "par": 4, "si": 9,  "yardages": { "Gold": 372, "Blue": 345, "Red": 277 } },
+        { "hole": 15, "par": 3, "si": 13, "yardages": { "Gold": 231, "Blue": 208, "Red": 140 } },
+        { "hole": 16, "par": 4, "si": 1,  "yardages": { "Gold": 436, "Blue": 411, "Red": 280 } },
+        { "hole": 17, "par": 4, "si": 11, "yardages": { "Gold": 328, "Blue": 307, "Red": 255 } },
+        { "hole": 18, "par": 4, "si": 3,  "yardages": { "Gold": 422, "Blue": 395, "Red": 265 } }
+      ]
+    },
+    {
+      "name": "Pinehurst No. 2",
+      "location": "Pinehurst, NC",
+      "designer": "Donald Ross",
+      "par": 72,
+      "verified": false,
+      "tentative": true,
+      "trip_role": "round-3 alternate (Pine Needles is default; #2 only if call-in works)",
+      "data_quality_note": "BlueGolf scrape returned per-hole pars summing to 73 (claimed par 72). Likely mixes U.S. Open championship setup (par 70, hole 4 reduced to par 4) with member-tee data. DO NOT trust for scoring without re-verification. Action: photo official scorecard on-site or pull from pinehurst.com PDF before swap.",
+      "source": "https://course.bluegolf.com/bluegolf/course/course/pinehurst2/detailedscorecard.htm",
+      "tees": [
+        { "name": "U.S. Open", "rating": 77.9, "slope": 149, "yardage": 7551 },
+        { "name": "Blue",      "rating": 75.4, "slope": 143, "yardage": 6966 }
+      ],
+      "holes": [
+        { "hole": 1,  "par": 4, "si": 11, "yardages": { "U.S. Open": 403, "Blue": 391 } },
+        { "hole": 2,  "par": 4, "si": 3,  "yardages": { "U.S. Open": 500, "Blue": 437 } },
+        { "hole": 3,  "par": 4, "si": 9,  "yardages": { "U.S. Open": 387, "Blue": 353 } },
+        { "hole": 4,  "par": 4, "si": 1,  "yardages": { "U.S. Open": 528, "Blue": 467 }, "_note": "528y as par 4 = U.S. Open setup; member card lists par 5" },
+        { "hole": 5,  "par": 5, "si": 15, "yardages": { "U.S. Open": 588, "Blue": 511 } },
+        { "hole": 6,  "par": 3, "si": 5,  "yardages": { "U.S. Open": 221, "Blue": 200 } },
+        { "hole": 7,  "par": 4, "si": 7,  "yardages": { "U.S. Open": 430, "Blue": 404 } },
+        { "hole": 8,  "par": 5, "si": 17, "yardages": { "U.S. Open": 494, "Blue": 469 } },
+        { "hole": 9,  "par": 3, "si": 13, "yardages": { "U.S. Open": 189, "Blue": 175 } },
+        { "hole": 10, "par": 5, "si": 18, "yardages": { "U.S. Open": 621, "Blue": 586 } },
+        { "hole": 11, "par": 4, "si": 8,  "yardages": { "U.S. Open": 483, "Blue": 450 } },
+        { "hole": 12, "par": 4, "si": 10, "yardages": { "U.S. Open": 451, "Blue": 420 } },
+        { "hole": 13, "par": 4, "si": 6,  "yardages": { "U.S. Open": 381, "Blue": 372 } },
+        { "hole": 14, "par": 4, "si": 2,  "yardages": { "U.S. Open": 475, "Blue": 432 } },
+        { "hole": 15, "par": 4, "si": 12, "yardages": { "U.S. Open": 475, "Blue": 432 } },
+        { "hole": 16, "par": 5, "si": 16, "yardages": { "U.S. Open": 540, "Blue": 514 } },
+        { "hole": 17, "par": 3, "si": 14, "yardages": { "U.S. Open": 207, "Blue": 187 } },
+        { "hole": 18, "par": 4, "si": 4,  "yardages": { "U.S. Open": 451, "Blue": 417 } }
+      ]
+    },
+    {
+      "name": "Tobacco Road Golf Club",
+      "location": "Sanford, NC",
+      "designer": "Mike Strantz",
+      "par": 71,
+      "source": "https://tobaccoroadgolf.com/wp-content/uploads/2017/04/trg-scorecard.pdf",
+      "tees": [
+        { "name": "Ripper",     "rating": 71.7, "slope": 144, "yardage": 6557 },
+        { "name": "Disc",       "rating": 70.3, "slope": 135, "yardage": 6317 },
+        { "name": "Plow",       "rating": 68.6, "slope": 129, "yardage": 5886, "ladies_rating": 74.7, "ladies_slope": 140 },
+        { "name": "Points",     "rating": 65.7, "slope": 121, "yardage": 5302, "ladies_rating": 71.2, "ladies_slope": 129 },
+        { "name": "Cultivator", "rating": 64.6, "slope": 118, "yardage": 4296, "ladies_rating": 69.8, "ladies_slope": 126 }
+      ],
+      "holes": [
+        { "hole": 1,  "par": 5, "si": 3,  "yardages": { "Ripper": 558, "Disc": 547, "Plow": 521, "Points": 478, "Cultivator": 315 } },
+        { "hole": 2,  "par": 4, "si": 11, "yardages": { "Ripper": 392, "Disc": 377, "Plow": 344, "Points": 301, "Cultivator": 280 } },
+        { "hole": 3,  "par": 3, "si": 17, "yardages": { "Ripper": 152, "Disc": 147, "Plow": 125, "Points": 112, "Cultivator": 91  } },
+        { "hole": 4,  "par": 5, "si": 9,  "yardages": { "Ripper": 535, "Disc": 507, "Plow": 478, "Points": 466, "Cultivator": 368 } },
+        { "hole": 5,  "par": 4, "si": 15, "yardages": { "Ripper": 333, "Disc": 322, "Plow": 315, "Points": 309, "Cultivator": 297 } },
+        { "hole": 6,  "par": 3, "si": 13, "yardages": { "Ripper": 148, "Disc": 143, "Plow": 133, "Points": 107, "Cultivator": 107 } },
+        { "hole": 7,  "par": 4, "si": 7,  "yardages": { "Ripper": 411, "Disc": 401, "Plow": 383, "Points": 353, "Cultivator": 248 } },
+        { "hole": 8,  "par": 3, "si": 5,  "yardages": { "Ripper": 178, "Disc": 173, "Plow": 152, "Points": 142, "Cultivator": 132 } },
+        { "hole": 9,  "par": 4, "si": 1,  "yardages": { "Ripper": 427, "Disc": 415, "Plow": 394, "Points": 364, "Cultivator": 269 } },
+        { "hole": 10, "par": 4, "si": 6,  "yardages": { "Ripper": 441, "Disc": 421, "Plow": 398, "Points": 365, "Cultivator": 242 } },
+        { "hole": 11, "par": 5, "si": 10, "yardages": { "Ripper": 531, "Disc": 511, "Plow": 486, "Points": 361, "Cultivator": 290 } },
+        { "hole": 12, "par": 4, "si": 14, "yardages": { "Ripper": 419, "Disc": 412, "Plow": 380, "Points": 347, "Cultivator": 291 } },
+        { "hole": 13, "par": 5, "si": 2,  "yardages": { "Ripper": 573, "Disc": 536, "Plow": 497, "Points": 455, "Cultivator": 429 } },
+        { "hole": 14, "par": 3, "si": 8,  "yardages": { "Ripper": 194, "Disc": 178, "Plow": 152, "Points": 111, "Cultivator": 96  } },
+        { "hole": 15, "par": 4, "si": 12, "yardages": { "Ripper": 365, "Disc": 358, "Plow": 351, "Points": 311, "Cultivator": 267 } },
+        { "hole": 16, "par": 4, "si": 16, "yardages": { "Ripper": 326, "Disc": 321, "Plow": 281, "Points": 266, "Cultivator": 248 } },
+        { "hole": 17, "par": 3, "si": 18, "yardages": { "Ripper": 142, "Disc": 134, "Plow": 127, "Points": 102, "Cultivator": 84  } },
+        { "hole": 18, "par": 4, "si": 4,  "yardages": { "Ripper": 432, "Disc": 414, "Plow": 369, "Points": 352, "Cultivator": 242 } }
+      ]
+    }
+  ]
+}
