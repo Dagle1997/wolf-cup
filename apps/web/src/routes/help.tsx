@@ -84,6 +84,30 @@ function HelpPage() {
         </div>
       </Link>
 
+      {/* Downloadable guides */}
+      <div className="grid grid-cols-2 gap-2">
+        <a
+          href="/guide.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block rounded-xl border bg-card p-3 hover:border-green-600 transition-colors"
+        >
+          <div className="text-xl mb-1">📖</div>
+          <div className="font-semibold text-sm leading-tight">Player Guide (PDF)</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">Full 8-page walkthrough</div>
+        </a>
+        <a
+          href="/cheatsheet.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block rounded-xl border bg-card p-3 hover:border-green-600 transition-colors"
+        >
+          <div className="text-xl mb-1">📄</div>
+          <div className="font-semibold text-sm leading-tight">Cheat Sheet (PDF)</div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">One-page reference, printable</div>
+        </a>
+      </div>
+
       {/* ---- Sections ---- */}
 
       <Section emoji="🏆" title="The Board">

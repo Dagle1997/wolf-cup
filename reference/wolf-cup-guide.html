@@ -532,7 +532,7 @@
   <ol class="steps">
     <li>Each round card shows the <strong>date</strong>, <strong>round number</strong>, and <strong>status</strong> (scheduled, active, or finalized).</li>
     <li>Tap any <strong>player row</strong> on the live or finished leaderboard to expand the full horizontal scorecard for that player.</li>
-    <li>While you're playing, an <strong>All / Group N</strong> pill toggle appears above the leaderboard — flip it to filter the board to just your group of 4 for in-group score auditing.</li>
+    <li>While you're playing, an <strong>All / Group</strong> pill toggle appears above the leaderboard — the second pill shows your own group number (e.g. <strong>Group 2</strong>). Tap it to filter the board to just your 4 for in-group score auditing.</li>
     <li>Finished rounds show a <strong>Highlight Reel</strong> at the top — auto-advancing slideshow of birdies, eagles, greenies, polies, sandies, and best wolf wins.</li>
     <li>Swipe between rounds or use the <strong>arrow buttons</strong> to browse the season.</li>
   </ol>
@@ -566,8 +566,8 @@
   <ol class="steps">
     <li>Holes <strong>1 &amp; 3</strong> are always <strong>skins</strong> — every player for themselves. Lowest net score wins.</li>
     <li>Every other hole (<strong>2, 4, 5, 6, 7, 8, 9, 10–18</strong>) is a <strong>wolf hole</strong>. The <strong>batting order</strong> (set during ball draw) determines who's wolf each one — Player 1 starts on hole 2, then the rotation cycles through the group on the next non-skins hole.</li>
-    <li>On wolf holes, the wolf watches each player tee off in order. After seeing the shots, the wolf either <strong>picks a partner</strong> (2v2) or goes <strong>lone wolf</strong> (1v3). A wolf can also call <strong>blind wolf</strong> <em>before</em> seeing any tee shots — extra multiplier.</li>
-    <li>Going lone wolf is riskier — if you win, each of the 3 opponents pays you (nearly <strong>3× the reward</strong>). If you lose, you pay each of them.</li>
+    <li>On wolf holes, the wolf watches each player tee off in order. After seeing the shots, the wolf either <strong>picks a partner</strong> (2v2) or goes <strong>lone wolf</strong> (1v3). A wolf can also call <strong>blind wolf</strong> <em>before</em> seeing any tee shots.</li>
+    <li>Going lone wolf is riskier — win and you collect from the 3 opponents (3 points). Lose and you pay the 3 opponents (−3 points). <strong>Blind wolf</strong> adds <strong>1 extra point per opponent on a win</strong> (no extra penalty if you lose).</li>
     <li>The <strong>score keeper</strong> records each wolf decision in the score-entry screen. The app handles the math.</li>
   </ol>
 
@@ -616,11 +616,15 @@
     </tr>
     <tr style="background: transparent;">
       <td style="color: rgba(255,255,255,0.75);">Lone Wolf wins</td>
-      <td style="color: rgba(255,255,255,0.75);">Wolf collects from all 3 opponents (nearly 3×)</td>
+      <td style="color: rgba(255,255,255,0.75);">Wolf collects from the 3 opponents</td>
     </tr>
     <tr style="background: rgba(255,255,255,0.02);">
       <td style="color: rgba(255,255,255,0.75);">Lone Wolf loses</td>
-      <td style="color: rgba(255,255,255,0.75);">Wolf pays all 3 opponents</td>
+      <td style="color: rgba(255,255,255,0.75);">Wolf pays the 3 opponents</td>
+    </tr>
+    <tr style="background: transparent;">
+      <td style="color: rgba(255,255,255,0.75);">Blind Wolf wins</td>
+      <td style="color: rgba(255,255,255,0.75);">Same as lone wolf + <strong>1 extra point per opponent</strong> (no extra penalty on loss)</td>
     </tr>
     <tr style="background: transparent;">
       <td style="color: rgba(255,255,255,0.75);">Skins (holes 1 &amp; 3)</td>
@@ -632,11 +636,11 @@
     </tr>
     <tr style="background: transparent;">
       <td style="color: rgba(255,255,255,0.75);"><strong style="color:var(--gold)">Polie</strong> (wolf holes)</td>
-      <td style="color: rgba(255,255,255,0.75);">Make a putt longer than the flagstick pole — extra bonus skin for your team</td>
+      <td style="color: rgba(255,255,255,0.75);">Made putt longer than the flagstick pole — <strong>1 extra point for your team</strong></td>
     </tr>
     <tr style="background: rgba(255,255,255,0.02);">
       <td style="color: rgba(255,255,255,0.75);"><strong style="color:#fb923c">Sandie</strong> (wolf holes)</td>
-      <td style="color: rgba(255,255,255,0.75);">Up &amp; down from the sand (one shot out of bunker, one putt in) — $1 per sandie, same team/wolf logic as polies</td>
+      <td style="color: rgba(255,255,255,0.75);">Up &amp; down from the sand (one shot out of bunker, one putt in) — <strong>1 extra point for your team</strong></td>
     </tr>
   </table>
 
@@ -664,38 +668,29 @@
 
   <div class="section-icon">📊</div>
   <div class="section-label">The Season</div>
-  <div class="section-title">Standings & Harvey Cup</div>
+  <div class="section-title">Standings</div>
   <p class="section-desc">
-    Track your position in the league all season long. Two competitions
-    run simultaneously — and you can win both.
+    Regular-season rounds set the stage — but the Wolf Cup Champion is
+    decided in the playoffs.
   </p>
 
-  <div class="info-cards">
+  <div class="info-cards" style="grid-template-columns: 1fr;">
     <div class="info-card">
       <div class="info-card-icon">🏆</div>
-      <h4>Wolf Cup</h4>
-      <p>Based on <strong>stableford points</strong>. Your best 10 of 20 rounds count. Play well relative to your handicap and rack up points.</p>
-    </div>
-    <div class="info-card">
-      <div class="info-card-icon">🎩</div>
-      <h4>Harvey Cup</h4>
-      <p>Based on <strong>head-to-head money results</strong> within your group each round. Beat the other guys, earn Harvey points.</p>
+      <h4>Wolf Cup Champion</h4>
+      <p>Won in the playoffs. Playoff rounds count multiplied and decide the crown — regular-season standings just set the bracket.</p>
     </div>
   </div>
 
   <ol class="steps" style="margin-top: 20px;">
-    <li>Tap the <strong>Standings</strong> tab to see the current season leaderboard for both competitions.</li>
-    <li>Your <strong>best 10 of 20</strong> rounds count for the Wolf Cup — so a bad week won't sink you.</li>
-    <li>The Harvey Cup ranks you by cumulative head-to-head performance all season.</li>
-    <li>Tap <strong>"History"</strong> at the top to see past champions and final standings from previous seasons.</li>
+    <li>Tap the <strong>Standings</strong> tab to see the current season leaderboard.</li>
+    <li>Points come from <strong>Harvey points</strong> — stableford rank + money rank within your group each round.</li>
+    <li>Your <strong>best 10 of 20</strong> regular rounds count — a bad week won't sink you.</li>
+    <li>The playoffs decide it — <strong>2 rounds of 8</strong> (×3 points) followed by <strong>2 rounds of 4</strong> (×8 points).</li>
+    <li>Tap <strong>"History"</strong> at the top to see past champions and final standings.</li>
   </ol>
 
   <div class="highlight-box">
-    <h4>🏅 Two trophies, one season</h4>
-    <p>The Wolf Cup champion is the best overall player. The Harvey Cup champion is the best competitor in head-to-head matchups. You can win one, both, or neither — they're independent.</p>
-  </div>
-
-  <div class="highlight-box" style="margin-top: 14px;">
     <h4>🎯 Weekly Side Games</h4>
     <p>Six games rotate weekly — <strong>Most Skins, Most Net Pars, Least Putts, Most Net Under Par, Most Polies, Closest to Pin</strong>. This week's game is shown on the leaderboard; winner is announced post-finalization. A <strong>Side Game Champion</strong> trophy goes to the season leader.</p>
   </div>

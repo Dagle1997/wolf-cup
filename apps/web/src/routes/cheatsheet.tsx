@@ -247,7 +247,7 @@ function CheatsheetPage() {
             <b>Lone Wolf</b> — went 1v3 after seeing tee shots. Triple reward / triple loss.
           </KeyRow>
           <KeyRow k={<span className="text-base font-extrabold text-red-500">B</span>}>
-            <b>Blind Wolf</b> — went 1v3 <em>before</em> tee shots. Extra multiplier.
+            <b>Blind Wolf</b> — went 1v3 <em>before</em> tee shots. +1 point per opponent on a win; no penalty on loss.
           </KeyRow>
           <KeyRow k={<span className="text-base font-extrabold text-green-600">JS</span>}>
             <span className="text-green-600 font-semibold">Green initials</span> = your <b>teammate</b> on this 2v2.
