@@ -84,31 +84,22 @@ function HelpPage() {
         </div>
       </Link>
 
-      {/* Downloadable guides */}
-      <div className="grid grid-cols-2 gap-2">
-        <a
-          href="/guide.pdf"
-          download="wolf-cup-guide.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block rounded-xl border bg-card p-3 hover:border-green-600 transition-colors"
-        >
-          <div className="text-xl mb-1">📖</div>
-          <div className="font-semibold text-sm leading-tight">Player Guide (PDF)</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">Full 8-page walkthrough</div>
-        </a>
-        <a
-          href="/cheatsheet.pdf"
-          download="wolf-cup-cheatsheet.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block rounded-xl border bg-card p-3 hover:border-green-600 transition-colors"
-        >
-          <div className="text-xl mb-1">📄</div>
-          <div className="font-semibold text-sm leading-tight">Cheat Sheet (PDF)</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">One-page reference, printable</div>
-        </a>
-      </div>
+      {/* Downloadable guide */}
+      <a
+        href="/guide.pdf"
+        download="wolf-cup-guide.pdf"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block rounded-xl border bg-card p-3 hover:border-green-600 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="text-2xl shrink-0">📖</div>
+          <div className="min-w-0">
+            <div className="font-semibold text-sm leading-tight">Player Guide (PDF)</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">Full 8-page walkthrough — download &amp; print</div>
+          </div>
+        </div>
+      </a>
 
       {/* ---- Sections ---- */}
 
