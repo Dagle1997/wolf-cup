@@ -206,13 +206,12 @@
 
   .steps li {
     counter-increment: step;
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 14px 0;
+    position: relative;
+    padding: 14px 0 14px 44px;
     border-bottom: 1px solid #f3f4f6;
     font-size: 16px;
     color: #374151;
+    line-height: 1.55;
     line-height: 1.55;
   }
 
@@ -220,6 +219,9 @@
 
   .steps li::before {
     content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -392,6 +394,8 @@
 
   .money-table tr:last-child td { border-bottom: none; }
   .money-table tr:nth-child(even) td { background: #f9fafb; }
+  .content-page-dark .money-table tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
+  .content-page-dark .money-table td { border-bottom-color: rgba(255,255,255,0.06); }
 
   .money-table .money-value {
     font-weight: 700;
@@ -495,7 +499,7 @@
     <li>You'll see today's round listed. Tap it to select it.</li>
     <li>Enter your <strong>entry code</strong> — it's the year (e.g. <strong>2026</strong>). This connects you to your group.</li>
     <li>You'll land on <strong>Hole 1</strong>. Enter each player's <strong>gross score</strong> (actual strokes). Net scores and stableford points are calculated automatically from handicaps.</li>
-    <li>On <strong>par 3s</strong>, you can mark <strong>greenies</strong> (hit the green and make par). On <strong>any wolf hole</strong> (3+), you can mark <strong>polies</strong> (make a putt longer than the flagstick pole).</li>
+    <li>On <strong>par 3s</strong>, mark <strong>greenies</strong> (hit the green &amp; make par). On any wolf hole (every hole except 1 &amp; 3), mark <strong>polies</strong> (made putt longer than the flagstick) and <strong>sandies</strong> (up &amp; down from the bunker).</li>
     <li>Use the <strong>arrow buttons</strong> to move between holes, or tap the hole number bar to jump to any hole.</li>
   </ol>
 
@@ -527,8 +531,9 @@
 
   <ol class="steps">
     <li>Each round card shows the <strong>date</strong>, <strong>round number</strong>, and <strong>status</strong> (scheduled, active, or finalized).</li>
-    <li>Tap a <strong>finished round</strong> to expand it and see the full scorecard for each group.</li>
-    <li>The expanded view shows each player's <strong>stableford points</strong>, <strong>money won or lost</strong>, and who was wolf on each hole.</li>
+    <li>Tap any <strong>player row</strong> on the live or finished leaderboard to expand the full horizontal scorecard for that player.</li>
+    <li>While you're playing, an <strong>All / Group N</strong> pill toggle appears above the leaderboard — flip it to filter the board to just your group of 4 for in-group score auditing.</li>
+    <li>Finished rounds show a <strong>Highlight Reel</strong> at the top — auto-advancing slideshow of birdies, eagles, greenies, polies, sandies, and best wolf wins.</li>
     <li>Swipe between rounds or use the <strong>arrow buttons</strong> to browse the season.</li>
   </ol>
 
@@ -559,11 +564,11 @@
   </p>
 
   <ol class="steps">
-    <li>Holes <strong>1 &amp; 2</strong> are always <strong>skins</strong> — every player for themselves. Lowest net score wins.</li>
-    <li>Starting on <strong>hole 3</strong>, the <strong>batting order</strong> (set during ball draw) determines who is wolf each hole. Player 1 is wolf on hole 3, player 2 on hole 4, and so on — cycling through the group.</li>
-    <li>On wolf holes, the wolf watches each player tee off in order. After seeing the shots, the wolf either <strong>picks a partner</strong> (2v2) or goes <strong>lone wolf</strong> (1v3).</li>
+    <li>Holes <strong>1 &amp; 3</strong> are always <strong>skins</strong> — every player for themselves. Lowest net score wins.</li>
+    <li>Every other hole (<strong>2, 4, 5, 6, 7, 8, 9, 10–18</strong>) is a <strong>wolf hole</strong>. The <strong>batting order</strong> (set during ball draw) determines who's wolf each one — Player 1 starts on hole 2, then the rotation cycles through the group on the next non-skins hole.</li>
+    <li>On wolf holes, the wolf watches each player tee off in order. After seeing the shots, the wolf either <strong>picks a partner</strong> (2v2) or goes <strong>lone wolf</strong> (1v3). A wolf can also call <strong>blind wolf</strong> <em>before</em> seeing any tee shots — extra multiplier.</li>
     <li>Going lone wolf is riskier — if you win, each of the 3 opponents pays you (nearly <strong>3× the reward</strong>). If you lose, you pay each of them.</li>
-    <li>The admin records wolf decisions in the app. You just play golf and enter scores!</li>
+    <li>The <strong>score keeper</strong> records each wolf decision in the score-entry screen. The app handles the math.</li>
   </ol>
 
   <div class="info-cards">
@@ -618,7 +623,7 @@
       <td style="color: rgba(255,255,255,0.75);">Wolf pays all 3 opponents</td>
     </tr>
     <tr style="background: transparent;">
-      <td style="color: rgba(255,255,255,0.75);">Skins (holes 1-2)</td>
+      <td style="color: rgba(255,255,255,0.75);">Skins (holes 1 &amp; 3)</td>
       <td style="color: rgba(255,255,255,0.75);">Lowest net wins, collects from everyone</td>
     </tr>
     <tr style="background: rgba(255,255,255,0.02);">
@@ -626,10 +631,18 @@
       <td style="color: rgba(255,255,255,0.75);">Hit the green and make par — each other player pays you</td>
     </tr>
     <tr style="background: transparent;">
-      <td style="color: rgba(255,255,255,0.75);"><strong style="color:var(--gold)">Polie</strong> (any hole)</td>
+      <td style="color: rgba(255,255,255,0.75);"><strong style="color:var(--gold)">Polie</strong> (wolf holes)</td>
       <td style="color: rgba(255,255,255,0.75);">Make a putt longer than the flagstick pole — extra bonus skin for your team</td>
     </tr>
+    <tr style="background: rgba(255,255,255,0.02);">
+      <td style="color: rgba(255,255,255,0.75);"><strong style="color:#fb923c">Sandie</strong> (wolf holes)</td>
+      <td style="color: rgba(255,255,255,0.75);">Up &amp; down from the sand (one shot out of bunker, one putt in) — $1 per sandie, same team/wolf logic as polies</td>
+    </tr>
   </table>
+
+  <p style="font-size: 13px; color: rgba(255,255,255,0.5); margin-top: 12px; font-style: italic;">
+    Greenies, polies, and sandies are tracked on holes 1 &amp; 3 for stats but don't pay out on skins holes.
+  </p>
 
   <div class="dark-highlight-box" style="margin-top: 24px;">
     <h4>🧮 It's all automatic</h4>
@@ -680,6 +693,11 @@
   <div class="highlight-box">
     <h4>🏅 Two trophies, one season</h4>
     <p>The Wolf Cup champion is the best overall player. The Harvey Cup champion is the best competitor in head-to-head matchups. You can win one, both, or neither — they're independent.</p>
+  </div>
+
+  <div class="highlight-box" style="margin-top: 14px;">
+    <h4>🎯 Weekly Side Games</h4>
+    <p>Six games rotate weekly — <strong>Most Skins, Most Net Pars, Least Putts, Most Net Under Par, Most Polies, Closest to Pin</strong>. This week's game is shown on the leaderboard; winner is announced post-finalization. A <strong>Side Game Champion</strong> trophy goes to the season leader.</p>
   </div>
 
   <div class="page-footer">
@@ -753,14 +771,22 @@
     Everything you need at a glance. Keep this page handy for your first few rounds.
   </p>
 
-  <div class="info-cards" style="grid-template-columns: 1fr;">
+  <div class="info-cards">
     <div class="info-card">
       <h4>📱 Getting to the App</h4>
       <p>Open <strong>wolf.dagle.cloud</strong> in your phone's browser. Add it to your home screen for quick access — it works like a regular app.</p>
     </div>
     <div class="info-card">
       <h4>⛳ On the Course</h4>
-      <p>Tap <strong>Score → select today's round → enter the year (e.g. 2026)</strong>. Enter gross scores for each player on each hole. Mark greenies on par 3s and polies on any wolf hole. That's it!</p>
+      <p>Tap <strong>Score → select today's round → enter the year (e.g. 2026)</strong>. Enter gross scores for each player. Mark <strong>greenies</strong> on par 3s, <strong>polies</strong> and <strong>sandies</strong> on any wolf hole. That's it!</p>
+    </div>
+    <div class="info-card">
+      <h4>🗒️ Leaderboard Cheat Sheet</h4>
+      <p>Open <strong>Help → Leaderboard Cheat Sheet</strong> for a one-page reference of rank pills, score notation, bonus dots, handicap strokes, and every wolf-row letter.</p>
+    </div>
+    <div class="info-card">
+      <h4>📸 Photo Gallery</h4>
+      <p>Tap the <strong>camera icon</strong> in the header to open the gallery. Upload photos from the course — they're auto-tagged to the active round.</p>
     </div>
     <div class="info-card">
       <h4>📶 Lost Signal?</h4>
