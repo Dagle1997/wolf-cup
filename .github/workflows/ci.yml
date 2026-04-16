@@ -28,6 +28,9 @@ jobs:
       - name: Test (engine)
         run: pnpm --filter @wolf-cup/engine test
 
+      - name: Build engine
+        run: pnpm --filter @wolf-cup/engine build
+
       - name: Test (api)
         run: pnpm --filter @wolf-cup/api test
 
