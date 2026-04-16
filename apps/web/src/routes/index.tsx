@@ -639,10 +639,51 @@ function LeaderboardTable({
   autoCalculateMoney: boolean;
 }) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'all' | 'group'>('all');
   const colCount = data.harveyLiveEnabled ? 6 : 5;
 
+  // Show the toggle only when the player has a session bound to this round
+  const session = getSession();
+  const myGroupId = session?.roundId === roundId ? session.groupId : null;
+  const myGroupNumber = myGroupId !== null
+    ? data.leaderboard.find((p) => p.groupId === myGroupId)?.groupNumber ?? null
+    : null;
+
+  const visiblePlayers = viewMode === 'group' && myGroupId !== null
+    ? data.leaderboard.filter((p) => p.groupId === myGroupId)
+    : data.leaderboard;
+
   return (
-    <div className="rounded-xl border overflow-hidden shadow-sm">
+    <div className="space-y-2">
+      {myGroupNumber !== null && (
+        <div className="inline-flex rounded-full border bg-muted/40 p-0.5 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setViewMode('all')}
+            className={`px-3 py-1 rounded-full transition-colors ${
+              viewMode === 'all'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            aria-pressed={viewMode === 'all'}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('group')}
+            className={`px-3 py-1 rounded-full transition-colors ${
+              viewMode === 'group'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            aria-pressed={viewMode === 'group'}
+          >
+            Group {myGroupNumber}
+          </button>
+        </div>
+      )}
+      <div className="rounded-xl border overflow-hidden shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/60 text-muted-foreground text-[11px]">
@@ -655,7 +696,7 @@ function LeaderboardTable({
           </tr>
         </thead>
         <tbody>
-          {data.leaderboard.map((player) => {
+          {visiblePlayers.map((player) => {
             const isSelected = selectedPlayerId === player.playerId;
             const toParColor =
               player.netToPar < 0
@@ -721,15 +762,18 @@ function LeaderboardTable({
               </Fragment>
             );
           })}
-          {data.leaderboard.length === 0 && (
+          {visiblePlayers.length === 0 && (
             <tr>
               <td colSpan={colCount} className="py-10 text-center text-muted-foreground">
-                No players in this round yet
+                {viewMode === 'group'
+                  ? 'No scores from your group yet'
+                  : 'No players in this round yet'}
               </td>
             </tr>
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

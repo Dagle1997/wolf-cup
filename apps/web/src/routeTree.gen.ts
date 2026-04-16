@@ -16,6 +16,7 @@ import { Route as ScoreEntryRouteImport } from './routes/score-entry'
 import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as GalleryRouteImport } from './routes/gallery'
+import { Route as CheatsheetRouteImport } from './routes/cheatsheet'
 import { Route as BallDrawRouteImport } from './routes/ball-draw'
 import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -63,6 +64,11 @@ const HelpRoute = HelpRouteImport.update({
 const GalleryRoute = GalleryRouteImport.update({
   id: '/gallery',
   path: '/gallery',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CheatsheetRoute = CheatsheetRouteImport.update({
+  id: '/cheatsheet',
+  path: '/cheatsheet',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BallDrawRoute = BallDrawRouteImport.update({
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
+  '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/help': typeof HelpRoute
   '/practice': typeof PracticeRoute
@@ -157,6 +164,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
+  '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/help': typeof HelpRoute
   '/practice': typeof PracticeRoute
@@ -180,6 +188,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
+  '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/help': typeof HelpRoute
   '/practice': typeof PracticeRoute
@@ -204,6 +213,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/attendance'
     | '/ball-draw'
+    | '/cheatsheet'
     | '/gallery'
     | '/help'
     | '/practice'
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
     | '/'
     | '/attendance'
     | '/ball-draw'
+    | '/cheatsheet'
     | '/gallery'
     | '/help'
     | '/practice'
@@ -247,6 +258,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/attendance'
     | '/ball-draw'
+    | '/cheatsheet'
     | '/gallery'
     | '/help'
     | '/practice'
@@ -270,6 +282,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AttendanceRoute: typeof AttendanceRoute
   BallDrawRoute: typeof BallDrawRoute
+  CheatsheetRoute: typeof CheatsheetRoute
   GalleryRoute: typeof GalleryRoute
   HelpRoute: typeof HelpRoute
   PracticeRoute: typeof PracticeRoute
@@ -331,6 +344,13 @@ declare module '@tanstack/react-router' {
       path: '/gallery'
       fullPath: '/gallery'
       preLoaderRoute: typeof GalleryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cheatsheet': {
+      id: '/cheatsheet'
+      path: '/cheatsheet'
+      fullPath: '/cheatsheet'
+      preLoaderRoute: typeof CheatsheetRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ball-draw': {
@@ -452,6 +472,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   AttendanceRoute: AttendanceRoute,
   BallDrawRoute: BallDrawRoute,
+  CheatsheetRoute: CheatsheetRoute,
   GalleryRoute: GalleryRoute,
   HelpRoute: HelpRoute,
   PracticeRoute: PracticeRoute,

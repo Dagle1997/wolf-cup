@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wolf Cup — Leaderboard Cheat Sheet</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --green: #16a34a;
+    --green-dark: #15803d;
+    --green-deeper: #0f5c2e;
+    --gold: #f59e0b;
+    --dark: #0a0f0a;
+    --grey: #6b7280;
+    --red: #dc2626;
+    --amber: #f59e0b;
+    --emerald: #10b981;
+    --orange: #f97316;
+    --blue: #2563eb;
+  }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f3f4f6;
+    color: #1a1a1a;
+    line-height: 1.4;
+    padding: 20px;
+  }
+
+  @page { size: letter; margin: 0; }
+
+  .page {
+    width: 8.5in;
+    height: 11in;
+    margin: 0 auto;
+    background: white;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+    padding: 0.45in 0.5in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 3px solid var(--dark);
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .wolf-logo { font-size: 28px; }
+  .header-title { font-size: 18px; font-weight: 900; letter-spacing: -0.3px; }
+  .header-sub { font-size: 10px; color: var(--grey); letter-spacing: 1px; text-transform: uppercase; font-weight: 600; }
+  .header-brand { font-size: 10px; color: var(--green); font-weight: 700; letter-spacing: 1.5px; }
+
+  h2 {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--green-deeper);
+    margin-bottom: 6px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  /* ── Grid layout ─────────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 22px;
+    flex: 1;
+  }
+
+  .section { display: flex; flex-direction: column; gap: 4px; }
+
+  .row-fig {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 10px;
+  }
+
+  table.lb {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+  }
+  table.lb thead tr { background: #e5e7eb; color: #6b7280; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  table.lb th, table.lb td { padding: 4px 5px; text-align: left; }
+  table.lb th.r, table.lb td.r { text-align: right; }
+  table.lb th.c, table.lb td.c { text-align: center; width: 20px; }
+  table.lb tr.row1 { border-left: 2px solid #fbbf24; background: #fffbeb; }
+  table.lb tr.row2 { border-left: 2px solid #94a3b8; }
+  table.lb tr.row3 { border-left: 2px solid #f97316; }
+  .rank-1 { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #fbbf24; color: #78350f; font-size: 8px; font-weight: 900; }
+  .rank-2 { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #cbd5e1; color: #334155; font-size: 8px; font-weight: 900; }
+  .rank-3 { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #fb923c; color: #7c2d12; font-size: 8px; font-weight: 900; }
+  .p-name { font-weight: 700; font-size: 10px; line-height: 1.2; }
+  .p-sub { color: var(--grey); font-size: 8px; }
+  .topar-pos { color: var(--red); font-weight: 600; }
+  .topar-neg { color: var(--green); font-weight: 800; }
+  .money-pos { color: var(--green); font-weight: 600; }
+  .money-neg { color: var(--red); font-weight: 600; }
+
+  /* ── Callout arrows ───────────────────────────────────────── */
+  .callout-list {
+    margin-top: 6px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 8px;
+    font-size: 9.5px;
+  }
+  .callout-key {
+    font-weight: 700;
+    color: var(--green-dark);
+    white-space: nowrap;
+  }
+
+  /* ── Hole badge visual examples ──────────────────────────── */
+  .badges {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px 6px;
+    font-size: 9px;
+  }
+  .badge-row { display: flex; align-items: center; gap: 8px; }
+  .badge-box { width: 28px; display: flex; justify-content: center; flex-shrink: 0; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    font-weight: 800;
+    font-size: 10px;
+    line-height: 1;
+    position: relative;
+  }
+  .b-eagle { border-radius: 50%; background: var(--red); color: white; }
+  .b-birdie { border-radius: 50%; border: 1.5px solid var(--red); color: var(--red); }
+  .b-par { color: #111; font-weight: 600; }
+  .b-bogey { border: 1.5px solid var(--amber); color: var(--amber); }
+  .b-double {
+    border: 2px solid var(--blue);
+    color: var(--blue);
+    width: 22px;
+    height: 22px;
+    position: relative;
+  }
+  .b-double::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border: 1px solid var(--blue);
+  }
+  .b-double span { position: relative; z-index: 1; }
+
+  .dot-row { display: flex; align-items: center; gap: 8px; font-size: 9.5px; }
+  .dot-demo {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .dot-demo .d {
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #6b7280;
+  }
+  .dot-demo .d-top1 { top: -2px; right: -2px; }
+  .dot-demo .d-top2-a { top: -2px; right: 1px; }
+  .dot-demo .d-top2-b { top: -2px; right: -4px; }
+  .dot-demo .d-bot { bottom: -3px; left: 50%; transform: translateX(-50%); }
+  .dot-g { background: var(--emerald) !important; }
+  .dot-p { background: var(--amber) !important; }
+  .dot-s { background: var(--orange) !important; }
+
+  /* ── Wolf row key ─────────────────────────────────────────── */
+  .wolf-keys {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 5px 10px;
+    font-size: 9.5px;
+  }
+  .wolf-key { display: flex; align-items: center; gap: 8px; }
+  .wolf-letter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    font-weight: 800;
+    font-size: 11px;
+  }
+  .wl-w { color: #111; }
+  .wl-b { color: var(--red); }
+  .wl-pending { color: var(--amber); font-size: 13px; }
+  .wl-teammate { color: var(--green); }
+  .wl-opp { color: var(--red); }
+  .wl-3v1 { color: var(--red); font-size: 9px; font-weight: 800; }
+
+  /* ── Mini scorecard mockup ────────────────────────────────── */
+  .mini-sc {
+    display: inline-block;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 8px;
+    line-height: 1;
+  }
+  .mini-sc table { border-collapse: collapse; }
+  .mini-sc th, .mini-sc td { padding: 2px 3px; text-align: center; font-weight: 500; border: 1px solid #e5e7eb; }
+  .mini-sc thead tr { background: var(--green-dark); color: white; }
+  .mini-sc thead th { font-weight: 700; font-size: 7.5px; }
+  .mini-sc .wolf-hole-hdr {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    border: 1px solid rgba(255,255,255,0.8);
+    font-size: 7.5px;
+    font-weight: 700;
+  }
+  .mini-sc .lbl { text-align: left; padding-left: 4px; font-weight: 700; color: var(--grey); background: #f9fafb; }
+  .mini-sc .muted { color: var(--grey); }
+  .mini-sc .tot { font-weight: 800; }
+  .mini-sc td.par-row { background: #f9fafb; color: var(--grey); }
+  .mini-sc .placeholder-dot { position: relative; }
+  .mini-sc .placeholder-dot::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 3px;
+    height: 3px;
+    background: #6b7280;
+    border-radius: 50%;
+  }
+
+  /* ── Side game banner ─────────────────────────────────────── */
+  .banner {
+    border: 1px solid #fcd34d;
+    background: #fef3c7;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 9.5px;
+    color: #78350f;
+    font-weight: 600;
+  }
+
+  .pill-toggle {
+    display: inline-flex;
+    border: 1px solid #e5e7eb;
+    background: #f3f4f6;
+    border-radius: 999px;
+    padding: 2px;
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .pill-toggle span { padding: 2px 9px; border-radius: 999px; color: var(--grey); }
+  .pill-toggle span.on { background: white; color: #111; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+
+  .footer {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 8px;
+    color: var(--grey);
+  }
+
+  .tiny-note { font-size: 9px; color: var(--grey); font-style: italic; }
+
+  /* print */
+  @media print {
+    body { background: white; padding: 0; }
+    .page { margin: 0; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Header ───────────────────────────── -->
+  <div class="header">
+    <div class="header-left">
+      <span class="wolf-logo">🐺</span>
+      <div>
+        <div class="header-title">Leaderboard Cheat Sheet</div>
+        <div class="header-sub">How to read the board at a glance</div>
+      </div>
+    </div>
+    <div style="text-align: right;">
+      <div class="header-brand">WOLF CUP</div>
+      <div class="header-sub" style="font-size: 8px; letter-spacing: 0.8px;">Guyan G&amp;CC · 2026</div>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- ── 1. Anatomy of a leaderboard row ─────────────── -->
+    <div class="section" style="grid-column: 1 / -1;">
+      <h2>1 · Anatomy of a Leaderboard Row</h2>
+      <div class="row-fig">
+        <table class="lb">
+          <thead>
+            <tr>
+              <th class="c">#</th>
+              <th>Player</th>
+              <th class="r">To Par</th>
+              <th class="r">Stb</th>
+              <th class="r">$</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="row1">
+              <td class="c"><span class="rank-1">1</span></td>
+              <td><div class="p-name">Noah M.</div><div class="p-sub">HCP +5 · Thru 12 <span style="color: var(--blue); font-weight: 600;">Putts: 22</span></div></td>
+              <td class="r topar-neg">-4</td>
+              <td class="r" style="font-weight: 600;">26</td>
+              <td class="r money-pos">+$18</td>
+            </tr>
+            <tr class="row2">
+              <td class="c"><span class="rank-2">2</span></td>
+              <td><div class="p-name">Josh S.</div><div class="p-sub">HCP 8.4 · Thru 12</div></td>
+              <td class="r topar-pos">+2</td>
+              <td class="r" style="font-weight: 600;">20</td>
+              <td class="r money-pos">+$6</td>
+            </tr>
+            <tr class="row3">
+              <td class="c"><span class="rank-3">3</span></td>
+              <td><div class="p-name">Bobby M.</div><div class="p-sub">HCP 15.1 · F</div></td>
+              <td class="r" style="font-weight: 500;">E</td>
+              <td class="r" style="font-weight: 600;">18</td>
+              <td class="r money-neg">-$3</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout-list">
+          <span class="callout-key">Rank</span><span>Gold/silver/bronze pill for 1st / 2nd / 3rd. Ties share the rank.</span>
+          <span class="callout-key">Name sub-line</span><span>Current handicap index · <b>Thru N</b> hole or <b>F</b> when finished. Blue <b>Putts</b> appears on Least Putts weeks.</span>
+          <span class="callout-key">To Par</span><span><b style="color: var(--green);">Green bold</b> = under par &nbsp;·&nbsp; <b style="color: var(--red);">Red</b> = over par &nbsp;·&nbsp; <b>E</b> = even.</span>
+          <span class="callout-key">Stb</span><span>Running stableford points (net, with handicap strokes applied).</span>
+          <span class="callout-key">$</span><span><b style="color: var(--green);">+$X</b> winning · <b style="color: var(--red);">-$X</b> losing · <b>$0</b> even.</span>
+          <span class="callout-key">Tap any row</span><span>Expands the full horizontal scorecard for that player (see §2).</span>
+        </div>
+        <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
+          <span class="tiny-note">When you've joined a group, a pill toggle appears above the table:</span>
+          <span class="pill-toggle"><span class="on">All</span><span>Group 2</span></span>
+          <span class="tiny-note">→ filters the board to your 4. Ranks remain field-wide.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 2. Scorecard expansion ─────────────── -->
+    <div class="section" style="grid-column: 1 / -1;">
+      <h2>2 · Scorecard (Expanded Row)</h2>
+      <div class="row-fig" style="display: flex; gap: 14px; align-items: flex-start;">
+        <div class="mini-sc">
+          <table>
+            <thead>
+              <tr>
+                <th>Hole</th><th>1</th><th><span class="wolf-hole-hdr">2</span></th><th>3</th><th><span class="wolf-hole-hdr">4</span></th><th>5</th><th><span class="wolf-hole-hdr">6</span></th><th>7</th><th><span class="wolf-hole-hdr">8</span></th><th>9</th><th>Out</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="lbl">Par</td><td class="par-row">4</td><td class="par-row">4</td><td class="par-row">3</td><td class="par-row">5</td><td class="par-row">4</td><td class="par-row">4</td><td class="par-row">3</td><td class="par-row">4</td><td class="par-row">5</td><td class="tot muted">36</td></tr>
+              <tr>
+                <td class="lbl">Score</td>
+                <td><span class="badge b-par">4</span></td>
+                <td class="placeholder-dot"><span class="badge b-bogey">5</span></td>
+                <td><span class="badge b-birdie">2</span></td>
+                <td><span class="badge b-par">5</span></td>
+                <td><span class="badge b-eagle">2</span></td>
+                <td><span class="badge b-bogey">5</span></td>
+                <td><span class="badge b-par">3</span></td>
+                <td><span class="badge b-double"><span>6</span></span></td>
+                <td><span class="badge b-par">5</span></td>
+                <td class="tot">37</td>
+              </tr>
+              <tr><td class="lbl">Wolf</td><td></td><td><span style="color: #111; font-weight: 700;">W</span></td><td></td><td><span style="color: var(--green); font-weight: 700;">JS</span></td><td></td><td><span style="color: var(--red); font-weight: 700;">3v1</span></td><td></td><td><span style="color: var(--amber);">🐺</span></td><td></td><td></td></tr>
+              <tr><td class="lbl">Net</td><td class="muted">4</td><td class="muted">4</td><td class="muted">2</td><td class="muted">4</td><td class="muted">2</td><td class="muted">5</td><td class="muted">3</td><td class="muted">5</td><td class="muted">4</td><td class="tot muted">33</td></tr>
+              <tr><td class="lbl">Stb</td><td>2</td><td>2</td><td>4</td><td>4</td><td>6</td><td>1</td><td>2</td><td>1</td><td>3</td><td class="tot" style="color: var(--green-dark);">25</td></tr>
+              <tr><td class="lbl">$</td><td class="muted">0</td><td style="color: var(--green);">+3</td><td style="color: var(--green);">+3</td><td style="color: var(--green);">+2</td><td style="color: var(--green);">+9</td><td style="color: var(--red);">-3</td><td class="muted">0</td><td style="color: var(--red);">-2</td><td class="muted">0</td><td class="tot" style="color: var(--green);">+$12</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="flex: 1;">
+          <div class="callout-list" style="grid-template-columns: auto 1fr;">
+            <span class="callout-key">Boxed hole #</span><span>Wolf hole. Hole 1 &amp; 3 are always skins (no wolf row).</span>
+            <span class="callout-key">Par row</span><span>Hole par. Only shown for holes you've played.</span>
+            <span class="callout-key">Score row</span><span>Gross score with color notation (see §3) + bonus dots (§4).</span>
+            <span class="callout-key">Wolf row</span><span>Your role on that wolf hole (see §6).</span>
+            <span class="callout-key">Net</span><span>Score after handicap strokes applied.</span>
+            <span class="callout-key">Stb</span><span>Stableford points. <b style="color: var(--green-dark);">Green bold</b> = 3+ pts (birdie or better net).</span>
+            <span class="callout-key">$</span><span>Net money for that hole (skins, wolf, greenies, polies, sandies combined).</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 3. Hole Badge Legend ─────────────── -->
+    <div class="section">
+      <h2>3 · Score Notation</h2>
+      <div class="badges">
+        <div class="badge-row"><div class="badge-box"><span class="badge b-eagle">2</span></div><div><b>Eagle+</b><br><span class="tiny-note">Filled red circle</span></div></div>
+        <div class="badge-row"><div class="badge-box"><span class="badge b-birdie">3</span></div><div><b>Birdie</b><br><span class="tiny-note">Red outline</span></div></div>
+        <div class="badge-row"><div class="badge-box"><span class="badge b-par">4</span></div><div><b>Par</b><br><span class="tiny-note">Plain number</span></div></div>
+        <div class="badge-row"><div class="badge-box"><span class="badge b-bogey">5</span></div><div><b>Bogey</b><br><span class="tiny-note">Orange square</span></div></div>
+        <div class="badge-row"><div class="badge-box"><span class="badge b-double"><span>6</span></span></div><div><b>Double+</b><br><span class="tiny-note">Blue double square</span></div></div>
+        <div class="badge-row"><div class="badge-box"><span class="tiny-note" style="color: #9ca3af; font-size: 12px;">—</span></div><div><b>No score</b><br><span class="tiny-note">Dash, unplayed</span></div></div>
+      </div>
+    </div>
+
+    <!-- ── 4. Bonus Dots + 5. Handicap Dots ─────────────── -->
+    <div class="section">
+      <h2>4 · Bonus Dots (below score)</h2>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 9.5px;">
+        <div class="badge-row"><div class="badge-box"><span class="dot-demo"><span>4</span><span class="d d-bot dot-g"></span></span></div><div><b style="color: var(--emerald);">G</b> Greenie<br><span class="tiny-note">Par-3 green &amp; par</span></div></div>
+        <div class="badge-row"><div class="badge-box"><span class="dot-demo"><span>4</span><span class="d d-bot dot-p"></span></span></div><div><b style="color: var(--amber);">P</b> Polie<br><span class="tiny-note">Putt &gt; flagstick</span></div></div>
+        <div class="badge-row"><div class="badge-box"><span class="dot-demo"><span>4</span><span class="d d-bot dot-s"></span></span></div><div><b style="color: var(--orange);">S</b> Sandie<br><span class="tiny-note">Up &amp; down from sand</span></div></div>
+      </div>
+      <div class="tiny-note" style="margin-top: 3px;">Multiple dots stack left-to-right (e.g., Greenie + Polie on a par 3).</div>
+
+      <h2 style="margin-top: 10px;">5 · Handicap Dots (top-right)</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 9.5px;">
+        <div class="badge-row"><div class="badge-box"><span class="dot-demo"><span>5</span><span class="d d-top1"></span></span></div><div><b>1 stroke</b> on this hole</div></div>
+        <div class="badge-row"><div class="badge-box"><span class="dot-demo"><span>5</span><span class="d d-top2-a"></span><span class="d d-top2-b"></span></span></div><div><b>2 strokes</b> on this hole</div></div>
+      </div>
+      <div class="tiny-note" style="margin-top: 3px;">Also appears on unplayed cells (on the —) so you can see your strokes in advance.</div>
+    </div>
+
+    <!-- ── 6. Wolf Row ─────────────── -->
+    <div class="section" style="grid-column: 1 / -1;">
+      <h2>6 · Wolf Row — What Each Letter Means</h2>
+      <div class="wolf-keys">
+        <div class="wolf-key"><span class="wolf-letter wl-w">W</span><div><b>Lone Wolf</b> — you went 1v3 after seeing tee shots. Triple reward / triple loss.</div></div>
+        <div class="wolf-key"><span class="wolf-letter wl-b">B</span><div><b>Blind Wolf</b> — you went 1v3 <em>before</em> tee shots. Extra multiplier.</div></div>
+        <div class="wolf-key"><span class="wolf-letter" style="color: var(--green); font-weight: 800;">JS</span><div><b>Green initials</b> = your <b>teammate</b> (you're on their team for this 2v2).</div></div>
+        <div class="wolf-key"><span class="wolf-letter" style="color: var(--red); font-weight: 800;">KB</span><div><b>Red initials</b> = opponent teammate (they're paired against you).</div></div>
+        <div class="wolf-key"><span class="wolf-letter wl-3v1">3v1</span><div><b>3v1</b> — wolf went alone and you're one of the 3 opponents.</div></div>
+        <div class="wolf-key"><span class="wolf-letter wl-pending">🐺</span><div><b>Pending</b> — wolf decision not recorded yet.</div></div>
+      </div>
+    </div>
+
+    <!-- ── 7. Side game + notes ─────────────── -->
+    <div class="section" style="grid-column: 1 / -1;">
+      <h2>7 · Side Game, Highlights &amp; Quick Rules</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 9.5px;">
+        <div>
+          <div class="banner" style="margin-bottom: 6px;">🏆 &nbsp;Side Game Winner: <b>Josh Stoll</b> (Most Skins — 4)</div>
+          <div class="tiny-note">After finalization the side-game winner banner shows above the table. During live play, the panel shows the week's side-game name and format.</div>
+        </div>
+        <div>
+          <ul style="list-style: none; padding: 0; display: flex; flex-direction: column; gap: 3px;">
+            <li>• <b>Holes 1 &amp; 3</b> are always skins. No wolf, no polie/sandie payout (but still tracked for stats).</li>
+            <li>• <b>Every other hole</b> rotates the wolf by batting order.</li>
+            <li>• <b>Greenies</b> pay only on par 3s where the wolfer hits green and makes par.</li>
+            <li>• <b>Polie</b> = any made putt longer than the flagstick. <b>Sandie</b> = 1 shot out of the bunker + 1 putt in.</li>
+            <li>• Leaderboard refreshes every <b>5 seconds</b> during live play.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Footer ─────────────────────────────── -->
+  <div class="footer">
+    <span>🐺 Wolf Cup — Guyan Golf &amp; Country Club</span>
+    <span>® AssTV — Appalachian Sports Station TV Networks</span>
+  </div>
+
+</div>
+</body>
+</html>

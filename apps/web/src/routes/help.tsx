@@ -68,6 +68,22 @@ function HelpPage() {
         </p>
       </div>
 
+      {/* Cheat sheet card */}
+      <Link
+        to="/cheatsheet"
+        className="block rounded-xl border-2 border-green-600/40 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/40 dark:to-emerald-950/40 p-4 hover:border-green-600 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="text-3xl shrink-0">🗒️</div>
+          <div className="min-w-0">
+            <div className="font-bold text-base leading-tight">Leaderboard Cheat Sheet</div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Decode the board — colors, dots, wolf row, score notation
+            </div>
+          </div>
+        </div>
+      </Link>
+
       {/* ---- Sections ---- */}
 
       <Section emoji="🏆" title="The Board">
