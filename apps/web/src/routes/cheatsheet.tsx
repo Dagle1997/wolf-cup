@@ -129,6 +129,7 @@ function CheatsheetPage() {
                 <th className="text-right py-2 pr-2 w-14">To Par</th>
                 <th className="text-right py-2 pr-2 w-12">Stb</th>
                 <th className="text-right py-2 pr-3 w-14">$</th>
+                <th className="text-right py-2 pr-3 w-14">Hvy</th>
               </tr>
             </thead>
             <tbody>
@@ -143,6 +144,7 @@ function CheatsheetPage() {
                 <td className="py-2 pr-2 text-right text-base text-green-600 font-bold">-4</td>
                 <td className="py-2 pr-2 text-right font-medium">26</td>
                 <td className="py-2 pr-3 text-right font-medium text-green-600">+$18</td>
+                <td className="py-2 pr-3 text-right font-bold">18</td>
               </tr>
               <tr className="border-b border-l-2 border-l-slate-400">
                 <td className="py-2 pl-2 pr-1 text-center">
@@ -155,6 +157,7 @@ function CheatsheetPage() {
                 <td className="py-2 pr-2 text-right text-base text-destructive font-medium">+2</td>
                 <td className="py-2 pr-2 text-right font-medium">20</td>
                 <td className="py-2 pr-3 text-right font-medium text-green-600">+$6</td>
+                <td className="py-2 pr-3 text-right font-bold">12</td>
               </tr>
               <tr className="border-l-2 border-l-orange-500">
                 <td className="py-2 pl-2 pr-1 text-center">
@@ -167,6 +170,7 @@ function CheatsheetPage() {
                 <td className="py-2 pr-2 text-right text-base font-medium">E</td>
                 <td className="py-2 pr-2 text-right font-medium">18</td>
                 <td className="py-2 pr-3 text-right font-medium text-destructive">-$3</td>
+                <td className="py-2 pr-3 text-right font-bold">8</td>
               </tr>
             </tbody>
           </table>
@@ -176,6 +180,7 @@ function CheatsheetPage() {
           <p><b className="text-foreground">Sub-line</b> — handicap index · <b>Thru N</b> hole or <b>F</b> when finished. Blue <b>Putts</b> shows on Least Putts side-game weeks.</p>
           <p><b className="text-foreground">To Par</b> — <span className="text-green-600 font-bold">green bold</span> under par · <span className="text-destructive">red</span> over · <b>E</b> even.</p>
           <p><b className="text-foreground">$</b> — <span className="text-green-600">+$X</span> winning · <span className="text-destructive">-$X</span> losing.</p>
+          <p><b className="text-foreground">Hvy Pts</b> — total Harvey points for this round (stableford rank + money rank + group-size bonus). Live during play, locked at finalize.</p>
           <p><b className="text-foreground">Tap any row</b> to expand the full scorecard for that player (see §2).</p>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -269,7 +274,6 @@ function CheatsheetPage() {
           <li>• <b>Every other hole</b> rotates wolf by batting order.</li>
           <li>• <b>Greenies</b> pay only on par 3s (wolfer hits green &amp; makes par).</li>
           <li>• <b>Polie</b> = made putt longer than the flagstick. <b>Sandie</b> = 1 shot out of bunker + 1 putt.</li>
-          <li>• Leaderboard refreshes every <b>5 seconds</b> during live play.</li>
         </ul>
       </Section>
 

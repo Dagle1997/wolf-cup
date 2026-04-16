@@ -43,7 +43,7 @@
     position: relative;
     overflow: hidden;
     page-break-after: always;
-    padding: 0.45in 0.5in;
+    padding: 0.35in 0.5in 0.3in 0.5in;
     display: flex;
     flex-direction: column;
   }
@@ -244,17 +244,18 @@
   .mini-sc .muted { color: var(--grey); }
   .mini-sc .tot { font-weight: 800; }
   .mini-sc td.par-row { background: #f9fafb; color: var(--grey); }
-  .mini-sc .placeholder-dot { position: relative; }
-  .mini-sc .placeholder-dot::after {
-    content: '';
+  .mini-sc .bd {
     position: absolute;
-    top: 1px;
-    right: 1px;
-    width: 3px;
-    height: 3px;
-    background: #6b7280;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3.5px;
+    height: 3.5px;
     border-radius: 50%;
   }
+  .mini-sc .bd-g { background: #10b981; }
+  .mini-sc .bd-p { background: #f59e0b; }
+  .mini-sc .bd-s { background: #f97316; }
 
   /* ── Side game banner ─────────────────────────────────────── */
   .banner {
@@ -331,6 +332,7 @@
               <th class="r">To Par</th>
               <th class="r">Stb</th>
               <th class="r">$</th>
+              <th class="r">Hvy Pts</th>
             </tr>
           </thead>
           <tbody>
@@ -340,6 +342,7 @@
               <td class="r topar-neg">-4</td>
               <td class="r" style="font-weight: 600;">26</td>
               <td class="r money-pos">+$18</td>
+              <td class="r" style="font-weight: 700;">18</td>
             </tr>
             <tr class="row2">
               <td class="c"><span class="rank-2">2</span></td>
@@ -347,6 +350,7 @@
               <td class="r topar-pos">+2</td>
               <td class="r" style="font-weight: 600;">20</td>
               <td class="r money-pos">+$6</td>
+              <td class="r" style="font-weight: 700;">12</td>
             </tr>
             <tr class="row3">
               <td class="c"><span class="rank-3">3</span></td>
@@ -354,6 +358,7 @@
               <td class="r" style="font-weight: 500;">E</td>
               <td class="r" style="font-weight: 600;">18</td>
               <td class="r money-neg">-$3</td>
+              <td class="r" style="font-weight: 700;">8</td>
             </tr>
           </tbody>
         </table>
@@ -363,6 +368,7 @@
           <span class="callout-key">To Par</span><span><b style="color: var(--green);">Green bold</b> = under par &nbsp;·&nbsp; <b style="color: var(--red);">Red</b> = over par &nbsp;·&nbsp; <b>E</b> = even.</span>
           <span class="callout-key">Stb</span><span>Running stableford points (net, with handicap strokes applied).</span>
           <span class="callout-key">$</span><span><b style="color: var(--green);">+$X</b> winning · <b style="color: var(--red);">-$X</b> losing · <b>$0</b> even.</span>
+          <span class="callout-key">Hvy Pts</span><span>Total Harvey points for this round (stableford rank + money rank + group-size bonus). Live during play, locked at finalize.</span>
           <span class="callout-key">Tap any row</span><span>Expands the full horizontal scorecard for that player (see §2).</span>
         </div>
         <div style="margin-top: 8px; display: flex; gap: 8px; align-items: center;">
@@ -381,28 +387,28 @@
           <table>
             <thead>
               <tr>
-                <th>Hole</th><th>1</th><th><span class="wolf-hole-hdr">2</span></th><th>3</th><th><span class="wolf-hole-hdr">4</span></th><th>5</th><th><span class="wolf-hole-hdr">6</span></th><th>7</th><th><span class="wolf-hole-hdr">8</span></th><th>9</th><th>Out</th>
+                <th>Hole</th><th>1</th><th><span class="wolf-hole-hdr">2</span></th><th>3</th><th><span class="wolf-hole-hdr">4</span></th><th><span class="wolf-hole-hdr">5</span></th><th><span class="wolf-hole-hdr">6</span></th><th><span class="wolf-hole-hdr">7</span></th><th><span class="wolf-hole-hdr">8</span></th><th><span class="wolf-hole-hdr">9</span></th><th>Out</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td class="lbl">Par</td><td class="par-row">4</td><td class="par-row">4</td><td class="par-row">3</td><td class="par-row">5</td><td class="par-row">4</td><td class="par-row">4</td><td class="par-row">3</td><td class="par-row">4</td><td class="par-row">5</td><td class="tot muted">36</td></tr>
+              <tr><td class="lbl">Par</td><td class="par-row">4</td><td class="par-row">4</td><td class="par-row">3</td><td class="par-row">5</td><td class="par-row">4</td><td class="par-row">4</td><td class="par-row">3</td><td class="par-row">4</td><td class="par-row muted">—</td><td class="tot muted">31</td></tr>
               <tr>
                 <td class="lbl">Score</td>
                 <td><span class="badge b-par">4</span></td>
-                <td class="placeholder-dot"><span class="badge b-bogey">5</span></td>
-                <td><span class="badge b-birdie">2</span></td>
-                <td><span class="badge b-par">5</span></td>
-                <td><span class="badge b-eagle">2</span></td>
                 <td><span class="badge b-bogey">5</span></td>
+                <td><span class="badge b-birdie">2<span class="bd bd-g"></span></span></td>
+                <td><span class="badge b-par">5<span class="bd bd-p"></span></span></td>
+                <td><span class="badge b-eagle">2</span></td>
+                <td><span class="badge b-bogey">5<span class="bd bd-s"></span></span></td>
                 <td><span class="badge b-par">3</span></td>
                 <td><span class="badge b-double"><span>6</span></span></td>
-                <td><span class="badge b-par">5</span></td>
-                <td class="tot">37</td>
+                <td class="muted">—</td>
+                <td class="tot">32</td>
               </tr>
-              <tr><td class="lbl">Wolf</td><td></td><td><span style="color: #111; font-weight: 700;">W</span></td><td></td><td><span style="color: var(--green); font-weight: 700;">JS</span></td><td></td><td><span style="color: var(--red); font-weight: 700;">3v1</span></td><td></td><td><span style="color: var(--amber);">🐺</span></td><td></td><td></td></tr>
-              <tr><td class="lbl">Net</td><td class="muted">4</td><td class="muted">4</td><td class="muted">2</td><td class="muted">4</td><td class="muted">2</td><td class="muted">5</td><td class="muted">3</td><td class="muted">5</td><td class="muted">4</td><td class="tot muted">33</td></tr>
-              <tr><td class="lbl">Stb</td><td>2</td><td>2</td><td>4</td><td>4</td><td>6</td><td>1</td><td>2</td><td>1</td><td>3</td><td class="tot" style="color: var(--green-dark);">25</td></tr>
-              <tr><td class="lbl">$</td><td class="muted">0</td><td style="color: var(--green);">+3</td><td style="color: var(--green);">+3</td><td style="color: var(--green);">+2</td><td style="color: var(--green);">+9</td><td style="color: var(--red);">-3</td><td class="muted">0</td><td style="color: var(--red);">-2</td><td class="muted">0</td><td class="tot" style="color: var(--green);">+$12</td></tr>
+              <tr><td class="lbl">Wolf</td><td></td><td><span style="color: #111; font-weight: 700;">W</span></td><td></td><td><span style="color: var(--green); font-weight: 700;">JS</span></td><td><span style="color: var(--red); font-weight: 700;">3v1</span></td><td><span style="color: var(--green); font-weight: 700;">BM</span></td><td><span style="color: var(--red); font-weight: 700;">KB</span></td><td><span style="color: var(--red); font-weight: 700;">3v1</span></td><td><span style="color: var(--amber); font-size: 11px;">🐺</span></td><td></td></tr>
+              <tr><td class="lbl">Net</td><td class="muted">4</td><td class="muted">4</td><td class="muted">2</td><td class="muted">4</td><td class="muted">2</td><td class="muted">5</td><td class="muted">3</td><td class="muted">5</td><td class="muted">—</td><td class="tot muted">29</td></tr>
+              <tr><td class="lbl">Stb</td><td>2</td><td>2</td><td>4</td><td>4</td><td>6</td><td>1</td><td>2</td><td>1</td><td class="muted">—</td><td class="tot" style="color: var(--green-dark);">22</td></tr>
+              <tr><td class="lbl">$</td><td class="muted">0</td><td style="color: var(--green);">+3</td><td style="color: var(--green);">+3</td><td style="color: var(--green);">+2</td><td style="color: var(--green);">+9</td><td style="color: var(--red);">-3</td><td class="muted">0</td><td style="color: var(--red);">-2</td><td class="muted">—</td><td class="tot" style="color: var(--green);">+$12</td></tr>
             </tbody>
           </table>
         </div>
@@ -478,7 +484,6 @@
             <li>• <b>Every other hole</b> rotates the wolf by batting order.</li>
             <li>• <b>Greenies</b> pay only on par 3s where the wolfer hits green and makes par.</li>
             <li>• <b>Polie</b> = any made putt longer than the flagstick. <b>Sandie</b> = 1 shot out of the bunker + 1 putt in.</li>
-            <li>• Leaderboard refreshes every <b>5 seconds</b> during live play.</li>
           </ul>
         </div>
       </div>
