@@ -84,23 +84,6 @@ function HelpPage() {
         </div>
       </Link>
 
-      {/* Downloadable guide */}
-      <a
-        href="/guide.pdf"
-        download="wolf-cup-guide.pdf"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block rounded-xl border bg-card p-3 hover:border-green-600 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className="text-2xl shrink-0">📖</div>
-          <div className="min-w-0">
-            <div className="font-semibold text-sm leading-tight">Player Guide (PDF)</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">Full 8-page walkthrough — download &amp; print</div>
-          </div>
-        </div>
-      </a>
-
       {/* ---- Sections ---- */}
 
       <Section emoji="🏆" title="The Board">
