@@ -38,8 +38,9 @@ export default defineConfig({
       workbox: {
         clientsClaim: true,
         skipWaiting: true,
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,pdf}'],
         globIgnores: ['**/icon-*.png'],
+        navigateFallbackDenylist: [/\.pdf$/i],
         runtimeCaching: [
           {
             urlPattern: /\/api\//i,
