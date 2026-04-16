@@ -88,6 +88,7 @@ function HelpPage() {
       <div className="grid grid-cols-2 gap-2">
         <a
           href="/guide.pdf"
+          download="wolf-cup-guide.pdf"
           target="_blank"
           rel="noopener noreferrer"
           className="block rounded-xl border bg-card p-3 hover:border-green-600 transition-colors"
@@ -98,6 +99,7 @@ function HelpPage() {
         </a>
         <a
           href="/cheatsheet.pdf"
+          download="wolf-cup-cheatsheet.pdf"
           target="_blank"
           rel="noopener noreferrer"
           className="block rounded-xl border bg-card p-3 hover:border-green-600 transition-colors"
