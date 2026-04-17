@@ -7,6 +7,7 @@ import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHist
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
 import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
+import { checkRoundCompleteness } from '../../lib/round-completeness.js';
 import {
   createRoundSchema,
   updateRoundSchema,
@@ -192,11 +193,24 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
       roundNumberMap.set(r.id, n);
     }
 
+    // Strict finalizable flag — only relevant for active official rounds. The
+    // loose "groupCompletion" display (distinct hole counts) is kept for the
+    // existing X/Y readout, but the Finalize button must be gated on this
+    // flag so a pending wolf decision can't slip past the UI.
+    const finalizableMap = new Map<number, boolean>();
+    for (const r of allRounds) {
+      if (r.status === 'active' && r.type === 'official') {
+        const completeness = await checkRoundCompleteness(r.id, r.autoCalculateMoney === 1);
+        finalizableMap.set(r.id, completeness.complete);
+      }
+    }
+
     const items = allRounds.map((r) => ({
       ...toRoundResponse(r),
       roundNumber: roundNumberMap.get(r.id) ?? null,
       groupCompletion: completionMap.get(r.id) ?? { total: 0, complete: 0 },
       playerCount: playerCountMap.get(r.id) ?? 0,
+      finalizable: finalizableMap.get(r.id) ?? false,
     }));
 
     return c.json({ items }, 200);
@@ -720,10 +734,19 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
   }
 
-  let round: { id: number; seasonId: number; type: string; status: string; tee: string | null } | undefined;
+  let round:
+    | { id: number; seasonId: number; type: string; status: string; tee: string | null; autoCalculateMoney: number }
+    | undefined;
   try {
     round = await db
-      .select({ id: rounds.id, seasonId: rounds.seasonId, type: rounds.type, status: rounds.status, tee: rounds.tee })
+      .select({
+        id: rounds.id,
+        seasonId: rounds.seasonId,
+        type: rounds.type,
+        status: rounds.status,
+        tee: rounds.tee,
+        autoCalculateMoney: rounds.autoCalculateMoney,
+      })
       .from(rounds)
       .where(eq(rounds.id, id))
       .get();
@@ -737,6 +760,31 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
   }
   if (round.status !== 'active') {
     return c.json({ error: 'Round must be active to finalize', code: 'ROUND_NOT_ACTIVE' }, 422);
+  }
+
+  // Strict server-side completeness gate. The admin UI's "X/Y scored" count is
+  // based on distinct hole numbers, which can climb to 18 while wolf decisions
+  // or individual player scores are still pending (score POST and wolf POST
+  // are separate requests — a flaky connection can land one without the other).
+  // Require every player × every hole AND, when money is auto-calculated, a
+  // non-null wolf decision on every wolf hole for every group.
+  try {
+    const requireWolf = round.autoCalculateMoney === 1;
+    const completeness = await checkRoundCompleteness(id, requireWolf);
+    if (!completeness.complete) {
+      return c.json(
+        {
+          error: 'Round is not fully scored — cannot finalize',
+          code: 'ROUND_INCOMPLETE',
+          totalGroups: completeness.totalGroups,
+          completeGroups: completeness.completeGroups,
+          incompleteGroups: completeness.incompleteGroups,
+        },
+        422,
+      );
+    }
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
 
   try {

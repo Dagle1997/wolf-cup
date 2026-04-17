@@ -331,11 +331,13 @@ async function buildLeaderboard(round: RoundRow) {
 
 app.get('/leaderboard/live', async (c) => {
   try {
-    // Find today's scheduled or active round
+    // Find today's scheduled or active round.
     // Active rounds always show (even if date doesn't match — supports testing
     // and late-night scoring). Scheduled rounds only show on their date.
+    // Official rounds win over casual on tie — an active practice round must
+    // never hijack the public live board when an official round is live.
     const TODAY = new Date().toISOString().slice(0, 10);
-    const round = await db
+    const candidates = await db
       .select({
         id: rounds.id,
         type: rounds.type,
@@ -355,7 +357,10 @@ app.get('/leaderboard/live', async (c) => {
         ),
       )
       .orderBy(desc(rounds.id))
-      .get();
+      .all();
+
+    const round =
+      candidates.find((r) => r.type === 'official') ?? candidates[0] ?? null;
 
     if (!round) {
       return c.json(

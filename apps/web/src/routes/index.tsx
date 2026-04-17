@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, Fragment } from 'react';
 import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
-import { getSession } from '@/lib/session-store';
+import { getSession, clearSession } from '@/lib/session-store';
 
 // ---------------------------------------------------------------------------
 // Types — Highlights
@@ -785,12 +785,15 @@ function LeaderboardTable({
 function LeaderboardPage() {
   const [viewingRoundId, setViewingRoundId] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const queryClient = useQueryClient();
 
-  // If the user has an active session, show their round instead of the generic "live" round
-  const session = getSession();
-  const sessionRoundId = session?.roundId ?? null;
+  // If the user has an active session, show their round instead of the generic "live" round.
+  // Stored in state so clearSession() can trigger a re-render.
+  const [sessionRoundId, setSessionRoundId] = useState<number | null>(
+    () => getSession()?.roundId ?? null,
+  );
 
-  // Live leaderboard
+  // Primary display — session-scoped when session exists, otherwise the public live board
   const { data: liveData, isLoading: liveLoading, isError: liveError, isFetching: liveFetching, refetch: liveRefetch } = useQuery({
     queryKey: ['leaderboard', sessionRoundId ? `session-${sessionRoundId}` : 'live'],
     queryFn: () => sessionRoundId
@@ -798,6 +801,43 @@ function LeaderboardPage() {
       : apiFetch<LeaderboardResponse>('/leaderboard/live'),
     refetchInterval: viewingRoundId ? false : 5000, // stop polling when viewing history
   });
+
+  // Public-live board — used only to detect divergence against session round.
+  // Polls slower than the primary since it only drives the banner.
+  const { data: publicLiveData } = useQuery({
+    queryKey: ['leaderboard', 'public-live'],
+    queryFn: () => apiFetch<LeaderboardResponse>('/leaderboard/live'),
+    enabled: sessionRoundId !== null && !viewingRoundId,
+    refetchInterval: viewingRoundId ? false : 30000,
+  });
+
+  // Sweep stale session — when the session round is no longer active
+  // (finalized / completed / cancelled), drop it so the user isn't pinned to
+  // an old round's board.
+  useEffect(() => {
+    if (!sessionRoundId) return;
+    const r = liveData?.round;
+    if (!r || r.id !== sessionRoundId) return;
+    if (r.status !== 'active') {
+      clearSession();
+      setSessionRoundId(null);
+      void queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
+    }
+  }, [liveData, sessionRoundId, queryClient]);
+
+  // Divergence: session round is still active, but the public live board is a
+  // different (newer) round. Offer a one-tap switch.
+  const publicLiveRoundId = publicLiveData?.round?.id ?? null;
+  const showLiveSwitchBanner =
+    sessionRoundId !== null &&
+    publicLiveRoundId !== null &&
+    publicLiveRoundId !== sessionRoundId;
+
+  const switchToLiveBoard = () => {
+    clearSession();
+    setSessionRoundId(null);
+    void queryClient.invalidateQueries({ queryKey: ['leaderboard'] });
+  };
 
   // History list
   const { data: historyData, isLoading: historyLoading } = useQuery({
@@ -920,6 +960,17 @@ function LeaderboardPage() {
           )}
         </div>
       </div>
+
+      {/* Divergence banner — your session round differs from today's live board */}
+      {showLiveSwitchBanner && !isViewingHistory && (
+        <button
+          onClick={switchToLiveBoard}
+          className="w-full mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-left text-xs text-amber-900 hover:bg-amber-100 transition-colors"
+        >
+          <span className="font-semibold">Viewing your round.</span>{' '}
+          A different round is live right now — tap to switch to the live board.
+        </button>
+      )}
 
       {/* Loading state */}
       {(liveLoading || (isViewingHistory && histRoundLoading)) && (

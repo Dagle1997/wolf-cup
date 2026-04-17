@@ -24,7 +24,7 @@ vi.mock('../../middleware/admin-auth.js', () => ({
 
 import roundsApp from './rounds.js';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, wolfDecisions } from '../../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -543,7 +543,51 @@ describe('GET /rounds — groupCompletion', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /rounds/:id/finalize', () => {
-  it('finalizes an active official round and returns 200', async () => {
+  const WOLF_HOLES = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
+  /**
+   * Seed enough state for the completeness gate to pass: player in round,
+   * every hole scored, every wolf hole has a non-null decision.
+   */
+  async function seedCompleteRound() {
+    const now = Date.now();
+    await db
+      .insert(roundPlayers)
+      .values({ roundId: testRoundId, groupId: testGroupId, playerId: testPlayerId, handicapIndex: 12, isSub: 0 })
+      .onConflictDoNothing();
+    for (let h = 1; h <= 18; h++) {
+      await db.insert(holeScores).values({
+        roundId: testRoundId,
+        groupId: testGroupId,
+        playerId: testPlayerId,
+        holeNumber: h,
+        grossScore: 4,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    for (const h of WOLF_HOLES) {
+      await db.insert(wolfDecisions).values({
+        roundId: testRoundId,
+        groupId: testGroupId,
+        holeNumber: h,
+        wolfPlayerId: testPlayerId,
+        decision: 'alone',
+        partnerPlayerId: null,
+        bonusesJson: null,
+        outcome: null,
+        createdAt: now,
+      });
+    }
+  }
+
+  afterEach(async () => {
+    await db.delete(holeScores).where(eq(holeScores.roundId, testRoundId));
+    await db.delete(wolfDecisions).where(eq(wolfDecisions.roundId, testRoundId));
+  });
+
+  it('finalizes an active official round with full scores + wolf decisions', async () => {
+    await seedCompleteRound();
     await db.update(rounds).set({ status: 'active', type: 'official' }).where(eq(rounds.id, testRoundId));
 
     const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
@@ -555,6 +599,87 @@ describe('POST /rounds/:id/finalize', () => {
 
     const row = await db.select({ status: rounds.status }).from(rounds).where(eq(rounds.id, testRoundId)).get();
     expect(row?.status).toBe('finalized');
+  });
+
+  it('returns 422 ROUND_INCOMPLETE when wolf decisions are missing', async () => {
+    // Seed scores but skip wolf decisions — models the flaky-network gap
+    // where the score POST lands but the wolf decision POST never reaches the server.
+    const now = Date.now();
+    await db
+      .insert(roundPlayers)
+      .values({ roundId: testRoundId, groupId: testGroupId, playerId: testPlayerId, handicapIndex: 12, isSub: 0 })
+      .onConflictDoNothing();
+    for (let h = 1; h <= 18; h++) {
+      await db.insert(holeScores).values({
+        roundId: testRoundId,
+        groupId: testGroupId,
+        playerId: testPlayerId,
+        holeNumber: h,
+        grossScore: 4,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    await db.update(rounds).set({ status: 'active', type: 'official' }).where(eq(rounds.id, testRoundId));
+
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+
+    expect(res.status).toBe(422);
+    const body = await res.json() as {
+      code: string;
+      incompleteGroups: Array<{ groupId: number; missingWolfHoles: number[]; missingScoreHoles: number[] }>;
+    };
+    expect(body.code).toBe('ROUND_INCOMPLETE');
+    expect(body.incompleteGroups).toHaveLength(1);
+    expect(body.incompleteGroups[0]!.missingWolfHoles).toEqual(WOLF_HOLES);
+    expect(body.incompleteGroups[0]!.missingScoreHoles).toEqual([]);
+  });
+
+  it('returns 422 ROUND_INCOMPLETE when a single hole score is missing', async () => {
+    await seedCompleteRound();
+    // Remove hole 13's score — exercise the per-player × per-hole check
+    await db
+      .delete(holeScores)
+      .where(and(eq(holeScores.roundId, testRoundId), eq(holeScores.holeNumber, 13)));
+    await db.update(rounds).set({ status: 'active', type: 'official' }).where(eq(rounds.id, testRoundId));
+
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+
+    expect(res.status).toBe(422);
+    const body = await res.json() as {
+      code: string;
+      incompleteGroups: Array<{ missingScoreHoles: number[] }>;
+    };
+    expect(body.code).toBe('ROUND_INCOMPLETE');
+    expect(body.incompleteGroups[0]!.missingScoreHoles).toEqual([13]);
+  });
+
+  it('skips wolf-decision check when autoCalculateMoney=0', async () => {
+    // When money is not auto-calculated, wolf decisions aren't required
+    const now = Date.now();
+    await db
+      .insert(roundPlayers)
+      .values({ roundId: testRoundId, groupId: testGroupId, playerId: testPlayerId, handicapIndex: 12, isSub: 0 })
+      .onConflictDoNothing();
+    for (let h = 1; h <= 18; h++) {
+      await db.insert(holeScores).values({
+        roundId: testRoundId,
+        groupId: testGroupId,
+        playerId: testPlayerId,
+        holeNumber: h,
+        grossScore: 4,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    await db
+      .update(rounds)
+      .set({ status: 'active', type: 'official', autoCalculateMoney: 0 })
+      .where(eq(rounds.id, testRoundId));
+
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+
+    expect(res.status).toBe(200);
   });
 
   it('returns 422 ROUND_NOT_ACTIVE when round is scheduled', async () => {

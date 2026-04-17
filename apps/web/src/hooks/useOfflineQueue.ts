@@ -35,8 +35,9 @@ export function useOfflineQueue(roundId: number, groupId: number) {
     setDrainError(null);
 
     try {
-      // getQueue() returns entries sorted by holeNumber ASC — drain order is guaranteed
-      const entries = await getQueue();
+      // Scope to (roundId, groupId) so a stale entry from an abandoned round
+      // or group can't block current-round sync. Drain order remains hole ASC.
+      const entries = await getQueue(roundId, groupId);
 
       for (const entry of entries) {
         // 1. POST scores (idempotent — onConflictDoUpdate on round_id, player_id, hole_number)

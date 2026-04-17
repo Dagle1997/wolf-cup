@@ -328,4 +328,56 @@ describe('GET /leaderboard/live', () => {
     expect(body.round?.scheduledDate).toBe(TODAY);
     expect(body.round?.autoCalculateMoney).toBe(true);
   });
+
+  it('prefers active official round over newer active casual round', async () => {
+    // Simulate a leftover practice round with a higher id than today's official round
+    const [casual] = await db
+      .insert(rounds)
+      .values({
+        seasonId,
+        type: 'casual',
+        status: 'active',
+        scheduledDate: TODAY,
+        entryCodeHash: null,
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+
+    try {
+      const res = await leaderboardApp.request('/leaderboard/live');
+      const body = await res.json() as { round: { id: number; type: string } };
+      // Must pick the official round, not the newer casual one
+      expect(body.round?.id).toBe(roundId);
+      expect(body.round?.type).toBe('official');
+    } finally {
+      await db.delete(rounds).where(eq(rounds.id, casual!.id));
+    }
+  });
+
+  it('falls back to active casual round when no official is active', async () => {
+    // Mark the official round as finalized so only a casual is active
+    await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, roundId));
+    const [casual] = await db
+      .insert(rounds)
+      .values({
+        seasonId,
+        type: 'casual',
+        status: 'active',
+        scheduledDate: TODAY,
+        entryCodeHash: null,
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+
+    try {
+      const res = await leaderboardApp.request('/leaderboard/live');
+      const body = await res.json() as { round: { id: number; type: string } };
+      expect(body.round?.id).toBe(casual!.id);
+      expect(body.round?.type).toBe('casual');
+    } finally {
+      await db.delete(rounds).where(eq(rounds.id, casual!.id));
+    }
+  });
 });

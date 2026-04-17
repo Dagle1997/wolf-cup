@@ -54,6 +54,7 @@ type Round = {
   createdAt: number;
   groupCompletion: { total: number; complete: number };
   playerCount: number;
+  finalizable: boolean;
 };
 
 type RoundPlayer = {
@@ -502,6 +503,10 @@ function RoundRow({
   const editable = round.status === 'scheduled' || round.status === 'active';
   const { total, complete } = round.groupCompletion ?? { total: 0, complete: 0 };
   const allComplete = total > 0 && complete === total;
+  // Strict gate — includes wolf-decision coverage and per-player hole rows.
+  // The "X/Y scored" display above is the loose distinct-hole count for
+  // continuity; the Finalize button must gate on the server-strict flag.
+  const finalizable = round.finalizable ?? false;
 
   const cancelMutation = useMutation({
     mutationFn: (id: number) =>
@@ -520,7 +525,16 @@ function RoundRow({
       apiFetch<{ id: number; status: string }>(`/admin/rounds/${id}/finalize`, { method: 'POST' }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-rounds'] }),
     onError: (err: Error) => {
-      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+      if (err.message === 'UNAUTHORIZED') {
+        void navigate({ to: '/admin/login' });
+        return;
+      }
+      if (err.message === 'ROUND_INCOMPLETE') {
+        alert('Cannot finalize — some scores or wolf decisions are still pending. Refresh and try again once every group is fully synced.');
+        void queryClient.invalidateQueries({ queryKey: ['admin-rounds'] });
+        return;
+      }
+      alert(`Finalize failed: ${err.message}`);
     },
   });
 
@@ -620,8 +634,8 @@ function RoundRow({
               variant="outline"
               size="sm"
               onClick={handleFinalize}
-              disabled={isBusy || !allComplete}
-              title={allComplete ? 'Finalize round' : 'Waiting for all groups to finish'}
+              disabled={isBusy || !finalizable}
+              title={finalizable ? 'Finalize round' : 'Waiting for all scores and wolf decisions to sync'}
             >
               {finalizeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Lock className="h-3 w-3" />}
               <span className="ml-1">Finalize</span>
