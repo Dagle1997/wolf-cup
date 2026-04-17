@@ -14,6 +14,7 @@ import { Route as StandingsRouteImport } from './routes/standings'
 import { Route as ScoreEntryHoleRouteImport } from './routes/score-entry-hole'
 import { Route as ScoreEntryRouteImport } from './routes/score-entry'
 import { Route as PracticeRouteImport } from './routes/practice'
+import { Route as OddsRouteImport } from './routes/odds'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as GuideRouteImport } from './routes/guide'
 import { Route as GalleryRouteImport } from './routes/gallery'
@@ -55,6 +56,11 @@ const ScoreEntryRoute = ScoreEntryRouteImport.update({
 const PracticeRoute = PracticeRouteImport.update({
   id: '/practice',
   path: '/practice',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OddsRoute = OddsRouteImport.update({
+  id: '/odds',
+  path: '/odds',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HelpRoute = HelpRouteImport.update({
@@ -152,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
   '/help': typeof HelpRoute
+  '/odds': typeof OddsRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
   '/score-entry-hole': typeof ScoreEntryHoleRoute
@@ -175,6 +182,7 @@ export interface FileRoutesByTo {
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
   '/help': typeof HelpRoute
+  '/odds': typeof OddsRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
   '/score-entry-hole': typeof ScoreEntryHoleRoute
@@ -200,6 +208,7 @@ export interface FileRoutesById {
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
   '/help': typeof HelpRoute
+  '/odds': typeof OddsRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
   '/score-entry-hole': typeof ScoreEntryHoleRoute
@@ -226,6 +235,7 @@ export interface FileRouteTypes {
     | '/gallery'
     | '/guide'
     | '/help'
+    | '/odds'
     | '/practice'
     | '/score-entry'
     | '/score-entry-hole'
@@ -249,6 +259,7 @@ export interface FileRouteTypes {
     | '/gallery'
     | '/guide'
     | '/help'
+    | '/odds'
     | '/practice'
     | '/score-entry'
     | '/score-entry-hole'
@@ -273,6 +284,7 @@ export interface FileRouteTypes {
     | '/gallery'
     | '/guide'
     | '/help'
+    | '/odds'
     | '/practice'
     | '/score-entry'
     | '/score-entry-hole'
@@ -298,6 +310,7 @@ export interface RootRouteChildren {
   GalleryRoute: typeof GalleryRoute
   GuideRoute: typeof GuideRoute
   HelpRoute: typeof HelpRoute
+  OddsRoute: typeof OddsRoute
   PracticeRoute: typeof PracticeRoute
   ScoreEntryRoute: typeof ScoreEntryRoute
   ScoreEntryHoleRoute: typeof ScoreEntryHoleRoute
@@ -343,6 +356,13 @@ declare module '@tanstack/react-router' {
       path: '/practice'
       fullPath: '/practice'
       preLoaderRoute: typeof PracticeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/odds': {
+      id: '/odds'
+      path: '/odds'
+      fullPath: '/odds'
+      preLoaderRoute: typeof OddsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/help': {
@@ -496,6 +516,7 @@ const rootRouteChildren: RootRouteChildren = {
   GalleryRoute: GalleryRoute,
   GuideRoute: GuideRoute,
   HelpRoute: HelpRoute,
+  OddsRoute: OddsRoute,
   PracticeRoute: PracticeRoute,
   ScoreEntryRoute: ScoreEntryRoute,
   ScoreEntryHoleRoute: ScoreEntryHoleRoute,

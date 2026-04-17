@@ -102,9 +102,17 @@ function StandingsPage() {
             </p>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching} className="h-8 px-2">
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Link
+            to="/odds"
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-2"
+          >
+            Odds
+          </Link>
+          <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={isFetching} className="h-8 px-2">
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
 
       {isLoading && <LoadingSkeleton />}
