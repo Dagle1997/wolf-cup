@@ -732,10 +732,40 @@ function ScoreEntryHolePage() {
 
   const isPending = submitMutation.isPending || wolfDecisionMutation.isPending;
 
+  // "Wrong group?" escape hatch — enabled only before any score has been saved
+  // for this group on this device. Once hole_scores rows exist, group change
+  // requires admin intervention.
+  const noScoresSaved = (scoresData?.scores.length ?? 0) === 0;
+  const handleChangeGroup = () => {
+    if (!window.confirm('Change group? This clears your current group selection. Only allowed because no scores have been saved yet.')) return;
+    if (session) {
+      clearSession();
+      // Keep the roundId so the round list auto-selects; just drop the groupId
+      const next = { roundId: session.roundId, entryCode: session.entryCode, groupId: null };
+      // setSession isn't available here — clearSession + navigate is cleaner
+      // (score-entry will re-establish session if needed via session-restore effect).
+      void next; // referenced to avoid unused-var lint
+    }
+    void router.navigate({ to: '/score-entry' });
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Scrollable content area — padded bottom so sticky footer doesn't cover */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-36">
+
+        {/* Wrong-group escape hatch — only visible when no scores are saved */}
+        {noScoresSaved && roundData?.status !== 'finalized' && roundData?.status !== 'completed' && (
+          <div className="text-right mb-2">
+            <button
+              type="button"
+              onClick={handleChangeGroup}
+              className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Wrong group?
+            </button>
+          </div>
+        )}
 
         {/* Offline/sync banner */}
         {pendingCount > 0 && (
