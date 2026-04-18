@@ -497,20 +497,18 @@ app.get('/stats/:playerId/detail', async (c) => {
 
     // Rivals — per-hole team composition × per-hole money.
     //
-    // POSITIVE-ONLY attributions — losses don't offset gains. Each rival's
-    // contribution to my money is assigned to exactly one bucket based on
-    // their role on that hole:
+    // POSITIVE-ONLY attributions — losses don't offset gains.
     //
-    //   luckyCharm — my GAINS on partner holes with X. "X was my teammate
-    //                and we won together." Attributed to the teammate.
-    //   dominate   — my GAINS on opponent holes with X. "X was against me
-    //                and I took money off them."
-    //   rival      — my LOSSES on opponent holes with X. "X was against me
-    //                and took money from me."
-    //
-    // Charm and Dominate are mutually exclusive (partner-hole vs opp-hole),
-    // so they naturally differentiate rivals even when all were in the group
-    // all 18 holes.
+    //   luckyCharm — my GAINS on ANY shared hole with X, partner OR opponent.
+    //                "You happen to cash when I'm around." Not about team
+    //                chemistry (that's Best Partnership) — just correlation.
+    //                Same value for all groupmates in a single round where
+    //                they were all around for every hole; diverges over the
+    //                season as group compositions change.
+    //   dominate   — my GAINS on opponent-only holes with X. "When they're
+    //                against me, I take from them."
+    //   rival      — my LOSSES on opponent-only holes with X. "When they're
+    //                against me, they take from me."
     const groupIds = playerRoundRows.map((r) => r.groupId);
     const groupMates = await db
       .select({
@@ -570,15 +568,14 @@ app.get('/stats/:playerId/detail', async (c) => {
     const { computeRoundMoneyBreakdown } = await import('../lib/money-breakdown.js');
 
     // Accumulator: rivalId → buckets. All totals are positive-only (losses
-    // captured as positive values in opp_lost). partner_won and opp_won are
-    // disjoint — same hole never contributes to both for the same rival.
+    // captured as positive values in opp_lost).
     const rivalBuckets = new Map<number, {
       roundsTogetherSet: Set<number>;
       partnerHoles: number;
       opponentHoles: number;
-      partner_won: number;      // my gains on partner holes (luckyCharm)
-      opp_won: number;          // my gains on opponent holes (dominate)
-      opp_lost: number;         // my losses on opponent holes (rival, positive)
+      shared_won: number;       // my gains on ANY shared hole — luckyCharm
+      opp_won: number;          // my gains on opponent holes — dominate
+      opp_lost: number;         // my losses on opponent holes — rival (positive)
       opp_holesWon: number;     // count of opp holes I gained on
       opp_holesLost: number;    // count of opp holes I lost on
     }>();
@@ -589,7 +586,7 @@ app.get('/stats/:playerId/detail', async (c) => {
           roundsTogetherSet: new Set(),
           partnerHoles: 0,
           opponentHoles: 0,
-          partner_won: 0,
+          shared_won: 0,
           opp_won: 0,
           opp_lost: 0,
           opp_holesWon: 0,
@@ -643,9 +640,10 @@ app.get('/stats/:playerId/detail', async (c) => {
         for (const rivalId of rosterPlayers) {
           if (rivalId === playerId) continue;
           const b = bucket(rivalId);
+          // Lucky Charm: gains count regardless of team role
+          b.shared_won += myGain;
           if (composition.teammates.has(rivalId)) {
             b.partnerHoles += 1;
-            b.partner_won += myGain; // teammate-contributed win
           } else if (composition.opponents.has(rivalId)) {
             b.opponentHoles += 1;
             b.opp_won += myGain;
@@ -653,7 +651,7 @@ app.get('/stats/:playerId/detail', async (c) => {
             if (myMoney > 0) b.opp_holesWon += 1;
             else if (myMoney < 0) b.opp_holesLost += 1;
           }
-          // If neither (rare: wolf hole with no decision), don't count
+          // If neither (wolf hole with no decision), only charm gets the gain.
         }
       }
     }
@@ -665,7 +663,7 @@ app.get('/stats/:playerId/detail', async (c) => {
         roundsTogether: b.roundsTogetherSet.size,
         partnerHoles: b.partnerHoles,
         opponentHoles: b.opponentHoles,
-        luckyCharm: b.partner_won,
+        luckyCharm: b.shared_won,
         dominate: b.opp_won,
         rival: b.opp_lost,
         holesWon: b.opp_holesWon,

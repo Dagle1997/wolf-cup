@@ -84,7 +84,7 @@ type Rival = {
   roundsTogether: number;
   partnerHoles: number;
   opponentHoles: number;
-  luckyCharm: number;  // my GAINS on partner-only holes with them (teammate-contributed wins)
+  luckyCharm: number;  // my GAINS on any shared hole with them (partner or opponent — "when they're around, I cash")
   dominate: number;    // my GAINS on opponent-only holes with them
   rival: number;       // my LOSSES on opponent-only holes with them (≥ 0)
   holesWon: number;    // count of opp-holes I gained on
@@ -527,7 +527,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
               <div className="px-4 py-2 border-b bg-muted/10">
                 <div className="flex items-center justify-between gap-1 text-[10px]">
                   {charm ? (
-                    <span className="text-green-500" title="Money you won on holes where they were your teammate — they helped you cash">
+                    <span className="text-green-500" title="Money you won on any hole they were in your group for — partner or opponent, doesn't matter. They're around, you cash.">
                       🍀 <span className="font-bold">{sn(charm.name)}</span> <span className="tabular-nums">+${charm.luckyCharm}</span>
                     </span>
                   ) : <span />}
@@ -866,7 +866,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
                   <span className="flex-1">Player</span>
                   <span className="w-10 text-center" title="Holes won / lost on opponent-only holes">W/L</span>
-                  <span className="w-12 text-right" title="Money you won on holes where they were your teammate">Charm</span>
+                  <span className="w-12 text-right" title="Money you won on any hole they were in your group for">Charm</span>
                   <span className="w-12 text-right" title="Money you took from them (opponent holes you won)">Dom</span>
                   <span className="w-12 text-right" title="Money they took from you (opponent holes you lost)">Rival</span>
                 </div>
