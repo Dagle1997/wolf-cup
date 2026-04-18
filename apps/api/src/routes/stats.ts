@@ -362,8 +362,11 @@ app.get('/stats', async (c) => {
       }
     }
 
-    // Find best partnership (min 5 holes together, highest win rate)
-    const qualifiedPairs = [...pairMap.values()].filter((p) => p.holes >= 5);
+    // Find best partnership — actually winning together (win rate > 50%).
+    // Sample-size floor removed; a pair with 1-0 qualifies if nobody else is > 50%.
+    // Below-50% and exactly-50% pairs aren't "best" of anything, so the stat
+    // hides until someone earns it.
+    const qualifiedPairs = [...pairMap.values()].filter((p) => p.holes > 0 && p.wins / p.holes > 0.5);
     let bestPartnership: { player1: string; player2: string; holes: number; wins: number; losses: number; pushes: number; winRate: number } | null = null;
     if (qualifiedPairs.length > 0) {
       const best = qualifiedPairs.reduce((a, b) => {
