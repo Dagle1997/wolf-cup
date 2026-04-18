@@ -200,6 +200,84 @@ function HelpPage() {
         </p>
       </Section>
 
+      <Section emoji="🎬" title="Highlight Reel Awards">
+        <p>
+          When a round is finalized, the app generates a highlight reel —
+          a slideshow of the best (and worst) moments. Here's every award
+          and how to earn it:
+        </p>
+
+        <p className="font-semibold text-foreground pt-2">Money</p>
+        <p>
+          💰 <strong>Big Winner</strong> — highest round total money. Ties
+          all get named.
+        </p>
+        <p>
+          🕳️ <strong>Deepest Hole</strong> — lowest round total money. Ties
+          all get named (last week Kyle &amp; Jaquint both dropped -$16).
+        </p>
+
+        <p className="font-semibold text-foreground pt-2">Scoring</p>
+        <p>
+          ⭐ <strong>Stableford Leader</strong> — most stableford points in
+          the round. Ties all named.
+        </p>
+        <p>
+          🌟 <strong>Perfect Day</strong> — when the same player tops both
+          money AND stableford. Sweeping the day.
+        </p>
+        <p>
+          🦅 <strong>Eagle!</strong> — gross score 2+ under par on any hole.
+          Each eagle gets its own card.
+        </p>
+        <p>
+          🐦 <strong>Birdies</strong> — gross 1 under par. Shows a single
+          Birdie card or an aggregated "N Birdies" list if multiple players
+          dropped them.
+        </p>
+        <p>
+          🔥 <strong>Round of the Day</strong> — −4 net to par or better over
+          the full 18. Absolutely dialed in.
+        </p>
+
+        <p className="font-semibold text-foreground pt-2">Bonuses</p>
+        <p>
+          🟢 <strong>Greenies</strong> — par-3 greenies. "Greenie" if one in
+          the round, "N Greenies" with a player breakdown if more.
+        </p>
+        <p>
+          🎱 <strong>Polies</strong> — long putts made. Same aggregation.
+        </p>
+        <p>
+          🏖️ <strong>Sandies</strong> — up-and-down from the bunker.
+        </p>
+
+        <p className="font-semibold text-foreground pt-2">Wolf</p>
+        <p>
+          🐺 <strong>Biggest Wolf Win</strong> — biggest single-hole $ win
+          for any wolf on their own wolf hole (alone, blind, or with a
+          partner). Detail string calls out the type.
+        </p>
+        <p>
+          🥩 <strong>Biggest Wolf Loss</strong> — mirror; the biggest $ drop
+          the wolf took on a single hole. You do NOT want this one.
+        </p>
+        <p>
+          🐺 <strong>Pack of One</strong> — 3+ lone/blind wolf attempts in a
+          single round. Going wolf once is mandatory; going 3+ times is a
+          statement.
+        </p>
+        <p>
+          😎 <strong>Blind Wolf Victory</strong> — committed to blind wolf
+          (before seeing anyone tee off) and won. Each blind-win gets its
+          own card.
+        </p>
+        <p>
+          🐺 <strong>Multi Lone Wolf Wins</strong> — same player won 2+
+          lone/blind wolf holes in the round.
+        </p>
+      </Section>
+
       <Section emoji="📊" title="Standings">
         <p>
           <strong>Standings</strong> show the season leaderboard. Points come
