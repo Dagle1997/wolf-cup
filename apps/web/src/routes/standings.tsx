@@ -188,9 +188,15 @@ function StandingsPage() {
             </div>
           ) : (
             <>
-              <LeaderSpotlight players={data.fullMembers} />
-              <StandingsList
+              <LeaderSpotlight
                 players={data.fullMembers}
+                pairs={pairingData?.pairs ?? []}
+                pinnedId={pinnedId}
+                onTogglePin={togglePin}
+              />
+              <StandingsList
+                players={data.fullMembers.filter((p) => p.rank !== 1)}
+                leader={data.fullMembers.find((p) => p.rank === 1) ?? null}
                 pairs={pairingData?.pairs ?? []}
                 pinnedId={pinnedId}
                 onTogglePin={togglePin}
@@ -257,33 +263,108 @@ function SeasonHero({ season }: { season: NonNullable<StandingsResponse['season'
 }
 
 // ---------------------------------------------------------------------------
-// LeaderSpotlight — gold gradient banner for rank 1
+// LeaderSpotlight — gold card for rank 1, also serves as their expandable row
 // ---------------------------------------------------------------------------
 
-function LeaderSpotlight({ players }: { players: StandingsPlayer[] }) {
+function LeaderSpotlight({
+  players,
+  pairs,
+  pinnedId,
+  onTogglePin,
+}: {
+  players: StandingsPlayer[];
+  pairs: PairingPair[];
+  pinnedId: number | null;
+  onTogglePin: (id: number) => void;
+}) {
   const leader = players.find((p) => p.rank === 1);
+  const [expanded, setExpanded] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const isPinned = leader !== undefined && pinnedId === leader.playerId;
+
+  useEffect(() => {
+    if (isPinned && ref.current) {
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isPinned]);
+
   if (!leader) return null;
   const second = players.find((p) => p.rank === 2);
   const lead = second ? leader.combinedTotal - second.combinedTotal : 0;
+  const partners = expanded ? getPlayerPairings(leader.playerId, pairs) : [];
+
   return (
-    <div className="relative rounded-xl border border-amber-300 dark:border-amber-700/60 bg-gradient-to-br from-amber-100 via-amber-50 to-yellow-50 dark:from-amber-950/40 dark:via-amber-950/20 dark:to-yellow-950/20 p-3 mb-3 overflow-hidden">
+    <div
+      ref={ref}
+      onClick={() => setExpanded((v) => !v)}
+      className={`relative rounded-xl border bg-gradient-to-br from-amber-100 via-amber-50 to-yellow-50 dark:from-amber-950/40 dark:via-amber-950/20 dark:to-yellow-950/20 p-3 mb-3 overflow-hidden cursor-pointer transition-all ${
+        isPinned ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-amber-300 dark:border-amber-700/60'
+      }`}
+    >
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-400 flex items-center justify-center shadow-sm">
             <Crown className="h-5 w-5 text-amber-900" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest">Season Leader</div>
             <div className="text-base font-bold truncate">{leader.name}</div>
           </div>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onTogglePin(leader.playerId); }}
+            aria-label={isPinned ? 'Unpin this is me' : 'Pin this is me'}
+            className={`flex-shrink-0 p-1 rounded-md transition-colors ${
+              isPinned
+                ? 'text-blue-500 bg-blue-100 dark:bg-blue-950/40'
+                : 'text-amber-700/40 hover:text-amber-700 hover:bg-amber-200/40'
+            }`}
+          >
+            <MapPin className={`h-3.5 w-3.5 ${isPinned ? 'fill-blue-500' : ''}`} />
+          </button>
         </div>
-        <div className="text-right">
+        <div className="text-right flex-shrink-0">
           <div className="text-2xl font-black tabular-nums text-amber-900 dark:text-amber-200 leading-none">{fmt(leader.combinedTotal)}</div>
           {second && (
             <div className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold mt-0.5 tabular-nums">+{fmt(lead)} over 2nd</div>
           )}
         </div>
       </div>
+      {expanded && (
+        <div className="mt-3 pt-3 border-t border-amber-300/50 dark:border-amber-700/40 space-y-2">
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <DetailStat label="Avg" value={fmt(leader.avgPerRound)} />
+            <DetailStat label="Low" value={leader.roundsPlayed > 0 ? fmt(leader.lowRound) : '—'} />
+            <DetailStat label="High" value={leader.roundsPlayed > 0 ? fmt(leader.highRound) : '—'} />
+            <DetailStat label="Stab/$" value={`${fmt(leader.stablefordTotal)}/${fmt(leader.moneyTotal)}`} />
+          </div>
+          <div className="text-[11px] text-amber-700/80 dark:text-amber-400/80 tabular-nums">
+            {leader.roundsPlayed} rd{leader.roundsPlayed === 1 ? '' : 's'}
+            {leader.roundsDropped > 0 && <span> · {leader.roundsDropped} dropped</span>}
+          </div>
+          {partners.length > 0 && (
+            <div>
+              <div className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest mb-1.5">Paired With</div>
+              <div className="flex flex-wrap gap-1">
+                {partners.map((p) => (
+                  <span
+                    key={p.name}
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                      p.count >= 3
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                        : p.count === 2
+                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                          : 'bg-white/60 dark:bg-black/20 text-foreground'
+                    }`}
+                  >
+                    {p.name} <span className="font-bold">{p.count}x</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -294,35 +375,41 @@ function LeaderSpotlight({ players }: { players: StandingsPlayer[] }) {
 
 function StandingsList({
   players,
+  leader,
   pairs,
   pinnedId,
   onTogglePin,
   showPlayoffCut,
 }: {
   players: StandingsPlayer[];
+  leader: StandingsPlayer | null;
   pairs: PairingPair[];
   pinnedId: number | null;
   onTogglePin: (id: number) => void;
   showPlayoffCut: boolean;
 }) {
-  // Build a sorted list (already sorted by API, but be safe)
   const sorted = [...players].sort((a, b) => a.rank - b.rank);
-  const rank8Total = sorted.find((p) => p.rank === PLAYOFF_CUT)?.combinedTotal ?? null;
+  const rank8Total = (leader?.rank === PLAYOFF_CUT ? leader.combinedTotal : null)
+    ?? sorted.find((p) => p.rank === PLAYOFF_CUT)?.combinedTotal
+    ?? null;
 
   return (
     <div className="space-y-1.5">
       {sorted.map((player, i) => {
-        const prev = i > 0 ? sorted[i - 1] : null;
+        // For rank 2, the person ahead is the leader (rendered separately above)
+        const prev = i === 0 ? leader : sorted[i - 1] ?? null;
         const gap = prev ? prev.combinedTotal - player.combinedTotal : 0;
         const gapToCut = rank8Total !== null ? player.combinedTotal - rank8Total : null;
+        // Bubble = close in BOTH rank position (5–11) and points (within threshold).
+        // Excludes safely-top-4 and far-behind ranks so the chip stays meaningful.
+        const rankDistanceToCut = Math.abs(player.rank - PLAYOFF_CUT);
         const isBubble =
           showPlayoffCut &&
           gapToCut !== null &&
-          player.rank !== 1 &&
+          rankDistanceToCut <= 3 &&
           Math.abs(gapToCut) <= BUBBLE_THRESHOLD;
-        // Insert the cut-line divider between rank 8 and 9
         const showCutDivider =
-          showPlayoffCut && prev !== null && prev.rank <= PLAYOFF_CUT && player.rank > PLAYOFF_CUT;
+          showPlayoffCut && i > 0 && sorted[i - 1]!.rank <= PLAYOFF_CUT && player.rank > PLAYOFF_CUT;
         return (
           <div key={player.playerId}>
             {showCutDivider && <PlayoffCutDivider />}
@@ -476,20 +563,15 @@ function PlayerCard({
   return (
     <div
       ref={ref}
-      className={`rounded-xl border px-3 py-2.5 transition-all ${cardTone} ${borderTone}`}
+      onClick={() => setExpanded((v) => !v)}
+      className={`rounded-xl border px-3 py-2.5 transition-all cursor-pointer ${cardTone} ${borderTone}`}
     >
       {/* Top row: rank pill · name · total */}
       <div className="flex items-center gap-2">
         <RankPill rank={player.rank} isPlayoffEligible={player.isPlayoffEligible} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-              className="font-bold text-base truncate text-left hover:text-foreground/80"
-            >
-              {player.name}
-            </button>
+            <span className="font-bold text-base truncate">{player.name}</span>
             {isBubble && (
               <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0">
                 ⚠ Bubble
