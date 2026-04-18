@@ -495,21 +495,19 @@ app.get('/stats/:playerId/detail', async (c) => {
       };
     });
 
-    // Rivals — per-hole team composition × per-hole money (B.8 rewrite).
+    // Rivals — per-hole team composition × per-hole money.
     //
-    // For each groupmate X, across every hole we played in the same group:
-    //   - partnerHoles_myMoney  — my $ on holes where X was my teammate
-    //   - partnerHoles_theirMoney — X's $ on same
-    //   - opponentHoles_myMoney — my $ on holes where X was my opponent
-    //   - opponentHoles_theirMoney — X's $ on same
+    // Josh's mental model: "whoever takes the most money from me is my rival."
+    // The metrics are POSITIVE-ONLY attributions (losses don't offset gains):
     //
-    // Derived stats:
-    //   luckyCharm = partnerHoles_myMoney + opponentHoles_myMoney
-    //                  (my total $ on every hole grouped with X — "they make me money")
-    //   dominate   = opponentHoles_myMoney
-    //                  (my $ on opponent-only holes — "I take from them")
-    //   rival      = opponentHoles_theirMoney
-    //                  (X's $ on opponent-only holes — "they take from me")
+    //   luckyCharm — sum of my GAINS on all shared holes with X (partner+opp).
+    //                "Around them, I make money."
+    //   dominate   — sum of my GAINS on opponent-only holes with X.
+    //                "When they're against me, I take from them."
+    //   rival      — sum of my LOSSES on opponent-only holes with X.
+    //                "When they're against me, they take from me."
+    //
+    // holesWithGain/Loss counters track sample size for each dimension.
     const groupIds = playerRoundRows.map((r) => r.groupId);
     const groupMates = await db
       .select({
@@ -568,15 +566,17 @@ app.get('/stats/:playerId/detail', async (c) => {
     const { getHoleTeamFor } = await import('../lib/hole-teams.js');
     const { computeRoundMoneyBreakdown } = await import('../lib/money-breakdown.js');
 
-    // Accumulator: rivalId → buckets
+    // Accumulator: rivalId → buckets. All totals are positive-only (losses
+    // captured as positive values in opp_lost).
     const rivalBuckets = new Map<number, {
       roundsTogetherSet: Set<number>;
       partnerHoles: number;
       opponentHoles: number;
-      partnerHoles_myMoney: number;
-      partnerHoles_theirMoney: number;
-      opponentHoles_myMoney: number;
-      opponentHoles_theirMoney: number;
+      shared_won: number;       // my gains on all shared holes (partner + opp)
+      opp_won: number;          // my gains on opponent holes
+      opp_lost: number;         // my losses on opponent holes (stored positive)
+      opp_holesWon: number;     // count of opp holes I gained on
+      opp_holesLost: number;    // count of opp holes I lost on
     }>();
     const bucket = (rivalId: number) => {
       let b = rivalBuckets.get(rivalId);
@@ -585,10 +585,11 @@ app.get('/stats/:playerId/detail', async (c) => {
           roundsTogetherSet: new Set(),
           partnerHoles: 0,
           opponentHoles: 0,
-          partnerHoles_myMoney: 0,
-          partnerHoles_theirMoney: 0,
-          opponentHoles_myMoney: 0,
-          opponentHoles_theirMoney: 0,
+          shared_won: 0,
+          opp_won: 0,
+          opp_lost: 0,
+          opp_holesWon: 0,
+          opp_holesLost: 0,
         };
         rivalBuckets.set(rivalId, b);
       }
@@ -632,19 +633,22 @@ app.get('/stats/:playerId/detail', async (c) => {
 
         const composition = getHoleTeamFor(playerId, hb.holeNumber, rosterPlayers, wolfDec);
         const myMoney = hb.perPlayer.get(playerId)?.total ?? 0;
+        const myGain = Math.max(myMoney, 0);
+        const myLoss = Math.max(-myMoney, 0); // absolute value of loss (0 if I gained)
 
         for (const rivalId of rosterPlayers) {
           if (rivalId === playerId) continue;
-          const theirMoney = hb.perPlayer.get(rivalId)?.total ?? 0;
           const b = bucket(rivalId);
           if (composition.teammates.has(rivalId)) {
             b.partnerHoles += 1;
-            b.partnerHoles_myMoney += myMoney;
-            b.partnerHoles_theirMoney += theirMoney;
+            b.shared_won += myGain;
           } else if (composition.opponents.has(rivalId)) {
             b.opponentHoles += 1;
-            b.opponentHoles_myMoney += myMoney;
-            b.opponentHoles_theirMoney += theirMoney;
+            b.shared_won += myGain;
+            b.opp_won += myGain;
+            b.opp_lost += myLoss;
+            if (myMoney > 0) b.opp_holesWon += 1;
+            else if (myMoney < 0) b.opp_holesLost += 1;
           }
           // If neither (rare: wolf hole with no decision), don't count
         }
@@ -658,11 +662,13 @@ app.get('/stats/:playerId/detail', async (c) => {
         roundsTogether: b.roundsTogetherSet.size,
         partnerHoles: b.partnerHoles,
         opponentHoles: b.opponentHoles,
-        luckyCharm: b.partnerHoles_myMoney + b.opponentHoles_myMoney,
-        dominate: b.opponentHoles_myMoney,
-        rival: b.opponentHoles_theirMoney,
+        luckyCharm: b.shared_won,
+        dominate: b.opp_won,
+        rival: b.opp_lost,
+        holesWon: b.opp_holesWon,
+        holesLost: b.opp_holesLost,
       }))
-      .sort((a, b) => b.luckyCharm - a.luckyCharm);
+      .sort((a, b) => b.rival - a.rival); // most taken-from first
 
     // Chemistry: partner relationships from wolf_decisions on 2v2 holes
     const decisionRows = await db

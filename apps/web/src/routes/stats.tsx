@@ -84,9 +84,11 @@ type Rival = {
   roundsTogether: number;
   partnerHoles: number;
   opponentHoles: number;
-  luckyCharm: number;  // my net $ on all holes grouped with them (partner + opponent)
-  dominate: number;    // my net $ on opponent-only holes
-  rival: number;       // their net $ on opponent-only holes (against me)
+  luckyCharm: number;  // my GAINS on all shared holes (positive-only attribution)
+  dominate: number;    // my GAINS on opponent-only holes (positive-only)
+  rival: number;       // my LOSSES on opponent-only holes (money they took; always ≥ 0)
+  holesWon: number;    // count of opp-holes I gained on
+  holesLost: number;   // count of opp-holes I lost on
 };
 
 type PartnerChemistry = {
@@ -503,12 +505,14 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             )}
           </div>
 
-          {/* Rivalry callouts — B.8 rewrite: real head-to-head per-hole math */}
+          {/* Rivalry callouts — positive-only attribution
+              Rival = money they took from you (your losses on opponent holes).
+              Dominate = money you took from them (your gains on opponent holes).
+              Lucky Charm = money you won while they were in your group (any team).  */}
           {detail.rivals.length >= 2 && (() => {
-            // Each callout: pick the rival that max's the metric; gate on > 0
             const charmList = [...detail.rivals]
               .filter((r) => r.luckyCharm > 0)
-              .sort((a, b) => b.luckyCharm - a.luckyCharm || (b.partnerHoles + b.opponentHoles) - (a.partnerHoles + a.opponentHoles));
+              .sort((a, b) => b.luckyCharm - a.luckyCharm);
             const dominateList = [...detail.rivals]
               .filter((r) => r.dominate > 0)
               .sort((a, b) => b.dominate - a.dominate);
@@ -523,17 +527,17 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
               <div className="px-4 py-2 border-b bg-muted/10">
                 <div className="flex items-center justify-between gap-1 text-[10px]">
                   {charm ? (
-                    <span className="text-green-500" title="Around them, you make the most money (partner + opponent holes combined)">
-                      🍀 <span className="font-bold">{sn(charm.name)}</span> <span className="tabular-nums">{formatMoney(charm.luckyCharm)}</span>
+                    <span className="text-green-500" title="Money you won on all holes grouped with them (teammate or opponent)">
+                      🍀 <span className="font-bold">{sn(charm.name)}</span> <span className="tabular-nums">+${charm.luckyCharm}</span>
                     </span>
                   ) : <span />}
                   {rivalBest ? (
-                    <span className="text-red-500" title="They take the most money from you on opponent-only holes">
-                      🎯 <span className="font-bold">{sn(rivalBest.name)}</span> <span className="tabular-nums">{formatMoney(rivalBest.rival)}</span>
+                    <span className="text-red-500" title="Money they've taken from you on opponent-only holes">
+                      🎯 <span className="font-bold">{sn(rivalBest.name)}</span> <span className="tabular-nums">-${rivalBest.rival}</span>
                     </span>
                   ) : <span />}
                   {dominate ? (
-                    <span className="text-amber-500" title="When they're your opponent, you take the most from them">
+                    <span className="text-amber-500" title="Money you've taken from them on opponent-only holes">
                       👑 <span className="font-bold">{sn(dominate.name)}</span> <span className="tabular-nums">+${dominate.dominate}</span>
                     </span>
                   ) : <span />}
@@ -852,33 +856,33 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             );
           })()}
 
-          {/* Rivals — when grouped with (B.8 rewrite: per-hole head-to-head) */}
+          {/* Rivals — when grouped with (positive-only attribution) */}
           {detail.rivals.length > 0 && (() => {
-            const rivalsSorted = [...detail.rivals].sort((a, b) => b.luckyCharm - a.luckyCharm);
+            const rivalsSorted = [...detail.rivals].sort((a, b) => b.rival - a.rival);
             return (
               <div className="px-4 py-3">
 
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">When Grouped With</p>
                 <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
                   <span className="flex-1">Player</span>
-                  <span className="w-10 text-center" title="Partner-hole / opponent-hole count">P/Opp</span>
-                  <span className="w-12 text-right" title="Your $ on all holes grouped with them">Charm</span>
-                  <span className="w-12 text-right" title="Your $ on opponent-only holes">Dom</span>
-                  <span className="w-12 text-right" title="Their $ on opponent-only holes (against you)">Rival</span>
+                  <span className="w-10 text-center" title="Holes won / lost on opponent-only holes">W/L</span>
+                  <span className="w-12 text-right" title="Money you gained on shared holes">Charm</span>
+                  <span className="w-12 text-right" title="Money you took from them (opponent holes you won)">Dom</span>
+                  <span className="w-12 text-right" title="Money they took from you (opponent holes you lost)">Rival</span>
                 </div>
                 <div className="space-y-1.5">
                   {rivalsSorted.map((r) => (
                     <div key={r.playerId} className="flex items-center justify-between text-xs">
                       <span className="font-medium flex-1">{r.name}</span>
-                      <span className="text-muted-foreground w-10 text-center tabular-nums text-[10px]">{r.partnerHoles}/{r.opponentHoles}</span>
-                      <span className={`w-12 text-right tabular-nums ${r.luckyCharm > 0 ? 'text-green-600' : r.luckyCharm < 0 ? 'text-destructive' : ''}`}>
-                        {formatMoney(r.luckyCharm)}
+                      <span className="text-muted-foreground w-10 text-center tabular-nums text-[10px]">{r.holesWon}/{r.holesLost}</span>
+                      <span className={`w-12 text-right tabular-nums ${r.luckyCharm > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                        {r.luckyCharm > 0 ? `+$${r.luckyCharm}` : '—'}
                       </span>
-                      <span className={`w-12 text-right tabular-nums ${r.dominate > 0 ? 'text-green-600' : r.dominate < 0 ? 'text-destructive' : ''}`}>
-                        {formatMoney(r.dominate)}
+                      <span className={`w-12 text-right tabular-nums ${r.dominate > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                        {r.dominate > 0 ? `+$${r.dominate}` : '—'}
                       </span>
-                      <span className={`w-12 text-right tabular-nums ${r.rival > 0 ? 'text-red-600 font-semibold' : ''}`}>
-                        {formatMoney(r.rival)}
+                      <span className={`w-12 text-right tabular-nums ${r.rival > 0 ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
+                        {r.rival > 0 ? `-$${r.rival}` : '—'}
                       </span>
                     </div>
                   ))}
@@ -952,28 +956,28 @@ function CompareView({ playerA, playerB, allNames, onClose }: { playerA: PlayerS
         <CompareRow label="Money" a={playerA.totalMoney} b={playerB.totalMoney} />
         <CompareRow label="Best Rd" a={playerA.biggestRoundWin} b={playerB.biggestRoundWin} />
 
-        {/* Head-to-head when grouped — B.8 reshape: Charm / Dom / Rival side-by-side */}
+        {/* Head-to-head when grouped — positive-only attribution */}
         {h2h && (
           <div className="mt-3 pt-2 border-t border-muted">
             <p className="text-[10px] text-muted-foreground text-center mb-2">
-              Grouped together {h2h.roundsTogether}x · {h2h.partnerHoles} partner / {h2h.opponentHoles} opp holes
+              Grouped together {h2h.roundsTogether}x · {h2h.holesWon}W/{h2h.holesLost}L on opp holes
             </p>
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
-                <div className={`text-base font-bold tabular-nums ${h2h.luckyCharm > 0 ? 'text-green-600' : h2h.luckyCharm < 0 ? 'text-destructive' : ''}`}>
-                  {formatMoney(h2h.luckyCharm)}
+                <div className={`text-base font-bold tabular-nums ${h2h.luckyCharm > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                  {h2h.luckyCharm > 0 ? `+$${h2h.luckyCharm}` : '—'}
                 </div>
                 <div className="text-[9px] text-muted-foreground">Charm</div>
               </div>
               <div>
-                <div className={`text-base font-bold tabular-nums ${h2h.dominate > 0 ? 'text-green-600' : h2h.dominate < 0 ? 'text-destructive' : ''}`}>
-                  {formatMoney(h2h.dominate)}
+                <div className={`text-base font-bold tabular-nums ${h2h.dominate > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                  {h2h.dominate > 0 ? `+$${h2h.dominate}` : '—'}
                 </div>
                 <div className="text-[9px] text-muted-foreground">Dominate</div>
               </div>
               <div>
-                <div className={`text-base font-bold tabular-nums ${h2h.rival > 0 ? 'text-red-600' : ''}`}>
-                  {formatMoney(h2h.rival)}
+                <div className={`text-base font-bold tabular-nums ${h2h.rival > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {h2h.rival > 0 ? `-$${h2h.rival}` : '—'}
                 </div>
                 <div className="text-[9px] text-muted-foreground">Rival</div>
               </div>
