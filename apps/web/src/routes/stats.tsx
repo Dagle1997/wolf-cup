@@ -89,6 +89,8 @@ type Rival = {
   holesWon: number;    // count of opp-holes I gained on
   holesLost: number;   // count of opp-holes I lost on
   luckyCharm: number;  // sum of my NET round money across rounds where they were my groupmate (per-round, not per-hole)
+  myMoney: number;     // running season total of my net money across rounds we shared
+  theirMoney: number;  // running season total of their net money across rounds we shared
 };
 
 type PartnerChemistry = {
@@ -868,23 +870,19 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
                   <span className="flex-1">Player</span>
                   <span className="w-10 text-center" title="Holes won / lost on opponent-only holes">W/L</span>
-                  <span className="w-12 text-right" title="Money you won on any hole they were in your group for">Charm</span>
-                  <span className="w-12 text-right" title="Money you took from them (opponent holes you won)">Dom</span>
-                  <span className="w-12 text-right" title="Money they took from you (opponent holes you lost)">Rival</span>
+                  <span className="w-14 text-right" title="Your running season total across rounds you were grouped with them">You</span>
+                  <span className="w-14 text-right" title="Their running season total across rounds they were grouped with you">Them</span>
                 </div>
                 <div className="space-y-1.5">
                   {rivalsSorted.map((r) => (
                     <div key={r.playerId} className="flex items-center justify-between text-xs">
                       <span className="font-medium flex-1">{r.name}</span>
                       <span className="text-muted-foreground w-10 text-center tabular-nums text-[10px]">{r.holesWon}/{r.holesLost}</span>
-                      <span className={`w-12 text-right tabular-nums ${r.luckyCharm > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
-                        {r.luckyCharm > 0 ? `+$${r.luckyCharm}` : '—'}
+                      <span className={`w-14 text-right tabular-nums ${r.myMoney > 0 ? 'text-green-600' : r.myMoney < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                        {formatMoney(r.myMoney)}
                       </span>
-                      <span className={`w-12 text-right tabular-nums ${r.dominate > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>
-                        {r.dominate > 0 ? `+$${r.dominate}` : '—'}
-                      </span>
-                      <span className={`w-12 text-right tabular-nums ${r.rival > 0 ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
-                        {r.rival > 0 ? `-$${r.rival}` : '—'}
+                      <span className={`w-14 text-right tabular-nums ${r.theirMoney > 0 ? 'text-green-600' : r.theirMoney < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                        {formatMoney(r.theirMoney)}
                       </span>
                     </div>
                   ))}

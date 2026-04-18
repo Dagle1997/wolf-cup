@@ -573,6 +573,7 @@ app.get('/stats/:playerId/detail', async (c) => {
       opp_holesWon: number;     // count of opp holes I gained on
       opp_holesLost: number;    // count of opp holes I lost on
       luckyCharm_netPerRound: number; // sum of my round nets when they were my groupmate
+      theirMoney_netPerRound: number; // sum of their round nets when they were my groupmate
     }>();
     const bucket = (rivalId: number) => {
       let b = rivalBuckets.get(rivalId);
@@ -586,24 +587,28 @@ app.get('/stats/:playerId/detail', async (c) => {
           opp_holesWon: 0,
           opp_holesLost: 0,
           luckyCharm_netPerRound: 0,
+          theirMoney_netPerRound: 0,
         };
         rivalBuckets.set(rivalId, b);
       }
       return b;
     };
 
-    // My per-round money totals (needed for luckyCharm per-round attribution)
-    const myRoundMoneyTotals = await db
+    // Per-round money totals for me + every groupmate across shared rounds
+    const allRoundMoneyRows = await db
       .select({
+        playerId: roundResults.playerId,
         roundId: roundResults.roundId,
         moneyTotal: roundResults.moneyTotal,
       })
       .from(roundResults)
-      .where(and(
-        eq(roundResults.playerId, playerId),
-        inArray(roundResults.roundId, roundIds),
-      ));
-    const myRoundMoneyByRound = new Map(myRoundMoneyTotals.map((r) => [r.roundId, r.moneyTotal]));
+      .where(inArray(roundResults.roundId, roundIds));
+    const myRoundMoneyByRound = new Map<number, number>();
+    const roundMoneyByPlayerRound = new Map<string, number>();
+    for (const r of allRoundMoneyRows) {
+      roundMoneyByPlayerRound.set(`${r.playerId}-${r.roundId}`, r.moneyTotal);
+      if (r.playerId === playerId) myRoundMoneyByRound.set(r.roundId, r.moneyTotal);
+    }
 
     for (const rId of roundIds) {
       const myGid = myGroupByRound.get(rId);
@@ -625,6 +630,7 @@ app.get('/stats/:playerId/detail', async (c) => {
         const b = bucket(otherId);
         b.roundsTogetherSet.add(rId);
         b.luckyCharm_netPerRound += myRoundNet;
+        b.theirMoney_netPerRound += roundMoneyByPlayerRound.get(`${otherId}-${rId}`) ?? 0;
       }
 
       // Iterate each scored hole in my group and attribute $ to rivals
@@ -677,6 +683,8 @@ app.get('/stats/:playerId/detail', async (c) => {
         holesWon: b.opp_holesWon,
         holesLost: b.opp_holesLost,
         luckyCharm: b.luckyCharm_netPerRound,
+        myMoney: b.luckyCharm_netPerRound,
+        theirMoney: b.theirMoney_netPerRound,
       }))
       .sort((a, b) => b.rival - a.rival);
 
