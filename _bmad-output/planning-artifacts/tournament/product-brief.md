@@ -89,13 +89,14 @@ A **Group** is a first-class entity, not just a roster. Represents a user's recu
 
 ### 4.4 Format System
 - v1 default: **2v2 best ball** (covers ~90% of Guyan group play). Parameterized rule schema — every group plays slightly different money rules.
-- **Rules don't change mid-round.** Stableford, sandies/polies/greenies, net-vs-gross are fixed at tee-off. No mid-round rule editor.
-- **Press is a configured mechanic, not a rule change.** Rules declare whether pressing is allowed, whether auto-presses trigger, and how the multiplier behaves. Mid-round, the only action is firing a press (manual button) or auto-press firing automatically.
+- **Rules are stable through a round, editable mid-event by the organizer** (FD-13 guardrail 1). Stableford, sandies/polies/greenies, net-vs-gross, press config are fixed at tee-off for a given round. The organizer can edit rule config between rounds — or mid-round in an emergency — via an audit-logged change with an effective-hole boundary; the engine recomputes money/leaderboard from the boundary forward, and all participants see a visible diff banner. This is a deliberate backstop for "we realized the press multiplier was wrong on day 2," not a normal-path UX.
+- **Press is a configured mechanic, not a rule change.** Rules declare whether pressing is allowed, whether auto-presses trigger, and how the multiplier behaves. Mid-round, the only normal-path action is firing a press (manual button) or auto-press firing automatically.
 - **Press button** (v1): any player with scoring access can call a press on the current hole. Press increases the stake multiplier for current and subsequent holes per the rule's press config.
 - **Auto-press triggers** (v1 schema, basic implementation): rules can declare triggers like "auto-press when 2 down" (Rick + Scottie's default). Engine evaluates triggers per-hole against current money state and fires presses automatically. Rule schema must express this; v1 implementation covers the "N-down" trigger family.
 - Side-bet modules layered on any format: polies, greenies, closest to pin, long drive, low round, sandies.
-- **Group-owned rule sets** applied with one tap (or auto-suggested by day-of-week).
-- v2: Stableford, individual stroke play net, Skins (with carryover/validation/pole rules), Wolf, Nassau, etc. Architecture must allow additions without rework.
+- **Group-owned rule sets** applied with one tap (or auto-suggested by day-of-week). Rule sets are revisioned (FD-8) — edits create new `rule_set_revision_id`; rounds pin the revision so history stays accurate.
+- **Skins is v1 as a sub-game** (FD-11) — per-hole outright-winner scan across the whole group; modes `gross` / `net` / `gross_beats_net`; participant-scoped opt-in per FD-10; ties carry to next hole. Polies/greenies as tiebreakers deferred v1.1.
+- v2: Stableford standalone, individual stroke play net, Wolf (ported generically from Wolf Cup), Nassau, BBB, etc. Architecture must allow additions without rework.
 - v2: inter-group rules conditional on field size (rule schema must allow this).
 - **Out of scope for v1:** Wolf (lives in Wolf Cup app), Nassau, BBB, Sixes, Rabbit.
 
@@ -155,7 +156,7 @@ Sequence (target: 3 taps to "wow"):
 2. "You're in" — name pre-filled from invite link, one-tap confirmation
 3. Lands on Schedule view: dates, courses (with hero photos), pairings if set, player roster
 
-**Account / auth:** lazy. Player gets full read access immediately via the invite token. Auth (set a password) only required when they actually need to *enter scores* — pushed to game day, not setup day. (GHIN linkage deferred per §5.) The bar is "Mark sees the trip and gets excited," not "Mark fills out a profile."
+**Account / auth:** lazy. Player gets full read access (schedule, pairings, leaderboard, course previews) immediately via the invite token — no sign-in required. SSO (Google primary, magic-link email fallback) is triggered only on the first *mutation* — score entry, photo upload, admin action (FD-4). First-SSO also runs a one-time GHIN lookup + confirm step that binds `players.ghin` + `players.google_sub` as the cross-event join key. The bar is "Mark sees the trip, screenshots the schedule, posts to iMessage" — zero friction on setup day. SSO friction is only paid by players who actually mutate state, pushed to game day.
 
 ### 4.8b Course Photos — Sourced, Not Hoped For
 
@@ -170,7 +171,7 @@ Default at trip creation: pre-load 1 hero image per course from sourced URLs. Us
 
 ### 4.9 During-Event Engagement
 - Leaderboard updates as scores enter
-- **Push notifications** for leaderboard movement: "Josh just shot -2 on hole 7, you're 3 strokes back." This is the smack-talk catalyst — players screenshot the notification and post to iMessage. App becomes content source, not chat venue.
+- **In-app engagement surfaces** (FD-5 "app creates pull, not push"): toasts, banners, and a reverse-chronological feed surface qualifying events — birdies, press fires, lead changes, bet standing flips — **inside the app**. Players pull their phone out between shots, see the latest, screenshot, and post to iMessage. The app is the content source; the iMessage chat stays the smack-talk venue. **No push notifications, no SMS, no email.** Lock-screen buzzes yank players back to work texts and kill trip headspace; that trade-off is explicitly refused.
 - Per-event gallery (pattern reuse from Wolf Cup R2 setup)
 - Live head-to-head money so players know what's at stake walking up to 18
 
@@ -239,7 +240,7 @@ These are cheap-now / expensive-later design choices. Bake them into v1 even tho
 
 **Schema:**
 1. No hardcoded club identity in code paths. "Guyan" / "Pinehurst" / etc. are data, never literals.
-2. Tables that are logically tenant-owned (courses, rule sets, players, trips, leagues, settings) are *shaped* to accept a `clubId` column later. v1 either omits the column or hardcodes a single `default` value. Just don't preclude the column.
+2. **All writable domain tables carry `context_id` + `tenant_id` columns from day one** (FD-6) — matching Wolf Cup migration 0025 (shipped 2026-04-14). **v1 query layer does NOT filter by these columns** — they are federation-hooks-in-schema only, zero cost on query or permission paths. `tenant_id` defaults to `'guyan'`; `context_id` uses a loose taxonomy (`event:pinehurst-may-2026` for this trip, `league:*` for future leagues).
 3. Container types (`trip` v1, `league` future) live in separate tables, not a polymorphic `competition` table with a discriminator. Two clean shapes beat one fuzzy one.
 
 **Data:**
@@ -258,10 +259,10 @@ These are cheap-now / expensive-later design choices. Bake them into v1 even tho
 10. Page title, logo URL, primary color, app display name come from a small config object — never hardcoded literal strings in JSX. v1 hardcodes the object inline; v2 swaps it for a tenant lookup. Five minutes now, weeks later.
 
 **Explicitly NOT in this checklist** (premature for v1):
-- Row-level security / `tenant_id` enforcement middleware
+- Row-level security / `tenant_id` **enforcement middleware** (columns exist in schema per item 2; no query-layer filtering or RLS in v1)
 - Tenant onboarding / signup flows
 - Cross-tenant analytics
-- Real auth provider (Auth0/Clerk) — bcrypt pattern from Wolf Cup is fine
+- ~~bcrypt pattern from Wolf Cup~~ — *superseded by FD-4*. Tournament ships SSO-first (Google OAuth primary, magic-link email fallback). No passwords in v1. Apple SSO deferred to v1.5.
 - Per-tenant DB migrations / migration orchestration
 
 ## 7. Known Risks & Open Questions
@@ -290,7 +291,8 @@ Scope (lightweight — most of the work is reuse):
 ## 7c. Pre-Trip Validation Plan
 
 Minimum validation before May 7:
-- **iOS PWA push validation spike** (by April 30). One afternoon. Deploy a test push notification endpoint, install the tournament PWA on a real iPhone, fire a notification, confirm it arrives on lock screen. If iOS PWA push is unreliable, pivot to server-sent SMS notifications (Twilio, scoped to push notifications only — NOT a full SMS bridge). Blocks during-event engagement loop; answer needed before shipping.
+- ~~**iOS PWA push validation spike**~~ — *removed per FD-5*. No push infrastructure ships, ever. In-app toasts/banners/feed is the engagement surface; no spike required.
+- **PWA install adoption spike** (by April 30). Install tournament PWA on 2-3 real iPhones (ideally including one less-technical tester), validate the install prompt shows, the installed app launches standalone, and IndexedDB persists across sessions. Blocks FD-14's "8/8 install-capable crew" assumption; also proxies for the iOS PWA storage eviction risk flagged in architecture.
 - **Offline sync airplane-mode drill** (30 min). Put the scorer phone in airplane mode at hole 3, enter scores for holes 4–6, re-enable connectivity, confirm scores sync cleanly and leaderboard updates for other devices. Catches merge-conflict class of bugs that unit tests miss.
 - **9-hole foursome test** at Guyan with Josh + Jeff + Ben + 1 more. Shakes out live scoring, leaderboard updates, offline-tolerance basics, PDF export. One-scorer-per-foursome flow exercised for real. Any ugly bugs surface here instead of day 1 of the trip.
 

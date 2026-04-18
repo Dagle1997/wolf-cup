@@ -359,11 +359,12 @@ Roles: **organizer** (event creator), **scorer** (designated per foursome per ro
 
 #### FR-E — Player Experience
 
-- **FR-E1** First-arrival flow from invite link shall reach "you're in, here's the schedule" in ≤3 taps: invite-link tap → Google SSO (or magic-link email fallback) → one-time GHIN lookup + confirm → done. *(J3, FD-4)*
-- **FR-E2** Read-only access (schedule, pairings, course previews) shall be available pre-SSO via the raw invite link. Mutating actions (scoring, creating/editing) require completed SSO + GHIN bind.
-- **FR-E8** *(FD-14, new)* System shall show an **in-app install prompt** after first SSO: iOS animated "Tap Share → Add to Home Screen" instruction card; Android uses `beforeinstallprompt` for one-tap install. Dismissable; reappears at most once on 2nd open; never after install completes.
-- **FR-E9** *(FD-14, new)* Browser-tab (non-installed) usage shall render read-only leaderboard / standings / pairings / schedule without error. Scorer flow requires PWA install for offline-queue reliability; UI surfaces a clear "install to score" prompt when a non-installed user opens a scorer surface.
-- **FR-E10** *(FD-4, new)* If GHIN lookup fails (captive portal, hotel wifi, GHIN outage), system shall provide a **manual-entry bailout**: enter handicap index manually, proceed; flag for later reconciliation when network returns.
+- **FR-E1** *(revised 2026-04-18)* First-arrival flow from invite link shall reach "you're in, here's the schedule" in ≤3 taps **with no SSO prompt**: invite-link tap → roster-slot confirmation (name pre-filled from invite token, one-tap confirm) → schedule view. No authentication wall on setup day. *(J3, FD-4)*
+- **FR-E2** *(revised 2026-04-18 post-Codex pass 2)* Read-only access (schedule, pairings, course previews, leaderboard, standings) shall be available **pre-SSO via the raw invite link** for the duration of the Event. SSO is triggered **only on the first mutating action** (score entry, photo upload, admin action), not on first arrival. Post-SSO, `players.google_sub` + `player_id` is the identity trust anchor. GHIN linking is a separate optional enrichment step (see FR-E11), not part of the SSO critical path.
+- **FR-E8** *(FD-14, revised 2026-04-18)* System shall show an **in-app install prompt** after the player's first successful mutation (score entry, photo upload, or admin action completing the SSO bind): iOS animated "Tap Share → Add to Home Screen" instruction card; Android uses `beforeinstallprompt` for one-tap install. Dismissable; reappears at most once on 2nd open; never after install completes. Non-mutating players (pure spectators) are never prompted — no install friction for reads.
+- **FR-E9** *(FD-14)* Browser-tab (non-installed) usage shall render read-only leaderboard / standings / pairings / schedule without error. Scorer flow requires PWA install for offline-queue reliability; UI surfaces a clear "install to score" prompt when a non-installed user opens a scorer surface.
+- **FR-E10** *(revised 2026-04-18 post-Codex pass 2)* ~~GHIN lookup failure bailout~~ — **removed as unnecessary**. Since GHIN is never a precondition for valid identity (FR-E11 / FD-4), there is no "lookup at SSO-bind time" step to bail out from. A GHIN lookup that fails for any reason (captive portal, outage, player skips) simply leaves `players.ghin` NULL; handicap is manually entered or left 0; player record is fully valid. Original FR-E10 text retained for history: "If GHIN lookup fails at SSO-bind time (captive portal, hotel wifi, GHIN outage), system shall provide a manual-entry bailout."
+- **FR-E11** *(new 2026-04-18 post-Codex pass 2)* System shall provide **optional GHIN enrichment** as a profile action available any time after SSO bind. UI offers a "Link your GHIN" button; when invoked, user enters GHIN number (or searches by name + state), confirms the returned identity, and system writes `players.ghin`. If lookup fails (outage, captive portal) the UI surfaces an error and the user may retry later. GHIN enrichment is **never blocking**: player record remains fully valid with NULL GHIN; handicap index may be manually entered via the same profile surface or left as 0 for non-competitive guests.
 - **FR-E3** Schedule view shall display each round's date, course (with hero image), tee times, and the viewer's pairing for that round.
 - **FR-E4** Course preview shall include per-hole detail (par, yardage, SI) and at least a hero image for the course.
 - **FR-E5** System shall support per-Event photo gallery with R2 storage (reusing Wolf Cup gallery pattern).
@@ -442,21 +443,33 @@ Roles: **organizer** (event creator), **scorer** (designated per foursome per ro
 
 Decisions that shape v1 schema and architecture. Recording here so Step 7 (Technical Decisions) inherits them as locks, not open questions.
 
-### FD-4: Player identity — SSO + GHIN bind (no passwords v1)
+### FD-4: Player identity — SSO (no passwords v1); GHIN is optional enrichment *(revised 2026-04-18 post-Codex pass 2)*
+
+**Identity anchor = `player_id` + SSO sub (`google_sub`).** GHIN is optional enrichment, NOT part of the trust anchor and NOT a precondition for a valid player record. Codex pass 2 correctly flagged that making GHIN a required bind step contradicted the brief's support for non-GHIN players and GHIN-unavailable scenarios. The revised model separates authentication from handicap enrichment.
 
 - `players.id` is the local primary key, stable forever.
-- `players.ghin` is a **nullable unique** column. Populated when known; used as the join key across Events for cross-event stat aggregation.
-- `players.apple_sub` and `players.google_sub` are **nullable unique** columns (partial unique indexes where non-null). Populated on first SSO bind.
-- **Read access** (stats, leaderboard, money matrix subject to posture) is low-friction: invite-link click + SSO tap (Google primary, magic-link email fallback) → device cookie binds device to player id. Apple SSO deferred to v1.5 ($99/yr Apple Developer cost unjustified at current scale).
-- **Write access** (score entry, corrections) uses the same SSO identity. Hole-level soft-lock (FD-3) prevents accidental crossover: first scorer claims a hole; subsequent writers get "overwrite?" confirmation. Full audit log on every touch.
+- `players.google_sub` and `players.apple_sub` are **nullable unique** columns (partial unique indexes where non-null). Populated on first SSO bind. **This is the identity trust anchor paired with `player_id`** — nothing else is required to validate a player record.
+- `players.ghin` is a **nullable unique** column. Populated opportunistically (during onboarding or later) when known; used as the join key across Events for cross-event stat aggregation. **A `NULL` GHIN never blocks identity, auth, scoring, or any other v1 flow.**
+- **Read access is fully lazy — NO SSO required.** Invite-link tap → roster-slot confirmation (name pre-filled) → schedule / leaderboard / pairings / course previews / standings all accessible for the duration of the Event. Invite token scope is Event-only and read-only. Preserves the brief's "3 taps to wow" UX promise; setup-day friction is zero.
+- **Write access triggers SSO on the first mutation** (not on first arrival). First score entry, first photo upload, first admin action → Google SSO (or magic-link email fallback) → session cookie binds device to `player_id` → mutation proceeds. Apple SSO deferred to v1.5 ($99/yr Apple Developer cost unjustified at current scale).
+- **GHIN enrichment is a separate optional step**, decoupled from the SSO critical path. After first successful SSO, the user MAY be prompted "Link your GHIN for cross-event stats?" — **skippable, dismissable, never required**. If skipped, handicap index is manually entered (or 0 if a non-competitive guest); `players.ghin` stays NULL. A "Link GHIN" button lives in profile settings for later enrichment at any time. Disambiguation UI handles same-name collisions (Matt W vs Matt J) whenever GHIN lookup is attempted.
+- **Hole-level soft-lock** (FD-3) prevents accidental crossover: first scorer claims a hole; subsequent writers get "overwrite?" confirmation. Full audit log on every touch.
 - **Admin actions** (edit rules, finalize rounds, delete data, merge players) gated on organizer identity from SSO (v1 = Josh as sole admin; FD-13 encodes single-admin guardrails).
-- **GHIN bind is one-time after SSO**: lookup on ghin.com → confirm → bind. Re-binding requires re-verification (friction as deterrent). `players.ghin` + `players.apple_sub` / `players.google_sub` together form the trust anchor.
-- Non-GHIN players (trip guests, new golfers): SSO-only identity; no cross-event aggregation. If they later get a GHIN, UPDATE `players.ghin` — historical data auto-joins because FKs point at `player_id`, not GHIN. No migration.
+- Non-GHIN players (trip guests, new golfers, GHIN-refusers): fully first-class. SSO-only identity; handicap manually entered; no cross-event aggregation. If they later get a GHIN (or choose to link one), UPDATE `players.ghin` via profile settings — historical data auto-joins because FKs point at `player_id`, not GHIN. No migration.
 - GHIN can change in reality (club switch, number reissue). Schema includes a `player_identity_merges` table so admin can merge two local player records without rewriting history. v1 UI exposes this as an admin-only action; v2 can automate.
 
-### FD-6: Cross-context stats foundation — ecosystem columns on every writable table
+**Three-tier access model:**
+
+| Action | Auth required | Identity binding | GHIN |
+|---|---|---|---|
+| Read (schedule, leaderboard, pairings, course previews, standings) | None — invite token only | Invite token scoped to Event | N/A |
+| Roster-slot confirmation | Invite token + name match | Claims `player_id` via invite; no SSO yet | N/A |
+| Write (score entry, photo upload, admin action) | SSO (Google / magic-link) | On first mutation: SSO → `players.google_sub` set; `player_id` anchored | **Not required.** Optional prompt after bind; skippable; linkable later |
+
+### FD-6: Cross-context stats foundation — ecosystem columns on every writable table *(revised 2026-04-18)*
 
 - **Every writable domain table** carries `context_id TEXT NOT NULL` and `tenant_id TEXT NOT NULL` from day one. Wolf Cup's migration 0025 (completed + deployed 2026-04-14) added these to all 17 Wolf Cup tables before first live round. Tournament inherits the convention on every new table.
+- **v1 query layer does NOT filter by these columns.** Columns exist in schema as federation-hooks-in-schema only — zero cost on query paths, zero cost on permission paths, zero RLS enforcement. No middleware checks them. No `WHERE tenant_id = ?` on any v1 SELECT. They are inert insurance.
 - **`context_id` taxonomy** (loose, naming convention not enforced):
   - `league:*` for seasonal leagues (`league:guyan-wolf-cup-friday`)
   - `event:*` for bounded trips (`event:pinehurst-may-2026`)
@@ -464,6 +477,7 @@ Decisions that shape v1 schema and architecture. Recording here so Step 7 (Techn
   - `ad-hoc:*` for one-offs
 - **`tenant_id`** separates clubs / organizations. `'guyan'` for Josh's current world; multi-club is latent architecture.
 - **No stats service in v1.** Columns are insurance; federation code comes v2+ when 3+ contexts exist.
+- **Rationale for paying the schema-time tax in v1**: retrofitting `context_id` + `tenant_id` to a DB with data is painful (backfill, defaults, constraint adds). Paying the schema-time cost now (one `NOT NULL` column with a default on each CREATE TABLE) is negligible and matches Wolf Cup's already-shipped convention. The "tax" Codex worried about (query-path pollution) is explicitly avoided by not filtering in v1.
 
 ### Money visibility is a Group property, not a global setting
 
@@ -487,7 +501,7 @@ Decisions that shape v1 schema and architecture. Recording here so Step 7 (Techn
 
 - **Wolf Cup keeps its current names** (`apps/api` + `apps/web`) indefinitely. No pre-tournament rename.
 - Tournament scaffolds as `apps/tournament-api` + `apps/tournament-web` **alongside** Wolf Cup. No shared DB, no shared runtime, explicit package boundaries.
-- `packages/engine` stays the shared home for pure-function rule primitives (`stableford.ts` already there, `best-ball-2v2.ts` + `skins.ts` join via extraction per rule-of-three).
+- **`packages/engine` stays minimal, read-only from tournament's perspective** — `stableford.ts` is the sole shared pure-function rule primitive. Tournament's new format engines (`best-ball-2v2.ts`, `skins.ts`, `press.ts`, `individual-bets.ts`, carry-greenies) land in **`apps/tournament-api/src/engine/`** (tournament-local), per brief §3 "Tournament gets its own money modules per format" and the "packages/engine edits require stop + flag to Josh" posture. If and when a new primitive becomes genuinely shared (rule-of-three trigger), extraction to `packages/engine` is a separate tracked decision with explicit Wolf Cup owner sign-off, not a default.
 - Rationale: Wolf Cup ships its first live round 2026-04-17 (3 days from PRD signoff); renaming a shipping app for aesthetic parity is unjustified risk. CLAUDE.md disambiguation note: `apps/api` + `apps/web` = Wolf Cup; `apps/tournament-*` = Tournament.
 
 ### FD-2: Port posture — copy verbatim, no shared package for ported code
@@ -545,21 +559,21 @@ Full filter dimensions (v1.5+ UI):
 - **Data-entry cost principle**: optional data fields are asked only of opted-in participants. GIR / fairway tracking **rejected** on this principle. Putts for putting-contest participants **accepted** (participants pay, participants benefit).
 - **Sub-games are round-scoped, not group-scoped.** Rick in Group 1 + Scott in Group 2 can run a putting contest; each scorer prompts for putts for their group's participants only; engine federates at compute time. Same pattern as cross-foursome $/hole matches.
 
-### FD-11: Skins in v1 as the first concrete sub-game
+### FD-11: Skins in v1 as the first concrete sub-game *(revised 2026-04-18 post-Codex)*
 
 - 2v2 "Guyan Game" (Wolf-rules-derived best ball with parameter toggles per FR-D1) is the primary format.
 - **Skins** is a per-hole outright-winner scan across the whole group — same shape as Wolf Cup's side-game skins calc. Runs alongside 2v2; independent pot.
 - **Three modes** (rule-config toggle): `gross`, `net`, `gross_beats_net` (gross wins outright; falls back to net if no gross skin).
 - Participant-scoped per FD-10: subset opts in, pot splits among opt-ins, carries on hole ties.
 - Polies/greenies as tiebreaker: deferred to v1.1.
-- Engine cost: ~150 LOC, new `packages/engine/src/formats/skins.ts`, golden-file tested. 1-2 days.
-- UI cost: opt-in toggle on round setup + skins column on leaderboard. Half day.
+- **Engine location:** `apps/tournament-api/src/engine/formats/skins.ts` — tournament-local, NOT `packages/engine`. Per brief §3 "Tournament gets its own money modules per format"; `packages/engine` stays minimal with only `stableford.ts` shared.
+- UI cost: opt-in toggle on round setup + skins column on leaderboard.
 
-### FD-12: v1 bet menu stays lean; carry-over greenies as 2v2 rule param
+### FD-12: v1 bet menu stays lean; carry-over greenies as 2v2 rule param *(revised 2026-04-18 post-Codex)*
 
 Pinehurst crew is small-stakes; big-trip bet menu deferred.
 - **v1 bets**: press + auto-press (FR-D1), cross-foursome individual bets (FR-D3/D4), skins (FD-11), **carry-over greenies** as new 2v2 rule param (FR-D1 `greenie_carryover` / `greenie_validation`).
-- **Carry-over greenies**: toggle on/off; 2-putt validation required to claim; unclaimed/unvalidated rolls to next par 3; last par 3 can accumulate up to 4× base value. Engine change ~50 LOC in `best-ball-2v2.ts` + golden-file tests for the carry chain.
+- **Carry-over greenies**: toggle on/off; 2-putt validation required to claim; unclaimed/unvalidated rolls to next par 3; last par 3 can accumulate up to 4× base value. Engine change lands in `apps/tournament-api/src/engine/formats/best-ball-2v2.ts` (tournament-local), with golden-file tests for the carry chain.
 - **DEFER to v1.1** (tracked in OOS, not forgotten): cross-group "two best balls" pot (gross/gross, gross/net, net/net modes), match-play points + team-win pot, Nassau, BBB, low-round-of-day.
 
 ### FD-13: Single-admin v1 with four guardrails
@@ -567,7 +581,7 @@ Pinehurst crew is small-stakes; big-trip bet menu deferred.
 Pinehurst reality: Josh is sole organizer; 5hr car ride with 4 players = onboarding runway; Eric pre-briefed at work = de facto scorer for the other foursome. No co-organizer UI in v1.
 
 - **Guardrail 1 (mid-event rule edit)**: Rule-config editable mid-event; change audit-logged, effective-hole boundary, applies forward; engine recomputes money/leaderboard from boundary forward; visible diff banner to participants. Golden-file fixture includes a mid-event edit scenario. (FR-H1)
-- **Guardrail 2 (GHIN bailout)**: GHIN lookup failure has explicit manual-HI-entry bailout (captive-portal / hotel-wifi mitigation). (FR-E10)
+- **Guardrail 2 (GHIN is optional)** *(revised 2026-04-18 post-Codex pass 2)*: GHIN is never a precondition for valid identity — it's optional enrichment. A NULL GHIN on a player record is fully supported in all v1 flows; handicap index may be manually entered or left 0 for non-competitive guests. Captive-portal / hotel-wifi / GHIN-outage concerns are resolved by removing GHIN from the critical path entirely (FR-E11 vs. the retired FR-E10).
 - **Guardrail 3 (scorer handoff)**: Scorer is per-foursome, not per-user. Phone-dies handoff: anyone in the foursome SSOs and picks up scoring; FD-3 soft-lock + audit log cover it.
 - **Guardrail 4 (role collapse)**: Organizer = scorer = same person in v1. No role split. Scorer identity via device cookie + SSO (FD-3 + FD-4).
 - **DEFER v1.5+**: explicit co-organizer role, mid-event organizer transfer, scorer permission scopes.
@@ -672,7 +686,8 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 - **T3.3 [new]** Group CRUD UI (name, members with name + optional GHIN + handicap + money-visibility posture).
 - **T3.4 [port]** GHIN client copied verbatim from Wolf Cup (read-only) + manual-override path.
 - **T3.5 [new]** *(revised 2026-04-14, FD-8/11/12)* Rule-set editor (tenant-scoped, revisioned): 2v2 best-ball preset with sandies toggle, auto-press trigger, press multiplier, `greenie_carryover` toggle, `greenie_validation` enum, individual-bet list, money-visibility posture (`open` v1 only, others stubbed). Saves create a new `rule_set_revision`; rounds pin `rule_set_revision_id`.
-- **T3.6 [new]** Invite-link generation + first-arrival flow: link tap → Google SSO (or magic-link email) → GHIN lookup + confirm → bind; FR-E10 manual-HI bailout on lookup failure (FD-13 guardrail 2).
+- **T3.6 [new]** *(revised 2026-04-18 post-Codex pass 2 — matches FR-E1/E2/FD-4)* Invite-link generation + first-arrival flow: **no SSO on arrival.** Link tap → roster-slot confirmation (name pre-filled from invite token, one-tap confirm) → schedule view. Invite tokens are Event-scoped and read-only; grant full read access to schedule / pairings / course previews / leaderboard / standings. SSO triggers separately on the first mutation (covered by T5 scoring stories + T7 photo gallery + admin action stories). **GHIN linking is NOT part of this flow** — it's a separate optional profile action (see T3.10 GHIN enrichment story).
+- **T3.10 [new]** *(new 2026-04-18 post-Codex pass 2 — matches FR-E11)* Optional GHIN enrichment flow (profile action): "Link your GHIN" button in user profile; enter GHIN number or search by name + state; confirmation UI handles same-name disambiguation (Matt W vs Matt J); on confirm writes `players.ghin`. Never blocking — NULL GHIN is fully supported; handicap index manually entered via same profile surface or left 0. Can be invoked any time post-SSO, including mid-trip.
 - **T3.7 [new]** *(revised 2026-04-14, FD-4 SSO-first)* Post-SSO device cookie: session cookie ties device to `players.google_sub` / `players.apple_sub`. One-tap "that's not me" re-runs SSO flow.
 - **T3.9 [new]** *(FD-10, new)* Sub-game opt-in UI on round setup: per-round, per-player opt-in toggle for each recognized sub-game type (v1 exposes skins only; schema supports ctp/sandies/putting-contest). Pot buy-in field per sub-game.
 - **T3.8 [new]** Permissions middleware enforcing FR-H1–H7 role matrix on every route.
@@ -712,7 +727,7 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 - **T5.7 [new]** Scorer handoff endpoint (FR-B7): organizer or current scorer can POST to transfer; atomic update with visible handoff state on both devices.
 - **T5.8 [new]** Round lifecycle state machine (FR-B9): transitions gated and logged; `finalized` is immutable via normal paths (only correction-with-audit).
 - **T5.9 [port]** Score correction endpoint with audit log: port `admin/score-corrections.ts` behavior, add FR-B8 actor+prior+new persistence, add FR-D9 visibility filtering.
-- **T5.10 [new]** Airplane-mode drill script + checklist (NFR-R2 validation gate). Scripted manual test, not automated.
+- **T5.10 [new]** *(revised 2026-04-18 post-architecture-Step-4)* Airplane-mode drill script + checklist (NFR-R2 validation gate). **Expanded to include deliberate 409-collision scripted test** (per D3-3): two clients, same `roundId` + `holeNumber` + `playerId`, different `client_event_id`, both submit; assert first gets 200, second gets 409 with `{ error: 'conflict', conflictingEntry: {...} }` payload, UI surfaces overwrite prompt at drain time. Scripted manual test for basic drill + scripted automated test for the collision case.
 - **T5.11 [new]** *(FD-13 guardrail 1, new)* Mid-event rule-edit endpoint + UI: organizer edits a rule-set param after round has started; endpoint creates new `rule_set_revision` with effective-hole boundary, stamps audit log, triggers engine recompute from boundary forward, emits in-app event (consumed by T8) so all participants see a visible diff banner.
 
 **Exit:** 9-hole practice foursome scored end-to-end, including ≥3 offline holes, merged on reconnect. Leaderboard visible to non-scorer.
@@ -726,19 +741,19 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 **Traces:** FR-D1–D8, NFR-C1, NFR-C2, NFR-R3.
 
 **Stories:**
-- **T6.1 [extract]** Engine: 2v2 best ball hole/round scoring in `packages/engine/src/formats/best-ball-2v2.ts` (pure, golden-file tested). Reuses `stableford.ts` primitives already shared with Wolf Cup.
-- **T6.2 [new]** Engine: manual press + auto-press trigger evaluation (N-down family) in `packages/engine/src/rules/press.ts`.
-- **T6.3 [new]** Engine: cross-foursome individual bets ($/hole match, $/hole with auto-press) in `packages/engine/src/rules/individual-bets.ts`.
+- **T6.1 [new]** *(revised 2026-04-18 — retagged [extract]→[new], path moved tournament-local post-Codex)* Engine: 2v2 best ball hole/round scoring in **`apps/tournament-api/src/engine/formats/best-ball-2v2.ts`** (pure, golden-file tested). Imports `stableford.ts` from `@wolf-cup/engine` (sole shared engine dependency). Does NOT land in `packages/engine` — per brief §3, Tournament owns its own money modules per format.
+- **T6.2 [new]** *(revised 2026-04-18)* Engine: manual press + auto-press trigger evaluation (N-down family) in `apps/tournament-api/src/engine/rules/press.ts` (tournament-local).
+- **T6.3 [new]** *(revised 2026-04-18)* Engine: cross-foursome individual bets ($/hole match, $/hole with auto-press) in `apps/tournament-api/src/engine/rules/individual-bets.ts` (tournament-local).
 - **T6.4 [new]** API: hole-score commit triggers press-engine evaluation + emits in-app event payload (consumed by T8 engagement surfaces).
 - **T6.5 [new]** Head-to-head money matrix API + UI, visibility-mode-aware (FR-D9).
 - **T6.6 [new]** Settle-up view with per-player net + hole-by-hole drill-down, visibility-mode-aware.
 - **T6.7 [new]** Manual-press UI (one-tap, undoable before next hole). Capability trip-critical; polish tolerable to defer.
 - **T6.8 [new]** *[target-miss tolerable]* Dedicated Bets page UI (per-player live standings). Same data visible via Money page until this ships.
-- **T6.9 [new]** Hand-calc money fixture validation (NFR-C1 gate): build one Pinehurst-plausible fixture, hand-calculate, match. Golden-file checked in.
+- **T6.9 [new]** *(revised 2026-04-18 post-architecture-Step-4)* Hand-calc money fixture validation (NFR-C1 gate): build one Pinehurst-plausible fixture, hand-calculate, match. **Two-layer test:** (1) golden file at engine layer — `calcMoneyMatrix(scores, rules)` produces expected output; (2) **HTTP roundtrip integration test** — seed scores via API → `GET /events/:id/money` → response matches fixture. Closes NFR-C1 end-to-end, not just at the pure-function boundary. Covers the `src/services/money.ts` recompute-on-read path (D1-1).
 - **T6.10 [new]** Leaderboard tie-break implementation (FR-C5) with unit tests covering each break step.
-- **T6.11 [new]** *(FD-11, new)* Engine: Skins in `packages/engine/src/formats/skins.ts` — pure function `calcSkins(holeScores, mode, participants, buyIn) → { holeWinners, carries, potShares }`. Modes: `gross`, `net`, `gross_beats_net`. Ties carry to next hole; last-hole unclaimed pot splits per config (split-among-winners or carry-to-next-round). Golden-file fixtures: 3+ hand-worked scorecards per mode, including carry chains and last-hole unclaimed.
-- **T6.12 [new]** *(FD-12, new)* Engine: carry-over greenies in `best-ball-2v2.ts` — rule-param-driven; unclaimed/unvalidated greenie rolls to next par 3; last par 3 accumulates up to 4× base value. Golden-file fixture covers the carry chain end-to-end.
-- **T6.13 [new]** *(FD-10/11, new)* Sub-game framework API: `sub_games` table (round-scoped, type-tagged, config JSON), `sub_game_participants` (player opt-ins + buy-in), `sub_game_results` (computed at round close). API route `POST /rounds/:id/sub-games/:type/compute` dispatches to engine per type. v1 dispatches to skins only; ctp/sandies/putting-contest are schema stubs with 501 responses.
+- **T6.11 [new]** *(FD-11, revised 2026-04-18 — path moved tournament-local)* Engine: Skins in **`apps/tournament-api/src/engine/formats/skins.ts`** — pure function `calcSkins(holeScores, mode, participants, buyIn) → { holeWinners, carries, potShares }`. Modes: `gross`, `net`, `gross_beats_net`. Ties carry to next hole; last-hole unclaimed pot splits per config (split-among-winners or carry-to-next-round). Golden-file fixtures: 3+ hand-worked scorecards per mode, including carry chains and last-hole unclaimed. Tournament-local; `packages/engine` untouched.
+- **T6.12 [new]** *(FD-12, revised 2026-04-18 — path moved tournament-local)* Engine: carry-over greenies in **`apps/tournament-api/src/engine/formats/best-ball-2v2.ts`** (tournament-local) — rule-param-driven; unclaimed/unvalidated greenie rolls to next par 3; last par 3 accumulates up to 4× base value. Golden-file fixture covers the carry chain end-to-end.
+- **T6.13 [new]** *(FD-10/11, new)* Sub-game framework API: `sub_games` table (round-scoped, type-tagged, config JSON), `sub_game_participants` (player opt-ins + buy-in), `sub_game_results` (computed at round close). API route `POST /rounds/:id/sub-games/:type/compute` dispatches to a tournament-local engine module per type (`apps/tournament-api/src/engine/formats/*`). v1 dispatches to skins only; ctp/sandies/putting-contest are schema stubs with 501 responses.
 - **T6.14 [new]** *(FD-11, new)* Skins leaderboard column + settle-up drill-down entry; UI integrates with FR-D6 head-to-head matrix (skins pot contributes to per-player net).
 
 **Exit:** Golden-file tests pass. One full 4-player, 4-round, multi-bet Pinehurst-shaped fixture computes identically to hand-calc spreadsheet.
@@ -792,8 +807,9 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 - **T9.1 [new]** 9-hole live foursome test at Guyan (Josh + Jeff + Ben + 1). Full flow: open round, score 9 holes (with ≥3 offline), view leaderboard, check money. Record bugs; fix before target Event.
 - **T9.2 [new]** Final pre-event checklist walkthrough: PDF export generates cleanly, airplane-mode drill passes, Wolf Cup tests green, course data validated, invite links tested, scorer-handoff tested, audit log tested, permissions matrix tested.
 - **T9.3 [new]** Ship/defer decision: either greenlight target Event or defer to next trip window with punch list.
+- **T9.4 [new]** *(new 2026-04-18 post-Codex pass 2)* **Scorer install verification gate.** Every designated scorer's device (one per foursome, two for Pinehurst) must be validated before trip day: (1) tournament PWA installed as a standalone app (verified via `display-mode: standalone` check during the drill), (2) IndexedDB writes succeed + persist across app restart (drill script inserts a test record, force-quits the PWA, relaunches, confirms the record reads back), (3) offline score entry → reconnect sync works on that specific device (subset of T5.10 airplane-mode drill, run per-scorer-device). This converts FR-E9's soft "install to score" prompt from a trip-day discovery into a pre-trip gate with known pass/fail status per device. **Trip-critical hard blocker**: a scorer device that fails this gate must either be re-provisioned (install + retest) or the scorer role reassigned to a different device in the same foursome.
 
-**Exit:** App is green across all checks, or a deliberate defer-to-next-window decision is documented.
+**Exit:** App is green across all checks including per-scorer-device install verification (T9.4), or a deliberate defer-to-next-window decision is documented.
 
 ---
 
@@ -820,7 +836,7 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 - **T3.6** SSO + GHIN bind with manual-HI bailout (FD-4/13)
 - **T3.8** permissions matrix enforcement
 - **T7.6, T7.7** install prompt + browser-tab graceful (FD-14)
-- **T9.1, T9.2** validation
+- **T9.1, T9.2, T9.4** validation (including per-scorer-device install verification gate)
 
 ## Story Count Summary
 
@@ -828,16 +844,16 @@ Dependency shorthand: stories within an epic are usually linear unless marked `�
 |---|---|---|---|
 | T1 Foundation | 7 | 7 new | T1.1/T1.6 rewritten for FD-1/FD-4 |
 | T2 Courses | 5 | 5 new | unchanged |
-| T3 Event/Group/Rules/Invites/Permissions | 9 | 1 port, 8 new | +T3.9 sub-game opt-in; T3.5/T3.6/T3.7 revised |
+| T3 Event/Group/Rules/Invites/Permissions | 10 | 1 port, 9 new | +T3.9 sub-game opt-in; T3.5/T3.6/T3.7 revised; T3.6 rewritten + T3.10 GHIN enrichment added 2026-04-18 post-Codex |
 | T4 Pairings | 3 | 1 port, 2 new | unchanged |
 | T5 Scoring/Leaderboard | 11 | 3 port, 1 extract, 7 new | +T5.11 mid-event rule edit |
-| T6 Rules/Money/Bets | 14 | 1 extract, 13 new | +T6.11 skins engine, +T6.12 carry-greenies, +T6.13 sub-game framework API, +T6.14 skins UI |
+| T6 Rules/Money/Bets | 14 | 14 new | +T6.11 skins engine, +T6.12 carry-greenies, +T6.13 sub-game framework API, +T6.14 skins UI; T6.1 retagged [extract]→[new] 2026-04-18 (tournament-local, not shared engine) |
 | T7 Player UX | 7 | 1 port, 6 new | +T7.6 install prompt, +T7.7 browser-tab audit |
 | T8 In-App Engagement | 4 | 4 new | Epic rewritten FD-5; expanded from 2→4 stories |
-| T9 Validation | 3 | 3 new | unchanged |
-| **Total** | **63** | **6 port, 2 extract, 55 new** | +10 stories from party-session FDs |
+| T9 Validation | 4 | 4 new | +T9.4 scorer install verification gate 2026-04-18 post-Codex |
+| **Total** | **65** | **6 port, 1 extract, 58 new** | T6.1 retagged [extract]→[new] 2026-04-18 (tournament-local engine, not shared); T3.10 GHIN enrichment added 2026-04-18 post-Codex pass 2; T9.4 scorer install verification gate added 2026-04-18 post-Codex pass 2 |
 
-**Reuse payoff:** 8 of 63 stories (~13%) are port or extract work that leverages Wolf Cup's shipped code — offline queue, PDF generation, GHIN client, photo gallery, scorer UI iOS fix, audit log pattern, `stableford.ts` engine primitive. Ratio shifted toward "new" as party-session scope (SSO auth, sub-game framework, skins engine, in-app engagement spine, mid-event rule edit, install prompt) is net-new surface without Wolf Cup precedent. The real engineering surface is ~55 novel stories, concentrated in tournament-specific rules/money logic, sub-game framework, SSO identity, and in-app engagement — exactly where the product wedge lives.
+**Reuse payoff:** 7 of 63 stories (~11%) are port or extract work leveraging Wolf Cup's shipped code — offline queue, PDF generation, GHIN client, photo gallery, scorer UI iOS fix, audit log pattern, `stableford.ts` engine primitive (the only `packages/engine` dependency). Ratio shifted toward "new" after the 2026-04-18 Codex review confirmed that Tournament's format engines (2v2, skins, press, individual bets, carry-greenies) live tournament-local per the brief's original posture. The real engineering surface is ~56 novel stories, concentrated in tournament-specific rules/money logic, sub-game framework, SSO identity, and in-app engagement — exactly where the product wedge lives.
 
 ## BMAD Step 7–11 Coverage
 
