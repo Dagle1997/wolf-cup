@@ -678,7 +678,7 @@ function LeaderboardTable({
   roundId: number;
   autoCalculateMoney: boolean;
 }) {
-  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+  const [expandedPlayerIds, setExpandedPlayerIds] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<'all' | 'group'>('all');
   const [sortMode, setSortMode] = useState<SortMode>(() => readSortPref());
   const colCount = data.harveyLiveEnabled ? 6 : 5;
@@ -699,6 +699,19 @@ function LeaderboardTable({
   const myGroupNumber = myGroupId !== null
     ? data.leaderboard.find((p) => p.groupId === myGroupId)?.groupNumber ?? null
     : null;
+
+  // Accordion state: single-open in All view, all-4-open by default in Group view.
+  // Reset whenever viewMode changes so All never shows 4 cards simultaneously.
+  useEffect(() => {
+    if (viewMode === 'group' && myGroupId !== null) {
+      const ids = data.leaderboard
+        .filter((p) => p.groupId === myGroupId)
+        .map((p) => p.playerId);
+      setExpandedPlayerIds(new Set(ids));
+    } else {
+      setExpandedPlayerIds(new Set());
+    }
+  }, [viewMode, myGroupId, data.leaderboard]);
 
   // Sort field + rank field per active sort. Server ranks are authoritative.
   const sortedLeaderboard = sortLeaderboard(data.leaderboard, effectiveSortMode);
@@ -793,7 +806,7 @@ function LeaderboardTable({
         </thead>
         <tbody>
           {visiblePlayers.map((player) => {
-            const isSelected = selectedPlayerId === player.playerId;
+            const isSelected = expandedPlayerIds.has(player.playerId);
             const activeRank = rankField(player, effectiveSortMode);
             const toParColor =
               player.netToPar < 0
@@ -808,9 +821,17 @@ function LeaderboardTable({
                   role="button"
                   aria-expanded={isSelected}
                   onClick={() =>
-                    setSelectedPlayerId((prev) =>
-                      prev === player.playerId ? null : player.playerId,
-                    )
+                    setExpandedPlayerIds((prev) => {
+                      // All view: single-open accordion (replace)
+                      // Group view: toggle membership (independent cards)
+                      if (viewMode === 'group') {
+                        const next = new Set(prev);
+                        if (next.has(player.playerId)) next.delete(player.playerId);
+                        else next.add(player.playerId);
+                        return next;
+                      }
+                      return prev.has(player.playerId) ? new Set() : new Set([player.playerId]);
+                    })
                   }
                   className={rankRowClass(activeRank, isSelected)}
                 >
