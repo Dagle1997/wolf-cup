@@ -22,6 +22,7 @@ type StandingsPlayer = {
   lowRound: number;
   highRound: number;
   rank: number;
+  rankPrevious: number | null; // rank as of the round before last finalized (null = not on prior board)
   isPlayoffEligible: boolean;
   roundTotals: number[];
 };
@@ -77,7 +78,7 @@ app.get('/standings', async (c) => {
     if (officialRoundIds.length === 0) {
       return c.json(
         {
-          season: { id: season.id, name: season.name, totalRounds: season.totalRounds, roundsCompleted: 0 },
+          season: { id: season.id, name: season.name, totalRounds: season.totalRounds, roundsCompleted: 0, nextRoundDate: null },
           fullMembers: [],
           subs: [],
           lastUpdated: new Date().toISOString(),
@@ -100,9 +101,16 @@ app.get('/standings', async (c) => {
     const playerIds = [...new Set(harveyRows.map((r) => r.playerId))];
 
     if (playerIds.length === 0) {
+      const nextRound = officialRounds.find((r) => r.status !== 'finalized');
       return c.json(
         {
-          season: { id: season.id, name: season.name, totalRounds: season.totalRounds, roundsCompleted },
+          season: {
+            id: season.id,
+            name: season.name,
+            totalRounds: season.totalRounds,
+            roundsCompleted,
+            nextRoundDate: nextRound?.scheduledDate ?? null,
+          },
           fullMembers: [],
           subs: [],
           lastUpdated: new Date().toISOString(),
@@ -189,6 +197,34 @@ app.get('/standings', async (c) => {
     const fullMemberRanks = assignRanks(fullMemberRows.map((p) => ({ playerId: p.playerId, total: p.combinedTotal })));
     const subRanks = assignRanks(subRows.map((p) => ({ playerId: p.playerId, total: p.combinedTotal })));
 
+    // Previous ranks (for delta chip): recompute standings excluding the last
+    // finalized round. Null for a player who had no data before that round.
+    const finalizedRounds = officialRounds.filter((r) => r.status === 'finalized');
+    const prevFullMemberRanks = new Map<number, number>();
+    const prevSubRanks = new Map<number, number>();
+    if (finalizedRounds.length >= 2) {
+      const lastFinalizedId = finalizedRounds[finalizedRounds.length - 1]!.id;
+      const prevTotalByPlayer = new Map<number, number>();
+      for (const pid of playerIds) {
+        const rows = (harveyRowsByPlayer.get(pid) ?? []).filter((r) => r.roundId !== lastFinalizedId);
+        if (rows.length === 0) continue;
+        rows.sort((a, b) => (roundDateOrder.get(a.roundId) ?? 0) - (roundDateOrder.get(b.roundId) ?? 0));
+        const totals = calculateSeasonTotal(
+          rows.map((r) => ({ stablefordPoints: r.stablefordPoints, moneyPoints: r.moneyPoints })),
+          [],
+        );
+        prevTotalByPlayer.set(pid, totals.stableford + totals.money);
+      }
+      const prevFullInputs = fullMemberRows
+        .filter((p) => prevTotalByPlayer.has(p.playerId))
+        .map((p) => ({ playerId: p.playerId, total: prevTotalByPlayer.get(p.playerId)! }));
+      const prevSubInputs = subRows
+        .filter((p) => prevTotalByPlayer.has(p.playerId))
+        .map((p) => ({ playerId: p.playerId, total: prevTotalByPlayer.get(p.playerId)! }));
+      for (const [pid, r] of assignRanks(prevFullInputs)) prevFullMemberRanks.set(pid, r);
+      for (const [pid, r] of assignRanks(prevSubInputs)) prevSubRanks.set(pid, r);
+    }
+
     const sortByRankName = (a: StandingsPlayer, b: StandingsPlayer) =>
       a.rank - b.rank || a.name.localeCompare(b.name);
 
@@ -205,6 +241,7 @@ app.get('/standings', async (c) => {
         lowRound: p.lowRound,
         highRound: p.highRound,
         rank: fullMemberRanks.get(p.playerId) ?? fullMemberRows.length,
+        rankPrevious: prevFullMemberRanks.get(p.playerId) ?? null,
         isPlayoffEligible: (fullMemberRanks.get(p.playerId) ?? 999) <= 8,
         roundTotals: roundTotalsByPlayer.get(p.playerId) ?? [],
       }))
@@ -223,14 +260,24 @@ app.get('/standings', async (c) => {
         lowRound: p.lowRound,
         highRound: p.highRound,
         rank: subRanks.get(p.playerId) ?? subRows.length,
+        rankPrevious: prevSubRanks.get(p.playerId) ?? null,
         isPlayoffEligible: false,
         roundTotals: roundTotalsByPlayer.get(p.playerId) ?? [],
       }))
       .sort(sortByRankName);
 
+    const nextRound = officialRounds.find((r) => r.status !== 'finalized');
+    const nextRoundDate = nextRound?.scheduledDate ?? null;
+
     return c.json(
       {
-        season: { id: season.id, name: season.name, totalRounds: season.totalRounds, roundsCompleted },
+        season: {
+          id: season.id,
+          name: season.name,
+          totalRounds: season.totalRounds,
+          roundsCompleted,
+          nextRoundDate,
+        },
         fullMembers,
         subs,
         lastUpdated: new Date().toISOString(),

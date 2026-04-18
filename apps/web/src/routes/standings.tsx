@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { RefreshCw, AlertCircle, ChevronDown, MapPin, Crown, TrendingUp, TrendingDown, Minus, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sparkline } from '@/components/sparkline';
 import { apiFetch } from '@/lib/api';
@@ -22,6 +22,7 @@ type StandingsPlayer = {
   lowRound: number;
   highRound: number;
   rank: number;
+  rankPrevious: number | null;
   isPlayoffEligible: boolean;
   roundTotals: number[];
 };
@@ -32,6 +33,7 @@ type StandingsResponse = {
     name: string;
     totalRounds: number;
     roundsCompleted: number;
+    nextRoundDate: string | null;
   } | null;
   fullMembers: StandingsPlayer[];
   subs: StandingsPlayer[];
@@ -55,8 +57,49 @@ type PairingHistoryResponse = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const PLAYOFF_CUT = 8;
+const BUBBLE_THRESHOLD = 10; // show bubble warning when within 10 pts of cut
+const PIN_KEY = 'wolf-cup:pinned-player-id';
+
 function fmt(points: number): string {
   return Number.isInteger(points) ? String(points) : points.toFixed(1);
+}
+
+function formatNextRound(iso: string | null): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function getPinned(): number | null {
+  try {
+    const raw = localStorage.getItem(PIN_KEY);
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function setPinned(playerId: number | null): void {
+  try {
+    if (playerId === null) localStorage.removeItem(PIN_KEY);
+    else localStorage.setItem(PIN_KEY, String(playerId));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function getPlayerPairings(playerId: number, pairs: PairingPair[]): { name: string; count: number }[] {
+  const partners: { name: string; count: number }[] = [];
+  for (const p of pairs) {
+    if (p.playerAId === playerId) partners.push({ name: p.playerBName, count: p.count });
+    else if (p.playerBId === playerId) partners.push({ name: p.playerAName, count: p.count });
+  }
+  partners.sort((a, b) => b.count - a.count);
+  return partners;
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +122,17 @@ function StandingsPage() {
     staleTime: 60_000,
   });
 
+  const [pinnedId, setPinnedIdState] = useState<number | null>(null);
+  useEffect(() => {
+    setPinnedIdState(getPinned());
+  }, []);
+
+  const togglePin = (playerId: number) => {
+    const next = pinnedId === playerId ? null : playerId;
+    setPinned(next);
+    setPinnedIdState(next);
+  };
+
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <Link
@@ -96,11 +150,7 @@ function StandingsPage() {
           <h2 className="text-xl font-bold tracking-tight">
             {data?.season ? `${data.season.name}` : 'Season Standings'}
           </h2>
-          {data?.season && (
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Round {data.season.roundsCompleted} of {data.season.totalRounds} · Best 10 count
-            </p>
-          )}
+          <p className="text-[11px] text-muted-foreground mt-0.5">Best 10 rounds count</p>
         </div>
         <div className="flex items-center gap-1">
           <Link
@@ -127,198 +177,483 @@ function StandingsPage() {
         </div>
       )}
 
-      {!isLoading && !isError && data && (
+      {!isLoading && !isError && data && data.season && (
         <>
-          {data.season === null ? (
+          <SeasonHero season={data.season} />
+
+          {data.fullMembers.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <span className="text-5xl">📊</span>
-              <p className="text-muted-foreground">No season data available</p>
+              <span className="text-5xl">🏆</span>
+              <p className="text-muted-foreground">No standings yet — play some rounds!</p>
             </div>
           ) : (
             <>
-              {data.fullMembers.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                  <span className="text-5xl">🏆</span>
-                  <p className="text-muted-foreground">No standings yet — play some rounds!</p>
-                </div>
-              ) : (
-                <>
-                  <StandingsTable players={data.fullMembers} showPlayoff pairs={pairingData?.pairs ?? []} />
-                  {data.subs.length > 0 && (
-                    <div className="mt-6">
-                      <h3 className="text-base font-semibold mb-2">Substitutes</h3>
-                      <StandingsTable players={data.subs} showPlayoff={false} pairs={pairingData?.pairs ?? []} />
-                    </div>
-                  )}
-                </>
+              <LeaderSpotlight players={data.fullMembers} />
+              <StandingsList
+                players={data.fullMembers}
+                pairs={pairingData?.pairs ?? []}
+                pinnedId={pinnedId}
+                onTogglePin={togglePin}
+                showPlayoffCut
+              />
+              {data.subs.length > 0 && (
+                <SubsSection
+                  subs={data.subs}
+                  pairs={pairingData?.pairs ?? []}
+                  pinnedId={pinnedId}
+                  onTogglePin={togglePin}
+                />
               )}
             </>
           )}
         </>
+      )}
+
+      {!isLoading && !isError && data && data.season === null && (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <span className="text-5xl">📊</span>
+          <p className="text-muted-foreground">No season data available</p>
+        </div>
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// StandingsTable
+// SeasonHero — progress bar + next round date
 // ---------------------------------------------------------------------------
 
-function rankRowStyle(rank: number, isPlayoffEligible: boolean, showPlayoff: boolean): string {
-  const base = 'border-b last:border-0';
-  const playoff = showPlayoff && isPlayoffEligible ? ' bg-green-50/50 dark:bg-green-950/15' : '';
-  if (rank === 1) return `${base} border-l-2 border-l-amber-400${playoff}`;
-  if (rank === 2) return `${base} border-l-2 border-l-slate-400${playoff}`;
-  if (rank === 3) return `${base} border-l-2 border-l-orange-500${playoff}`;
-  return `${base} border-l-2 border-l-transparent${playoff}`;
-}
-
-function RankBadge({ rank, isPlayoffEligible, showPlayoff }: { rank: number; isPlayoffEligible: boolean; showPlayoff: boolean }) {
-  const badge = showPlayoff && isPlayoffEligible ? <span className="ml-1 text-green-500 text-[10px]">✓</span> : null;
-  if (rank === 1) return <><span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-400 text-amber-900 text-xs font-black">1</span>{badge}</>;
-  if (rank === 2) return <><span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-300 text-slate-700 dark:bg-slate-600 dark:text-slate-100 text-xs font-black">2</span>{badge}</>;
-  if (rank === 3) return <><span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-orange-400 text-orange-900 text-xs font-black">3</span>{badge}</>;
-  return <><span className="text-sm font-medium text-muted-foreground">{rank}</span>{badge}</>;
-}
-
-function getPlayerPairings(playerId: number, pairs: PairingPair[]): { name: string; count: number }[] {
-  const partners: { name: string; count: number }[] = [];
-  for (const p of pairs) {
-    if (p.playerAId === playerId) partners.push({ name: p.playerBName, count: p.count });
-    else if (p.playerBId === playerId) partners.push({ name: p.playerAName, count: p.count });
-  }
-  partners.sort((a, b) => b.count - a.count);
-  return partners;
-}
-
-function StandingsTable({ players, showPlayoff, pairs }: { players: StandingsPlayer[]; showPlayoff: boolean; pairs: PairingPair[] }) {
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const hasPairings = pairs.length > 0;
-
-  if (players.length === 0) {
-    return <p className="text-muted-foreground text-sm">No results yet.</p>;
-  }
-
+function SeasonHero({ season }: { season: NonNullable<StandingsResponse['season']> }) {
+  const pct = season.totalRounds > 0 ? Math.round((season.roundsCompleted / season.totalRounds) * 100) : 0;
+  const remaining = Math.max(season.totalRounds - season.roundsCompleted, 0);
+  const nextLabel = formatNextRound(season.nextRoundDate);
   return (
-    <div className="rounded-xl border overflow-x-auto shadow-sm">
-      <table className="w-full text-sm min-w-[600px]">
-        <thead>
-          <tr className="border-b bg-muted/60 text-[11px] text-muted-foreground">
-            <th className="py-2 pl-3 pr-1 text-center font-medium w-12">#</th>
-            <th className="py-2 px-2 text-left font-medium">Player</th>
-            <th className="py-2 px-2 text-right font-medium">Total</th>
-            <th className="py-2 px-1 text-center font-medium w-16">Trend</th>
-            <th className="py-2 px-2 text-center font-medium">Rds</th>
-            <th className="py-2 px-2 text-right font-medium">Avg</th>
-            <th className="py-2 px-2 text-right font-medium">Low</th>
-            <th className="py-2 px-2 text-right font-medium">High</th>
-            <th className="py-2 px-2 text-right font-medium">Stab</th>
-            <th className="py-2 px-3 text-right font-medium">$</th>
-          </tr>
-        </thead>
-        <tbody>
-          {players.map((player) => {
-            const isExpanded = expandedId === player.playerId;
-            const partnerList = isExpanded ? getPlayerPairings(player.playerId, pairs) : [];
-            return (
-              <>
-                <tr
-                  key={player.playerId}
-                  className={`${rankRowStyle(player.rank, player.isPlayoffEligible, showPlayoff)} ${hasPairings ? 'cursor-pointer hover:bg-muted/30' : ''}`}
-                  onClick={() => hasPairings && setExpandedId(isExpanded ? null : player.playerId)}
-                >
-                  <td className="py-2.5 pl-3 pr-1 text-center">
-                    <RankBadge rank={player.rank} isPlayoffEligible={player.isPlayoffEligible} showPlayoff={showPlayoff} />
-                  </td>
-                  <td className="py-2.5 px-2 font-semibold">
-                    <span className="flex items-center gap-1">
-                      {player.name}
-                      {hasPairings && (
-                        <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                      )}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-2 text-right tabular-nums font-bold text-base">{fmt(player.combinedTotal)}</td>
-                  <td className="py-2.5 px-1 text-center">
-                    {player.roundTotals.length >= 2 ? (
-                      <Sparkline
-                        data={player.roundTotals}
-                        width={52}
-                        height={16}
-                        color="#8b5cf6"
-                      />
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground/30">—</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-2 text-center tabular-nums text-muted-foreground">
-                    {player.roundsPlayed}
-                    {player.roundsDropped > 0 && (
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-0.5">(-{player.roundsDropped})</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
-                    {fmt(player.avgPerRound)}
-                  </td>
-                  <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
-                    {player.roundsPlayed > 0 ? fmt(player.lowRound) : '—'}
-                  </td>
-                  <td className="py-2.5 px-2 text-right tabular-nums text-muted-foreground">
-                    {player.roundsPlayed > 0 ? fmt(player.highRound) : '—'}
-                  </td>
-                  <td className="py-2.5 px-2 text-right tabular-nums">{fmt(player.stablefordTotal)}</td>
-                  <td className="py-2.5 px-3 text-right tabular-nums">{fmt(player.moneyTotal)}</td>
-                </tr>
-                {isExpanded && (
-                  <tr key={`${player.playerId}-pairings`}>
-                    <td colSpan={10} className="px-4 py-2 bg-muted/20 border-b">
-                      <p className="text-xs font-semibold text-muted-foreground mb-1.5">Paired With This Season</p>
-                      {partnerList.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">No pairing history yet</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {partnerList.map((p) => (
-                            <span
-                              key={p.name}
-                              className={`text-xs px-2 py-0.5 rounded-full ${
-                                p.count >= 3
-                                  ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-                                  : p.count === 2
-                                    ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-                                    : 'bg-muted text-foreground'
-                              }`}
-                            >
-                              {p.name} <span className="font-bold">{p.count}x</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                )}
-              </>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="rounded-xl border bg-card p-3 mb-3">
+      <div className="flex items-baseline justify-between mb-2">
+        <div>
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Season Progress</div>
+          <div className="text-xl font-bold tabular-nums leading-tight">
+            {season.roundsCompleted}<span className="text-sm font-normal text-muted-foreground"> / {season.totalRounds}</span>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-widest">Remaining</div>
+          <div className="text-sm font-semibold tabular-nums">{remaining} rds</div>
+        </div>
+      </div>
+      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+        <div
+          className="h-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-500"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {nextLabel && (
+        <div className="text-[11px] text-muted-foreground mt-2">
+          Next round: <span className="font-semibold text-foreground">{nextLabel}</span>
+        </div>
+      )}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// LeaderSpotlight — gold gradient banner for rank 1
+// ---------------------------------------------------------------------------
+
+function LeaderSpotlight({ players }: { players: StandingsPlayer[] }) {
+  const leader = players.find((p) => p.rank === 1);
+  if (!leader) return null;
+  const second = players.find((p) => p.rank === 2);
+  const lead = second ? leader.combinedTotal - second.combinedTotal : 0;
+  return (
+    <div className="relative rounded-xl border border-amber-300 dark:border-amber-700/60 bg-gradient-to-br from-amber-100 via-amber-50 to-yellow-50 dark:from-amber-950/40 dark:via-amber-950/20 dark:to-yellow-950/20 p-3 mb-3 overflow-hidden">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-400 flex items-center justify-center shadow-sm">
+            <Crown className="h-5 w-5 text-amber-900" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest">Season Leader</div>
+            <div className="text-base font-bold truncate">{leader.name}</div>
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-black tabular-nums text-amber-900 dark:text-amber-200 leading-none">{fmt(leader.combinedTotal)}</div>
+          {second && (
+            <div className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold mt-0.5 tabular-nums">+{fmt(lead)} over 2nd</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StandingsList — full-member cards with playoff cut divider
+// ---------------------------------------------------------------------------
+
+function StandingsList({
+  players,
+  pairs,
+  pinnedId,
+  onTogglePin,
+  showPlayoffCut,
+}: {
+  players: StandingsPlayer[];
+  pairs: PairingPair[];
+  pinnedId: number | null;
+  onTogglePin: (id: number) => void;
+  showPlayoffCut: boolean;
+}) {
+  // Build a sorted list (already sorted by API, but be safe)
+  const sorted = [...players].sort((a, b) => a.rank - b.rank);
+  const rank8Total = sorted.find((p) => p.rank === PLAYOFF_CUT)?.combinedTotal ?? null;
+
+  return (
+    <div className="space-y-1.5">
+      {sorted.map((player, i) => {
+        const prev = i > 0 ? sorted[i - 1] : null;
+        const gap = prev ? prev.combinedTotal - player.combinedTotal : 0;
+        const gapToCut = rank8Total !== null ? player.combinedTotal - rank8Total : null;
+        const isBubble =
+          showPlayoffCut &&
+          gapToCut !== null &&
+          player.rank !== 1 &&
+          Math.abs(gapToCut) <= BUBBLE_THRESHOLD;
+        // Insert the cut-line divider between rank 8 and 9
+        const showCutDivider =
+          showPlayoffCut && prev !== null && prev.rank <= PLAYOFF_CUT && player.rank > PLAYOFF_CUT;
+        return (
+          <div key={player.playerId}>
+            {showCutDivider && <PlayoffCutDivider />}
+            <PlayerCard
+              player={player}
+              prev={prev}
+              gap={gap}
+              isBubble={isBubble}
+              pairs={pairs}
+              isPinned={pinnedId === player.playerId}
+              onTogglePin={() => onTogglePin(player.playerId)}
+              desaturate={false}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlayoffCutDivider() {
+  return (
+    <div className="flex items-center gap-3 my-3 px-1">
+      <div className="flex-1 border-t-2 border-dashed border-red-300 dark:border-red-800" />
+      <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest">Playoff Cut — Top {PLAYOFF_CUT}</span>
+      <div className="flex-1 border-t-2 border-dashed border-red-300 dark:border-red-800" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SubsSection — collapsed by default
+// ---------------------------------------------------------------------------
+
+function SubsSection({
+  subs,
+  pairs,
+  pinnedId,
+  onTogglePin,
+}: {
+  subs: StandingsPlayer[];
+  pairs: PairingPair[];
+  pinnedId: number | null;
+  onTogglePin: (id: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="mt-6">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors"
+      >
+        <span className="text-sm font-semibold text-muted-foreground">
+          Substitutes ({subs.length})
+        </span>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+      {expanded && (
+        <div className="space-y-1.5 mt-2 opacity-80">
+          {[...subs].sort((a, b) => a.rank - b.rank).map((player, i, arr) => {
+            const prev = i > 0 ? arr[i - 1] : null;
+            const gap = prev ? prev.combinedTotal - player.combinedTotal : 0;
+            return (
+              <PlayerCard
+                key={player.playerId}
+                player={player}
+                prev={prev}
+                gap={gap}
+                isBubble={false}
+                pairs={pairs}
+                isPinned={pinnedId === player.playerId}
+                onTogglePin={() => onTogglePin(player.playerId)}
+                desaturate
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PlayerCard — one row in the standings list
+// ---------------------------------------------------------------------------
+
+function PlayerCard({
+  player,
+  prev,
+  gap,
+  isBubble,
+  pairs,
+  isPinned,
+  onTogglePin,
+  desaturate,
+}: {
+  player: StandingsPlayer;
+  prev: StandingsPlayer | null;
+  gap: number;
+  isBubble: boolean;
+  pairs: PairingPair[];
+  isPinned: boolean;
+  onTogglePin: () => void;
+  desaturate: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isPinned && ref.current) {
+      // Auto-scroll pinned card into view on mount / after pin change
+      ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [isPinned]);
+
+  const partners = expanded ? getPlayerPairings(player.playerId, pairs) : [];
+
+  // Delta chip: rank vs rankPrevious
+  let delta: { kind: 'up' | 'down' | 'flat' | 'new'; value: number } = { kind: 'flat', value: 0 };
+  if (player.rankPrevious === null) {
+    delta = { kind: 'new', value: 0 };
+  } else if (player.rank < player.rankPrevious) {
+    delta = { kind: 'up', value: player.rankPrevious - player.rank };
+  } else if (player.rank > player.rankPrevious) {
+    delta = { kind: 'down', value: player.rank - player.rankPrevious };
+  }
+
+  // Gap-to-next-up label
+  const gapLabel = prev === null
+    ? '👑 Leader'
+    : gap === 0
+      ? `= with ${firstName(prev.name)}`
+      : `−${fmt(gap)} to ${firstName(prev.name)}`;
+
+  const cardTone = desaturate
+    ? 'bg-card/60'
+    : player.rank === 1
+      ? 'bg-gradient-to-r from-amber-50 to-transparent dark:from-amber-950/20'
+      : player.isPlayoffEligible
+        ? 'bg-green-50/40 dark:bg-green-950/10'
+        : 'bg-card';
+
+  const borderTone = isPinned
+    ? 'border-blue-400 ring-2 ring-blue-400/30'
+    : player.rank === 1
+      ? 'border-amber-300 dark:border-amber-700/60'
+      : player.isPlayoffEligible
+        ? 'border-green-200 dark:border-green-900/50'
+        : 'border-border';
+
+  return (
+    <div
+      ref={ref}
+      className={`rounded-xl border px-3 py-2.5 transition-all ${cardTone} ${borderTone}`}
+    >
+      {/* Top row: rank pill · name · total */}
+      <div className="flex items-center gap-2">
+        <RankPill rank={player.rank} isPlayoffEligible={player.isPlayoffEligible} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+              className="font-bold text-base truncate text-left hover:text-foreground/80"
+            >
+              {player.name}
+            </button>
+            {isBubble && (
+              <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0">
+                ⚠ Bubble
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
+              aria-label={isPinned ? 'Unpin this is me' : 'Pin this is me'}
+              className={`ml-auto flex-shrink-0 p-1 rounded-md transition-colors ${
+                isPinned
+                  ? 'text-blue-500 bg-blue-100 dark:bg-blue-950/40'
+                  : 'text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <MapPin className={`h-3.5 w-3.5 ${isPinned ? 'fill-blue-500' : ''}`} />
+            </button>
+          </div>
+        </div>
+        <div className="text-right tabular-nums flex-shrink-0">
+          <div className="text-lg font-black leading-none">{fmt(player.combinedTotal)}</div>
+          <div className="text-[9px] text-muted-foreground uppercase tracking-widest mt-0.5">Total</div>
+        </div>
+      </div>
+
+      {/* Second row: delta · gap-to-next · sparkline · rounds */}
+      <div className="flex items-center gap-2 mt-2 text-[11px] text-muted-foreground">
+        <DeltaChip delta={delta} />
+        <span className="tabular-nums truncate">{gapLabel}</span>
+        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+          {player.roundTotals.length >= 2 && (
+            <Sparkline data={player.roundTotals} width={48} height={14} color="#8b5cf6" />
+          )}
+          <span className="tabular-nums text-muted-foreground/80">
+            {player.roundsPlayed} rd{player.roundsPlayed === 1 ? '' : 's'}
+            {player.roundsDropped > 0 && (
+              <span className="text-amber-600 dark:text-amber-400 ml-0.5">(-{player.roundsDropped})</span>
+            )}
+          </span>
+        </div>
+      </div>
+
+      {/* Expanded detail grid */}
+      {expanded && (
+        <div className="mt-3 pt-3 border-t space-y-2">
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <DetailStat label="Avg" value={fmt(player.avgPerRound)} />
+            <DetailStat label="Low" value={player.roundsPlayed > 0 ? fmt(player.lowRound) : '—'} />
+            <DetailStat label="High" value={player.roundsPlayed > 0 ? fmt(player.highRound) : '—'} />
+            <DetailStat label="Stab/$" value={`${fmt(player.stablefordTotal)}/${fmt(player.moneyTotal)}`} />
+          </div>
+          {partners.length > 0 && (
+            <div>
+              <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Paired With</div>
+              <div className="flex flex-wrap gap-1">
+                {partners.map((p) => (
+                  <span
+                    key={p.name}
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                      p.count >= 3
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                        : p.count === 2
+                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                          : 'bg-muted text-foreground'
+                    }`}
+                  >
+                    {p.name} <span className="font-bold">{p.count}x</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RankPill({ rank, isPlayoffEligible }: { rank: number; isPlayoffEligible: boolean }) {
+  if (rank === 1) {
+    return (
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-400 text-amber-900 flex items-center justify-center font-black text-sm shadow-sm">
+        🏆
+      </div>
+    );
+  }
+  if (rank === 2) {
+    return (
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-500 text-slate-700 dark:text-slate-100 flex items-center justify-center font-black text-sm">
+        2
+      </div>
+    );
+  }
+  if (rank === 3) {
+    return (
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-400 text-orange-900 flex items-center justify-center font-black text-sm">
+        3
+      </div>
+    );
+  }
+  if (isPlayoffEligible) {
+    return (
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400 flex items-center justify-center font-bold text-sm relative">
+        {rank}
+        <span className="absolute -bottom-0.5 -right-0.5 text-[8px] bg-green-500 text-white rounded-full w-3 h-3 flex items-center justify-center font-black">✓</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center font-semibold text-sm">
+      {rank}
+    </div>
+  );
+}
+
+function DeltaChip({ delta }: { delta: { kind: 'up' | 'down' | 'flat' | 'new'; value: number } }) {
+  if (delta.kind === 'up') {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-green-600 dark:text-green-400 font-bold tabular-nums">
+        <TrendingUp className="h-3 w-3" />{delta.value}
+      </span>
+    );
+  }
+  if (delta.kind === 'down') {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400 font-bold tabular-nums">
+        <TrendingDown className="h-3 w-3" />{delta.value}
+      </span>
+    );
+  }
+  if (delta.kind === 'new') {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-muted-foreground/60" title="New on the board this round">
+        <Circle className="h-2.5 w-2.5 fill-current" />
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5 text-muted-foreground/50" title="No change from last round">
+      <Minus className="h-3 w-3" />
+    </span>
+  );
+}
+
+function DetailStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">{label}</div>
+      <div className="text-sm font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function firstName(name: string): string {
+  return name.split(' ')[0] ?? name;
+}
+
 function LoadingSkeleton() {
   return (
-    <div className="rounded-md border overflow-hidden animate-pulse">
-      <div className="h-9 bg-muted/50" />
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="flex gap-3 px-3 py-3 border-b last:border-0">
-          <div className="h-4 w-6 bg-muted rounded" />
-          <div className="flex-1">
-            <div className="h-4 w-32 bg-muted rounded" />
-          </div>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
-            <div key={j} className="h-4 w-10 bg-muted rounded" />
-          ))}
-        </div>
+    <div className="space-y-2 animate-pulse">
+      <div className="h-16 rounded-xl bg-muted/50" />
+      <div className="h-16 rounded-xl bg-muted/50" />
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="h-14 rounded-xl bg-muted/30" />
       ))}
     </div>
   );
