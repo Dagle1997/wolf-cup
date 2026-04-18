@@ -513,6 +513,46 @@ function ScorecardPanel({
 }
 
 // ---------------------------------------------------------------------------
+// Sort toggle helpers
+// ---------------------------------------------------------------------------
+
+type SortMode = 'harvey' | 'par' | 'stableford' | 'money';
+
+const SORT_PREF_KEY = 'wolf-cup:leaderboard-sort';
+
+function readSortPref(): SortMode {
+  try {
+    const raw = localStorage.getItem(SORT_PREF_KEY);
+    if (raw === 'harvey' || raw === 'par' || raw === 'stableford' || raw === 'money') return raw;
+  } catch { /* localStorage unavailable */ }
+  return 'harvey';
+}
+
+function writeSortPref(mode: SortMode): void {
+  try {
+    localStorage.setItem(SORT_PREF_KEY, mode);
+  } catch { /* ignore */ }
+}
+
+// Server ranks are authoritative — just read the right field.
+function rankField(p: LeaderboardPlayer, mode: SortMode): number {
+  switch (mode) {
+    case 'stableford': return p.stablefordRank;
+    case 'money': return p.moneyRank;
+    case 'harvey':
+    case 'par':
+    default:
+      return p.rank;
+  }
+}
+
+// Sort rows by the active axis. Server already ranked but it's ascending-by-rank
+// regardless of mode — so when mode changes we re-order rows by the active rank.
+function sortLeaderboard(rows: LeaderboardPlayer[], mode: SortMode): LeaderboardPlayer[] {
+  return [...rows].sort((a, b) => rankField(a, mode) - rankField(b, mode));
+}
+
+// ---------------------------------------------------------------------------
 // Rank medal helpers
 // ---------------------------------------------------------------------------
 
@@ -640,7 +680,18 @@ function LeaderboardTable({
 }) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'group'>('all');
+  const [sortMode, setSortMode] = useState<SortMode>(() => readSortPref());
   const colCount = data.harveyLiveEnabled ? 6 : 5;
+
+  // Persist sort preference (without overwriting on render-time fallback)
+  useEffect(() => {
+    writeSortPref(sortMode);
+  }, [sortMode]);
+
+  // If saved pref is 'harvey' but this round has Harvey disabled, render-fall-back
+  // to 'par' without mutating the saved preference.
+  const effectiveSortMode: SortMode =
+    sortMode === 'harvey' && !data.harveyLiveEnabled ? 'par' : sortMode;
 
   // Show the toggle only when the player has a session bound to this round
   const session = getSession();
@@ -649,55 +700,101 @@ function LeaderboardTable({
     ? data.leaderboard.find((p) => p.groupId === myGroupId)?.groupNumber ?? null
     : null;
 
+  // Sort field + rank field per active sort. Server ranks are authoritative.
+  const sortedLeaderboard = sortLeaderboard(data.leaderboard, effectiveSortMode);
+
   const visiblePlayers = viewMode === 'group' && myGroupId !== null
-    ? data.leaderboard.filter((p) => p.groupId === myGroupId)
-    : data.leaderboard;
+    ? sortedLeaderboard.filter((p) => p.groupId === myGroupId)
+    : sortedLeaderboard;
+
+  // Sort options shown in the segmented control. When Harvey is off, swap
+  // Harvey → "To Par" (matches server's netToPar-based default ranking).
+  const primaryOption: { mode: SortMode; label: string } = data.harveyLiveEnabled
+    ? { mode: 'harvey', label: 'Harvey' }
+    : { mode: 'par', label: 'To Par' };
+  const sortOptions: { mode: SortMode; label: string }[] = [
+    primaryOption,
+    { mode: 'stableford', label: 'Stableford' },
+    { mode: 'money', label: 'Money' },
+  ];
+
+  const caret = '▾';
 
   return (
     <div className="space-y-2">
-      {myGroupNumber !== null && (
+      <div className="flex items-center gap-2 flex-wrap">
+        {myGroupNumber !== null && (
+          <div className="inline-flex rounded-full border bg-muted/40 p-0.5 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setViewMode('all')}
+              className={`px-3 py-1 rounded-full transition-colors ${
+                viewMode === 'all'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              aria-pressed={viewMode === 'all'}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('group')}
+              className={`px-3 py-1 rounded-full transition-colors ${
+                viewMode === 'group'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              aria-pressed={viewMode === 'group'}
+            >
+              Group {myGroupNumber}
+            </button>
+          </div>
+        )}
         <div className="inline-flex rounded-full border bg-muted/40 p-0.5 text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => setViewMode('all')}
-            className={`px-3 py-1 rounded-full transition-colors ${
-              viewMode === 'all'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            aria-pressed={viewMode === 'all'}
-          >
-            All
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('group')}
-            className={`px-3 py-1 rounded-full transition-colors ${
-              viewMode === 'group'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            aria-pressed={viewMode === 'group'}
-          >
-            Group {myGroupNumber}
-          </button>
+          {sortOptions.map((opt) => (
+            <button
+              key={opt.mode}
+              type="button"
+              onClick={() => setSortMode(opt.mode)}
+              className={`px-3 py-1 rounded-full transition-colors ${
+                effectiveSortMode === opt.mode
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+              aria-pressed={effectiveSortMode === opt.mode}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
-      )}
+      </div>
       <div className="rounded-xl border overflow-hidden shadow-sm">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b bg-muted/60 text-muted-foreground text-[11px]">
             <th className="text-center py-2 pl-2 pr-1 w-10">#</th>
             <th className="text-left py-2 pr-2">Player</th>
-            <th className="text-right py-2 pr-2 w-14">To Par</th>
-            <th className="text-right py-2 pr-2 w-12">Stb</th>
-            <th className="text-right py-2 pr-3 w-14">$</th>
-            {data.harveyLiveEnabled && <th className="text-right py-2 pr-3 w-16">Hvy Pts</th>}
+            <th className="text-right py-2 pr-2 w-14">
+              To Par{effectiveSortMode === 'par' && <span className="ml-0.5">{caret}</span>}
+            </th>
+            <th className="text-right py-2 pr-2 w-12">
+              Stb{effectiveSortMode === 'stableford' && <span className="ml-0.5">{caret}</span>}
+            </th>
+            <th className="text-right py-2 pr-3 w-14">
+              ${effectiveSortMode === 'money' && <span className="ml-0.5">{caret}</span>}
+            </th>
+            {data.harveyLiveEnabled && (
+              <th className="text-right py-2 pr-3 w-16">
+                Hvy Pts{effectiveSortMode === 'harvey' && <span className="ml-0.5">{caret}</span>}
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
           {visiblePlayers.map((player) => {
             const isSelected = selectedPlayerId === player.playerId;
+            const activeRank = rankField(player, effectiveSortMode);
             const toParColor =
               player.netToPar < 0
                 ? 'text-green-600 font-bold'
@@ -715,10 +812,10 @@ function LeaderboardTable({
                       prev === player.playerId ? null : player.playerId,
                     )
                   }
-                  className={rankRowClass(player.rank, isSelected)}
+                  className={rankRowClass(activeRank, isSelected)}
                 >
                   <td className="py-2.5 pl-2 pr-1 text-center">
-                    <RankCell rank={player.rank} />
+                    <RankCell rank={activeRank} />
                   </td>
                   <td className="py-2.5 pr-2">
                     <div className="font-semibold leading-tight">{player.name}</div>
