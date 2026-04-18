@@ -1976,18 +1976,37 @@ app.get('/rounds/:roundId/highlights', async (c) => {
       });
     }
 
-    // Points Leader — most stableford (tied players all credited)
+    // Stableford Leader — most stableford (tied players all credited)
     const maxStab = Math.max(...resultRows.map((r) => r.stablefordTotal));
-    const leaders = resultRows.filter((r) => r.stablefordTotal === maxStab);
-    const stabNames = nameList(leaders.map((l) => l.playerId));
+    const stabLeaders = resultRows.filter((r) => r.stablefordTotal === maxStab);
+    const stabNames = nameList(stabLeaders.map((l) => l.playerId));
     highlights.push({
       emoji: '⭐',
-      title: 'Points Leader',
-      detail: leaders.length === 1
+      title: 'Stableford Leader',
+      detail: stabLeaders.length === 1
         ? `${stabNames} with ${maxStab} stableford points`
         : `${stabNames} all posted ${maxStab} stableford points`,
       category: 'scoring',
     });
+
+    // Perfect Day — same player(s) won both money and stableford
+    if (maxMoney > 0) {
+      const moneyWinners = resultRows.filter((r) => r.moneyTotal === maxMoney);
+      const moneyIds = new Set(moneyWinners.map((w) => w.playerId));
+      const stabIds = new Set(stabLeaders.map((l) => l.playerId));
+      const sweepers = [...moneyIds].filter((id) => stabIds.has(id));
+      if (sweepers.length > 0) {
+        const sweeperNames = nameList(sweepers);
+        highlights.push({
+          emoji: '🌟',
+          title: 'Perfect Day',
+          detail: sweepers.length === 1
+            ? `${sweeperNames} swept — +$${maxMoney} and ${maxStab} stableford`
+            : `${sweeperNames} all swept — +$${maxMoney} and ${maxStab} stableford`,
+          category: 'scoring',
+        });
+      }
+    }
   }
 
   // B.2: removed the old "X Points on One Hole" highlight — redundant
@@ -2158,15 +2177,10 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     }
   }
 
-  // --- B.3-B.6: Wolf money highlights ---
-  // Per the tech spec: "wolf money" for a player = the $ that settled on
-  // the 4 holes where THEY were the wolf (total = wolfSettlement + bonuses
-  // on that hole). Other players' wolf holes don't count toward your ledger.
-  //
-  // - B.3 Biggest Wolf Win: single hole where a wolf had the max positive $
-  // - B.4 Biggest Wolf Loss: single hole where a wolf had the min negative $
-  // - B.5 Pack Leader: round-total wolf $ max, DEDUPED against B.3
-  // - B.6 Fed to the Pack: round-total wolf $ min, DEDUPED against B.4
+  // --- Wolf money highlights (per-hole only) ---
+  // A "wolf hole" for a player = one of their 4 rotation holes where they
+  // were the wolf. Only single-hole moments surface here; round-total
+  // aggregates proved redundant with the per-hole story in practice.
 
   type WolfHoleMoney = {
     playerId: number;
@@ -2176,7 +2190,6 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     partnerId: number | null;
   };
 
-  // Collect each wolf's outcome on their own wolf holes
   const wolfHoleMoneys: WolfHoleMoney[] = [];
   for (const hb of moneyBreakdown.holes) {
     if (hb.holeType !== 'wolf' || hb.wolfPlayerId === null || hb.decision === null) continue;
@@ -2185,41 +2198,31 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     wolfHoleMoneys.push({
       playerId: hb.wolfPlayerId,
       hole: hb.holeNumber,
-      amount: wolfEntry.total, // wolfSettlement + bonuses on that hole
+      amount: wolfEntry.total,
       decision: hb.decision,
       partnerId: hb.partnerPlayerId,
     });
   }
 
-  // Helper to describe a single wolf hole's outcome for a detail string
   const describeWolfHole = (w: WolfHoleMoney, won: boolean): string => {
     const wolfName = nameMap.get(w.playerId) ?? 'Unknown';
     const verb = won ? 'won' : 'dropped';
     const abs = Math.abs(w.amount);
     if (w.decision === 'partner' && w.partnerId !== null) {
       const partnerName = nameMap.get(w.partnerId) ?? 'Unknown';
-      return `${wolfName} & ${partnerName} ${verb} $${abs} on Hole ${w.hole}`;
+      return `${wolfName} & ${partnerName} ${verb} $${abs} on Hole ${w.hole} as the wolf team`;
     }
     if (w.decision === 'blind_wolf') {
       return `${wolfName} went blind on Hole ${w.hole} and ${verb} $${abs}`;
     }
-    // alone
     return `${wolfName} ${verb} $${abs} going alone on Hole ${w.hole}`;
   };
 
-  // B.3 — Biggest Wolf Win (single hole, max positive)
-  let biggestWinEmitted = false;
-  const winPlayers = new Set<number>();
-  const winValueByPlayer = new Map<number, number>();
+  // Biggest Wolf Win — single hole, max positive for a wolf on their own wolf hole
   if (wolfHoleMoneys.length > 0) {
     const maxAmount = Math.max(...wolfHoleMoneys.map((w) => w.amount));
     if (maxAmount > 0) {
       const ties = wolfHoleMoneys.filter((w) => w.amount === maxAmount);
-      biggestWinEmitted = true;
-      for (const t of ties) {
-        winPlayers.add(t.playerId);
-        winValueByPlayer.set(t.playerId, maxAmount);
-      }
       if (ties.length === 1) {
         highlights.push({
           emoji: '🐺',
@@ -2238,19 +2241,11 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     }
   }
 
-  // B.4 — Biggest Wolf Loss (single hole, min negative)
-  let biggestLossEmitted = false;
-  const lossPlayers = new Set<number>();
-  const lossValueByPlayer = new Map<number, number>();
+  // Biggest Wolf Loss — single hole, min negative for a wolf on their own wolf hole
   if (wolfHoleMoneys.length > 0) {
     const minAmount = Math.min(...wolfHoleMoneys.map((w) => w.amount));
     if (minAmount < 0) {
       const ties = wolfHoleMoneys.filter((w) => w.amount === minAmount);
-      biggestLossEmitted = true;
-      for (const t of ties) {
-        lossPlayers.add(t.playerId);
-        lossValueByPlayer.set(t.playerId, minAmount);
-      }
       if (ties.length === 1) {
         highlights.push({
           emoji: '🥩',
@@ -2263,76 +2258,6 @@ app.get('/rounds/:roundId/highlights', async (c) => {
           emoji: '🥩',
           title: 'Biggest Wolf Loss',
           detail: `${ties.length} wolves tied at -$${Math.abs(minAmount)} — ${ties.map((t) => `${nameMap.get(t.playerId)} on Hole ${t.hole}`).join(', ')}`,
-          category: 'wolf',
-        });
-      }
-    }
-  }
-
-  // B.5 — Pack Leader (round-total wolf $ max, deduped vs B.3)
-  // Compute per-player round-total wolf money (their 4 wolf holes only).
-  const wolfMoneyRoundTotal = new Map<number, number>();
-  for (const w of wolfHoleMoneys) {
-    wolfMoneyRoundTotal.set(w.playerId, (wolfMoneyRoundTotal.get(w.playerId) ?? 0) + w.amount);
-  }
-  // Best single-hole win per player (for dedup against B.3)
-  const bestSingleWolfWinPerPlayer = new Map<number, number>();
-  for (const w of wolfHoleMoneys) {
-    const cur = bestSingleWolfWinPerPlayer.get(w.playerId);
-    if (cur === undefined || w.amount > cur) bestSingleWolfWinPerPlayer.set(w.playerId, w.amount);
-  }
-  if (wolfMoneyRoundTotal.size > 0) {
-    const maxRound = Math.max(...wolfMoneyRoundTotal.values());
-    if (maxRound > 0) {
-      const coLeaders = [...wolfMoneyRoundTotal.entries()].filter(([, total]) => total === maxRound);
-      // Dedup: only applies if B.3 emitted. Filter out co-leaders where their
-      // round-total equals their own best single-hole win.
-      const survivors = biggestWinEmitted
-        ? coLeaders.filter(([pid, total]) => {
-            const best = bestSingleWolfWinPerPlayer.get(pid);
-            if (best === undefined) return true;
-            return total !== best || !winPlayers.has(pid);
-          })
-        : coLeaders;
-      if (survivors.length > 0) {
-        const names = nameList(survivors.map(([pid]) => pid));
-        highlights.push({
-          emoji: '🐺',
-          title: 'Pack Leader',
-          detail: survivors.length === 1
-            ? `${names} +$${maxRound} from wolf play`
-            : `${names} each +$${maxRound} from wolf play`,
-          category: 'wolf',
-        });
-      }
-    }
-  }
-
-  // B.6 — Fed to the Pack (round-total wolf $ min, deduped vs B.4)
-  const worstSingleWolfLossPerPlayer = new Map<number, number>();
-  for (const w of wolfHoleMoneys) {
-    const cur = worstSingleWolfLossPerPlayer.get(w.playerId);
-    if (cur === undefined || w.amount < cur) worstSingleWolfLossPerPlayer.set(w.playerId, w.amount);
-  }
-  if (wolfMoneyRoundTotal.size > 0) {
-    const minRound = Math.min(...wolfMoneyRoundTotal.values());
-    if (minRound < 0) {
-      const coLosers = [...wolfMoneyRoundTotal.entries()].filter(([, total]) => total === minRound);
-      const survivors = biggestLossEmitted
-        ? coLosers.filter(([pid, total]) => {
-            const worst = worstSingleWolfLossPerPlayer.get(pid);
-            if (worst === undefined) return true;
-            return total !== worst || !lossPlayers.has(pid);
-          })
-        : coLosers;
-      if (survivors.length > 0) {
-        const names = nameList(survivors.map(([pid]) => pid));
-        highlights.push({
-          emoji: '🥩',
-          title: 'Fed to the Pack',
-          detail: survivors.length === 1
-            ? `${names} -$${Math.abs(minRound)} from wolf play`
-            : `${names} each -$${Math.abs(minRound)} from wolf play`,
           category: 'wolf',
         });
       }

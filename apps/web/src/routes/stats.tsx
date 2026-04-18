@@ -84,11 +84,11 @@ type Rival = {
   roundsTogether: number;
   partnerHoles: number;
   opponentHoles: number;
-  luckyCharm: number;  // my GAINS on any shared hole with them (partner or opponent — "when they're around, I cash")
   dominate: number;    // my GAINS on opponent-only holes with them
   rival: number;       // my LOSSES on opponent-only holes with them (≥ 0)
   holesWon: number;    // count of opp-holes I gained on
   holesLost: number;   // count of opp-holes I lost on
+  luckyCharm: number;  // sum of my NET round money across rounds where they were my groupmate (per-round, not per-hole)
 };
 
 type PartnerChemistry = {
@@ -505,13 +505,15 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             )}
           </div>
 
-          {/* Rivalry callouts — positive-only attribution
-              Rival = money they took from you (your losses on opponent holes).
-              Dominate = money you took from them (your gains on opponent holes).
-              Lucky Charm = money you won while they were in your group (any team).  */}
+          {/* Rivalry callouts
+              Lucky Charm — net $ across rounds where they were in your group.
+                            Gated on roundsTogether >= 3 to avoid early-season noise.
+              Dominate    — money you took from them on opponent holes (per-hole).
+              Rival       — money they took from you on opponent holes (per-hole). */}
           {detail.rivals.length >= 2 && (() => {
+            const LUCKY_CHARM_MIN_ROUNDS = 3;
             const charmList = [...detail.rivals]
-              .filter((r) => r.luckyCharm > 0)
+              .filter((r) => r.luckyCharm > 0 && r.roundsTogether >= LUCKY_CHARM_MIN_ROUNDS)
               .sort((a, b) => b.luckyCharm - a.luckyCharm);
             const dominateList = [...detail.rivals]
               .filter((r) => r.dominate > 0)
@@ -527,7 +529,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
               <div className="px-4 py-2 border-b bg-muted/10">
                 <div className="flex items-center justify-between gap-1 text-[10px]">
                   {charm ? (
-                    <span className="text-green-500" title="Money you won on any hole they were in your group for — partner or opponent, doesn't matter. They're around, you cash.">
+                    <span className="text-green-500" title={`Net money across ${charm.roundsTogether} rounds they were in your group`}>
                       🍀 <span className="font-bold">{sn(charm.name)}</span> <span className="tabular-nums">+${charm.luckyCharm}</span>
                     </span>
                   ) : <span />}

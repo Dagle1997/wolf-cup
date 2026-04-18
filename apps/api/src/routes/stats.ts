@@ -495,20 +495,15 @@ app.get('/stats/:playerId/detail', async (c) => {
       };
     });
 
-    // Rivals — per-hole team composition × per-hole money.
+    // Rivals — per-hole head-to-head + per-round Lucky Charm.
     //
-    // POSITIVE-ONLY attributions — losses don't offset gains.
-    //
-    //   luckyCharm — my GAINS on ANY shared hole with X, partner OR opponent.
-    //                "You happen to cash when I'm around." Not about team
-    //                chemistry (that's Best Partnership) — just correlation.
-    //                Same value for all groupmates in a single round where
-    //                they were all around for every hole; diverges over the
-    //                season as group compositions change.
-    //   dominate   — my GAINS on opponent-only holes with X. "When they're
-    //                against me, I take from them."
-    //   rival      — my LOSSES on opponent-only holes with X. "When they're
-    //                against me, they take from me."
+    //   dominate    — my GAINS on opponent holes with X (per-hole). Positive-only.
+    //   rival       — my LOSSES on opponent holes with X (per-hole). Stored positive.
+    //   luckyCharm  — sum of my NET round money across rounds where X was my
+    //                 groupmate. Per-round, not per-hole. Diverges across
+    //                 rivals only as the season progresses and group
+    //                 compositions rotate. Gated on roundsTogether >= 3 so
+    //                 early-season noise is suppressed.
     const groupIds = playerRoundRows.map((r) => r.groupId);
     const groupMates = await db
       .select({
@@ -573,11 +568,11 @@ app.get('/stats/:playerId/detail', async (c) => {
       roundsTogetherSet: Set<number>;
       partnerHoles: number;
       opponentHoles: number;
-      shared_won: number;       // my gains on ANY shared hole — luckyCharm
       opp_won: number;          // my gains on opponent holes — dominate
       opp_lost: number;         // my losses on opponent holes — rival (positive)
       opp_holesWon: number;     // count of opp holes I gained on
       opp_holesLost: number;    // count of opp holes I lost on
+      luckyCharm_netPerRound: number; // sum of my round nets when they were my groupmate
     }>();
     const bucket = (rivalId: number) => {
       let b = rivalBuckets.get(rivalId);
@@ -586,16 +581,29 @@ app.get('/stats/:playerId/detail', async (c) => {
           roundsTogetherSet: new Set(),
           partnerHoles: 0,
           opponentHoles: 0,
-          shared_won: 0,
           opp_won: 0,
           opp_lost: 0,
           opp_holesWon: 0,
           opp_holesLost: 0,
+          luckyCharm_netPerRound: 0,
         };
         rivalBuckets.set(rivalId, b);
       }
       return b;
     };
+
+    // My per-round money totals (needed for luckyCharm per-round attribution)
+    const myRoundMoneyTotals = await db
+      .select({
+        roundId: roundResults.roundId,
+        moneyTotal: roundResults.moneyTotal,
+      })
+      .from(roundResults)
+      .where(and(
+        eq(roundResults.playerId, playerId),
+        inArray(roundResults.roundId, roundIds),
+      ));
+    const myRoundMoneyByRound = new Map(myRoundMoneyTotals.map((r) => [r.roundId, r.moneyTotal]));
 
     for (const rId of roundIds) {
       const myGid = myGroupByRound.get(rId);
@@ -609,10 +617,14 @@ app.get('/stats/:playerId/detail', async (c) => {
       const myGroupHoles = breakdown.holes.filter((h) => h.groupId === myGid);
       if (myGroupHoles.length === 0) continue;
 
-      // Track rounds-together per rival
+      // Track rounds-together per rival + attribute my round net to each
+      // groupmate's luckyCharm bucket (per-round, not per-hole).
+      const myRoundNet = myRoundMoneyByRound.get(rId) ?? 0;
       for (const otherId of rosterPlayers) {
         if (otherId === playerId) continue;
-        bucket(otherId).roundsTogetherSet.add(rId);
+        const b = bucket(otherId);
+        b.roundsTogetherSet.add(rId);
+        b.luckyCharm_netPerRound += myRoundNet;
       }
 
       // Iterate each scored hole in my group and attribute $ to rivals
@@ -640,8 +652,6 @@ app.get('/stats/:playerId/detail', async (c) => {
         for (const rivalId of rosterPlayers) {
           if (rivalId === playerId) continue;
           const b = bucket(rivalId);
-          // Lucky Charm: gains count regardless of team role
-          b.shared_won += myGain;
           if (composition.teammates.has(rivalId)) {
             b.partnerHoles += 1;
           } else if (composition.opponents.has(rivalId)) {
@@ -651,7 +661,6 @@ app.get('/stats/:playerId/detail', async (c) => {
             if (myMoney > 0) b.opp_holesWon += 1;
             else if (myMoney < 0) b.opp_holesLost += 1;
           }
-          // If neither (wolf hole with no decision), only charm gets the gain.
         }
       }
     }
@@ -663,11 +672,11 @@ app.get('/stats/:playerId/detail', async (c) => {
         roundsTogether: b.roundsTogetherSet.size,
         partnerHoles: b.partnerHoles,
         opponentHoles: b.opponentHoles,
-        luckyCharm: b.shared_won,
         dominate: b.opp_won,
         rival: b.opp_lost,
         holesWon: b.opp_holesWon,
         holesLost: b.opp_holesLost,
+        luckyCharm: b.luckyCharm_netPerRound,
       }))
       .sort((a, b) => b.rival - a.rival);
 
