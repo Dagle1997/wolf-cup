@@ -56,6 +56,7 @@ type LeaderboardResponse = {
   harveyLiveEnabled: boolean;
   sideGame: { name: string; format: string; calculationType?: string | null } | null;
   sideGameWinner: { playerName: string; detail: string } | null;
+  sideGameLeader: { playerName: string; detail: string } | null;
   leaderboard: LeaderboardPlayer[];
   lastUpdated: string;
 };
@@ -1126,6 +1127,11 @@ function LeaderboardPage() {
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
               <p className="font-semibold">{currentData.sideGame.name}</p>
               <p className="text-sm text-muted-foreground">{currentData.sideGame.format}</p>
+              {currentData.sideGameLeader && (
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mt-1">
+                  Leader: {currentData.sideGameLeader.playerName} ({currentData.sideGameLeader.detail})
+                </p>
+              )}
             </div>
           )}
           <LeaderboardTable
@@ -1154,6 +1160,11 @@ function LeaderboardPage() {
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
               <p className="font-semibold">{liveData.sideGame.name}</p>
               <p className="text-sm text-muted-foreground">{liveData.sideGame.format}</p>
+              {liveData.sideGameLeader && (
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mt-1">
+                  Leader: {liveData.sideGameLeader.playerName} ({liveData.sideGameLeader.detail})
+                </p>
+              )}
             </div>
           )}
           <LeaderboardTable

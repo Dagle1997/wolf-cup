@@ -175,3 +175,53 @@ export async function computeSideGameWinnerForRound(
     });
   }
 }
+
+// ---------------------------------------------------------------------------
+// Live leader — in-progress equivalent of computeSideGameWinnerForRound.
+//
+// Runs the same pure calcs without the 18-hole completeness gate so a partial
+// round surfaces a running leader. Returns null for manual (CTP) games and
+// for putts weeks when no putts have been entered yet. Subs excluded from
+// winning via eligible set — identical to finalization.
+//
+// Caller passes pre-fetched scores/handicaps/isSub flags to avoid refetching
+// data the leaderboard endpoint already has in hand.
+// ---------------------------------------------------------------------------
+
+export interface LiveLeaderInput {
+  calculationType: string | null;
+  scores: ScoreRow[];
+  players: Array<{ playerId: number; handicapIndex: number; isSub: boolean }>;
+  tee: Tee;
+  decisions?: WolfDecisionRow[]; // required only for auto_polies
+}
+
+export function computeSideGameLeaderLive(input: LiveLeaderInput): { winnerPlayerIds: number[]; detail: string } | null {
+  const { calculationType, scores, players: roster, tee, decisions } = input;
+  if (!calculationType || calculationType === 'manual') return null;
+
+  const handicaps: PlayerHandicap[] = roster.map((p) => ({
+    playerId: p.playerId,
+    handicapIndex: p.handicapIndex,
+  }));
+  const eligible = new Set(roster.filter((p) => !p.isSub).map((p) => p.playerId));
+  if (eligible.size === 0) return null;
+
+  switch (calculationType) {
+    case 'auto_net_pars':
+      return calcMostNetPars(scores, handicaps, tee, eligible);
+    case 'auto_skins':
+      return calcMostSkins(scores, handicaps, tee, eligible);
+    case 'auto_putts': {
+      const anyPutts = scores.some((s) => s.putts !== null && s.putts !== undefined);
+      if (!anyPutts) return null;
+      return calcLeastPutts(scores, eligible);
+    }
+    case 'auto_net_under_par':
+      return calcMostNetUnderPar(scores, handicaps, tee, eligible);
+    case 'auto_polies':
+      return calcMostPolies(decisions ?? [], eligible);
+    default:
+      return null;
+  }
+}

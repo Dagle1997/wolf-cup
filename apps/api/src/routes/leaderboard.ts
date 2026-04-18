@@ -14,7 +14,9 @@ import {
   sideGameResults,
 } from '../db/schema.js';
 import { getCourseHole, getHandicapStrokes, calculateHarveyPoints } from '@wolf-cup/engine';
-import type { HoleNumber } from '@wolf-cup/engine';
+import type { HoleNumber, Tee } from '@wolf-cup/engine';
+import { computeSideGameLeaderLive } from '../lib/side-game-calc-db.js';
+import { wolfDecisions } from '../db/schema.js';
 
 const app = new Hono();
 
@@ -49,6 +51,7 @@ type RoundRow = {
   scheduledDate: string;
   autoCalculateMoney: number;
   seasonId: number;
+  tee: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -106,6 +109,7 @@ async function buildLeaderboard(round: RoundRow) {
       groupNumber: groups.groupNumber,
       name: players.name,
       handicapIndex: roundPlayers.handicapIndex,
+      isSub: roundPlayers.isSub,
     })
     .from(roundPlayers)
     .innerJoin(players, eq(players.id, roundPlayers.playerId))
@@ -261,6 +265,57 @@ async function buildLeaderboard(round: RoundRow) {
     }
   }
 
+  // Side game live leader — running in-progress leader for auto-calc games.
+  // Computed for non-finalized rounds; finalized rounds show sideGameWinner
+  // (below) instead, which reflects the stored result.
+  let sideGameLeader: { playerName: string; detail: string } | null = null;
+  if (
+    activeSideGame &&
+    activeSideGame.calculationType &&
+    activeSideGame.calculationType !== 'manual' &&
+    round.status !== 'finalized'
+  ) {
+    const scoreRows = allHoleScoreRows.map((s) => ({
+      playerId: s.playerId,
+      holeNumber: s.holeNumber,
+      grossScore: s.grossScore,
+      putts: s.putts,
+    }));
+    let decisions: { wolfPlayerId: number; holeNumber: number; bonusesJson: string | null }[] | undefined;
+    if (activeSideGame.calculationType === 'auto_polies') {
+      const wdRows = await db
+        .select({
+          wolfPlayerId: wolfDecisions.wolfPlayerId,
+          holeNumber: wolfDecisions.holeNumber,
+          bonusesJson: wolfDecisions.bonusesJson,
+        })
+        .from(wolfDecisions)
+        .where(eq(wolfDecisions.roundId, round.id));
+      decisions = wdRows.map((d) => ({
+        wolfPlayerId: d.wolfPlayerId ?? 0,
+        holeNumber: d.holeNumber,
+        bonusesJson: d.bonusesJson,
+      }));
+    }
+    const live = computeSideGameLeaderLive({
+      calculationType: activeSideGame.calculationType,
+      scores: scoreRows,
+      players: playerRows.map((p) => ({
+        playerId: p.playerId,
+        handicapIndex: p.handicapIndex,
+        isSub: Boolean(p.isSub),
+      })),
+      tee: round.tee as Tee,
+      decisions,
+    });
+    if (live && live.winnerPlayerIds.length > 0) {
+      const names = live.winnerPlayerIds
+        .map((id) => playerRows.find((p) => p.playerId === id)?.name ?? 'Unknown')
+        .join(' & ');
+      sideGameLeader = { playerName: names, detail: live.detail };
+    }
+  }
+
   // Side game winner (after finalization)
   let sideGameWinner: { playerName: string; detail: string } | null = null;
   if (activeSideGame && round.status === 'finalized') {
@@ -322,7 +377,7 @@ async function buildLeaderboard(round: RoundRow) {
     })
     .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
 
-  return { round: roundInfo, harveyLiveEnabled, sideGame, sideGameWinner, leaderboard, lastUpdated: new Date().toISOString() };
+  return { round: roundInfo, harveyLiveEnabled, sideGame, sideGameWinner, sideGameLeader, leaderboard, lastUpdated: new Date().toISOString() };
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +400,7 @@ app.get('/leaderboard/live', async (c) => {
         scheduledDate: rounds.scheduledDate,
         autoCalculateMoney: rounds.autoCalculateMoney,
         seasonId: rounds.seasonId,
+        tee: rounds.tee,
       })
       .from(rounds)
       .where(
@@ -368,6 +424,8 @@ app.get('/leaderboard/live', async (c) => {
           round: null,
           harveyLiveEnabled: false,
           sideGame: null,
+          sideGameWinner: null,
+          sideGameLeader: null,
           leaderboard: [],
           lastUpdated: new Date().toISOString(),
         },
@@ -435,6 +493,7 @@ app.get('/leaderboard/:roundId', async (c) => {
         scheduledDate: rounds.scheduledDate,
         autoCalculateMoney: rounds.autoCalculateMoney,
         seasonId: rounds.seasonId,
+        tee: rounds.tee,
       })
       .from(rounds)
       .where(eq(rounds.id, roundId))
