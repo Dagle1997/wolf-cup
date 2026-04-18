@@ -497,17 +497,20 @@ app.get('/stats/:playerId/detail', async (c) => {
 
     // Rivals — per-hole team composition × per-hole money.
     //
-    // Josh's mental model: "whoever takes the most money from me is my rival."
-    // The metrics are POSITIVE-ONLY attributions (losses don't offset gains):
+    // POSITIVE-ONLY attributions — losses don't offset gains. Each rival's
+    // contribution to my money is assigned to exactly one bucket based on
+    // their role on that hole:
     //
-    //   luckyCharm — sum of my GAINS on all shared holes with X (partner+opp).
-    //                "Around them, I make money."
-    //   dominate   — sum of my GAINS on opponent-only holes with X.
-    //                "When they're against me, I take from them."
-    //   rival      — sum of my LOSSES on opponent-only holes with X.
-    //                "When they're against me, they take from me."
+    //   luckyCharm — my GAINS on partner holes with X. "X was my teammate
+    //                and we won together." Attributed to the teammate.
+    //   dominate   — my GAINS on opponent holes with X. "X was against me
+    //                and I took money off them."
+    //   rival      — my LOSSES on opponent holes with X. "X was against me
+    //                and took money from me."
     //
-    // holesWithGain/Loss counters track sample size for each dimension.
+    // Charm and Dominate are mutually exclusive (partner-hole vs opp-hole),
+    // so they naturally differentiate rivals even when all were in the group
+    // all 18 holes.
     const groupIds = playerRoundRows.map((r) => r.groupId);
     const groupMates = await db
       .select({
@@ -567,14 +570,15 @@ app.get('/stats/:playerId/detail', async (c) => {
     const { computeRoundMoneyBreakdown } = await import('../lib/money-breakdown.js');
 
     // Accumulator: rivalId → buckets. All totals are positive-only (losses
-    // captured as positive values in opp_lost).
+    // captured as positive values in opp_lost). partner_won and opp_won are
+    // disjoint — same hole never contributes to both for the same rival.
     const rivalBuckets = new Map<number, {
       roundsTogetherSet: Set<number>;
       partnerHoles: number;
       opponentHoles: number;
-      shared_won: number;       // my gains on all shared holes (partner + opp)
-      opp_won: number;          // my gains on opponent holes
-      opp_lost: number;         // my losses on opponent holes (stored positive)
+      partner_won: number;      // my gains on partner holes (luckyCharm)
+      opp_won: number;          // my gains on opponent holes (dominate)
+      opp_lost: number;         // my losses on opponent holes (rival, positive)
       opp_holesWon: number;     // count of opp holes I gained on
       opp_holesLost: number;    // count of opp holes I lost on
     }>();
@@ -585,7 +589,7 @@ app.get('/stats/:playerId/detail', async (c) => {
           roundsTogetherSet: new Set(),
           partnerHoles: 0,
           opponentHoles: 0,
-          shared_won: 0,
+          partner_won: 0,
           opp_won: 0,
           opp_lost: 0,
           opp_holesWon: 0,
@@ -641,10 +645,9 @@ app.get('/stats/:playerId/detail', async (c) => {
           const b = bucket(rivalId);
           if (composition.teammates.has(rivalId)) {
             b.partnerHoles += 1;
-            b.shared_won += myGain;
+            b.partner_won += myGain; // teammate-contributed win
           } else if (composition.opponents.has(rivalId)) {
             b.opponentHoles += 1;
-            b.shared_won += myGain;
             b.opp_won += myGain;
             b.opp_lost += myLoss;
             if (myMoney > 0) b.opp_holesWon += 1;
@@ -662,13 +665,13 @@ app.get('/stats/:playerId/detail', async (c) => {
         roundsTogether: b.roundsTogetherSet.size,
         partnerHoles: b.partnerHoles,
         opponentHoles: b.opponentHoles,
-        luckyCharm: b.shared_won,
+        luckyCharm: b.partner_won,
         dominate: b.opp_won,
         rival: b.opp_lost,
         holesWon: b.opp_holesWon,
         holesLost: b.opp_holesLost,
       }))
-      .sort((a, b) => b.rival - a.rival); // most taken-from first
+      .sort((a, b) => b.rival - a.rival);
 
     // Chemistry: partner relationships from wolf_decisions on 2v2 holes
     const decisionRows = await db
