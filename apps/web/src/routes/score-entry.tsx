@@ -1,10 +1,10 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
-import { getSession, setSession, type WolfSession } from '@/lib/session-store';
+import { getSession, setSession, clearSession, type WolfSession } from '@/lib/session-store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,6 +44,7 @@ export const Route = createFileRoute('/score-entry')({
 // ---------------------------------------------------------------------------
 
 function ScoreEntryPage() {
+  const router = useRouter();
   const [selectedRound, setSelectedRound] = useState<Round | null>(null);
   const [entryCode, setEntryCode] = useState('');
   const [joined, setJoined] = useState<WolfSession | null>(null);
@@ -56,14 +57,30 @@ function ScoreEntryPage() {
     staleTime: 10_000,
   });
 
-  // Session restore: if we already have a session for an available round, skip initiation
+  // Session restore + auto-resume.
+  //   - Session has groupId AND round is active → skip straight into scoring.
+  //   - Session has no groupId but round is still joinable → show confirmation
+  //     card (same as today, tap "Go to Ball Draw").
+  //   - Session points at a finalized/cancelled round → clear session, fall
+  //     through to the round-list view.
   useEffect(() => {
     if (!data) return;
     const session = getSession();
-    if (session && data.items.some((r) => r.id === session.roundId)) {
-      setJoined(session);
+    if (!session) return;
+    const match = data.items.find((r) => r.id === session.roundId);
+    if (!match) return; // round not in available list — leave session alone, user may see it elsewhere
+    if (match.status === 'finalized' || match.status === 'cancelled') {
+      clearSession();
+      return;
     }
-  }, [data]);
+    if (session.groupId != null) {
+      // Fresh mount with a fully-populated session — go direct to scoring.
+      void router.navigate({ to: '/score-entry-hole' });
+      return;
+    }
+    // Session without groupId → keep the existing confirmation-card flow.
+    setJoined(session);
+  }, [data, router]);
 
   // Start round mutation
   const startMutation = useMutation({
