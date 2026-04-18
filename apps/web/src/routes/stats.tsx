@@ -82,9 +82,11 @@ type Rival = {
   playerId: number;
   name: string;
   roundsTogether: number;
-  myMoney: number;
-  theirMoney: number;
-  moneyDiff: number;
+  partnerHoles: number;
+  opponentHoles: number;
+  luckyCharm: number;  // my net $ on all holes grouped with them (partner + opponent)
+  dominate: number;    // my net $ on opponent-only holes
+  rival: number;       // their net $ on opponent-only holes (against me)
 };
 
 type PartnerChemistry = {
@@ -501,32 +503,45 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             )}
           </div>
 
-          {/* Rivalry callouts — first thing visible on expand */}
+          {/* Rivalry callouts — B.8 rewrite: real head-to-head per-hole math */}
           {detail.rivals.length >= 2 && (() => {
-            const byMyMoney = [...detail.rivals].sort((a, b) => b.myMoney - a.myMoney);
-            const charm = byMyMoney[0]!;
-            const rival = byMyMoney[byMyMoney.length - 1]!;
-            const byDiff = [...detail.rivals].sort((a, b) => b.moneyDiff - a.moneyDiff);
-            const dominate = byDiff[0]!;
+            // Each callout: pick the rival that max's the metric; gate on > 0
+            const charmList = [...detail.rivals]
+              .filter((r) => r.luckyCharm > 0)
+              .sort((a, b) => b.luckyCharm - a.luckyCharm || (b.partnerHoles + b.opponentHoles) - (a.partnerHoles + a.opponentHoles));
+            const dominateList = [...detail.rivals]
+              .filter((r) => r.dominate > 0)
+              .sort((a, b) => b.dominate - a.dominate);
+            const rivalList = [...detail.rivals]
+              .filter((r) => r.rival > 0)
+              .sort((a, b) => b.rival - a.rival);
+            const charm = charmList[0];
+            const dominate = dominateList[0];
+            const rivalBest = rivalList[0];
+            if (!charm && !dominate && !rivalBest) return null;
             return (
               <div className="px-4 py-2 border-b bg-muted/10">
                 <div className="flex items-center justify-between gap-1 text-[10px]">
-                  <span className="text-green-500" title="You win the most money when they are in your group">
-                    🍀 <span className="font-bold">{sn(charm.name)}</span> <span className="tabular-nums">{formatMoney(charm.myMoney)}</span>
-                  </span>
-                  <span className="text-red-500" title="You lose the most money when they are in your group">
-                    🎯 <span className="font-bold">{sn(rival.name)}</span> <span className="tabular-nums">{formatMoney(rival.myMoney)}</span>
-                  </span>
-                  {dominate.moneyDiff > 0 && (
-                    <span className="text-amber-500" title="You outperform them the most when grouped together">
-                      👑 <span className="font-bold">{sn(dominate.name)}</span> <span className="tabular-nums">+${dominate.moneyDiff}</span>
+                  {charm ? (
+                    <span className="text-green-500" title="Around them, you make the most money (partner + opponent holes combined)">
+                      🍀 <span className="font-bold">{sn(charm.name)}</span> <span className="tabular-nums">{formatMoney(charm.luckyCharm)}</span>
                     </span>
-                  )}
+                  ) : <span />}
+                  {rivalBest ? (
+                    <span className="text-red-500" title="They take the most money from you on opponent-only holes">
+                      🎯 <span className="font-bold">{sn(rivalBest.name)}</span> <span className="tabular-nums">{formatMoney(rivalBest.rival)}</span>
+                    </span>
+                  ) : <span />}
+                  {dominate ? (
+                    <span className="text-amber-500" title="When they're your opponent, you take the most from them">
+                      👑 <span className="font-bold">{sn(dominate.name)}</span> <span className="tabular-nums">+${dominate.dominate}</span>
+                    </span>
+                  ) : <span />}
                 </div>
                 <div className="flex items-center justify-between gap-1 text-[8px] text-muted-foreground/50 mt-0.5">
-                  <span>Lucky Charm</span>
-                  <span>Rival</span>
-                  {dominate.moneyDiff > 0 && <span>Dominate</span>}
+                  <span>{charm ? 'Lucky Charm' : ''}</span>
+                  <span>{rivalBest ? 'Rival' : ''}</span>
+                  <span>{dominate ? 'Dominate' : ''}</span>
                 </div>
               </div>
             );
@@ -837,34 +852,33 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             );
           })()}
 
-          {/* Rivals — when grouped with */}
+          {/* Rivals — when grouped with (B.8 rewrite: per-hole head-to-head) */}
           {detail.rivals.length > 0 && (() => {
-            const rivalsSorted = [...detail.rivals].sort((a, b) => a.moneyDiff - b.moneyDiff);
+            const rivalsSorted = [...detail.rivals].sort((a, b) => b.luckyCharm - a.luckyCharm);
             return (
               <div className="px-4 py-3">
 
-                {/* Full rival list */}
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">When Grouped With</p>
                 <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
                   <span className="flex-1">Player</span>
-                  <span className="w-8 text-center">Rds</span>
-                  <span className="w-14 text-right">You</span>
-                  <span className="w-14 text-right">Them</span>
-                  <span className="w-14 text-right">+/−</span>
+                  <span className="w-10 text-center" title="Partner-hole / opponent-hole count">P/Opp</span>
+                  <span className="w-12 text-right" title="Your $ on all holes grouped with them">Charm</span>
+                  <span className="w-12 text-right" title="Your $ on opponent-only holes">Dom</span>
+                  <span className="w-12 text-right" title="Their $ on opponent-only holes (against you)">Rival</span>
                 </div>
                 <div className="space-y-1.5">
                   {rivalsSorted.map((r) => (
                     <div key={r.playerId} className="flex items-center justify-between text-xs">
                       <span className="font-medium flex-1">{r.name}</span>
-                      <span className="text-muted-foreground w-8 text-center">{r.roundsTogether}</span>
-                      <span className={`w-14 text-right tabular-nums ${r.myMoney > 0 ? 'text-green-600' : r.myMoney < 0 ? 'text-destructive' : ''}`}>
-                        {formatMoney(r.myMoney)}
+                      <span className="text-muted-foreground w-10 text-center tabular-nums text-[10px]">{r.partnerHoles}/{r.opponentHoles}</span>
+                      <span className={`w-12 text-right tabular-nums ${r.luckyCharm > 0 ? 'text-green-600' : r.luckyCharm < 0 ? 'text-destructive' : ''}`}>
+                        {formatMoney(r.luckyCharm)}
                       </span>
-                      <span className={`w-14 text-right tabular-nums ${r.theirMoney > 0 ? 'text-green-600' : r.theirMoney < 0 ? 'text-destructive' : ''}`}>
-                        {formatMoney(r.theirMoney)}
+                      <span className={`w-12 text-right tabular-nums ${r.dominate > 0 ? 'text-green-600' : r.dominate < 0 ? 'text-destructive' : ''}`}>
+                        {formatMoney(r.dominate)}
                       </span>
-                      <span className={`w-14 text-right tabular-nums font-bold ${r.moneyDiff > 0 ? 'text-green-600' : r.moneyDiff < 0 ? 'text-destructive' : ''}`}>
-                        {r.moneyDiff > 0 ? '+' : ''}{r.moneyDiff !== 0 ? `$${Math.abs(r.moneyDiff)}` : 'Even'}
+                      <span className={`w-12 text-right tabular-nums ${r.rival > 0 ? 'text-red-600 font-semibold' : ''}`}>
+                        {formatMoney(r.rival)}
                       </span>
                     </div>
                   ))}
@@ -938,30 +952,31 @@ function CompareView({ playerA, playerB, allNames, onClose }: { playerA: PlayerS
         <CompareRow label="Money" a={playerA.totalMoney} b={playerB.totalMoney} />
         <CompareRow label="Best Rd" a={playerA.biggestRoundWin} b={playerB.biggestRoundWin} />
 
-        {/* Head-to-head when grouped */}
+        {/* Head-to-head when grouped — B.8 reshape: Charm / Dom / Rival side-by-side */}
         {h2h && (
           <div className="mt-3 pt-2 border-t border-muted">
             <p className="text-[10px] text-muted-foreground text-center mb-2">
-              Grouped together {h2h.roundsTogether}x this season
+              Grouped together {h2h.roundsTogether}x · {h2h.partnerHoles} partner / {h2h.opponentHoles} opp holes
             </p>
-            <div className="flex items-center justify-between text-xs mb-1">
-              <span className="font-medium">{sn(playerA.name)}</span>
-              <span className="text-muted-foreground">Money when grouped</span>
-              <span className="font-medium">{sn(playerB.name)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className={`font-bold tabular-nums ${h2h.myMoney > 0 ? 'text-green-600' : h2h.myMoney < 0 ? 'text-destructive' : ''}`}>
-                {formatMoney(h2h.myMoney)}
-              </span>
-              <div className="text-center">
-                <div className={`text-lg font-black tabular-nums ${h2h.moneyDiff > 0 ? 'text-green-600' : h2h.moneyDiff < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                  {h2h.moneyDiff > 0 ? '+' : ''}{h2h.moneyDiff !== 0 ? `$${Math.abs(h2h.moneyDiff)}` : 'EVEN'}
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className={`text-base font-bold tabular-nums ${h2h.luckyCharm > 0 ? 'text-green-600' : h2h.luckyCharm < 0 ? 'text-destructive' : ''}`}>
+                  {formatMoney(h2h.luckyCharm)}
                 </div>
-                <div className="text-[9px] text-muted-foreground">net {h2h.moneyDiff >= 0 ? sn(playerA.name) : sn(playerB.name)}</div>
+                <div className="text-[9px] text-muted-foreground">Charm</div>
               </div>
-              <span className={`font-bold tabular-nums ${h2h.theirMoney > 0 ? 'text-green-600' : h2h.theirMoney < 0 ? 'text-destructive' : ''}`}>
-                {formatMoney(h2h.theirMoney)}
-              </span>
+              <div>
+                <div className={`text-base font-bold tabular-nums ${h2h.dominate > 0 ? 'text-green-600' : h2h.dominate < 0 ? 'text-destructive' : ''}`}>
+                  {formatMoney(h2h.dominate)}
+                </div>
+                <div className="text-[9px] text-muted-foreground">Dominate</div>
+              </div>
+              <div>
+                <div className={`text-base font-bold tabular-nums ${h2h.rival > 0 ? 'text-red-600' : ''}`}>
+                  {formatMoney(h2h.rival)}
+                </div>
+                <div className="text-[9px] text-muted-foreground">Rival</div>
+              </div>
             </div>
           </div>
         )}

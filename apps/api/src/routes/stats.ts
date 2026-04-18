@@ -495,7 +495,21 @@ app.get('/stats/:playerId/detail', async (c) => {
       };
     });
 
-    // Rivals: who was in the same group, money differential
+    // Rivals — per-hole team composition × per-hole money (B.8 rewrite).
+    //
+    // For each groupmate X, across every hole we played in the same group:
+    //   - partnerHoles_myMoney  — my $ on holes where X was my teammate
+    //   - partnerHoles_theirMoney — X's $ on same
+    //   - opponentHoles_myMoney — my $ on holes where X was my opponent
+    //   - opponentHoles_theirMoney — X's $ on same
+    //
+    // Derived stats:
+    //   luckyCharm = partnerHoles_myMoney + opponentHoles_myMoney
+    //                  (my total $ on every hole grouped with X — "they make me money")
+    //   dominate   = opponentHoles_myMoney
+    //                  (my $ on opponent-only holes — "I take from them")
+    //   rival      = opponentHoles_theirMoney
+    //                  (X's $ on opponent-only holes — "they take from me")
     const groupIds = playerRoundRows.map((r) => r.groupId);
     const groupMates = await db
       .select({
@@ -509,56 +523,146 @@ app.get('/stats/:playerId/detail', async (c) => {
         inArray(roundPlayers.roundId, roundIds),
       ));
 
-    // Map roundId → this player's groupId
+    // Map roundId → this player's groupId (to filter groupMates to actual shared rounds)
     const myGroupByRound = new Map(playerRoundRows.map((r) => [r.roundId, r.groupId]));
 
-    // Get all round results for group mates
+    // Name lookup
     const allGroupPlayerIds = [...new Set(groupMates.map((g) => g.playerId))];
-    const allRRRows = await db
-      .select({
-        roundId: roundResults.roundId,
-        playerId: roundResults.playerId,
-        moneyTotal: roundResults.moneyTotal,
-      })
-      .from(roundResults)
-      .where(and(
-        inArray(roundResults.playerId, allGroupPlayerIds),
-        inArray(roundResults.roundId, roundIds),
-      ));
-    const rrLookup = new Map<string, number>();
-    for (const r of allRRRows) rrLookup.set(`${r.roundId}-${r.playerId}`, r.moneyTotal);
-
-    // Build rival stats
-    const rivalMap = new Map<number, { name: string; roundsTogether: number; myMoney: number; theirMoney: number }>();
-    const playerNames = await db.select({ id: players.id, name: players.name }).from(players).where(inArray(players.id, allGroupPlayerIds));
+    const playerNames = await db
+      .select({ id: players.id, name: players.name })
+      .from(players)
+      .where(inArray(players.id, allGroupPlayerIds));
     const nameMap = new Map(playerNames.map((p) => [p.id, p.name]));
 
+    // Per-(round, group) player list for team-composition lookup
+    const groupRoster = new Map<string, number[]>();
     for (const gm of groupMates) {
-      if (gm.playerId === playerId) continue;
-      if (myGroupByRound.get(gm.roundId) !== gm.groupId) continue; // different group same round
-
-      const rival = rivalMap.get(gm.playerId) ?? {
-        name: nameMap.get(gm.playerId) ?? 'Unknown',
-        roundsTogether: 0,
-        myMoney: 0,
-        theirMoney: 0,
-      };
-      rival.roundsTogether++;
-      rival.myMoney += rrLookup.get(`${gm.roundId}-${playerId}`) ?? 0;
-      rival.theirMoney += rrLookup.get(`${gm.roundId}-${gm.playerId}`) ?? 0;
-      rivalMap.set(gm.playerId, rival);
+      const key = `${gm.roundId}-${gm.groupId}`;
+      const arr = groupRoster.get(key) ?? [];
+      arr.push(gm.playerId);
+      groupRoster.set(key, arr);
     }
 
-    const rivals = [...rivalMap.entries()]
-      .map(([id, r]) => ({
+    // Fetch wolf decisions for the relevant (round, group) pairs
+    const myGroupKeys = new Set([...myGroupByRound.entries()].map(([r, g]) => `${r}-${g}`));
+    const allDecisionsForRivals = roundIds.length > 0
+      ? await db
+          .select({
+            roundId: wolfDecisions.roundId,
+            groupId: wolfDecisions.groupId,
+            holeNumber: wolfDecisions.holeNumber,
+            decision: wolfDecisions.decision,
+            wolfPlayerId: wolfDecisions.wolfPlayerId,
+            partnerPlayerId: wolfDecisions.partnerPlayerId,
+          })
+          .from(wolfDecisions)
+          .where(inArray(wolfDecisions.roundId, roundIds))
+      : [];
+    const decisionByKey = new Map<string, typeof allDecisionsForRivals[number]>();
+    for (const d of allDecisionsForRivals) {
+      if (!myGroupKeys.has(`${d.roundId}-${d.groupId}`)) continue;
+      decisionByKey.set(`${d.roundId}-${d.groupId}-${d.holeNumber}`, d);
+    }
+
+    // Compute per-round money breakdowns (one API call per distinct round)
+    const { getHoleTeamFor } = await import('../lib/hole-teams.js');
+    const { computeRoundMoneyBreakdown } = await import('../lib/money-breakdown.js');
+
+    // Accumulator: rivalId → buckets
+    const rivalBuckets = new Map<number, {
+      roundsTogetherSet: Set<number>;
+      partnerHoles: number;
+      opponentHoles: number;
+      partnerHoles_myMoney: number;
+      partnerHoles_theirMoney: number;
+      opponentHoles_myMoney: number;
+      opponentHoles_theirMoney: number;
+    }>();
+    const bucket = (rivalId: number) => {
+      let b = rivalBuckets.get(rivalId);
+      if (!b) {
+        b = {
+          roundsTogetherSet: new Set(),
+          partnerHoles: 0,
+          opponentHoles: 0,
+          partnerHoles_myMoney: 0,
+          partnerHoles_theirMoney: 0,
+          opponentHoles_myMoney: 0,
+          opponentHoles_theirMoney: 0,
+        };
+        rivalBuckets.set(rivalId, b);
+      }
+      return b;
+    };
+
+    for (const rId of roundIds) {
+      const myGid = myGroupByRound.get(rId);
+      if (myGid === undefined) continue;
+      const rosterKey = `${rId}-${myGid}`;
+      const rosterPlayers = groupRoster.get(rosterKey) ?? [];
+      if (!rosterPlayers.includes(playerId)) continue;
+
+      // Money breakdown for this round
+      const breakdown = await computeRoundMoneyBreakdown(rId);
+      const myGroupHoles = breakdown.holes.filter((h) => h.groupId === myGid);
+      if (myGroupHoles.length === 0) continue;
+
+      // Track rounds-together per rival
+      for (const otherId of rosterPlayers) {
+        if (otherId === playerId) continue;
+        bucket(otherId).roundsTogetherSet.add(rId);
+      }
+
+      // Iterate each scored hole in my group and attribute $ to rivals
+      for (const hb of myGroupHoles) {
+        const decRow = decisionByKey.get(`${rId}-${myGid}-${hb.holeNumber}`);
+        const wolfDec = (hb.decision && hb.wolfPlayerId !== null)
+          ? {
+              decision: hb.decision,
+              wolfPlayerId: hb.wolfPlayerId,
+              partnerPlayerId: hb.partnerPlayerId,
+            }
+          : (decRow && decRow.decision && decRow.wolfPlayerId !== null)
+            ? {
+                decision: decRow.decision as 'alone' | 'partner' | 'blind_wolf',
+                wolfPlayerId: decRow.wolfPlayerId,
+                partnerPlayerId: decRow.partnerPlayerId,
+              }
+            : null;
+
+        const composition = getHoleTeamFor(playerId, hb.holeNumber, rosterPlayers, wolfDec);
+        const myMoney = hb.perPlayer.get(playerId)?.total ?? 0;
+
+        for (const rivalId of rosterPlayers) {
+          if (rivalId === playerId) continue;
+          const theirMoney = hb.perPlayer.get(rivalId)?.total ?? 0;
+          const b = bucket(rivalId);
+          if (composition.teammates.has(rivalId)) {
+            b.partnerHoles += 1;
+            b.partnerHoles_myMoney += myMoney;
+            b.partnerHoles_theirMoney += theirMoney;
+          } else if (composition.opponents.has(rivalId)) {
+            b.opponentHoles += 1;
+            b.opponentHoles_myMoney += myMoney;
+            b.opponentHoles_theirMoney += theirMoney;
+          }
+          // If neither (rare: wolf hole with no decision), don't count
+        }
+      }
+    }
+
+    const rivals = [...rivalBuckets.entries()]
+      .map(([id, b]) => ({
         playerId: id,
-        name: r.name,
-        roundsTogether: r.roundsTogether,
-        myMoney: r.myMoney,
-        theirMoney: r.theirMoney,
-        moneyDiff: r.myMoney - r.theirMoney,
+        name: nameMap.get(id) ?? 'Unknown',
+        roundsTogether: b.roundsTogetherSet.size,
+        partnerHoles: b.partnerHoles,
+        opponentHoles: b.opponentHoles,
+        luckyCharm: b.partnerHoles_myMoney + b.opponentHoles_myMoney,
+        dominate: b.opponentHoles_myMoney,
+        rival: b.opponentHoles_theirMoney,
       }))
-      .sort((a, b) => b.roundsTogether - a.roundsTogether);
+      .sort((a, b) => b.luckyCharm - a.luckyCharm);
 
     // Chemistry: partner relationships from wolf_decisions on 2v2 holes
     const decisionRows = await db
