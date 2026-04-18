@@ -8,6 +8,7 @@ import { getSession, clearSession } from '@/lib/session-store';
 import { enqueueScore } from '@/lib/offline-queue';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 import { cn } from '@/lib/utils';
+import { shortName } from '@/lib/names';
 import { getWolfAssignment } from '@wolf-cup/engine';
 import type { HoleNumber } from '@wolf-cup/engine';
 
@@ -545,6 +546,7 @@ function ScoreEntryHolePage() {
   }
 
   const orderedPlayers = group.battingOrder.map((id) => group.players.find((p) => p.id === id)!);
+  const groupNames = orderedPlayers.map((p) => p.name);
   const wolfSchedule = buildWolfScheduleFromOrder(group.battingOrder, group.players);
 
   // First unscored hole (1–18), or 19 when all done — drives Next-button ceiling
@@ -617,7 +619,7 @@ function ScoreEntryHolePage() {
                 const total = (stablefordTotal ?? 0) + (moneyTotal ?? 0);
                 return (
                   <tr key={player.id} className="border-b last:border-0">
-                    <td className="py-2 pr-3">{player.name}</td>
+                    <td className="py-2 pr-3">{shortName(player.name, groupNames)}</td>
                     <td className="py-2 pr-3 text-right">{grossTotal}</td>
                     <td className="py-2 pr-3 text-right">
                       {stablefordTotal !== undefined ? stablefordTotal : '—'}
@@ -776,7 +778,7 @@ function ScoreEntryHolePage() {
         <div className="grid grid-cols-2 gap-2 mb-3">
           {orderedPlayers.map((player, idx) => (
             <div key={player.id} className="border rounded-xl p-3 bg-card">
-              <div className="text-xs font-semibold text-muted-foreground mb-2 truncate"><span className="text-[10px] text-muted-foreground/60 mr-1">{idx + 1}.</span>{player.name}</div>
+              <div className="text-xs font-semibold text-muted-foreground mb-2 truncate"><span className="text-[10px] text-muted-foreground/60 mr-1">{idx + 1}.</span>{shortName(player.name, groupNames)}</div>
               <input
                 ref={(el) => { scoreInputRefs.current[idx] = el; }}
                 type="text"
@@ -832,7 +834,7 @@ function ScoreEntryHolePage() {
               {orderedPlayers.map((p) => (
                 <div key={p.id} className="flex items-center gap-2">
                   <span className="flex-1 text-sm font-medium truncate min-w-0">
-                    {p.name.split(' ')[0]}
+                    {shortName(p.name, groupNames)}
                   </span>
                   {PAR3_HOLES.has(currentHole) && (
                     <button
@@ -903,7 +905,7 @@ function ScoreEntryHolePage() {
         {isWolfHole && (
           <div className={cn('border rounded-xl p-3 mb-3', !wolfDecisionValid && 'border-amber-400')}>
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">
-              🐺 Wolf: {wolfHole.wolfPlayerName}
+              🐺 Wolf: {wolfHole.wolfPlayerName ? shortName(wolfHole.wolfPlayerName, groupNames) : ''}
               {forceWolf && <span className="ml-2 text-amber-600 normal-case">(must go wolf)</span>}
             </p>
             {!wolfDecisionValid && (
@@ -953,7 +955,7 @@ function ScoreEntryHolePage() {
                             : 'border-border text-foreground hover:border-foreground/40',
                     )}
                   >
-                    <span>{p.name}</span>
+                    <span>{shortName(p.name, groupNames)}</span>
                     {isWolf && (
                       <span className="text-[10px] font-bold uppercase tracking-wider">
                         {isAlone ? 'Wolf ✓' : 'Wolf — tap to go alone'}

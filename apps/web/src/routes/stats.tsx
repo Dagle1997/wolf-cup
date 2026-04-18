@@ -5,6 +5,7 @@ import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sparkline } from '@/components/sparkline';
 import { apiFetch } from '@/lib/api';
+import { shortName } from '@/lib/names';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -136,23 +137,6 @@ type PlayerDetail = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Short display name — first name, plus last initial if another player
- * shares the same first name (e.g. "Matt W." vs "Matt J.").
- * Pass the full roster of names for duplicate detection.
- */
-function shortName(fullName: string, allNames: string[]): string {
-  const parts = fullName.split(' ');
-  const first = parts[0]!;
-  const hasDuplicate = allNames.some(
-    (n) => n !== fullName && n.split(' ')[0] === first,
-  );
-  if (hasDuplicate && parts.length > 1) {
-    return `${first} ${parts[parts.length - 1]![0]}.`;
-  }
-  return first;
-}
 
 function wolfRecord(p: PlayerStats): string {
   return `${p.wolfWins}-${p.wolfLosses}-${p.wolfPushes}`;
