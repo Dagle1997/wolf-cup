@@ -380,39 +380,13 @@ function BallDrawPage() {
   }
 
   // ---------------------------------------------------------------------------
-  // Group selector (multiple groups)
+  // No group selected (official: score-entry handles the picker; casual: practice
+  // flow sets it). If we land here without one, bounce back so the picker is shown.
   // ---------------------------------------------------------------------------
 
   if (selectedGroupId === null) {
-    return (
-      <div className="p-4 flex flex-col gap-4">
-        <h2 className="text-xl font-semibold">Select Your Group</h2>
-        <div className="flex flex-col gap-3">
-          {groups.map((g) => (
-            <button
-              key={g.id}
-              className="border rounded-xl p-4 text-left"
-              onClick={() => setSelectedGroupId(g.id)}
-            >
-              <p className="font-medium">Group {g.groupNumber}</p>
-              <p className="text-sm text-muted-foreground">
-                {g.players.map((p) => p.name).join(', ')}
-              </p>
-            </button>
-          ))}
-        </div>
-        <Button
-          variant="ghost"
-          className="text-sm text-muted-foreground"
-          onClick={() => {
-            clearSession();
-            void router.navigate({ to: '/practice' });
-          }}
-        >
-          Start Over
-        </Button>
-      </div>
-    );
+    void router.navigate({ to: '/score-entry' });
+    return null;
   }
 
   // ---------------------------------------------------------------------------

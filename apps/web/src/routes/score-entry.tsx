@@ -57,6 +57,15 @@ function ScoreEntryPage() {
     staleTime: 10_000,
   });
 
+  // Fetch round detail when we need the group picker (joined with no groupId yet)
+  const { data: roundDetail } = useQuery({
+    queryKey: ['round', joined?.roundId ?? 0],
+    queryFn: () =>
+      apiFetch<{ round: RoundDetail }>(`/rounds/${joined!.roundId}`).then((d) => d.round),
+    enabled: joined !== null && joined.groupId == null,
+    staleTime: 10_000,
+  });
+
   // Session restore + auto-resume.
   //   - Session has groupId AND round is active → skip straight into scoring.
   //   - Session has no groupId but round is still joinable → show confirmation
@@ -118,32 +127,94 @@ function ScoreEntryPage() {
   if (joined) {
     const round = data?.items.find((r) => r.id === joined.roundId);
     const hasGroup = joined.groupId != null;
-    // If groupId is set, route to score-entry-hole which auto-redirects to ball-draw
-    // if batting order isn't set yet. This avoids an extra tap-through for returning users.
-    const canResumeDirectly = hasGroup;
-    return (
-      <div className="p-4 flex flex-col items-center gap-4 pt-8">
-        <CheckCircle2 className="w-12 h-12 text-green-600" />
-        <h2 className="text-xl font-semibold">
-          {round?.type === 'official' ? 'Official round joined' : 'Joined casual round — ready to begin'}
-        </h2>
-        <p className="text-muted-foreground text-sm text-center">
-          {round?.scheduledDate}{round?.roundNumber ? ` · Round #${round.roundNumber}` : ''}
-        </p>
-        {canResumeDirectly ? (
+
+    // If session has a groupId already → the old "Resume Round" card.
+    if (hasGroup) {
+      return (
+        <div className="p-4 flex flex-col items-center gap-4 pt-8">
+          <CheckCircle2 className="w-12 h-12 text-green-600" />
+          <h2 className="text-xl font-semibold">
+            {round?.type === 'official' ? 'Official round joined' : 'Joined casual round — ready to begin'}
+          </h2>
+          <p className="text-muted-foreground text-sm text-center">
+            {round?.scheduledDate}{round?.roundNumber ? ` · Round #${round.roundNumber}` : ''}
+          </p>
           <Link to="/score-entry-hole" className="mt-4 w-full max-w-xs">
             <Button className="min-h-12 w-full">Resume Round</Button>
           </Link>
-        ) : (
-          <Link to="/ball-draw" className="mt-4 w-full max-w-xs">
-            <Button className="min-h-12 w-full">
-              {hasGroup ? 'Continue Ball Draw' : 'Start Ball Draw'}
-            </Button>
-          </Link>
-        )}
+          <Button
+            variant="ghost"
+            className="text-xs text-muted-foreground"
+            onClick={() => {
+              setJoined(null);
+              setSelectedRound(null);
+              setEntryCode('');
+              setCodeError(null);
+            }}
+          >
+            Switch round
+          </Button>
+        </div>
+      );
+    }
+
+    // No groupId yet — show the group picker. If the round detail hasn't loaded
+    // yet, show a spinner; if it has only one group, auto-select and advance to
+    // ball-draw (single-group round fast path).
+    if (!roundDetail) {
+      return (
+        <div className="p-8 flex items-center justify-center gap-2 text-muted-foreground text-sm">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Loading round…
+        </div>
+      );
+    }
+
+    const groups = roundDetail.groups;
+    if (groups.length === 1) {
+      // Auto-select the only group and skip the picker
+      const only = groups[0]!;
+      const next = { ...joined, groupId: only.id };
+      setSession(next);
+      setJoined(next);
+      // Continue to ball-draw on next render via the hasGroup branch above
+      return null;
+    }
+
+    return (
+      <div className="p-4 flex flex-col gap-4 pt-6">
+        <div className="flex items-center gap-2 text-green-600">
+          <CheckCircle2 className="w-6 h-6" />
+          <h2 className="text-lg font-semibold">
+            {round?.type === 'official' ? 'Official round joined' : 'Casual round joined'}
+          </h2>
+        </div>
+        <p className="text-muted-foreground text-sm">
+          {round?.scheduledDate}{round?.roundNumber ? ` · Round #${round.roundNumber}` : ''}
+        </p>
+        <h3 className="text-base font-semibold mt-2">Which group are you in?</h3>
+        <div className="flex flex-col gap-3">
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              className="border rounded-xl p-4 text-left hover:bg-muted/40 transition-colors"
+              onClick={() => {
+                const next = { ...joined, groupId: g.id };
+                setSession(next);
+                setJoined(next);
+                void router.navigate({ to: '/ball-draw' });
+              }}
+            >
+              <p className="font-medium">Group {g.groupNumber}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {g.players.map((p) => p.name).join(', ') || 'No players yet'}
+              </p>
+            </button>
+          ))}
+        </div>
         <Button
           variant="ghost"
-          className="text-xs text-muted-foreground"
+          className="text-xs text-muted-foreground mt-2"
           onClick={() => {
             setJoined(null);
             setSelectedRound(null);
