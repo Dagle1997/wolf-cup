@@ -51,7 +51,7 @@ type RoundRow = {
   scheduledDate: string;
   autoCalculateMoney: number;
   seasonId: number;
-  tee: string;
+  tee: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -305,8 +305,8 @@ async function buildLeaderboard(round: RoundRow) {
         handicapIndex: p.handicapIndex,
         isSub: Boolean(p.isSub),
       })),
-      tee: round.tee as Tee,
-      decisions,
+      tee: (round.tee ?? 'blue') as Tee,
+      ...(decisions ? { decisions } : {}),
     });
     if (live && live.winnerPlayerIds.length > 0) {
       const names = live.winnerPlayerIds
