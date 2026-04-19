@@ -204,6 +204,7 @@ function ChangePasswordSection() {
 }
 
 function DownloadSeasonExcelButton() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -214,8 +215,13 @@ function DownloadSeasonExcelButton() {
       const res = await fetch('/api/admin/export/season.xlsx', {
         credentials: 'same-origin',
       });
+      if (res.status === 401) {
+        void navigate({ to: '/admin/login' });
+        return;
+      }
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Download failed (HTTP ${res.status})`);
       }
       const blob = await res.blob();
       const disposition = res.headers.get('Content-Disposition') ?? '';
