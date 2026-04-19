@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "codex_review": {
+      "command": "node",
+      "args": [
+        "./scripts/codex-review-mcp/server.mjs"
+      ],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY:-}",
+        "CODEX_REVIEW_MODEL": "${CODEX_REVIEW_MODEL:-gpt-5.2}",
+        "CODEX_REVIEW_REASONING_EFFORT": "${CODEX_REVIEW_REASONING_EFFORT:-high}",
+        "CODEX_REVIEW_MAX_FILES": "${CODEX_REVIEW_MAX_FILES:-12}",
+        "CODEX_REVIEW_MAX_CHARS_PER_FILE": "${CODEX_REVIEW_MAX_CHARS_PER_FILE:-30000}"
+      }
+    }
+  }
+}
