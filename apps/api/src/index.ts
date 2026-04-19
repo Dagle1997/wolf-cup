@@ -18,6 +18,7 @@ import adminGhinRouter from './routes/admin/ghin.js';
 import adminPairingRouter from './routes/admin/pairing.js';
 import adminAttendanceRouter from './routes/admin/attendance.js';
 import adminHistoryRouter from './routes/admin/history.js';
+import adminBackupRouter from './routes/admin/backup.js';
 import attendanceRouter from './routes/attendance.js';
 import historyRouter from './routes/history.js';
 import pairingsRouter from './routes/pairings.js';
@@ -25,6 +26,7 @@ import galleryRouter from './routes/gallery.js';
 import oddsRouter from './routes/odds.js';
 import cron from 'node-cron';
 import { ghinClient } from './lib/ghin-client.js';
+import { runBackup, backupConfigured } from './lib/backup.js';
 import { roundPlayers as roundPlayersTable } from './db/schema.js';
 import { eq as eqOp, and as andOp } from 'drizzle-orm';
 
@@ -70,6 +72,7 @@ app.route('/api/admin', adminGhinRouter);
 app.route('/api/admin', adminPairingRouter);
 app.route('/api/admin', adminAttendanceRouter);
 app.route('/api/admin/history', adminHistoryRouter);
+app.route('/api/admin', adminBackupRouter);
 
 // ---------------------------------------------------------------------------
 // Startup cleanup — delete cancelled casual rounds older than 24 hours
@@ -192,4 +195,16 @@ serve({ fetch: app.fetch, port }, async () => {
     void autoRefreshHandicaps();
   }, { timezone: 'America/New_York' });
   console.log('Scheduled Friday 6am ET handicap auto-refresh');
+
+  // Nightly 3am ET SQLite → R2 backup
+  if (backupConfigured) {
+    cron.schedule('0 3 * * *', () => {
+      void runBackup()
+        .then((r) => console.log(`Backup ok: ${r.key} (${r.bytesUploaded} bytes, pruned ${r.pruned}, ${r.durationMs}ms)`))
+        .catch((err: unknown) => console.error('Backup failed (non-fatal):', err));
+    }, { timezone: 'America/New_York' });
+    console.log('Scheduled nightly 3am ET backup');
+  } else {
+    console.log('Backup bucket not configured — nightly backup disabled');
+  }
 });
