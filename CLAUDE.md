@@ -211,3 +211,14 @@ This system prioritizes:
 - correctness over speed
 
 Work should leave the system more understandable than it was before.
+
+
+---
+
+## Monorepo Disambiguation
+
+- `apps/api` and `apps/web` belong to Wolf Cup.
+- `apps/tournament-api` and `apps/tournament-web` belong to Tournament.
+- Tournament work does not edit Wolf Cup paths without explicit per-session approval from the user.
+
+See `FD-1` and `FD-2` in `_bmad-output/planning-artifacts/tournament/prd.md`.
