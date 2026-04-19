@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Users, CalendarDays, Trophy, FilePenLine, KeyRound, LogOut, Loader2, Check, CalendarClock } from 'lucide-react';
+import { Users, CalendarDays, Trophy, FilePenLine, KeyRound, LogOut, Loader2, Check, CalendarClock, FileDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -203,6 +203,64 @@ function ChangePasswordSection() {
   );
 }
 
+function DownloadSeasonExcelButton() {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  async function handleDownload() {
+    setStatus('loading');
+    setErrorMsg('');
+    try {
+      const res = await fetch('/api/admin/export/season.xlsx', {
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] ?? 'wolf-cup-season.xlsx';
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus('idle');
+    } catch (err) {
+      setStatus('error');
+      setErrorMsg(err instanceof Error ? err.message : 'Download failed');
+    }
+  }
+
+  return (
+    <button
+      onClick={() => void handleDownload()}
+      disabled={status === 'loading'}
+      className="border rounded-xl p-4 flex items-center gap-4 hover:bg-muted/50 transition-colors w-full text-left disabled:opacity-60"
+    >
+      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+        {status === 'loading' ? (
+          <Loader2 className="w-5 h-5 text-primary animate-spin" />
+        ) : (
+          <FileDown className="w-5 h-5 text-primary" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium">Download Season Excel</p>
+        <p className="text-sm text-muted-foreground">
+          Finalized rounds as a plain xlsx — name, gross, stableford, money
+        </p>
+        {status === 'error' && <p className="text-xs text-destructive mt-1">{errorMsg}</p>}
+      </div>
+    </button>
+  );
+}
+
 function LogoutButton() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -253,6 +311,7 @@ function AdminDashboard() {
             </div>
           </Link>
         ))}
+        <DownloadSeasonExcelButton />
         <ChangePasswordSection />
         <LogoutButton />
       </div>

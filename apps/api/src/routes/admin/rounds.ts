@@ -21,6 +21,8 @@ import type { Tee } from '@wolf-cup/engine';
 import { ghinClient } from '../../lib/ghin-client.js';
 import { computeSideGameWinnerForRound } from '../../lib/side-game-calc-db.js';
 import { backfillSideGameRoundId } from '../../lib/side-game-backfill.js';
+import { buildSeasonWorkbook } from '../../lib/season-export.js';
+import { sendRoundResultsEmail, emailConfigured } from '../../lib/email.js';
 import type { Variables } from '../../types.js';
 
 const app = new Hono<{ Variables: Variables }>();
@@ -816,6 +818,38 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     await computeSideGameWinnerForRound(id, round.seasonId, roundTee);
   } catch (err) {
     console.error('Failed to compute side game results (non-fatal):', err);
+  }
+
+  // Email updated season workbook to Jason (non-fatal — doesn't affect standings)
+  if (emailConfigured) {
+    void (async () => {
+      try {
+        const season = await db
+          .select({ year: seasons.year })
+          .from(seasons)
+          .where(eq(seasons.id, round.seasonId))
+          .get();
+        const roundRow = await db
+          .select({ scheduledDate: rounds.scheduledDate })
+          .from(rounds)
+          .where(eq(rounds.id, id))
+          .get();
+        if (!season || !roundRow) return;
+
+        const { buffer, filename } = await buildSeasonWorkbook(season.year);
+        const info = await sendRoundResultsEmail({
+          roundDate: roundRow.scheduledDate,
+          seasonYear: season.year,
+          xlsxBuffer: buffer,
+          xlsxFilename: filename,
+        });
+        if (info) {
+          console.log(`Round-results email sent: accepted=${info.accepted.length} rejected=${info.rejected.length}`);
+        }
+      } catch (err) {
+        console.error('Failed to send round-results email (non-fatal):', err);
+      }
+    })();
   }
 
   return c.json({ id, status: 'finalized' }, 200);
