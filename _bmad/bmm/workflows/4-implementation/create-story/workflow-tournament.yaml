@@ -1,0 +1,59 @@
+name: create-story-tournament
+description: 'Tournament variant of create-story. Writes tournament story files into _bmad-output/implementation-artifacts/tournament/ and updates the tournament-scoped sprint-status. Reads tournament epics from _bmad-output/planning-artifacts/tournament/epics-phase1.md. Wolf Cup tracking and paths are untouched. Use when the user says "create the next tournament story" or "create tournament story [T<epic>.<story>]".'
+
+# Critical variables from config (same shared config as Wolf Cup — only paths below diverge)
+config_source: "{project-root}/_bmad/bmm/config.yaml"
+user_name: "{config_source}:user_name"
+communication_language: "{config_source}:communication_language"
+document_output_language: "{config_source}:document_output_language"
+user_skill_level: "{config_source}:user_skill_level"
+date: system-generated
+planning_artifacts: "{config_source}:planning_artifacts"
+implementation_artifacts: "{config_source}:implementation_artifacts"
+
+# Workflow components (reuse Wolf Cup's instructions.xml/template.md/checklist.md — logic is identical)
+installed_path: "{project-root}/_bmad/bmm/workflows/4-implementation/create-story"
+template: "{installed_path}/template.md"
+instructions: "{installed_path}/instructions.xml"
+validation: "{installed_path}/checklist.md"
+
+# Tournament-scoped path overrides — these are the ONLY divergences from workflow.yaml
+# -----------------------------------------------------------------------------------
+# sprint_status:   separate tournament sprint-status.yaml; Wolf Cup's is untouched
+# epics_file:      tournament epics live under a subfolder and use -phase1 suffix
+# prd_file:        tournament PRD
+# architecture_file: tournament architecture
+# ux_file:         tournament has no standalone UX file (reserved; fallback pattern matches nothing)
+# default_output_file: tournament stories write into implementation-artifacts/tournament/
+sprint_status: "{implementation_artifacts}/tournament/sprint-status.yaml"
+epics_file: "{planning_artifacts}/tournament/epics-phase1.md"
+prd_file: "{planning_artifacts}/tournament/prd.md"
+architecture_file: "{planning_artifacts}/tournament/architecture.md"
+ux_file: "{planning_artifacts}/tournament/*ux*.md"
+story_title: ""
+project_context: "**/project-context.md"
+default_output_file: "{implementation_artifacts}/tournament/{{story_key}}.md"
+
+# Smart input file references — tournament-subdir variants
+# (The discover_inputs protocol globs these patterns; empty matches are acceptable.)
+input_file_patterns:
+  prd:
+    description: "Tournament PRD (fallback — epics file should have most content)"
+    whole: "{planning_artifacts}/tournament/*prd*.md"
+    sharded: "{planning_artifacts}/tournament/*prd*/*.md"
+    load_strategy: "SELECTIVE_LOAD"
+  architecture:
+    description: "Tournament architecture (fallback — epics file should have relevant sections)"
+    whole: "{planning_artifacts}/tournament/*architecture*.md"
+    sharded: "{planning_artifacts}/tournament/*architecture*/*.md"
+    load_strategy: "SELECTIVE_LOAD"
+  ux:
+    description: "Tournament UX design (none yet; reserved for future)"
+    whole: "{planning_artifacts}/tournament/*ux*.md"
+    sharded: "{planning_artifacts}/tournament/*ux*/*.md"
+    load_strategy: "SELECTIVE_LOAD"
+  epics:
+    description: "Tournament enhanced epics+stories file (epics-phase1.md) with BDD and source hints"
+    whole: "{planning_artifacts}/tournament/epics-phase1.md"
+    sharded: "{planning_artifacts}/tournament/*epic*/*.md"
+    load_strategy: "SELECTIVE_LOAD"

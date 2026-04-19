@@ -1,0 +1,210 @@
+# generated: 2026-04-19
+# project: Tournament (sibling app to Wolf Cup; tournament.dagle.cloud)
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts/tournament
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# WOLF-CUP ISOLATION:
+# ===================
+# Tournament is a sibling app in the same monorepo (apps/tournament-api,
+# apps/tournament-web — scaffolded in T1.2/T1.3). Per FD-1/FD-2 in the
+# tournament architecture, tournament work does NOT write to Wolf Cup
+# paths (apps/api, apps/web, packages/engine internals) without explicit
+# approval. Reading Wolf Cup for rules/patterns/parity IS allowed.
+#
+# This file tracks ONLY tournament stories. Wolf Cup's sprint-status is
+# at _bmad-output/implementation-artifacts/sprint-status.yaml — do not
+# merge the two.
+
+generated: 2026-04-19
+project: Tournament
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts/tournament
+
+development_status:
+
+  # ---------------------------------------------------------------------------
+  # Epic T1: Tournament Foundation
+  # Separate workspaces, subdomain, auth realm, log sink — all trip-critical.
+  # FRs covered: FR-G1, FR-G2, NFR-C3, NFR-D1, NFR-O1, NFR-S2 (auth realm)
+  # ---------------------------------------------------------------------------
+  epic-T1: backlog
+
+  T1-1-claude-md-disambiguation-note: backlog
+  T1-2-scaffold-tournament-api: backlog
+  T1-3-scaffold-tournament-web: backlog
+  T1-4-docker-compose-traefik-tournament-dagle-cloud: backlog
+  T1-5-ci-dual-run-pipeline: backlog
+  T1-6-auth-realm-sso-magic-link: backlog
+  T1-7-structured-json-log-sink: backlog
+
+  epic-T1-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic T2: Course Library
+  # Courses + revisions schema, Pinehurst seed, PDF vision parser, validator,
+  # admin UI for manual + PDF-upload review.
+  # ---------------------------------------------------------------------------
+  epic-T2: backlog
+
+  T2-1-courses-revisions-schema: backlog
+  T2-2-pinehurst-seed-importer-course-list-api: backlog
+  T2-3-scorecard-pdf-vision-parser: backlog
+  T2-4-course-validator: backlog
+  T2-5-course-admin-ui-manual-pdf-upload-review: backlog
+
+  epic-T2-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic T3: Event, Group, Rules, Invites, Permissions
+  # Event + group + rule-set + invite + sub-game + device-binding schema,
+  # wizards, CRUD UIs, GHIN client port, rule-set editor, invite-link flow,
+  # post-SSO device rebind, permissions middleware, sub-game opt-in.
+  # ---------------------------------------------------------------------------
+  epic-T3: backlog
+
+  T3-1-event-group-rule-set-invite-sub-game-device-binding-schema: backlog
+  T3-2-event-creation-wizard: backlog
+  T3-3-group-crud-ui: backlog
+  T3-4-ghin-client: backlog
+  T3-5-rule-set-editor-tenant-scoped-revisioned: backlog
+  T3-6-invite-link-first-arrival-flow-no-sso: backlog
+  T3-7-post-sso-device-cookie-thats-not-me-re-bind: backlog
+  T3-8-permissions-middleware-event-level-role-matrix: backlog
+  T3-9-sub-game-opt-in-ui-on-round-setup: backlog
+  T3-10-optional-ghin-enrichment-profile-action: backlog
+
+  epic-T3-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic T4: Pairings
+  # Suggest engine, UI + persistence, PDF schedule + pairings export (port).
+  # ---------------------------------------------------------------------------
+  epic-T4: backlog
+
+  T4-1-pairings-suggest-engine: backlog
+  T4-2-pairings-ui-persistence: backlog
+  T4-3-pdf-schedule-pairings-export: backlog
+
+  epic-T4-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic T5: Scoring, Offline Sync, Leaderboard
+  # Scoring schema extract, scorer entry port (iOS keyboard fix intact),
+  # offline queue with clientEventId idempotency, cross-group stroke-play
+  # leaderboard, single-writer enforcement, scorer handoff, lifecycle state
+  # machine, score correction audit log, airplane-mode drill, mid-event rule
+  # edits with effective-hole boundary.
+  # ---------------------------------------------------------------------------
+  epic-T5: backlog
+
+  T5-1-scoring-schema: backlog
+  T5-2-scorer-entry-ui-ios-keyboard-fix: backlog
+  T5-3-offline-queue-indexeddb-client-event-id-idempotency: backlog
+  T5-4-offline-course-scorecard-shell-cache: backlog
+  T5-5-cross-group-stroke-play-leaderboard-v1: backlog
+  T5-6-score-post-require-scorer-for-round-middleware: backlog
+  T5-7-scorer-handoff-endpoint: backlog
+  T5-8-round-lifecycle-state-machine: backlog
+  T5-9-score-correction-endpoint-audit-log: backlog
+  T5-10-airplane-mode-drill-409-collision-integration-test: backlog
+  T5-11-mid-event-rule-edit-effective-hole-boundary: backlog
+
+  epic-T5-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic T6: Rules Engine, Money, Bets, Settle-up
+  # 2v2 best ball, press + auto-press, cross-foursome individual bets,
+  # score-commit hook with activity emission, H2H money matrix, settle-up,
+  # manual press, bets page, hand-calc money fixture (NFR-C1 gate), tie-break
+  # pure function, skins engine (3 modes), carry-over greenies, sub-game
+  # framework, skins leaderboard + settle-up integration.
+  # Integer-cents discipline locked across this epic.
+  # ---------------------------------------------------------------------------
+  epic-T6: backlog
+
+  T6-1-engine-2v2-best-ball-hole-round-scoring: backlog
+  T6-2-engine-press-auto-press-trigger-evaluation: backlog
+  T6-3-engine-schema-cross-foursome-individual-bets: backlog
+  T6-4-score-commit-hook-hole-complete-press-evaluation: backlog
+  T6-5-head-to-head-money-matrix-api-ui: backlog
+  T6-6-settle-up-view-pairwise-attribution-zero-sum: backlog
+  T6-7-manual-press-ui: backlog
+  T6-8-bets-page-per-pair-live-standings: backlog
+  T6-9-hand-calc-money-fixture-http-roundtrip-test: backlog
+  T6-10-leaderboard-tie-break-pure-function: backlog
+  T6-11-engine-skins-3-modes: backlog
+  T6-12-engine-carry-over-greenies: backlog
+  T6-13-sub-game-framework-schema-dispatcher-compute-route: backlog
+  T6-14-skins-leaderboard-column-settle-up-integration: backlog
+
+  epic-T6-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic T7: Player Experience
+  # Event home, schedule view, course preview, photo gallery (R2 reuse),
+  # raw-state JSON export, install prompt, read-only browser-tab fallback.
+  # ---------------------------------------------------------------------------
+  epic-T7: backlog
+
+  T7-1-event-home-page-countdown-schedule-entry: backlog
+  T7-2-schedule-view: backlog
+  T7-3-course-preview-per-hole-detail-hero-image: backlog
+  T7-4-per-event-photo-gallery-r2-storage-reuse: backlog
+  T7-5-raw-state-json-export-organizer-only: backlog
+  T7-6-in-app-install-prompt-per-device-one-shot: backlog
+  T7-7-browser-tab-read-only-fallback: backlog
+
+  epic-T7-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic T8: In-App Engagement Surfaces
+  # Activity spine schema + emitter + Zod-validated payloads + ESLint gate,
+  # activity API + singleton feed provider + toast/banner components,
+  # player-home activity feed, award trigger surfaces.
+  # ---------------------------------------------------------------------------
+  epic-T8: backlog
+
+  T8-1-activity-spine-schema-emitter-zod-validated-payloads: backlog
+  T8-2-activity-api-singleton-feed-provider-toast-banner-components: backlog
+  T8-3-player-home-activity-feed: backlog
+  T8-4-award-trigger-surfaces-first-birdie-first-eagle: backlog
+
+  epic-T8-retrospective: optional
+
+  # ---------------------------------------------------------------------------
+  # Epic T9: Pre-Event Validation
+  # 9-hole live foursome drill at Guyan, final pre-event checklist walkthrough,
+  # ship/defer decision artifact, per-scorer-device PWA install verification.
+  # ---------------------------------------------------------------------------
+  epic-T9: backlog
+
+  T9-1-9-hole-live-foursome-drill-at-guyan: backlog
+  T9-2-final-pre-event-checklist-walkthrough: backlog
+  T9-3-ship-defer-decision-artifact: backlog
+  T9-4-per-scorer-device-pwa-install-verification: backlog
+
+  epic-T9-retrospective: optional
