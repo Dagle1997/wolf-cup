@@ -38,6 +38,28 @@ services:
       retries: 3
       start_period: 15s
 
+  tournament-api:
+    build:
+      context: .
+      dockerfile: apps/tournament-api/Dockerfile
+    container_name: tournament-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/tournament.db
+      - PORT=3000
+      - TZ=America/New_York
+    volumes:
+      - tournament_sqlite_data:/app/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
   web:
     build:
       context: .
@@ -61,8 +83,32 @@ services:
       - "traefik.http.services.wolf-cup.loadbalancer.server.port=80"
       # HTTP → HTTPS handled globally by Traefik entrypoint config
 
+  tournament-web:
+    build:
+      context: .
+      dockerfile: apps/tournament-web/Dockerfile
+    container_name: tournament-web
+    restart: unless-stopped
+    depends_on:
+      tournament-api:
+        condition: service_started
+    networks:
+      - internal
+      - n8n_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n_default"
+      # HTTPS router
+      - "traefik.http.routers.tournament.rule=Host(`tournament.dagle.cloud`)"
+      - "traefik.http.routers.tournament.entrypoints=websecure"
+      - "traefik.http.routers.tournament.tls=true"
+      - "traefik.http.routers.tournament.tls.certresolver=mytlschallenge"
+      - "traefik.http.services.tournament.loadbalancer.server.port=80"
+      # HTTP → HTTPS handled globally by Traefik entrypoint config
+
 volumes:
   sqlite_data:
+  tournament_sqlite_data:
 
 networks:
   internal:
