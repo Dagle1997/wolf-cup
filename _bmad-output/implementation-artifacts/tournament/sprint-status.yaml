@@ -55,7 +55,7 @@ development_status:
 
   T1-1-claude-md-disambiguation-note: done
   T1-2-scaffold-tournament-api: done
-  T1-3-scaffold-tournament-web: backlog
+  T1-3-scaffold-tournament-web: done
   T1-4-docker-compose-traefik-tournament-dagle-cloud: backlog
   T1-5-ci-dual-run-pipeline: backlog
   T1-6-auth-realm-sso-magic-link: backlog
