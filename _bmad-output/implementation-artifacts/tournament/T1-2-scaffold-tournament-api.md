@@ -1,8 +1,13 @@
 # Story T1.2: Scaffold tournament-api
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
+
+## Revisions
+
+- **2026-04-20** (retroactive during tournament-director's party-mode review cycle): AC #2a revised from a literal expression form (`port: Number(process.env['PORT'] ?? 3000)`) to a behavioral + robustness form. The shipped implementation (commit b849e65) hardens port resolution via a `resolvePort()` helper that rejects non-finite values, values ≤ 0, and values > 65535 — strictly safer than the literal form, which would crash or misbind on `PORT="abc"` / `PORT="0"` / `PORT="99999"`. Rewording AC #2a makes it match actual shipped intent (robust port resolution) rather than the initial shorthand. In a follow-up commit `resolvePort` is extracted to `src/port.ts` with per-branch unit tests (`src/port.test.ts`). Triggering artifact: `_bmad-output/reviews/T1-2-scaffold-tournament-api-party-codex.md` finding #1 (Medium). Subtask 2.1b and the first paragraph of Dev Notes updated in parallel. General convention going forward: inline code snippets in Tournament ACs are reference implementations, not mandates, unless an AC explicitly says "literal required shape."
+- **2026-04-20**: Removed the `export` keyword from `STARTUP_TIME` in `src/app.ts` per party-codex finding #3 (Low). The constant is internal-only; nothing imports it. Matches the story-text shape "`const STARTUP_TIME = Date.now();`" literally.
 
 ## Story
 
@@ -31,7 +36,7 @@ so that tournament has a deployable API skeleton independent of Wolf Cup.
    **Then** the response has HTTP status 200 and the JSON body satisfies ALL of: `body.status === 'ok'`, `typeof body.startupTime === 'number'`, `Number.isInteger(body.startupTime)`, `body.startupTime > 0`
 2a. **Given** `apps/tournament-api/src/index.ts` (the runtime entrypoint)
    **When** inspected
-   **Then** it imports `{ app }` from `./app.js` and invokes `serve({ fetch: app.fetch, port: Number(process.env['PORT'] ?? 3000) })` at module scope (i.e., the server binds to port 3000 by default when run as `node dist/index.js`, or to whatever `PORT` resolves to if exported)
+   **Then** it imports `{ app }` from `./app.js` and invokes `serve({ fetch: app.fetch, port })` at module scope, where `port` is resolved from `process.env['PORT']` and defaults to `3000`. The resolver MUST reject invalid inputs (non-numeric, non-finite, ≤ 0, or > 65535) by emitting a `console.warn` and returning `3000`. When the app is run as `node dist/index.js`, the server binds to `3000` by default, or to a valid integer `PORT` in `[1, 65535]`. The resolver SHOULD live in its own module so unit tests can exercise each branch without triggering `serve()`. The exact expression `Number(process.env['PORT'] ?? 3000)` was the original shorthand — it is NOT the required form; a hardened helper (e.g. `resolvePort()`) is the preferred form.
 3. **Given** `apps/tournament-api/package.json`
    **When** inspected
    **Then** neither `bcrypt` nor `@types/bcrypt` appears in `dependencies` or `devDependencies` (FD-4 SSO posture — no password auth in tournament)
@@ -80,7 +85,7 @@ so that tournament has a deployable API skeleton independent of Wolf Cup.
   - [x] Subtask 1.5: Create `apps/tournament-api/drizzle.config.ts` per AC #4
 - [x] Task 2: Create the `src/` skeleton (AC: #2, #4)
   - [x] Subtask 2.1a: Create `apps/tournament-api/src/app.ts` as a side-effect-free module: constructs the Hono `app`, defines module-level `const STARTUP_TIME = Date.now();`, registers `app.get('/api/health', (c) => c.json({ status: 'ok', startupTime: STARTUP_TIME }));`, and `export { app }`. MUST NOT call `serve()` — importing this file must not bind a port. Do NOT port any other Wolf Cup routes or middleware; this is a skeleton.
-  - [x] Subtask 2.1b: Create `apps/tournament-api/src/index.ts` as the runtime entrypoint: imports `{ app }` from `./app.js`, calls `serve({ fetch: app.fetch, port: Number(process.env['PORT'] ?? 3000) })`, and emits a `console.log` line on startup (e.g., `` `Tournament API listening on port ${port}` ``). This is the module that `node dist/index.js` (and therefore `apps/tournament-api/package.json`'s `dev` script) executes.
+  - [x] Subtask 2.1b: Create `apps/tournament-api/src/index.ts` as the runtime entrypoint: imports `{ app }` from `./app.js`, imports `resolvePort` from `./port.js` (extracted helper; see AC #2a), calls `serve({ fetch: app.fetch, port })`, and emits a `console.log` line on startup (e.g., `` `Tournament API listening on port ${port}` ``). This is the module that `node dist/index.js` (and therefore `apps/tournament-api/package.json`'s `dev` script) executes. The resolver itself lives in `src/port.ts` with unit tests in `src/port.test.ts` — each branch covered (undefined, empty, non-numeric, 0, negative, >65535, valid mid, boundary 1, boundary 65535).
   - [x] Subtask 2.2: `src/db/index.ts` — drizzle client init per AC #4. Use `` const url = `file:${process.env['DB_PATH'] ?? './data/tournament.db'}` `` and `createClient({ url })`.
   - [x] Subtask 2.3: `src/db/schema/_columns.ts` per AC #4 (FD-6). Export shape is dev-agent choice; recommended: a factory `export const ecosystemColumns = () => ({ tenantId: text('tenant_id').notNull().default('guyan'), contextId: text('context_id').notNull() })` so table definitions can spread it: `...ecosystemColumns()`
   - [x] Subtask 2.4: `src/db/schema/index.ts` — empty re-export file. Contents: a single comment line such as `// Domain schemas re-exported here as they are added (T2.1+).` Zero `export` statements is fine; the file just needs to exist so the glob `./src/db/schema/*` has at least one match and future stories can append `export * from './events';` etc.

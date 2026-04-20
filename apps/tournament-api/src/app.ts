@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 
-export const STARTUP_TIME = Date.now();
+const STARTUP_TIME = Date.now();
 
 const app = new Hono();
 
