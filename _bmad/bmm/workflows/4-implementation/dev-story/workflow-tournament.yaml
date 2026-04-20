@@ -1,0 +1,32 @@
+name: dev-story-tournament
+description: 'Tournament variant of dev-story. Reads/writes the tournament-scoped sprint-status.yaml; implementation is constrained to Tournament paths (see tournament-director.md allowlist). Wolf Cup tracking and paths are untouched. Use only via the tournament-director command.'
+
+# Critical variables from config (same shared config as Wolf Cup — only paths below diverge)
+config_source: "{project-root}/_bmad/bmm/config.yaml"
+user_name: "{config_source}:user_name"
+communication_language: "{config_source}:communication_language"
+user_skill_level: "{config_source}:user_skill_level"
+document_output_language: "{config_source}:document_output_language"
+date: system-generated
+
+# Workflow components (reuse Wolf Cup's instructions.xml/checklist.md — logic is identical)
+installed_path: "{project-root}/_bmad/bmm/workflows/4-implementation/dev-story"
+instructions: "{installed_path}/instructions.xml"
+validation: "{installed_path}/checklist.md"
+
+story_file: "" # Director MUST pass story_path explicitly; see director step 5
+
+# Tournament-scoped path overrides
+# -----------------------------------------------------------------------------------
+# implementation_artifacts is overridden to the tournament subfolder so that
+# instructions.xml's auto-discovery branches (see lines ~81 and ~117 of
+# dev-story/instructions.xml — `Search {implementation_artifacts} for stories`
+# and `Find matching story file in {implementation_artifacts} using story_key
+# pattern`) are confined to tournament stories and CANNOT accidentally match
+# a Wolf Cup story file.
+implementation_artifacts: "{project-root}/_bmad-output/implementation-artifacts/tournament"
+sprint_status: "{implementation_artifacts}/sprint-status.yaml"
+# project_context is intentionally scoped to tournament workspaces so that
+# instructions.xml line 140 (`Load {project_context} for coding standards and
+# project-wide patterns`) cannot pull Wolf Cup's project-context.md.
+project_context: "apps/tournament-*/**/project-context.md"

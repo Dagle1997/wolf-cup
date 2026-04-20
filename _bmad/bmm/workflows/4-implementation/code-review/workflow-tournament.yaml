@@ -1,0 +1,48 @@
+# Tournament-scoped Code Review Workflow
+name: code-review-tournament
+description: 'Tournament variant of code-review. Reads the tournament-scoped sprint-status.yaml and tournament planning artifacts. Use only via the tournament-director command (invoked during the party-mode review step).'
+
+# Critical variables from config (same shared config as Wolf Cup — only paths below diverge)
+config_source: "{project-root}/_bmad/bmm/config.yaml"
+user_name: "{config_source}:user_name"
+communication_language: "{config_source}:communication_language"
+user_skill_level: "{config_source}:user_skill_level"
+document_output_language: "{config_source}:document_output_language"
+date: system-generated
+planning_artifacts: "{config_source}:planning_artifacts"
+
+# Tournament-scoped path overrides
+# implementation_artifacts is overridden to the tournament subfolder so that
+# any `Search {implementation_artifacts}` behavior in this workflow's
+# instructions.xml cannot match a Wolf Cup story.
+implementation_artifacts: "{project-root}/_bmad-output/implementation-artifacts/tournament"
+sprint_status: "{implementation_artifacts}/sprint-status.yaml"
+
+# Workflow components (reuse Wolf Cup's instructions.xml/checklist.md)
+installed_path: "{project-root}/_bmad/bmm/workflows/4-implementation/code-review"
+instructions: "{installed_path}/instructions.xml"
+validation: "{installed_path}/checklist.md"
+template: false
+
+# project_context is intentionally scoped to tournament workspaces so the
+# workflow cannot ingest Wolf Cup coding-standards context.
+project_context: "apps/tournament-*/**/project-context.md"
+
+# Smart input file references — tournament-subdir variants
+input_file_patterns:
+  architecture:
+    description: "Tournament system architecture for review context"
+    whole: "{planning_artifacts}/tournament/*architecture*.md"
+    sharded: "{planning_artifacts}/tournament/*architecture*/*.md"
+    load_strategy: "FULL_LOAD"
+  ux_design:
+    description: "Tournament UX design (reserved — none yet)"
+    whole: "{planning_artifacts}/tournament/*ux*.md"
+    sharded: "{planning_artifacts}/tournament/*ux*/*.md"
+    load_strategy: "FULL_LOAD"
+  epics:
+    description: "Tournament epic containing story being reviewed"
+    whole: "{planning_artifacts}/tournament/epics-phase1.md"
+    sharded_index: "{planning_artifacts}/tournament/*epic*/index.md"
+    sharded_single: "{planning_artifacts}/tournament/*epic*/epic-{{epic_num}}.md"
+    load_strategy: "SELECTIVE_LOAD"
