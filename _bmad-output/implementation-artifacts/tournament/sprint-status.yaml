@@ -53,7 +53,7 @@ development_status:
   # ---------------------------------------------------------------------------
   epic-T1: in-progress
 
-  T1-1-claude-md-disambiguation-note: review
+  T1-1-claude-md-disambiguation-note: done
   T1-2-scaffold-tournament-api: review
   T1-3-scaffold-tournament-web: backlog
   T1-4-docker-compose-traefik-tournament-dagle-cloud: backlog
