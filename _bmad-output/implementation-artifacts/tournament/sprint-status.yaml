@@ -58,7 +58,12 @@ development_status:
   T1-3-scaffold-tournament-web: done
   T1-4-docker-compose-traefik-tournament-dagle-cloud: done
   T1-5-ci-dual-run-pipeline: done
-  T1-6-auth-realm-sso-magic-link: backlog
+  # T1-6 (auth-realm-sso-magic-link) was split on 2026-04-20 per party advisory + Josh's call:
+  # magic-link deferred to post-T3.1 (v1.5+ Thursday league uses), and SSO feature split
+  # from the schema+middleware infrastructure so T2 can begin in parallel with arctic OAuth work.
+  # Magic-link returns to the plan as a future T3.x story when players.email lands.
+  T1-6a-auth-schema-middleware-env: ready-for-dev
+  T1-6b-arctic-google-sso: backlog
   T1-7-structured-json-log-sink: backlog
 
   epic-T1-retrospective: optional
