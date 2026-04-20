@@ -34,6 +34,12 @@ jobs:
       - name: Test (api)
         run: pnpm --filter @wolf-cup/api test
 
+      - name: Test (tournament-api)
+        run: pnpm --filter @tournament/api test
+
+      - name: Test (tournament-web)
+        run: pnpm --filter @tournament/web test
+
       - name: Lint
         run: pnpm -r lint
 
