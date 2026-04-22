@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { eq, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { rounds, groups, roundPlayers, players, pairingHistory, seasons } from '../db/schema.js';
+import { rounds, groups, roundPlayers, players, pairingHistory, seasons, sideGames } from '../db/schema.js';
 import { calcCourseHandicap } from '@wolf-cup/engine';
 import type { Tee } from '@wolf-cup/engine';
 import type { Variables } from '../types.js';
@@ -49,6 +49,30 @@ app.get('/pairings/:roundId', async (c) => {
 
     const tee = (round.tee as Tee) ?? 'blue';
 
+    const allSideGames = await db
+      .select({
+        name: sideGames.name,
+        format: sideGames.format,
+        calculationType: sideGames.calculationType,
+        scheduledRoundIds: sideGames.scheduledRoundIds,
+      })
+      .from(sideGames)
+      .where(eq(sideGames.seasonId, round.seasonId))
+      .orderBy(sideGames.id);
+    const activeSideGame = allSideGames.find((sg) => {
+      try {
+        const parsed = JSON.parse(sg.scheduledRoundIds ?? '[]') as unknown;
+        if (!Array.isArray(parsed)) return false;
+        const ids = parsed.map((v) => Number(v)).filter((n) => Number.isFinite(n));
+        return ids.includes(round.id);
+      } catch {
+        return false;
+      }
+    });
+    const sideGame = activeSideGame
+      ? { name: activeSideGame.name, format: activeSideGame.format, calculationType: activeSideGame.calculationType ?? null }
+      : null;
+
     const groupsResponse = roundGroups.map((g) => {
       const groupPlayers = roundPlayerRows
         .filter((rp) => rp.groupId === g.id)
@@ -76,6 +100,7 @@ app.get('/pairings/:roundId', async (c) => {
           handicapUpdatedAt: round.handicapUpdatedAt,
         },
         groups: groupsResponse,
+        sideGame,
       },
       200,
     );

@@ -27,6 +27,11 @@ type PairingsResponse = {
       isSub: boolean;
     }[];
   }[];
+  sideGame: {
+    name: string;
+    format: string;
+    calculationType: string | null;
+  } | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -115,7 +120,7 @@ function PairingsPage() {
     );
   }
 
-  const { round, groups } = data;
+  const { round, groups, sideGame } = data;
   const teeLabel = round.tee ? `${round.tee.charAt(0).toUpperCase()}${round.tee.slice(1)} tees` : '';
   const teeColor = round.tee ? (TEE_COLORS[round.tee] ?? '') : '';
   const isStale = round.handicapUpdatedAt ? (Date.now() - round.handicapUpdatedAt > 12 * 60 * 60 * 1000) : true;
@@ -148,6 +153,13 @@ function PairingsPage() {
             </>
           )}
         </p>
+        {sideGame && (
+          <p className="text-xs mt-1">
+            <span className="text-muted-foreground">Side Game: </span>
+            <span className="font-medium">{sideGame.name}</span>
+            <span className="text-muted-foreground"> — {sideGame.format}</span>
+          </p>
+        )}
       </div>
 
       {/* Groups grid — 2 columns for screenshot-friendliness */}
