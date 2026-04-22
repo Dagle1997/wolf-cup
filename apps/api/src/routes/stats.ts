@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { eq, and, isNotNull, count, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { players, rounds, wolfDecisions, holeScores, roundResults, seasons, groups, roundPlayers } from '../db/schema.js';
+import { players, rounds, wolfDecisions, holeScores, roundResults, seasons, groups, roundPlayers, sideGameCtpEntries } from '../db/schema.js';
+import { resolvePerHoleWinners, PAR3_HOLES as CTP_PAR3_HOLES, type CtpEntry as CtpEntryShape } from '../lib/ctp.js';
 import { getCourseHole, calculateSandbaggerStatus, TEE_RATINGS, getWolfAssignment } from '@wolf-cup/engine';
 import type { SandbaggerRoundInput, Tee } from '@wolf-cup/engine';
 import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS } from '../db/history-data.js';
@@ -386,7 +387,109 @@ app.get('/stats', async (c) => {
       };
     }
 
-    return c.json({ players: playerStats, bestPartnership, lastUpdated: new Date().toISOString() }, 200);
+    // --- Par 3 Champion (season) stat ---
+    // Counts total CTPs won across all finalized CTP rounds in the CURRENT
+    // season. "Current" = the season with the max year (see inline comment
+    // below). Top 5 with ties shown as co-leaders. Hidden (empty array) when
+    // the season has 0 CTPs recorded. Spec AC #18-20.
+    //
+    // Per-round winners are resolved via the shared resolvePerHoleWinners
+    // helper — same source of truth as the leaderboard card, round
+    // highlights, and Side Game Champion aggregation.
+    let par3Champion: Array<{ playerId: number; name: string; ctps: number; holes: number[] }> = [];
+    try {
+      // Current season = the season with the max year. Using max(year)
+      // rather than "seasonId of most-recent finalized round" ensures that
+      // when a new season has been created but no rounds have been
+      // finalized yet, we return an empty par3Champion card — NOT the
+      // prior season's champion. (The older round-based inference would
+      // silently fall back to the prior season.)
+      const latestSeason = await db
+        .select({ id: seasons.id })
+        .from(seasons)
+        .orderBy(desc(seasons.year))
+        .limit(1)
+        .get();
+      const currentSeasonId = latestSeason?.id ?? null;
+
+      if (currentSeasonId != null) {
+        const ctpRows = await db
+          .select({
+            id: sideGameCtpEntries.id,
+            roundId: sideGameCtpEntries.roundId,
+            groupId: sideGameCtpEntries.groupId,
+            holeNumber: sideGameCtpEntries.holeNumber,
+            winnerPlayerId: sideGameCtpEntries.winnerPlayerId,
+            winnerName: sideGameCtpEntries.winnerName,
+            holeCompletedAt: sideGameCtpEntries.holeCompletedAt,
+            livePlayerName: players.name,
+          })
+          .from(sideGameCtpEntries)
+          .innerJoin(rounds, eq(rounds.id, sideGameCtpEntries.roundId))
+          .leftJoin(players, eq(players.id, sideGameCtpEntries.winnerPlayerId))
+          .where(and(
+            eq(rounds.seasonId, currentSeasonId),
+            eq(rounds.status, 'finalized'),
+            // Match the rest of /stats — casual rounds are excluded entirely.
+            // A casual round should never have CTP scheduled (the endpoint's
+            // CTP_NOT_ACTIVE gate handles that), but the filter is defensive
+            // against direct-SQL admin overrides and keeps this aggregation
+            // consistent with other all-stats semantics.
+            eq(rounds.type, 'official'),
+          ))
+          .orderBy(sideGameCtpEntries.roundId, sideGameCtpEntries.holeNumber, sideGameCtpEntries.groupId);
+
+        // Group by round, resolve per-hole winners, accumulate per-player totals.
+        const perRound = new Map<number, CtpEntryShape[]>();
+        for (const r of ctpRows) {
+          if (!perRound.has(r.roundId)) perRound.set(r.roundId, []);
+          perRound.get(r.roundId)!.push({
+            id: r.id,
+            roundId: r.roundId,
+            groupId: r.groupId,
+            holeNumber: r.holeNumber,
+            winnerPlayerId: r.winnerPlayerId,
+            winnerName: r.livePlayerName ?? r.winnerName,
+            holeCompletedAt: r.holeCompletedAt,
+          });
+        }
+
+        const totals = new Map<number, { name: string; ctps: number; holes: number[] }>();
+        for (const entries of perRound.values()) {
+          const winners = resolvePerHoleWinners(entries);
+          for (const hole of CTP_PAR3_HOLES) {
+            const w = winners[hole];
+            if (!w) continue;
+            const existing = totals.get(w.playerId);
+            if (existing) {
+              existing.ctps++;
+              existing.holes.push(hole);
+              if (existing.name === 'Unknown' && w.playerName !== 'Unknown') {
+                existing.name = w.playerName;
+              }
+            } else {
+              totals.set(w.playerId, { name: w.playerName, ctps: 1, holes: [hole] });
+            }
+          }
+        }
+
+        // Top 5 with ties — include anyone tied with the 5th place score.
+        const sorted = [...totals.entries()]
+          .map(([playerId, v]) => ({ playerId, name: v.name, ctps: v.ctps, holes: v.holes }))
+          .sort((a, b) => b.ctps - a.ctps || a.name.localeCompare(b.name));
+        if (sorted.length <= 5) {
+          par3Champion = sorted;
+        } else {
+          const cutoff = sorted[4]!.ctps;
+          par3Champion = sorted.filter((r) => r.ctps >= cutoff);
+        }
+      }
+    } catch (err) {
+      // Non-fatal — stat card just doesn't render.
+      console.error('Failed to compute Par 3 Champion stat (non-fatal):', err);
+    }
+
+    return c.json({ players: playerStats, bestPartnership, par3Champion, lastUpdated: new Date().toISOString() }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }

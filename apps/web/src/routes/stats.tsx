@@ -53,9 +53,17 @@ type BestPartnership = {
   winRate: number;
 };
 
+type Par3ChampionEntry = {
+  playerId: number;
+  name: string;
+  ctps: number;
+  holes: number[];
+};
+
 type StatsResponse = {
   players: PlayerStats[];
   bestPartnership: BestPartnership | null;
+  par3Champion: Par3ChampionEntry[];
   lastUpdated: string;
 };
 
@@ -256,6 +264,45 @@ function StatsPage() {
       >
         🏆 View Awards Wall & Badge Explanations
       </Link>
+
+      {/* Season Par 3 Champion — hidden when no CTPs recorded this season.
+          Leader row is labeled "🎯 Par 3 Champion"; ties listed as co-leaders. */}
+      {data && data.par3Champion && data.par3Champion.length > 0 && (
+        <div className="mb-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-2.5">
+          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium uppercase tracking-wider mb-1.5">
+            🎯 Par 3 Champion — Season
+          </div>
+          {(() => {
+            const leaderCtps = data.par3Champion[0]!.ctps;
+            return (
+              <ul className="space-y-0.5">
+                {data.par3Champion.map((e) => {
+                  const isLeader = e.ctps === leaderCtps;
+                  return (
+                    <li
+                      key={e.playerId}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span
+                        className={`truncate ${
+                          isLeader ? 'font-bold text-amber-700 dark:text-amber-400' : ''
+                        }`}
+                        title={e.name}
+                      >
+                        {isLeader ? '🎯 ' : ''}
+                        {shortName(e.name, data.par3Champion.map((p) => p.name))}
+                      </span>
+                      <span className="font-mono tabular-nums text-muted-foreground">
+                        {e.ctps} CTP{e.ctps !== 1 ? 's' : ''}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Best Partnership spotlight */}
       {data?.bestPartnership && (

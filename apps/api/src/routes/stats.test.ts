@@ -24,6 +24,7 @@ import {
   wolfDecisions,
   holeScores,
   roundResults,
+  sideGameCtpEntries,
 } from '../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
@@ -520,5 +521,293 @@ describe('GET /stats', () => {
     const body = (await res.json()) as StatsResponse;
     expect(typeof body.lastUpdated).toBe('string');
     expect(() => new Date(body.lastUpdated)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /stats — Par 3 Champion (season)
+// ---------------------------------------------------------------------------
+
+type Par3Entry = { playerId: number; name: string; ctps: number; holes: number[] };
+type StatsResponseWithCtp = StatsResponse & { par3Champion: Par3Entry[] };
+
+describe('GET /stats — par3Champion', () => {
+  afterEach(async () => {
+    await db.delete(sideGameCtpEntries).where(eq(sideGameCtpEntries.roundId, roundId));
+  });
+
+  it('returns empty par3Champion array when no CTPs have been recorded', async () => {
+    const res = await statsApp.request('/stats');
+    const body = (await res.json()) as StatsResponseWithCtp;
+    expect(body.par3Champion).toEqual([]);
+  });
+
+  it('aggregates CTP wins across finalized rounds in the current season', async () => {
+    // Alice wins holes 6 + 7 + 15 (3 CTPs), Bob wins hole 12 (1 CTP).
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      { roundId, groupId, holeNumber: 6, winnerPlayerId: p1Id, winnerName: 'Alice', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId, groupId, holeNumber: 7, winnerPlayerId: p1Id, winnerName: 'Alice', holeCompletedAt: 2000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId, groupId, holeNumber: 12, winnerPlayerId: p2Id, winnerName: 'Bob', holeCompletedAt: 3000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId, groupId, holeNumber: 15, winnerPlayerId: p1Id, winnerName: 'Alice', holeCompletedAt: 4000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+    const res = await statsApp.request('/stats');
+    const body = (await res.json()) as StatsResponseWithCtp;
+    expect(body.par3Champion).toHaveLength(2);
+    const alice = body.par3Champion.find((p) => p.playerId === p1Id)!;
+    const bob = body.par3Champion.find((p) => p.playerId === p2Id)!;
+    expect(alice.ctps).toBe(3);
+    // holes list is built in PAR3_HOLES iteration order (6, 7, 12, 15)
+    expect(alice.holes).toEqual([6, 7, 15]);
+    expect(bob.ctps).toBe(1);
+    expect(bob.holes).toEqual([12]);
+    // Sort: highest CTPs first
+    expect(body.par3Champion[0]!.playerId).toBe(p1Id);
+  });
+
+  it('ignores CTP entries on non-finalized rounds', async () => {
+    // Create a second round in the same season, still active, with a CTP entry.
+    const [activeRound] = await db
+      .insert(rounds)
+      .values({
+        seasonId,
+        type: 'official',
+        status: 'active',
+        scheduledDate: '2026-02-01',
+        entryCodeHash: null,
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    const [activeGroup] = await db
+      .insert(groups)
+      .values({ roundId: activeRound!.id, groupNumber: 1, battingOrder: null })
+      .returning({ id: groups.id });
+    const now = Date.now();
+    // Active round — should NOT contribute
+    await db.insert(sideGameCtpEntries).values({
+      roundId: activeRound!.id,
+      groupId: activeGroup!.id,
+      holeNumber: 6,
+      winnerPlayerId: p1Id,
+      winnerName: 'Alice',
+      holeCompletedAt: 1000,
+      finalizedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+    // Finalized round — should contribute (1 win to Alice)
+    await db.insert(sideGameCtpEntries).values({
+      roundId, // the finalized round from beforeAll
+      groupId,
+      holeNumber: 7,
+      winnerPlayerId: p1Id,
+      winnerName: 'Alice',
+      holeCompletedAt: 2000,
+      finalizedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const res = await statsApp.request('/stats');
+    const body = (await res.json()) as StatsResponseWithCtp;
+    const alice = body.par3Champion.find((p) => p.playerId === p1Id);
+    expect(alice).toBeDefined();
+    expect(alice!.ctps).toBe(1); // Only the finalized-round CTP counts
+
+    await db.delete(sideGameCtpEntries).where(eq(sideGameCtpEntries.roundId, activeRound!.id));
+    await db.delete(groups).where(eq(groups.id, activeGroup!.id));
+    await db.delete(rounds).where(eq(rounds.id, activeRound!.id));
+  });
+
+  it('ignores "Nobody" CTP entries (winnerPlayerId null)', async () => {
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      { roundId, groupId, holeNumber: 6, winnerPlayerId: p1Id, winnerName: 'Alice', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId, groupId, holeNumber: 7, winnerPlayerId: null, winnerName: null, holeCompletedAt: 2000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId, groupId, holeNumber: 12, winnerPlayerId: null, winnerName: null, holeCompletedAt: 3000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+    const res = await statsApp.request('/stats');
+    const body = (await res.json()) as StatsResponseWithCtp;
+    expect(body.par3Champion).toHaveLength(1);
+    expect(body.par3Champion[0]!.ctps).toBe(1);
+  });
+
+  it('scopes to the latest season by year — new season with NO finalized rounds hides a prior-season winner', async () => {
+    // The regression this tests: at the start of a new season, a prior
+    // season with CTP wins should NOT show up as "current Par 3 Champion".
+    // An older implementation keyed on "most-recent finalized round's
+    // seasonId" would incorrectly point at the prior season.
+    //
+    // Scenario:
+    //   - NEW season (year 9999) created, has ZERO rounds.
+    //   - The existing 3040 season has its beforeAll finalized round, with
+    //     CTP wins seeded just for this test.
+    // Expected: par3Champion is empty (current season = 9999, which has no
+    // rounds, so no CTPs). An older regression would have shown the 3040
+    // wins instead.
+    const [newSeason] = await db
+      .insert(seasons)
+      .values({
+        name: 'Future Season',
+        year: 9999,
+        startDate: '9999-04-01',
+        endDate: '9999-09-30',
+        totalRounds: 15,
+        playoffFormat: 'top-8',
+        harveyLiveEnabled: 0,
+        createdAt: Date.now(),
+      })
+      .returning({ id: seasons.id });
+    // Seed CTP wins in the OLDER (3040) season's finalized round
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values({
+      roundId, // 3040 season's finalized round from beforeAll
+      groupId,
+      holeNumber: 6,
+      winnerPlayerId: p1Id,
+      winnerName: 'Alice',
+      holeCompletedAt: 1000,
+      finalizedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const res = await statsApp.request('/stats');
+    const body = (await res.json()) as StatsResponseWithCtp;
+    expect(body.par3Champion).toEqual([]);
+
+    // cleanup
+    await db.delete(seasons).where(eq(seasons.id, newSeason!.id));
+  });
+
+  it('excludes CTP entries on casual rounds (defensive — matches rest of /stats)', async () => {
+    const [casualRound] = await db
+      .insert(rounds)
+      .values({
+        seasonId,
+        type: 'casual',
+        status: 'finalized',
+        scheduledDate: '2026-02-15',
+        entryCodeHash: null,
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    const [casualGroup] = await db
+      .insert(groups)
+      .values({ roundId: casualRound!.id, groupNumber: 1, battingOrder: null })
+      .returning({ id: groups.id });
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values({
+      roundId: casualRound!.id,
+      groupId: casualGroup!.id,
+      holeNumber: 6,
+      winnerPlayerId: p1Id,
+      winnerName: 'Alice',
+      holeCompletedAt: 1000,
+      finalizedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const res = await statsApp.request('/stats');
+    const body = (await res.json()) as StatsResponseWithCtp;
+    expect(body.par3Champion).toEqual([]);
+
+    await db.delete(sideGameCtpEntries).where(eq(sideGameCtpEntries.roundId, casualRound!.id));
+    await db.delete(groups).where(eq(groups.id, casualGroup!.id));
+    await db.delete(rounds).where(eq(rounds.id, casualRound!.id));
+  });
+
+  it('upgrades name from stored snapshot to live player name', async () => {
+    // Seed an entry with an outdated winner_name snapshot; the LEFT JOIN on
+    // players picks up the current name, which we prefer via nameResolution
+    // in the helper chain.
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values({
+      roundId,
+      groupId,
+      holeNumber: 6,
+      winnerPlayerId: p1Id,
+      winnerName: 'Alice (OLD)',
+      holeCompletedAt: 1000,
+      finalizedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const res = await statsApp.request('/stats');
+    const body = (await res.json()) as StatsResponseWithCtp;
+    const alice = body.par3Champion.find((p) => p.playerId === p1Id);
+    expect(alice).toBeDefined();
+    // Live players.name ("Alice") beats the stored "Alice (OLD)" snapshot.
+    expect(alice!.name).toBe('Alice');
+  });
+
+  it('tied-at-cutoff rule: when more than 5 players qualify, includes everyone tied with rank 5', async () => {
+    // Seed 6 distinct-player entries with 1 CTP each to exercise the tie rule.
+    // Insert additional players first.
+    const extras = await db
+      .insert(players)
+      .values([
+        { name: 'E1', ghinNumber: null, isActive: 1, createdAt: Date.now() },
+        { name: 'E2', ghinNumber: null, isActive: 1, createdAt: Date.now() },
+        { name: 'E3', ghinNumber: null, isActive: 1, createdAt: Date.now() },
+        { name: 'E4', ghinNumber: null, isActive: 1, createdAt: Date.now() },
+      ])
+      .returning({ id: players.id });
+    const ids = [p1Id, p2Id, ...extras.map((e) => e.id)];
+
+    // Each player wins 1 par 3 in a DIFFERENT round (so per-round resolution
+    // doesn't collapse them). Seed 6 rounds, 1 CTP entry each.
+    const roundIds: number[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      const [r] = await db
+        .insert(rounds)
+        .values({
+          seasonId,
+          type: 'official',
+          status: 'finalized',
+          scheduledDate: `2026-03-${String(i + 1).padStart(2, '0')}`,
+          entryCodeHash: null,
+          autoCalculateMoney: 1,
+          createdAt: Date.now(),
+        })
+        .returning({ id: rounds.id });
+      const [g] = await db
+        .insert(groups)
+        .values({ roundId: r!.id, groupNumber: 1, battingOrder: null })
+        .returning({ id: groups.id });
+      roundIds.push(r!.id);
+      const now = Date.now() + i;
+      await db.insert(sideGameCtpEntries).values({
+        roundId: r!.id,
+        groupId: g!.id,
+        holeNumber: 6,
+        winnerPlayerId: ids[i]!,
+        winnerName: null,
+        holeCompletedAt: now,
+        finalizedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const res = await statsApp.request('/stats');
+    const body = (await res.json()) as StatsResponseWithCtp;
+    // All 6 players tied at 1 CTP → the "top 5 with ties" rule includes all 6.
+    expect(body.par3Champion).toHaveLength(6);
+    expect(body.par3Champion.every((p) => p.ctps === 1)).toBe(true);
+
+    // Cleanup
+    for (const rId of roundIds) {
+      await db.delete(sideGameCtpEntries).where(eq(sideGameCtpEntries.roundId, rId));
+      await db.delete(groups).where(eq(groups.roundId, rId));
+      await db.delete(rounds).where(eq(rounds.id, rId));
+    }
+    for (const extra of extras) {
+      await db.delete(players).where(eq(players.id, extra.id));
+    }
   });
 });

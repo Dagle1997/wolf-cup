@@ -1,36 +1,43 @@
 # Codex Review
 
-- Generated: 2026-04-22T18:24:14.103Z
+- Generated: 2026-04-22T18:36:44.761Z
 - Model: gpt-5.2
 - Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: apps/api/src/routes/rounds.ts, apps/api/src/routes/rounds.test.ts
+- Reviewed files: apps/api/src/routes/stats.ts, apps/api/src/routes/stats.test.ts
 
 ## Summary
 
-A) Round-1 items: 
-- #1 (High, nondeterministic hole ordering): Closed. The CTP query now has an explicit `.orderBy(sideGameCtpEntries.holeNumber, sideGameCtpEntries.groupId)` in `GET /rounds/:roundId/highlights` (apps/api/src/routes/rounds.ts ~2133-2160 in the diff), which removes DB-return-order nondeterminism and stabilizes the downstream “holes X, Y, Z” text.
-- #3 (Low, silent failure): Closed. The `try/catch` now logs a `console.error('Failed to compute Par 3 Champion highlight (non-fatal):', err);` (apps/api/src/routes/rounds.ts ~2185-2191 in the diff), matching your stated non-fatal pattern.
+A) Yes — the new regression test does exercise the intended scenario: it creates a higher-year season (9999) with zero rounds, seeds a CTP win in the prior season’s finalized round (3040), and asserts that /stats returns an empty par3Champion (i.e., no wins in the current season).
 
-B) ORDER BY behavior:
-- Yes—Drizzle’s `orderBy(colA, colB)` produces ascending sort by default, so results come out by `holeNumber` then `groupId`. This should yield the expected numerically sorted “holes 6, 7, 15” output (assuming the helper preserves encounter/insertion order, which was the original nondeterminism concern). The new test `credits a sweeper with 3 CTPs — detail lists all three holes` asserts the ordered string via `/holes 6, 7, 15/` (apps/api/src/routes/rounds.test.ts in the added Par 3 Champion describe).
+B) Not fully — the updated comment block in stats.ts still contains an incorrect description of how “current season” is determined (it says “season containing the most-recent finalized round” but the code uses max(seasons.year)).
 
-C) PASS/Ready:
-- PASS. The changes are small, targeted, add coverage, and directly address the prior determinism + logging concerns. I don’t see any new concrete correctness/security regressions in the provided diff/content. Ready to commit and proceed to step 10.
+C) No new functional issues found in the aggregation logic itself, but there’s a minor test-isolation concern if the regression test fails before cleanup.
+
+D) PASS? Not quite (comment mismatch).
 
 Overall risk: low
 
 ## Findings
 
-No concrete findings were identified from the supplied evidence.
+1. [low] Par3Champion comment contradicts implementation of “current season”
+   - File: apps/api/src/routes/stats.ts:391-406
+   - Confidence: high
+   - Why it matters: The top-of-block comment says: “Current = the season containing the most-recent finalized round” (lines 391-394), but the implementation immediately below uses max(seasons.year) (lines 401-413). This contradiction can mislead future changes and can reintroduce the exact regression you’re guarding against if someone “fixes” code to match the comment.
+   - Suggested fix: Update the header comment at lines 391-394 to match the max(year) logic (or remove the incorrect sentence entirely). Keep the regression rationale (lines 401-406) as the single source of truth.
+
+2. [low] Regression test cleanup of newly inserted season is not guaranteed if assertion fails
+   - File: apps/api/src/routes/stats.test.ts:636-682
+   - Confidence: high
+   - Why it matters: The test deletes the inserted year=9999 season only after the assertion. If the assertion fails (or request throws), the season row persists and could affect later tests (since /stats now selects latest season by year). This is a common source of cascading failures when diagnosing regressions.
+   - Suggested fix: Wrap the body in try/finally and delete the inserted season in finally, or add an afterEach that deletes any test-created seasons (e.g., by year/name) for this describe block.
 
 ## Strengths
 
-- Deterministic ordering added at the query boundary, which is the most reliable place to fix nondeterministic output.
-- Non-fatal failure mode now emits an error log, improving observability without breaking the endpoint.
-- Added focused integration tests covering omit/include behavior, multi-qualifier behavior, ordered hole list formatting, and ignoring winnerPlayerId=null (“Nobody”) entries.
+- The regression test scenario is correctly constructed to fail under the older “most-recent finalized round” season inference and to pass under max(year) season inference (apps/api/src/routes/stats.test.ts:636-679).
+- The new test suite covers key behaviors: finalized vs active rounds, casual exclusion, null-winner (“Nobody”) exclusion, live-name preference, and top-5-with-ties cutoff behavior.
+- The /stats implementation scopes CTP aggregation defensively to official+finalized rounds and isolates the stat computation behind a non-fatal try/catch so the endpoint still responds even if the stat computation fails.
 
 ## Warnings
 
-- Truncated file content for review: apps/api/src/routes/rounds.ts
-- Truncated file content for review: apps/api/src/routes/rounds.test.ts
+- Truncated file content for review: apps/api/src/routes/stats.ts
