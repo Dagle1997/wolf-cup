@@ -8,8 +8,8 @@
     "lint": "eslint src",
     "dev": "node --watch dist/index.js",
     "build": "tsc",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:generate": "node scripts/drizzle-kit.mjs generate",
+    "db:migrate": "node scripts/drizzle-kit.mjs migrate",
     "test": "vitest run"
   },
   "dependencies": {

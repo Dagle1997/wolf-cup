@@ -45,6 +45,12 @@ RUN pnpm install --frozen-lockfile --prod
 # Compiled output from builder
 COPY --from=builder /app/apps/tournament-api/dist/ ./apps/tournament-api/dist/
 
+# Raw SQL migrations — tsc does NOT copy .sql files through the build so
+# they must be COPYed separately from source into the same path the
+# compiled dist/db/migrate.js expects (relative `./migrations` via
+# `import.meta.url`). Pattern mirrors apps/api/Dockerfile's migrations COPY.
+COPY apps/tournament-api/src/db/migrations/ ./apps/tournament-api/dist/db/migrations/
+
 WORKDIR /app/apps/tournament-api
 
 ENV NODE_ENV=production
@@ -53,6 +59,7 @@ ENV DB_PATH=/app/data/tournament.db
 
 EXPOSE 3000
 
-# T1.4 scaffold: no migrations or seed yet (T2.1 adds first schema + migration
-# runner and MUST update this CMD to prepend migrate + seed at that time).
-CMD ["node", "dist/index.js"]
+# Run migrate → seed → start. Every container start is idempotent:
+# drizzle's __drizzle_migrations journal skips applied migrations; the
+# T1-6a placeholder seed is a no-op. T2.2 fills in the real roster seed.
+CMD ["sh", "-c", "node dist/db/migrate.js && node dist/db/seed.js && node dist/index.js"]

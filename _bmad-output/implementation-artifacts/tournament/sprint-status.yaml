@@ -62,7 +62,7 @@ development_status:
   # magic-link deferred to post-T3.1 (v1.5+ Thursday league uses), and SSO feature split
   # from the schema+middleware infrastructure so T2 can begin in parallel with arctic OAuth work.
   # Magic-link returns to the plan as a future T3.x story when players.email lands.
-  T1-6a-auth-schema-middleware-env: ready-for-dev
+  T1-6a-auth-schema-middleware-env: review
   T1-6b-arctic-google-sso: backlog
   T1-7-structured-json-log-sink: backlog
 

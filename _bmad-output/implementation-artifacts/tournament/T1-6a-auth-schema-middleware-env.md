@@ -1,6 +1,6 @@
 # Story T1.6a: Auth Schema + Middleware + Env (infrastructure slice)
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -144,42 +144,42 @@ so that T1-6b (arctic Google SSO) drops in cleanly without schema/middleware chu
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Environment schema (AC #7)
-  - [ ] Subtask 1.1: Create `src/lib/env.ts` with the 5-key Zod schema. Import + re-export `env` for use elsewhere.
-- [ ] Task 2: Player + auth schema (AC #1, #2, #3)
-  - [ ] Subtask 2.1: Create `src/db/schema/players.ts` (minimal slice).
-  - [ ] Subtask 2.2: Create `src/db/schema/oauth_identities.ts`.
-  - [ ] Subtask 2.3: Create `src/db/schema/auth.ts` (sessions only — no magic_link_tokens).
-  - [ ] Subtask 2.4: Update `src/db/schema/index.ts` to re-export all three.
-- [ ] Task 3: First migration (AC #4, #5, #6)
-  - [ ] Subtask 3.1: Run `pnpm -F @tournament/api db:generate`. Inspect the emitted SQL — must include `CREATE TABLE players`, `CREATE TABLE oauth_identities` (with composite UNIQUE on provider+provider_sub), `CREATE TABLE sessions`, plus all FK constraints + indexes.
-  - [ ] Subtask 3.2: Create `src/db/migrate.ts` mirroring Wolf Cup's `apps/api/src/db/migrate.ts` shape exactly.
-  - [ ] Subtask 3.3: Create `src/db/seed.ts` — single async function + top-level await + exit 0 + placeholder console.log.
-- [ ] Task 4: Session helpers (AC #8, #9)
-  - [ ] Subtask 4.1: Create `src/lib/session.ts` with the four exported helpers.
-  - [ ] Subtask 4.2: Create `src/lib/session.test.ts` with the 5 required cases from AC #18.
-- [ ] Task 5: Middleware (AC #10, #11)
-  - [ ] Subtask 5.1: Create `src/middleware/require-session.ts`.
-  - [ ] Subtask 5.2: Create `src/middleware/require-session.test.ts` with the 4 required cases.
-  - [ ] Subtask 5.3: Create `src/middleware/require-organizer.ts`.
-  - [ ] Subtask 5.4: Create `src/middleware/require-organizer.test.ts` with the 3 required cases.
-- [ ] Task 6: CSRF wiring + auth-router stub (AC #12, #13)
-  - [ ] Subtask 6.1: Update `src/app.ts` to mount `hono/csrf` globally with `origin: new URL(env.PUBLIC_APP_URL).origin` (normalized scheme+host+port; avoids trailing-slash / path-component matching bugs per AC #12). Verify `/api/health` still returns 200 without auth (CSRF applies to unsafe methods only).
-  - [ ] Subtask 6.2: Create `src/routes/auth.ts` (stub router with single `GET /status` route). Do NOT mount it on the main app yet — T1-6b does that.
-  - [ ] Subtask 6.3: Create `src/routes/auth.test.ts` with the 1 required case.
-- [ ] Task 7: Dockerfile update (AC #15)
-  - [ ] Subtask 7.1: Add `COPY apps/tournament-api/src/db/migrations/ ./apps/tournament-api/dist/db/migrations/` to the runtime stage of `apps/tournament-api/Dockerfile`.
-  - [ ] Subtask 7.2: Update CMD to `["sh", "-c", "node dist/db/migrate.js && node dist/db/seed.js && node dist/index.js"]`.
-- [ ] Task 8: docker-compose env additions (AC #16) — **SHARED HARD STOP**
-  - [ ] Subtask 8.1: Announce the 2 new env-var additions on `tournament-api` service. Wait for explicit Josh approval before editing.
-- [ ] Task 9: Local verification (AC #17, #18, #20)
-  - [ ] Subtask 9.1: `pnpm -F @tournament/api typecheck` → exit 0.
-  - [ ] Subtask 9.2: `pnpm -F @tournament/api lint` → exit 0.
-  - [ ] Subtask 9.3: `pnpm -F @tournament/api test` → all new + existing 19 tests pass.
-  - [ ] Subtask 9.4: `pnpm -F @tournament/api build` → exit 0; `dist/db/migrate.js`, `dist/db/seed.js`, `dist/index.js` all emit.
-  - [ ] Subtask 9.5: Fresh-DB migration sanity — delete `apps/tournament-api/data/tournament.db*`, run `pnpm -F @tournament/api db:migrate`, exit 0, confirm the 4 tables (`players`, `oauth_identities`, `sessions`, `__drizzle_migrations`) exist.
-- [ ] Task 10: Wolf Cup regression (AC #19)
-  - [ ] Subtask 10.1: `pnpm -F @wolf-cup/engine test` + `pnpm -F @wolf-cup/api test` — both green with same counts.
+- [x] Task 1: Environment schema (AC #7)
+  - [x] Subtask 1.1: Create `src/lib/env.ts` with the 5-key Zod schema. Import + re-export `env` for use elsewhere.
+- [x] Task 2: Player + auth schema (AC #1, #2, #3)
+  - [x] Subtask 2.1: Create `src/db/schema/players.ts` (minimal slice).
+  - [x] Subtask 2.2: Create `src/db/schema/oauth_identities.ts`.
+  - [x] Subtask 2.3: Create `src/db/schema/auth.ts` (sessions only — no magic_link_tokens).
+  - [x] Subtask 2.4: Update `src/db/schema/index.ts` to re-export all three.
+- [x] Task 3: First migration (AC #4, #5, #6)
+  - [x] Subtask 3.1: Run `pnpm -F @tournament/api db:generate`. Inspect the emitted SQL — must include `CREATE TABLE players`, `CREATE TABLE oauth_identities` (with composite UNIQUE on provider+provider_sub), `CREATE TABLE sessions`, plus all FK constraints + indexes.
+  - [x] Subtask 3.2: Create `src/db/migrate.ts` mirroring Wolf Cup's `apps/api/src/db/migrate.ts` shape exactly.
+  - [x] Subtask 3.3: Create `src/db/seed.ts` — single async function + top-level await + exit 0 + placeholder console.log.
+- [x] Task 4: Session helpers (AC #8, #9)
+  - [x] Subtask 4.1: Create `src/lib/session.ts` with the four exported helpers.
+  - [x] Subtask 4.2: Create `src/lib/session.test.ts` with the 5 required cases from AC #18.
+- [x] Task 5: Middleware (AC #10, #11)
+  - [x] Subtask 5.1: Create `src/middleware/require-session.ts`.
+  - [x] Subtask 5.2: Create `src/middleware/require-session.test.ts` with the 4 required cases.
+  - [x] Subtask 5.3: Create `src/middleware/require-organizer.ts`.
+  - [x] Subtask 5.4: Create `src/middleware/require-organizer.test.ts` with the 3 required cases.
+- [x] Task 6: CSRF wiring + auth-router stub (AC #12, #13)
+  - [x] Subtask 6.1: Update `src/app.ts` to mount `hono/csrf` globally with `origin: new URL(env.PUBLIC_APP_URL).origin` (normalized scheme+host+port; avoids trailing-slash / path-component matching bugs per AC #12). Verify `/api/health` still returns 200 without auth (CSRF applies to unsafe methods only).
+  - [x] Subtask 6.2: Create `src/routes/auth.ts` (stub router with single `GET /status` route). Do NOT mount it on the main app yet — T1-6b does that.
+  - [x] Subtask 6.3: Create `src/routes/auth.test.ts` with the 1 required case.
+- [x] Task 7: Dockerfile update (AC #15)
+  - [x] Subtask 7.1: Add `COPY apps/tournament-api/src/db/migrations/ ./apps/tournament-api/dist/db/migrations/` to the runtime stage of `apps/tournament-api/Dockerfile`.
+  - [x] Subtask 7.2: Update CMD to `["sh", "-c", "node dist/db/migrate.js && node dist/db/seed.js && node dist/index.js"]`.
+- [x] Task 8: docker-compose env additions (AC #16) — **SHARED HARD STOP**
+  - [x] Subtask 8.1: Announce the 2 new env-var additions on `tournament-api` service. Wait for explicit Josh approval before editing.
+- [x] Task 9: Local verification (AC #17, #18, #20)
+  - [x] Subtask 9.1: `pnpm -F @tournament/api typecheck` → exit 0.
+  - [x] Subtask 9.2: `pnpm -F @tournament/api lint` → exit 0.
+  - [x] Subtask 9.3: `pnpm -F @tournament/api test` → 36 tests (19 preexisting + 17 new) all pass.
+  - [x] Subtask 9.4: `pnpm -F @tournament/api build` → exit 0; `dist/db/migrate.js`, `dist/db/seed.js`, `dist/index.js` all emit.
+  - [x] Subtask 9.5: Fresh-DB migration sanity — deleted `apps/tournament-api/data/tournament.db*`, ran `pnpm -F @tournament/api db:migrate`, exit 0, confirmed 4 tables (`players`, `oauth_identities`, `sessions`, `__drizzle_migrations`) exist.
+- [x] Task 10: Wolf Cup regression (AC #19)
+  - [x] Subtask 10.1: `pnpm -F @wolf-cup/engine test` (468/468) + `pnpm -F @wolf-cup/api test` (494/494) — both green, counts unchanged.
 
 ## Dev Notes
 
@@ -258,8 +258,49 @@ docker-compose.yml        # MODIFIED (SHARED, +2 env vars on tournament-api)
 
 ### Agent Model Used
 
+Claude Opus 4.7 (1M context) via tournament-director skill.
+
 ### Debug Log References
+
+- **drizzle-kit + NodeNext .js extension issue:** drizzle-kit 0.30.6's CJS loader cannot resolve `.js` imports that reference sibling `.ts` files under NodeNext moduleResolution. Root-cause: CJS require doesn't rewrite `.js` → `.ts`. Fix: portable Node wrapper at `apps/tournament-api/scripts/drizzle-kit.mjs` injects `tsx` as a Node loader via `NODE_OPTIONS='--import tsx'` before spawning drizzle-kit. Zero new deps — `tsx` was already in devDependencies. Works on Windows cmd.exe, Git Bash, Linux, and CI. Preserved AC #14 (no package.json dep changes, no pnpm-lock.yaml touch).
 
 ### Completion Notes List
 
+- All 20 ACs satisfied. Test suite grew 19 → 36.
+- The portable drizzle-kit wrapper (`scripts/drizzle-kit.mjs`) is a small addition not explicitly in the spec; documented inline + in the story's File List.
+- `vitest.config.ts` now has a `setupFiles` entry (`src/test-setup.ts`) that seeds test env values BEFORE any test code imports `src/lib/env.ts` — required because Zod parse runs at module-load time.
+- `validateSession` pulls `isOrganizer` from `players` in a separate SELECT (not a JOIN) to avoid caching role state in the session row; at 8 players the extra round-trip is unmeasurable.
+- SESSION_ROLLING_MS (7d), SESSION_HARD_CAP_MS (30d), DEVICE_INFO_MAX_LEN (128), DEFAULT_TENANT_ID, DEFAULT_CONTEXT_ID all extracted as named constants in `src/lib/session.ts`.
+
 ### File List
+
+**New:**
+- `apps/tournament-api/scripts/drizzle-kit.mjs` — portable drizzle-kit wrapper
+- `apps/tournament-api/src/lib/env.ts`
+- `apps/tournament-api/src/lib/session.ts`
+- `apps/tournament-api/src/lib/session.test.ts`
+- `apps/tournament-api/src/db/migrate.ts`
+- `apps/tournament-api/src/db/seed.ts`
+- `apps/tournament-api/src/db/schema/players.ts`
+- `apps/tournament-api/src/db/schema/oauth_identities.ts`
+- `apps/tournament-api/src/db/schema/auth.ts`
+- `apps/tournament-api/src/db/migrations/0000_medical_typhoid_mary.sql`
+- `apps/tournament-api/src/db/migrations/meta/_journal.json` + `meta/0000_snapshot.json`
+- `apps/tournament-api/src/middleware/require-session.ts`
+- `apps/tournament-api/src/middleware/require-session.test.ts`
+- `apps/tournament-api/src/middleware/require-organizer.ts`
+- `apps/tournament-api/src/middleware/require-organizer.test.ts`
+- `apps/tournament-api/src/routes/auth.ts`
+- `apps/tournament-api/src/routes/auth.test.ts`
+- `apps/tournament-api/src/types/hono.d.ts`
+- `apps/tournament-api/src/test-setup.ts`
+
+**Modified:**
+- `apps/tournament-api/src/db/schema/index.ts` — re-exports players, oauth_identities, sessions
+- `apps/tournament-api/src/app.ts` — mount hono/csrf globally
+- `apps/tournament-api/package.json` — db:generate + db:migrate scripts switched to the portable wrapper
+- `apps/tournament-api/drizzle.config.ts` — schema glob replaced with single entrypoint `./src/db/schema/index.ts`
+- `apps/tournament-api/Dockerfile` — COPY migrations into runtime stage; CMD runs migrate+seed+index
+- `apps/tournament-api/vitest.config.ts` — setupFiles entry
+- `docker-compose.yml` (SHARED — approved) — AUTH_COOKIE_DOMAIN + PUBLIC_APP_URL on tournament-api service, no fallback defaults
+- `_bmad-output/implementation-artifacts/tournament/sprint-status.yaml` — T1-6a flipped ready-for-dev → in-progress → review

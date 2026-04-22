@@ -49,6 +49,13 @@ services:
       - DB_PATH=/app/data/tournament.db
       - PORT=3000
       - TZ=America/New_York
+      # Auth (T1-6a). No `${VAR:-default}` fallbacks — intentional. Zod in
+      # apps/tournament-api/src/lib/env.ts marks both REQUIRED with no
+      # default; a missing .env.production value triggers a fail-fast at
+      # container boot, which is preferable to shipping with a silently
+      # wrong cookie scope or CSRF origin.
+      - AUTH_COOKIE_DOMAIN=${AUTH_COOKIE_DOMAIN}
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL}
     volumes:
       - tournament_sqlite_data:/app/data
     networks:

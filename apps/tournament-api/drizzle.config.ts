@@ -2,7 +2,7 @@ import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
   dialect: 'turso',
-  schema: './src/db/schema/*',
+  schema: './src/db/schema/index.ts',
   out: './src/db/migrations',
   dbCredentials: {
     url: `file:${process.env['DB_PATH'] ?? './data/tournament.db'}`,
