@@ -255,7 +255,10 @@ async function getRoundDetail(roundId: number) {
     allHole18Scored = allPlayerIds.every((id) => hole18PlayerIds.has(id));
   }
 
-  // Active side game for this round
+  // Active side game for this round. Parsing is kept consistent with
+  // pairings.ts and ctp-entries.ts: deterministic ORDER BY (lowest id
+  // wins on multi-match), defensive Array guard, and Number normalization
+  // so legacy string-id JSON data still matches.
   const allSideGamesForRound = await db
     .select({
       name: sideGames.name,
@@ -264,10 +267,13 @@ async function getRoundDetail(roundId: number) {
       scheduledRoundIds: sideGames.scheduledRoundIds,
     })
     .from(sideGames)
-    .where(eq(sideGames.seasonId, round.seasonId));
+    .where(eq(sideGames.seasonId, round.seasonId))
+    .orderBy(sideGames.id);
   const activeSg = allSideGamesForRound.find((sg) => {
     try {
-      const ids = JSON.parse(sg.scheduledRoundIds ?? '[]') as number[];
+      const parsed = JSON.parse(sg.scheduledRoundIds ?? '[]') as unknown;
+      if (!Array.isArray(parsed)) return false;
+      const ids = parsed.map((v) => Number(v)).filter((n) => Number.isFinite(n));
       return ids.includes(roundId);
     } catch { return false; }
   });
@@ -404,6 +410,26 @@ app.post('/rounds/:id/groups/:groupId/quit', async (c) => {
     return c.json({ error: 'Cannot quit a finished round', code: 'ROUND_FINALIZED' }, 422);
   }
 
+  // Verify the group belongs to THIS round. Without this check, a client
+  // could delete another round's group by passing round A's id + round B's
+  // groupId in the URL. Now that side_game_ctp_entries + hole_completions
+  // FK to groups without ON DELETE CASCADE, a mis-scoped quit would also
+  // hit a FK violation mid-transaction and 500. This check makes the
+  // mismatch a clean 404.
+  let group: { id: number } | undefined;
+  try {
+    group = await db
+      .select({ id: groups.id })
+      .from(groups)
+      .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!group) {
+    return c.json({ error: 'Group not found', code: 'GROUP_NOT_FOUND' }, 404);
+  }
+
   try {
     await db.transaction(async (tx) => {
       // Get player IDs for this group
@@ -426,6 +452,10 @@ app.post('/rounds/:id/groups/:groupId/quit', async (c) => {
       // Delete group-scoped data
       await tx.delete(holeScores).where(and(eq(holeScores.roundId, roundId), eq(holeScores.groupId, groupId)));
       await tx.delete(wolfDecisions).where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId)));
+      // side_game_ctp_entries and hole_completions both FK to groups.id without
+      // ON DELETE CASCADE; must be cleared before the group is deleted.
+      await tx.delete(sideGameCtpEntries).where(and(eq(sideGameCtpEntries.roundId, roundId), eq(sideGameCtpEntries.groupId, groupId)));
+      await tx.delete(holeCompletions).where(and(eq(holeCompletions.roundId, roundId), eq(holeCompletions.groupId, groupId)));
 
       if (playerIds.length > 0) {
         await tx.delete(roundResults).where(and(eq(roundResults.roundId, roundId), inArray(roundResults.playerId, playerIds)));
@@ -967,7 +997,9 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/scores', async (c) 
     isPuttsWeek = seasonSideGames.some((sg) => {
       if (sg.calculationType !== 'auto_putts') return false;
       try {
-        const ids = JSON.parse(sg.scheduledRoundIds ?? '[]') as number[];
+        const parsed = JSON.parse(sg.scheduledRoundIds ?? '[]') as unknown;
+        if (!Array.isArray(parsed)) return false;
+        const ids = parsed.map((v) => Number(v)).filter((n) => Number.isFinite(n));
         return ids.includes(roundId);
       } catch { return false; }
     });
