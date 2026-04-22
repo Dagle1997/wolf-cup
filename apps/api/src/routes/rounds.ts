@@ -13,7 +13,7 @@ import {
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
 import type { Tee } from '@wolf-cup/engine';
 import { db } from '../db/index.js';
-import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults, sideGames } from '../db/schema.js';
+import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults, sideGames, holeCompletions } from '../db/schema.js';
 import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema, createPracticeRoundSchema } from '../schemas/round.js';
 import { computeRoundMoneyBreakdown } from '../lib/money-breakdown.js';
 
@@ -1009,6 +1009,23 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/scores', async (c) 
       .where(and(eq(holeScores.roundId, roundId), eq(holeScores.groupId, groupId)));
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  // Track hole completion for CTP ordering (idempotent, non-fatal).
+  // Anchors the "current winner" rule to real-world play time regardless of
+  // when a client syncs an offline-queued CTP entry.
+  try {
+    const playersScoredThisHole = new Set(
+      allHoleScores.filter((s) => s.holeNumber === holeNumber).map((s) => s.playerId),
+    );
+    if (playersScoredThisHole.size === groupPlayerRows.length) {
+      await db
+        .insert(holeCompletions)
+        .values({ roundId, groupId, holeNumber, completedAt: now })
+        .onConflictDoNothing();
+    }
+  } catch {
+    // Non-fatal — a CTP POST will surface HOLE_NOT_COMPLETE if it matters.
   }
 
   // Recalculate Stableford totals across all submitted holes

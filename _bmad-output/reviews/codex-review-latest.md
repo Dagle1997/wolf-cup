@@ -1,111 +1,101 @@
 # Codex Review
 
-- Generated: 2026-04-20T12:52:46.854Z
+- Generated: 2026-04-22T15:42:23.511Z
 - Model: gpt-5.2
-- Reasoning effort: medium
+- Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: .claude/commands/tournament-director.md
+- Reviewed files: apps/api/src/routes/pairings.ts, apps/api/src/routes/pairings.test.ts, apps/web/src/routes/pairings.$roundId.tsx, _bmad-output/implementation-artifacts/tech-spec-ctp-per-par3-prompt.md
 
 ## Summary
 
-The command is directionally solid (explicit spec gate, explicit epic gate, codex gating, no-push/no-amend), but several instructions remain ambiguous enough that an eager agent could (a) drift into Wolf Cup/monorepo-shared files, (b) accidentally invoke the Wolf Cup workflows for implementation, (c) rationalize “mechanically fixable” High findings too broadly, and (d) create inconsistent status/commit/test outcomes under /loop or partial failures. Tightening a few MUST/STOP rules and adding explicit allowlists + verification steps would make it much harder to fail silently.
+PART 1: API + web implementation largely meets acceptance criteria (null-safe parse, preserved 404, conditional render). Main gap is deterministic selection when multiple side games match, plus a couple of edge cases not covered by tests.
+
+PART 2: Spec is directionally complete but has several “will break before first shipped CTP round” design holes: resolving winners by server `updated_at` is vulnerable to offline/backfill reordering, admin override/clobber semantics don’t map cleanly from the legacy single-winner endpoint to per-hole winners, and inserting multiple `side_game_results` rows per round risks breaking existing downstream code that assumes 0/1 result per side game per round unless fully audited/updated.
 
 Overall risk: high
 
 ## Findings
 
-1. [high] FD-1/FD-2 boundary rule is under-specified (no explicit allowlist/denylist; ‘internals’ is ambiguous; shared monorepo files not covered)
-   - File: .claude/commands/tournament-director.md:10-15
+1. [high] [PART 2] “Current winner” resolution by MAX(server updated_at) is not robust with offline queue/backfill; can produce incorrect current winners
+   - File: _bmad-output/implementation-artifacts/tech-spec-ctp-per-par3-prompt.md:106-110
    - Confidence: high
-   - Why it matters: Line 12 forbids writing to `apps/api`, `apps/web`, and `packages/engine` “internals”, but does not define (1) what Tournament paths are, (2) what counts as `packages/engine` internals vs allowed surfaces, or (3) how to handle common cross-cutting files (root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `.env*`, `.github/*`, etc.). A capable-but-eager agent can justify edits to shared files as “necessary for Tournament,” violating FD-1/FD-2 while still believing it complied.
-   - Suggested fix: Add an explicit allowlist + explicit ‘shared file’ gate. Example edits:
-- Replace line 12 with: “MUST ONLY modify files under: `apps/tournament/**`, `packages/tournament-*/**`, `_bmad-output/implementation-artifacts/tournament/**`, and `_bmad-output/planning-artifacts/tournament/**` (adjust to actual repo). Any change outside this allowlist (including root config files like `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `tsconfig*.json`, `.github/**`, `eslint*`, `prettier*`) is a HARD STOP and requires explicit user approval listing the exact files.”
-- Define “Wolf Cup boundary”: “Never modify `apps/api/**`, `apps/web/**`, `packages/engine/**` (including tests), except with explicit approval naming the files.”
-- Add a verification step after implementation: “Run `git diff --name-only` and STOP if any changed file is outside allowlist; request approval or revert those changes.”
+   - Why it matters: The spec defines current winner as `MAX(updated_at)` across groups (lines 106-108) and reiterates this in GET semantics (lines 210-211). With offline queueing, `updated_at` will reflect *sync time*, not “when the group actually played/entered the hole”. A group that played earlier but syncs later (or a device that was offline) can incorrectly become the “current winner”, overriding a later group’s legitimate update. This is especially likely under the spec’s own offline requirements (lines 124-125, 281-282) and the tight first-week pressure mentioned in Risks (lines 358-360).
+   - Suggested fix: Define and store an ordering key that represents the intended real-world precedence. Options:
+- Store `client_recorded_at` (ms since epoch) from the device and use that for ordering, with server-side validation/sanity bounds.
+- Better: derive an “effective time” from the score submission event for that hole (e.g., `hole_completed_at` captured server-side when the 4th score is recorded) and require the CTP entry to include/attach to that completion.
+- Or: add a monotonic `version`/`sequence` per (round,hole) generated server-side (e.g., via transaction that increments) and return it to clients.
+Also specify how to handle offline late-arriving entries (ignore if older than current winner? allow overwrite but mark as stale?).
 
-2. [high] Implementation workflow invocation is ambiguous and may fall back to Wolf Cup defaults
-   - File: .claude/commands/tournament-director.md:63-66
+2. [high] [PART 2] Admin override (“clobber per-par-3 entries”) is underspecified and mismatched to legacy single-winner endpoint; high risk of wrong display/finalization
+   - File: _bmad-output/implementation-artifacts/tech-spec-ctp-per-par3-prompt.md:67-112
    - Confidence: high
-   - Why it matters: Step 2 is explicit about using `workflow-tournament.yaml` (lines 37–42). Step 5, however, says “Invoke the implementation workflow (equivalent of `bmm-dev-story`)” without specifying how to run it or how to ensure it uses a Tournament-safe config. An agent could run the default slash command / workflow that targets Wolf Cup paths, violating constraints silently.
-   - Suggested fix: Mirror Step 2’s explicitness for implementation. For example:
-- In Step 5, specify the exact task runner + config path, e.g. “Load `_bmad/core/tasks/workflow.xml` with `workflow-config` = `_bmad/bmm/workflows/4-implementation/dev-story/workflow-tournament.yaml` (or whatever tournament variant exists). If no tournament variant exists, STOP and ask the user to create a dedicated `/bmad-bmm-dev-story-tournament` command.”
-- Add a hard guard: “If the workflow config is not explicitly the tournament variant, STOP; do not run any default bmm-dev-story workflow.”
+   - Why it matters: The spec says to keep the existing `POST /rounds/:roundId/side-game-results` for CTP and that admin-entered entries “clobber group entries for display” (lines 67-68, 111-112). But CTP is changing from one winner to up to four winners (one per par 3) (lines 62-63, 279-280). Without a precise rule, it’s unclear:
+- Does admin override apply per-hole or whole-round?
+- How does the legacy endpoint represent multiple holes (multiple rows with `notes="Hole N"`? a special payload?)
+- Does override suppress prompts/writes, or just change what leaderboard/finalize reads?
+This ambiguity can easily ship a CTP week where the leaderboard shows inconsistent data or finalize writes the wrong summary rows.
+   - Suggested fix: Specify clobber semantics concretely:
+- Define the canonical “authoritative source of truth” for display and finalization (e.g., if any admin CTP results exist for round, ignore `side_game_ctp_entries` entirely).
+- Define the shape of admin override for multi-hole: either (a) admin creates 0–4 `side_game_results` rows with `notes` = `Hole N` (and the UI reads those), or (b) create a dedicated admin endpoint for per-hole overrides.
+- State whether group POSTs are still accepted when admin override is present and whether they affect anything.
+Add acceptance criteria + tests for override precedence to prevent regressions.
 
-3. [high] “High — mechanically fixable” bucket is still gameable; needs tighter, objective criteria to prevent rationalized judgment calls
-   - File: .claude/commands/tournament-director.md:122-137
-   - Confidence: high
-   - Why it matters: The current definition (line 128) relies on the agent deciding the fix has “no judgment required.” A motivated agent can rationalize many High findings (security tradeoffs, authorization semantics, data model choices, cross-boundary edits, dependency additions) as “small code changes.” Conversely, it can also over-classify easy fixes as “requires user decision” and stall. This undermines your acceptance criterion to stop on High that need judgment.
-   - Suggested fix: Make the classification test more objective and add explicit STOP conditions. Suggested edits to line 128:
-- Define mechanically-fixable as: “codex provides a specific patch-level change AND it does not (a) change requirements/AC wording, (b) change public API/route contracts, (c) change authz/authn semantics, (d) introduce or remove dependencies, (e) require DB schema changes or migrations, (f) touch any file outside the Tournament allowlist, or (g) change error-handling/user-visible behavior beyond correctness.”
-- Add: “If any of (a)-(g) applies, treat as ‘requires user decision’ and STOP.”
-- Add a procedural requirement: “Quote the exact codex text and the exact diff you plan to apply before applying any High fix; if you cannot quote both, STOP.”
-
-4. [high] /loop can spin wastefully on user gates (re-picking the same in-flight story) without an explicit ‘pause’ protocol
-   - File: .claude/commands/tournament-director.md:25-32
+3. [high] [PART 2] Writing multiple CTP rows into side_game_results per round can break existing consumers that assume 0/1 row per (round, sideGame) unless fully audited
+   - File: _bmad-output/implementation-artifacts/tech-spec-ctp-per-par3-prompt.md:62-121
    - Confidence: medium
-   - Why it matters: Under `/loop`, Step 1 says to stop if there’s an in-flight story (line 29) and ask the user whether to resume/abandon. If the user doesn’t respond (or responses are delayed), the loop may re-invoke the director, hit the same condition, and burn turns indefinitely. The file says “Respect every gate” (line 156) but doesn’t specify how to avoid re-entry churn.
-   - Suggested fix: Add an explicit loop-pause instruction when waiting on a user gate:
-- After each STOP gate, add: “When stopped for a user decision, end the message with a single explicit question and take no further actions; on next invocation, do not re-ask if the question is unchanged—wait for the answer.”
-- Track a simple ‘pending gate’ marker in the report (or a temp note file) so the agent can detect it is awaiting approval and should not restart or re-run steps.
+   - Why it matters: The spec explicitly changes `side_game_results` cardinality for CTP: “one row per par 3 winner” (lines 62-63, 112-120, 279-280). Many systems commonly assume a single winner per side game per round (rendering, history, stats aggregation, uniqueness constraints, etc.). The spec only calls out updating `computeAllAwards` for Side Game Champion dedupe (lines 89-90, 120-121, 311-312), but other endpoints/pages (history, leaderboard finalized banner, admin views) may double-count or display duplicate winners unless they’re updated intentionally. This is a classic “silent data shape change” risk that can break the first shipped CTP round.
+   - Suggested fix: Before implementation, enumerate and update every consumer of `side_game_results` with explicit intended behavior for multi-row CTP:
+- Finalized banner rendering: group rows by notes/hole.
+- Any “winner per round per side game” assumptions: either special-case CTP or adjust queries.
+- Add regression tests around endpoints that read side_game_results (history, stats, leaderboard finalized state) to ensure they don’t double-count or crash.
+If this audit is too big for Apr 24, consider an alternative: keep a single round-level CTP “winner” row for legacy paths, and store per-hole winners only in the new table + new CTP UI, then derive Par 3 Champion stats from the new table (or from dedicated CTP summary table) instead of changing side_game_results semantics.
 
-5. [medium] Story status transitions deviate from documented workflow (skips `review`), risking process confusion and automation breakage
-   - File: .claude/commands/tournament-director.md:103-106
+4. [medium] [PART 1] “If multiple match, return the first” is currently non-deterministic because side games query has no ORDER BY
+   - File: apps/api/src/routes/pairings.ts:52-71
    - Confidence: high
-   - Why it matters: Your note says BMAD statuses are `backlog → ready-for-dev → in-progress → review → done`. The director goes `in-progress → done` (lines 103–106). If other tooling or humans rely on `review` as a signal (or metrics dashboards), this is a silent convention break.
-   - Suggested fix: Either (A) conform, or (B) explicitly document the deviation and why it’s safe.
-- Conform option: After Step 7 passes, set status to `review`; after commit + final report (or optional user confirmation), set to `done`.
-- If you intentionally skip: add a MUST statement: “We intentionally skip `review` in this repo because codex-review replaces it; update any downstream automation accordingly.” (But that still leaves external expectations.)
+   - Why it matters: Acceptance criteria says if multiple `side_games` rows match, return the first. The implementation loads all matching season side games (line 52-60) and uses `.find(...)` (line 61-68) without any ordering clause. SQLite/Drizzle result ordering without `ORDER BY` is not guaranteed; which row is “first” can vary (especially after deletes/vacuum/migrations), producing confusing/unstable side game display.
+   - Suggested fix: Make “first” deterministic. For example:
+- Add `.orderBy(sideGames.createdAt)` or `.orderBy(sideGames.id)` to the query, then `.find`.
+- Or push filtering into SQL and `.limit(1)` (still needs a deterministic ORDER BY).
+Also add a test with two matching side games to lock the chosen precedence.
 
-6. [medium] Commit staging rule is incomplete; risk of missing required files (lockfile/migrations) or accidentally staging extras
-   - File: .claude/commands/tournament-director.md:89-92
-   - Confidence: high
-   - Why it matters: “Do not use git add -A” (line 91) prevents overly broad staging, but there is no required staging procedure. Agents often miss new files (migrations, generated artifacts), forget to stage deletions/renames, or accidentally omit lockfile changes after dependency updates. That leads to broken builds or non-reproducible installs.
-   - Suggested fix: Add a mandatory, explicit staging algorithm:
-- “Run `git status --porcelain` and paste the file list. Stage by explicit path list: `git add <each file>`. If any file is untracked and part of the story, stage it; if any file is outside Tournament allowlist, STOP.”
-- Add lockfile/migration rules: “If dependencies changed, `pnpm-lock.yaml` MUST be included (or STOP and revert dep change). If DB schema changed, migration files MUST be included.”
-- Add pre-commit verification: “Before committing, require `git diff --cached` is non-empty and `git diff` is empty (clean working tree).”
-
-7. [medium] Test baselines hard-coded to exact counts are brittle and can block legitimate changes or create false alarms
-   - File: .claude/commands/tournament-director.md:67-75
-   - Confidence: high
-   - Why it matters: Requiring exact “must match prior baseline: 468/429” (lines 71–72) will fail when Wolf Cup tests legitimately change upstream (even without touching Wolf Cup code), when tests are added/removed, or when sharding changes output. It can also encourage “make the number match” behavior rather than “ensure no regressions.”
-   - Suggested fix: Replace with non-regression requirements:
-- “`pnpm --filter @wolf-cup/engine test` MUST pass (no failures). Report total count as informational only.”
-- If you want a baseline: “If count decreases, STOP and investigate; if increases, note in report.”
-- Prefer storing baselines in a file that can be updated deliberately (with user approval) rather than hard-coding in the prompt.
-
-8. [medium] Codex-review execution freshness isn’t verified; output_path reuse can mask failures or stale reviews
-   - File: .claude/commands/tournament-director.md:44-53
-   - Confidence: high
-   - Why it matters: Both reviews write to `_bmad-output/reviews/codex-review-latest.md` (lines 51–52 and 85). If the MCP call errors, times out, or returns partial output, the agent might read a previous successful review and continue. The failure modes say “Codex MCP unavailable → stop” (line 151), but there’s no explicit check that the latest output corresponds to the current invocation and target paths.
-   - Suggested fix: Add explicit verification steps:
-- Use unique output paths per run: `_bmad-output/reviews/{story-key}-spec-codex.md` and `{story-key}-impl-codex.md`.
-- Require evidence: “After codex completes, quote the header/metadata and at least the first High/Medium finding counts from the newly written file; if the file timestamp or contents don’t match the requested paths, STOP.”
-- Add a retry policy: “If codex times out, retry once; if still failing, STOP.”
-
-9. [medium] Ordering constraints don’t fully prevent ‘drift after review’ (changes after impl codex but before commit)
-   - File: .claude/commands/tournament-director.md:79-88
+5. [medium] [PART 1] scheduledRoundIds matching may fail if the JSON contains string IDs (e.g., ["12"]) rather than numbers
+   - File: apps/api/src/routes/pairings.ts:61-67
    - Confidence: medium
-   - Why it matters: Step 7 reviews “all files changed” from `git diff --name-only HEAD` (line 84), then Step 8 commits. But if any code is changed after the codex review (even formatting, conflict resolution, small fixes), the commit may include unreviewed diffs. The anti-patterns mention re-reviewing codex fixes (line 140) but not general post-review changes.
-   - Suggested fix: Add a MUST:
-- “After impl codex-review passes, do not modify code. If any file changes after the review (check `git diff`), re-run impl codex-review before committing.”
-- Also tighten the `paths` selection: prefer `git diff --name-only --relative` from the merge-base or from the moment you started the story; and ensure it includes untracked files via `git status --porcelain` union.
+   - Why it matters: The code parses JSON and then checks `ids.includes(round.id)` (line 64). If historical data (or admin tooling) ever wrote IDs as strings, this will silently return `sideGame: null` even when the round is scheduled. The acceptance criteria is “JSON array contains round.id” (value-level match), but real-world JSON often drifts into strings.
+   - Suggested fix: Normalize parsed values to numbers before checking, e.g. `const ids = parsed.map(Number).filter(Number.isFinite)` when `Array.isArray(parsed)`. Add a test case with `scheduledRoundIds: JSON.stringify([String(roundId)])`.
 
-10. [low] Step 1’s definition of ‘current epic’ is ambiguous; could select the wrong story when multiple epics have mixed statuses
-   - File: .claude/commands/tournament-director.md:27-31
+6. [medium] [PART 2] Unique index for side_game_ctp_entries ignores tenant/context; can collide across tenants if those columns are truly meaningful
+   - File: _bmad-output/implementation-artifacts/tech-spec-ctp-per-par3-prompt.md:132-152
    - Confidence: medium
-   - Why it matters: Line 27 says “scan epics in order (T1 → T2 → …)” and pick next `backlog` story. Then line 29 refers to “the current epic” having in-flight stories, but “current epic” isn’t formally defined (first epic with any non-done? epic of the selected backlog story? epic currently being worked?). In ambiguous states, the director could stop unnecessarily or advance incorrectly.
-   - Suggested fix: Define it explicitly, e.g.:
-- “Define current epic as the earliest epic (lowest T#) that has any story not `done`. Do not start any story in later epics until the current epic is fully `done` and the user clears the epic gate.”
-- Also consider: “If ANY story anywhere is `in-progress`/`ready-for-dev`/`review`, STOP” (global WIP limit) if that’s the intended policy.
+   - Why it matters: Schema includes `context_id` and `tenant_id` (lines 141-142) but the unique index is only `(round_id, group_id, hole_number)` (lines 147-149). If the database is intended to be multi-tenant/multi-context (the spec references an “ecosystem-identity foundation”), uniqueness and query patterns should include tenant/context to prevent cross-tenant collisions and to keep indexes selective.
+   - Suggested fix: If multi-tenant is real: include `(tenant_id, context_id, round_id, group_id, hole_number)` in the unique index (and adjust FKs/queries accordingly), plus add secondary indexes that match your read patterns. If it’s not real (single-tenant DB), remove tenant/context columns from this table to avoid a false sense of isolation.
+
+7. [medium] [PART 2] Prompt trigger hard-codes “all 4 players” which can fail for non-4-sized groups (subs/absences)
+   - File: _bmad-output/implementation-artifacts/tech-spec-ctp-per-par3-prompt.md:59-110
+   - Confidence: medium
+   - Why it matters: The spec repeatedly asserts the prompt fires when “all 4 players” have a score (lines 59-60, 109-110) and shows sample code `scoresForHole.length === 4` (lines 243-253). If a group has 3 players (no-show) or 5 (unlikely but possible), the prompt may never fire or may fire too early. That becomes a functional failure on CTP weeks.
+   - Suggested fix: Define the trigger as “all players in the group roster for that round/group have a score for that hole” (i.e., compare against group size from roundPlayers/group membership), not a constant 4. Add acceptance/test coverage for a 3-player group scenario if the product allows it.
+
+8. [low] [PART 1] Tests don’t cover the “multiple matching side games” rule and therefore won’t catch nondeterministic selection regressions
+   - File: apps/api/src/routes/pairings.test.ts:95-167
+   - Confidence: high
+   - Why it matters: Your test suite covers: no side games, included, not included, malformed JSON, null JSON, and unknown round. It does not cover acceptance criterion #2’s “If multiple match, return the first.” Without a test, future data/order changes could flip which side game is displayed with no signal.
+   - Suggested fix: Add a test inserting two side games that both include `roundId` (with different createdAt/id), then assert the expected one is returned based on the chosen deterministic ordering.
+
+9. [low] [PART 1] Public pairings endpoint now exposes sideGame.calculationType; confirm this is acceptable and stable for clients
+   - File: apps/api/src/routes/pairings.ts:52-101
+   - Confidence: medium
+   - Why it matters: The endpoint is explicitly public. Returning `calculationType` likely isn’t sensitive, but it is a new public contract surface. If you later add internal-only calculation types, clients (or curious users) could infer more than intended. Also, the web UI currently doesn’t use `calculationType`, so this is primarily an API contract change.
+   - Suggested fix: If acceptable, keep as-is. If not, either omit it from the public response, or constrain it to a known safe enum and document it. Consider adding an API test assertion that only `{name, format, calculationType}` is returned (no scheduledRoundIds, seasonId, etc.) to prevent accidental data expansion.
 
 ## Strengths
 
-- Explicit no-push, no-amend constraints are stated early and repeated (lines 13–15, 144–145).
-- Spec-level codex review occurs before implementation and includes an explicit user approval gate (lines 44–62), meeting the story-level gating requirement.
-- Epic-level gate is present and blocks auto-advancing across epics (line 30, reiterated at line 118).
-- Failure-mode handling correctly forbids falling back to Wolf Cup workflow when the tournament YAML is missing (lines 148–151).
-- Gating rule includes a forced re-review after auto-fixing High findings (line 128), reducing the chance of unreviewed fixes.
+- PART 1: scheduledRoundIds parsing is defensively wrapped in try/catch and defaults null/invalid/malformed to non-match (apps/api/src/routes/pairings.ts:61-68), meeting the “never 500” requirement for malformed JSON.
+- PART 1: Unknown-round 404 behavior is preserved and explicitly tested (apps/api/src/routes/pairings.ts:28-30; apps/api/src/routes/pairings.test.ts:162-165).
+- PART 1: Web render is null-safe (`{sideGame && (...)}`) and silent when null (apps/web/src/routes/pairings.$roundId.tsx:156-162).
+- PART 1: API response limits exposure to name/format/calculationType and does not leak scheduledRoundIds (apps/api/src/routes/pairings.ts:52-58, 69-71).
+- PART 2: Spec explicitly distinguishes “no one” (row with NULL winner) from “not answered” (row absent), which is a strong modeling choice for UI correctness (tech spec lines 108-109, 155-156).
 
 ## Warnings
 

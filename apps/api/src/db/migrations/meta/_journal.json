@@ -183,6 +183,13 @@
       "when": 1776470400000,
       "tag": "0025_ecosystem_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1777161600000,
+      "tag": "0026_ctp_entries",
+      "breakpoints": true
     }
   ]
 }

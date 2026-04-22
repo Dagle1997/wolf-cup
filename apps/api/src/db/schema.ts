@@ -413,6 +413,79 @@ export const sideGameResults = sqliteTable(
 );
 
 // ---------------------------------------------------------------------------
+// side_game_ctp_entries  (per-group per-par-3 closest-to-pin entries)
+// ---------------------------------------------------------------------------
+
+export const sideGameCtpEntries = sqliteTable(
+  'side_game_ctp_entries',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    roundId: integer('round_id').notNull().references(() => rounds.id),
+    groupId: integer('group_id').notNull().references(() => groups.id),
+    holeNumber: integer('hole_number').notNull(),
+    winnerPlayerId: integer('winner_player_id').references(() => players.id),
+    winnerName: text('winner_name'),
+    enteredByPlayerId: integer('entered_by_player_id').references(() => players.id),
+    holeCompletedAt: integer('hole_completed_at').notNull(),
+    finalizedAt: integer('finalized_at'),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => ({
+    tenantRoundGroupHoleUniq: uniqueIndex('uniq_ctp_entries_tenant_round_group_hole').on(
+      t.tenantId,
+      t.contextId,
+      t.roundId,
+      t.groupId,
+      t.holeNumber,
+    ),
+    roundIdx: index('idx_ctp_entries_round').on(t.roundId),
+    roundHoleCompletedIdx: index('idx_ctp_entries_round_hole_completed').on(
+      t.roundId,
+      t.holeNumber,
+      t.holeCompletedAt,
+    ),
+    holeCheck: check(
+      'chk_ctp_entries_hole_number',
+      sql`hole_number IN (6, 7, 12, 15)`,
+    ),
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// hole_completions  (server-captured: moment the last roster score for a group+hole lands)
+// ---------------------------------------------------------------------------
+
+export const holeCompletions = sqliteTable(
+  'hole_completions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    roundId: integer('round_id').notNull().references(() => rounds.id),
+    groupId: integer('group_id').notNull().references(() => groups.id),
+    holeNumber: integer('hole_number').notNull(),
+    completedAt: integer('completed_at').notNull(),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
+  },
+  (t) => ({
+    tenantRoundGroupHoleUniq: uniqueIndex('uniq_hole_completions_tenant_round_group_hole').on(
+      t.tenantId,
+      t.contextId,
+      t.roundId,
+      t.groupId,
+      t.holeNumber,
+    ),
+    roundIdx: index('idx_hole_completions_round').on(t.roundId),
+    holeCheck: check(
+      'chk_hole_completions_hole_number',
+      sql`hole_number BETWEEN 1 AND 18`,
+    ),
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // pairing_history  (tracks who played with whom per season for group suggestions)
 // ---------------------------------------------------------------------------
 
