@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { eq, isNotNull, desc, asc, count, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { seasons, seasonStandings, players, sideGameResults, sideGames, rounds } from '../db/schema.js';
+import { seasons, seasonStandings, players, sideGameResults, sideGames, sideGameCtpEntries, rounds } from '../db/schema.js';
 import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS } from '../db/history-data.js';
 import { computeAllAwards } from '../lib/badges.js';
+import { resolvePerHoleWinners, PAR3_HOLES, type CtpEntry } from '../lib/ctp.js';
 
 const app = new Hono();
 
@@ -132,6 +133,89 @@ app.get('/history', async (c) => {
       }
       winCountMap.get(key)!.wins++;
     }
+    // CTP-derived side game wins. Spec AC #14: per-round, 1 credit per
+    // UNIQUE winner (a player who wins 3 of 4 par 3s gets 1 credit toward
+    // Side Game Champion, not 3 — per-par-3 recognition flows through the
+    // separate Par 3 Champion track). Per-hole winners come from the same
+    // resolvePerHoleWinners helper used at read time, so the counting rule
+    // matches the leaderboard display exactly.
+    //
+    // Gated on rounds.status = 'finalized' — the authoritative finalization
+    // signal — rather than sideGameCtpEntries.finalizedAt. Reason: the
+    // finalized_at stamp happens via a non-fatal finalize hook, and if that
+    // hook ever failed (or for rounds finalized before this feature shipped),
+    // we still want historical awards to reflect those CTP wins.
+    try {
+      const ctpRows = await db
+        .select({
+          id: sideGameCtpEntries.id,
+          roundId: sideGameCtpEntries.roundId,
+          groupId: sideGameCtpEntries.groupId,
+          holeNumber: sideGameCtpEntries.holeNumber,
+          winnerPlayerId: sideGameCtpEntries.winnerPlayerId,
+          winnerName: sideGameCtpEntries.winnerName,
+          holeCompletedAt: sideGameCtpEntries.holeCompletedAt,
+          livePlayerName: players.name,
+          year: seasons.year,
+        })
+        .from(sideGameCtpEntries)
+        .innerJoin(rounds, eq(sideGameCtpEntries.roundId, rounds.id))
+        .innerJoin(seasons, eq(rounds.seasonId, seasons.id))
+        .leftJoin(players, eq(sideGameCtpEntries.winnerPlayerId, players.id))
+        .where(eq(rounds.status, 'finalized'));
+
+      const perRound = new Map<number, { year: number; entries: CtpEntry[] }>();
+      for (const r of ctpRows) {
+        if (!perRound.has(r.roundId)) {
+          perRound.set(r.roundId, { year: r.year, entries: [] });
+        }
+        perRound.get(r.roundId)!.entries.push({
+          id: r.id,
+          roundId: r.roundId,
+          groupId: r.groupId,
+          holeNumber: r.holeNumber,
+          winnerPlayerId: r.winnerPlayerId,
+          winnerName: r.livePlayerName ?? r.winnerName,
+          holeCompletedAt: r.holeCompletedAt,
+        });
+      }
+
+      for (const [, { year, entries }] of perRound) {
+        const winners = resolvePerHoleWinners(entries);
+        // Prefer a real name over the 'Unknown' fallback — a player won 2 par 3s
+        // where one entry had a missing snapshot and the other had a real name
+        // should show the real name.
+        const uniqueWinners = new Map<number, string>();
+        for (const hole of PAR3_HOLES) {
+          const w = winners[hole];
+          if (!w) continue;
+          const current = uniqueWinners.get(w.playerId);
+          if (!current || (current === 'Unknown' && w.playerName !== 'Unknown')) {
+            uniqueWinners.set(w.playerId, w.playerName);
+          }
+        }
+        for (const [playerId, playerName] of uniqueWinners) {
+          const key = `${playerId}-${year}`;
+          const existing = winCountMap.get(key);
+          if (!existing) {
+            winCountMap.set(key, { playerName, year, wins: 1 });
+            continue;
+          }
+          existing.wins++;
+          // If an earlier round processed with a stale 'Unknown' snapshot
+          // and a later round has the real name, upgrade. Keeps the award
+          // display truthful even when CTP rounds are processed in arbitrary
+          // order.
+          if (existing.playerName === 'Unknown' && playerName !== 'Unknown') {
+            existing.playerName = playerName;
+          }
+        }
+      }
+    } catch (err) {
+      // Non-fatal — CTP credit is additive; history still renders without it.
+      console.error('Failed to compute CTP side-game credits (non-fatal):', err);
+    }
+
     const sideGameWins = [...winCountMap.values()];
 
     // Build per-season side game results for frontend

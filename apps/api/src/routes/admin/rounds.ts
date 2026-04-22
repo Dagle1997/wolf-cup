@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, and, desc, countDistinct, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults, galleryPhotos } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults, sideGameCtpEntries, holeCompletions, galleryPhotos } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
 import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
@@ -420,6 +420,9 @@ app.delete('/rounds/:id', adminAuthMiddleware, async (c) => {
       await tx.delete(roundResults).where(eq(roundResults.roundId, id));
       await tx.delete(holeScores).where(eq(holeScores.roundId, id));
       await tx.delete(roundPlayers).where(eq(roundPlayers.roundId, id));
+      // Delete CTP-related rows before groups to keep FKs clean.
+      await tx.delete(sideGameCtpEntries).where(eq(sideGameCtpEntries.roundId, id));
+      await tx.delete(holeCompletions).where(eq(holeCompletions.roundId, id));
       await tx.delete(groups).where(eq(groups.roundId, id));
       await tx.delete(sideGameResults).where(eq(sideGameResults.roundId, id));
       await tx.delete(rounds).where(eq(rounds.id, id));
@@ -818,6 +821,18 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     await computeSideGameWinnerForRound(id, round.seasonId, roundTee);
   } catch (err) {
     console.error('Failed to compute side game results (non-fatal):', err);
+  }
+
+  // Lock CTP entries for this round so late offline drains can't mutate them
+  // post-finalize (non-fatal — the endpoint's own ROUND_FINALIZED guard
+  // would also reject, but a stamped finalized_at is the definitive signal).
+  try {
+    await db
+      .update(sideGameCtpEntries)
+      .set({ finalizedAt: Date.now() })
+      .where(eq(sideGameCtpEntries.roundId, id));
+  } catch (err) {
+    console.error('Failed to lock CTP entries (non-fatal):', err);
   }
 
   // Email updated season workbook to Jason (non-fatal — doesn't affect standings)

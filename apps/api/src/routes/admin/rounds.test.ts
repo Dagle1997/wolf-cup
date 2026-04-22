@@ -24,7 +24,7 @@ vi.mock('../../middleware/admin-auth.js', () => ({
 
 import roundsApp from './rounds.js';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores, wolfDecisions } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, wolfDecisions, sideGameCtpEntries } from '../../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -584,6 +584,7 @@ describe('POST /rounds/:id/finalize', () => {
   afterEach(async () => {
     await db.delete(holeScores).where(eq(holeScores.roundId, testRoundId));
     await db.delete(wolfDecisions).where(eq(wolfDecisions.roundId, testRoundId));
+    await db.delete(sideGameCtpEntries).where(eq(sideGameCtpEntries.roundId, testRoundId));
   });
 
   it('finalizes an active official round with full scores + wolf decisions', async () => {
@@ -599,6 +600,65 @@ describe('POST /rounds/:id/finalize', () => {
 
     const row = await db.select({ status: rounds.status }).from(rounds).where(eq(rounds.id, testRoundId)).get();
     expect(row?.status).toBe('finalized');
+  });
+
+  it('stamps finalized_at on all CTP entries for the round on finalize', async () => {
+    await seedCompleteRound();
+    await db.update(rounds).set({ status: 'active', type: 'official' }).where(eq(rounds.id, testRoundId));
+
+    // Seed two pre-finalize CTP entries (different par 3s)
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      {
+        roundId: testRoundId,
+        groupId: testGroupId,
+        holeNumber: 6,
+        winnerPlayerId: testPlayerId,
+        winnerName: null,
+        holeCompletedAt: now,
+        finalizedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        roundId: testRoundId,
+        groupId: testGroupId,
+        holeNumber: 7,
+        winnerPlayerId: null,
+        winnerName: null,
+        holeCompletedAt: now,
+        finalizedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+    expect(res.status).toBe(200);
+
+    const rows = await db
+      .select({ holeNumber: sideGameCtpEntries.holeNumber, finalizedAt: sideGameCtpEntries.finalizedAt })
+      .from(sideGameCtpEntries)
+      .where(eq(sideGameCtpEntries.roundId, testRoundId));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.finalizedAt).not.toBeNull();
+      expect(typeof row.finalizedAt).toBe('number');
+    }
+  });
+
+  it('finalize succeeds when no CTP entries exist (non-CTP week)', async () => {
+    await seedCompleteRound();
+    await db.update(rounds).set({ status: 'active', type: 'official' }).where(eq(rounds.id, testRoundId));
+
+    const res = await roundsApp.request(`/rounds/${testRoundId}/finalize`, { method: 'POST' });
+    expect(res.status).toBe(200);
+
+    const rows = await db
+      .select()
+      .from(sideGameCtpEntries)
+      .where(eq(sideGameCtpEntries.roundId, testRoundId));
+    expect(rows).toHaveLength(0);
   });
 
   it('returns 422 ROUND_INCOMPLETE when wolf decisions are missing', async () => {

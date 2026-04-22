@@ -15,7 +15,7 @@ vi.mock('../db/index.js', async () => {
 import historyApp from './history.js';
 import adminHistoryApp from './admin/history.js';
 import { db } from '../db/index.js';
-import { seasons, seasonStandings, players, admins, sessions } from '../db/schema.js';
+import { seasons, seasonStandings, players, admins, sessions, rounds, groups, sideGameCtpEntries } from '../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
@@ -168,6 +168,184 @@ describe('GET /history', () => {
     const body = (await res.json()) as HistoryResponse;
     const s2017 = body.seasons.find((s) => s.year === 2037);
     expect(s2017!.standings).toEqual([]);
+  });
+
+  it('CTP round contributes 1 Side Game Champion credit per unique winner, not per par-3 win', async () => {
+    // Finalized CTP round with 4 par 3s: Player One wins 3 (holes 6, 7, 15),
+    // Player Two wins 1 (hole 12). Per spec AC #14 the Side Game Champion
+    // trophy counts this round as one credit per unique winner — so Player
+    // One gets +1 (not +3), Player Two gets +1. Per-par-3 recognition flows
+    // through the separate Par 3 Champion track (step 9/10).
+    const [season] = await db
+      .insert(seasons)
+      .values({
+        name: 'CTP credit test',
+        year: 2060,
+        startDate: '2060-04-01',
+        endDate: '2060-09-30',
+        totalRounds: 0,
+        playoffFormat: 'top8',
+        harveyLiveEnabled: 0,
+        createdAt: Date.now(),
+      })
+      .returning({ id: seasons.id });
+    const [round] = await db
+      .insert(rounds)
+      .values({
+        seasonId: season!.id,
+        type: 'official',
+        status: 'finalized',
+        scheduledDate: '2060-04-24',
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    const [group] = await db
+      .insert(groups)
+      .values({ roundId: round!.id, groupNumber: 1, battingOrder: null })
+      .returning({ id: groups.id });
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      { roundId: round!.id, groupId: group!.id, holeNumber: 6, winnerPlayerId: p1Id, winnerName: 'Player One', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: round!.id, groupId: group!.id, holeNumber: 7, winnerPlayerId: p1Id, winnerName: 'Player One', holeCompletedAt: 2000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: round!.id, groupId: group!.id, holeNumber: 12, winnerPlayerId: p2Id, winnerName: 'Player Two', holeCompletedAt: 3000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: round!.id, groupId: group!.id, holeNumber: 15, winnerPlayerId: p1Id, winnerName: 'Player One', holeCompletedAt: 4000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+
+    const res = await historyApp.request('/history');
+    const body = (await res.json()) as HistoryResponse & {
+      awards: Array<{ id: string; recipients: { playerName: string; years: number[]; detail: string }[] }>;
+    };
+    const sgc = body.awards.find((a) => a.id === 'side_game_champion');
+    expect(sgc).toBeDefined();
+    // Both players get 1 credit for the 2060 season → tie → both are listed
+    const p1Recipient = sgc!.recipients.find((r) => r.playerName === 'Player One');
+    const p2Recipient = sgc!.recipients.find((r) => r.playerName === 'Player Two');
+    expect(p1Recipient).toBeDefined();
+    expect(p2Recipient).toBeDefined();
+    // Detail format is "N wins" — both should be "1 wins" for this season
+    expect(p1Recipient!.detail).toBe('1 wins');
+    expect(p2Recipient!.detail).toBe('1 wins');
+    expect(p1Recipient!.years).toContain(2060);
+    expect(p2Recipient!.years).toContain(2060);
+  });
+
+  it('CTP entries on an unfinalized round do NOT contribute to Side Game Champion credits', async () => {
+    // The aggregation gates on rounds.status = 'finalized' (not the
+    // entry-level finalizedAt stamp, which is written by a non-fatal hook
+    // and could be missing for pre-feature rounds). An active round's CTP
+    // entries should not appear in historical awards.
+    const [season] = await db
+      .insert(seasons)
+      .values({
+        name: 'CTP active-round test',
+        year: 2061,
+        startDate: '2061-04-01',
+        endDate: '2061-09-30',
+        totalRounds: 0,
+        playoffFormat: 'top8',
+        harveyLiveEnabled: 0,
+        createdAt: Date.now(),
+      })
+      .returning({ id: seasons.id });
+    const [round] = await db
+      .insert(rounds)
+      .values({
+        seasonId: season!.id,
+        type: 'official',
+        status: 'active',   // round is still in play
+        scheduledDate: '2061-04-24',
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    const [group] = await db
+      .insert(groups)
+      .values({ roundId: round!.id, groupNumber: 1, battingOrder: null })
+      .returning({ id: groups.id });
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values({
+      roundId: round!.id,
+      groupId: group!.id,
+      holeNumber: 6,
+      winnerPlayerId: p1Id,
+      winnerName: 'Player One',
+      holeCompletedAt: 1000,
+      finalizedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const res = await historyApp.request('/history');
+    const body = (await res.json()) as HistoryResponse & {
+      awards: Array<{ id: string; recipients: { playerName: string; years: number[]; detail: string }[] }>;
+    };
+    // The side_game_champion award IS defined in this suite (the earlier
+    // 2060-season test seeds finalized CTP data), so we assert concretely
+    // rather than skipping silently.
+    const sgc = body.awards.find((a) => a.id === 'side_game_champion');
+    expect(sgc).toBeDefined();
+    // 2061 must not appear in any recipient's years — its round isn't finalized.
+    for (const r of sgc!.recipients) {
+      expect(r.years).not.toContain(2061);
+    }
+  });
+
+  it('CTP entries on a finalized round contribute credits even when finalizedAt stamp is missing', async () => {
+    // Pre-existing CTP data from before the finalize-hook was added should
+    // still credit correctly because the gate is rounds.status, not the
+    // non-fatal per-entry finalizedAt timestamp.
+    const [season] = await db
+      .insert(seasons)
+      .values({
+        name: 'CTP pre-hook test',
+        year: 2062,
+        startDate: '2062-04-01',
+        endDate: '2062-09-30',
+        totalRounds: 0,
+        playoffFormat: 'top8',
+        harveyLiveEnabled: 0,
+        createdAt: Date.now(),
+      })
+      .returning({ id: seasons.id });
+    const [round] = await db
+      .insert(rounds)
+      .values({
+        seasonId: season!.id,
+        type: 'official',
+        status: 'finalized',
+        scheduledDate: '2062-04-24',
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    const [group] = await db
+      .insert(groups)
+      .values({ roundId: round!.id, groupNumber: 1, battingOrder: null })
+      .returning({ id: groups.id });
+    const now = Date.now();
+    // finalizedAt INTENTIONALLY null — simulates a legacy finalized round
+    await db.insert(sideGameCtpEntries).values({
+      roundId: round!.id,
+      groupId: group!.id,
+      holeNumber: 6,
+      winnerPlayerId: p2Id,
+      winnerName: 'Player Two',
+      holeCompletedAt: 1000,
+      finalizedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const res = await historyApp.request('/history');
+    const body = (await res.json()) as HistoryResponse & {
+      awards: Array<{ id: string; recipients: { playerName: string; years: number[]; detail: string }[] }>;
+    };
+    const sgc = body.awards.find((a) => a.id === 'side_game_champion');
+    expect(sgc).toBeDefined();
+    const p2Recipient = sgc!.recipients.find((r) => r.playerName === 'Player Two');
+    expect(p2Recipient).toBeDefined();
+    expect(p2Recipient!.years).toContain(2062);
   });
 });
 
