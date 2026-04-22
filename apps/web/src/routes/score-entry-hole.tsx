@@ -1,8 +1,9 @@
 import { createFileRoute, useRouter, Link } from '@tanstack/react-router';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CtpPrompt } from '@/components/CtpPrompt';
 import { apiFetch } from '@/lib/api';
 import { getSession, clearSession } from '@/lib/session-store';
 import { enqueueScore } from '@/lib/offline-queue';
@@ -79,6 +80,23 @@ type WolfDecisionApiResponse = {
   moneyTotals: Array<{ playerId: number; moneyTotal: number }>;
 };
 
+type CtpEntry = {
+  id: number;
+  roundId: number;
+  groupId: number;
+  holeNumber: number;
+  winnerPlayerId: number | null;
+  winnerName: string | null;
+  holeCompletedAt: number;
+  finalizedAt: number | null;
+  updatedAt: number;
+};
+
+type CtpEntriesResponse = {
+  entries: CtpEntry[];
+  currentWinners: Record<string, { playerId: number; playerName: string; groupId: number; holeCompletedAt: number } | null>;
+};
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -146,6 +164,18 @@ function ScoreEntryHolePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [wolfError, setWolfError] = useState<string | null>(null);
   const [showEndRoundConfirm, setShowEndRoundConfirm] = useState(false);
+  // Par-3 hole the CTP prompt is asking about (6/7/12/15) or null when closed.
+  const [ctpPromptHole, setCtpPromptHole] = useState<number | null>(null);
+  // Par-3 holes deferred because ctpEntriesData hadn't loaded when the user
+  // advanced past them. Stored as a Set so multiple completions during a
+  // single slow query load can't overwrite each other. The effect below
+  // picks these up as soon as entries arrive and opens the prompt for the
+  // lowest-numbered deferred hole (earliest in play order).
+  const [pendingCtpPromptHoles, setPendingCtpPromptHoles] = useState<Set<number>>(new Set());
+  const [ctpSubmittingFor, setCtpSubmittingFor] = useState<'none' | number | null>(null);
+  const [ctpError, setCtpError] = useState<string | null>(null);
+
+  const queryClient = useQueryClient();
 
   const { pendingCount, isDraining, drainError, refreshCount } = useOfflineQueue(
     session?.roundId ?? 0,
@@ -197,6 +227,18 @@ function ScoreEntryHolePage() {
       apiFetch<WolfDecisionsResponse>(
         `/rounds/${session!.roundId}/groups/${session!.groupId}/wolf-decisions`,
       ),
+    enabled: session !== null && session.groupId !== null,
+    staleTime: 0,
+  });
+
+  // CTP entries for this round. Query always fires on active sessions — the
+  // server returns an empty list for non-CTP weeks, so there's no harm and
+  // the prompt-trigger check doesn't need extra guards. Invalidated by the
+  // ctpMutation on success.
+  const { data: ctpEntriesData } = useQuery({
+    queryKey: ['ctp-entries', session?.roundId ?? 0],
+    queryFn: () =>
+      apiFetch<CtpEntriesResponse>(`/rounds/${session!.roundId}/ctp-entries`),
     enabled: session !== null && session.groupId !== null,
     staleTime: 0,
   });
@@ -318,6 +360,9 @@ function ScoreEntryHolePage() {
       } else {
         setCurrentHole(19);
       }
+      // On CTP weeks + par 3 holes, prompt this group for their CTP answer
+      // once the hole has advanced (online-only path).
+      maybeOpenCtpPrompt(holeNum);
     },
     onError: (err: Error, { holeNum, decision, partnerId, greenies, polies, sandies }) => {
       if (isNetworkError(err)) {
@@ -393,6 +438,106 @@ function ScoreEntryHolePage() {
   });
 
   const isPuttsWeek = roundData?.sideGame?.calculationType === 'auto_putts';
+  const isCtpWeek = roundData?.sideGame?.calculationType === 'manual';
+
+  const ctpMutation = useMutation({
+    mutationFn: ({ holeNumber, winnerPlayerId }: { holeNumber: number; winnerPlayerId: number | null }) => {
+      if (!session || session.groupId == null) throw new Error('No session');
+      return apiFetch<{ entry: CtpEntry }>(
+        `/rounds/${session.roundId}/ctp-entries`,
+        {
+          method: 'POST',
+          headers: session.entryCode ? { 'x-entry-code': session.entryCode } : {},
+          body: JSON.stringify({ groupId: session.groupId, holeNumber, winnerPlayerId }),
+        },
+      );
+    },
+    onSuccess: () => {
+      setCtpSubmittingFor(null);
+      setCtpError(null);
+      setCtpPromptHole(null);
+      void queryClient.invalidateQueries({ queryKey: ['ctp-entries', session?.roundId ?? 0] });
+    },
+    onError: (err: Error) => {
+      setCtpSubmittingFor(null);
+      if (err.message === 'ROUND_FINALIZED') {
+        setCtpError('Round has been finalized — CTP is locked.');
+      } else if (err.message === 'HOLE_NOT_COMPLETE') {
+        setCtpError('All players must have a score for this hole first.');
+      } else if (err.message === 'PLAYER_NOT_ON_ROUND') {
+        setCtpError('That player is not in this group.');
+      } else if (err.message === 'INVALID_ENTRY_CODE') {
+        setCtpError('Entry code no longer valid — please re-join the round.');
+      } else {
+        setCtpError('Could not save — please try again.');
+      }
+    },
+  });
+
+  // Open the CTP prompt for a just-finished par 3 if this is a CTP week,
+  // the hole is a par 3, and this group hasn't already answered.
+  //
+  // Called from ONLINE-success paths only (submitMutation.onSuccess +
+  // wolfDecisionMutation.onSuccess). Offline paths intentionally skip the
+  // prompt — step 7 (offline queue support) will add per-par-3 CTP
+  // queueing + re-prompt on reconnect. Step 5 accepts that an offline par-3
+  // completion will not surface a prompt until step 7 ships; the
+  // leaderboard card in step 6 will let users see current CTP state.
+  //
+  // Defer behavior: if ctpEntriesData hasn't loaded when the user advances
+  // past a par 3 (rare — only in the first few hundred ms of page load),
+  // the hole is stashed and the effect below opens the prompt once entries
+  // arrive. Multiple deferred holes accumulate in a Set so a fast-tapping
+  // user can't lose an earlier prompt to a later one.
+  const maybeOpenCtpPrompt = (holeNum: number) => {
+    if (!isCtpWeek) return;
+    if (!PAR3_HOLES.has(holeNum)) return;
+    if (session?.groupId == null) return;
+    const entries = ctpEntriesData?.entries;
+    if (!entries) {
+      setPendingCtpPromptHoles((prev) => {
+        if (prev.has(holeNum)) return prev;
+        const next = new Set(prev);
+        next.add(holeNum);
+        return next;
+      });
+      return;
+    }
+    const already = entries.some(
+      (e) => e.groupId === session.groupId && e.holeNumber === holeNum,
+    );
+    if (already) return;
+    setCtpError(null);
+    setCtpSubmittingFor(null);
+    setCtpPromptHole(holeNum);
+  };
+
+  // Process deferred CTP prompt triggers once ctpEntriesData lands. Picks
+  // the lowest-numbered hole to open first; remaining holes stay queued
+  // and will pop in order as the user dismisses or answers each prompt
+  // (subsequent effect runs re-evaluate on state change).
+  useEffect(() => {
+    if (pendingCtpPromptHoles.size === 0) return;
+    if (ctpPromptHole !== null) return; // prompt already open for some hole
+    const entries = ctpEntriesData?.entries;
+    if (!entries) return;
+    if (session?.groupId == null) return;
+
+    const sorted = [...pendingCtpPromptHoles].sort((a, b) => a - b);
+    const next = sorted[0]!;
+    setPendingCtpPromptHoles((prev) => {
+      const copy = new Set(prev);
+      copy.delete(next);
+      return copy;
+    });
+    const already = entries.some(
+      (e) => e.groupId === session.groupId && e.holeNumber === next,
+    );
+    if (already) return;
+    setCtpError(null);
+    setCtpSubmittingFor(null);
+    setCtpPromptHole(next);
+  }, [pendingCtpPromptHoles, ctpEntriesData, session?.groupId, ctpPromptHole]);
 
   const submitMutation = useMutation({
     mutationFn: ({ holeNum, inputs, puttsInputs }: { holeNum: number; inputs: Record<number, string>; puttsInputs: Record<number, string> }) => {
@@ -456,6 +601,8 @@ function ScoreEntryHolePage() {
         } else {
           setCurrentHole(19);
         }
+        // Online-only CTP prompt trigger for the non-wolf-decision branch.
+        maybeOpenCtpPrompt(holeNum);
       }
     },
     onError: (err: Error, { holeNum, inputs, puttsInputs }) => {
@@ -749,7 +896,17 @@ function ScoreEntryHolePage() {
     void router.navigate({ to: '/score-entry' });
   };
 
+  // CTP prompt: find whether this group has already answered the prompt-hole
+  // (user may re-open to change their answer).
+  const existingCtpEntry =
+    ctpPromptHole !== null && session?.groupId != null
+      ? (ctpEntriesData?.entries ?? []).find(
+          (e) => e.groupId === session.groupId && e.holeNumber === ctpPromptHole,
+        )
+      : undefined;
+
   return (
+    <>
     <div className="flex flex-col h-full">
       {/* Scrollable content area — padded bottom so sticky footer doesn't cover */}
       <div className="flex-1 overflow-y-auto px-4 pt-3 pb-36">
@@ -1175,5 +1332,30 @@ function ScoreEntryHolePage() {
         </div>
       </div>
     </div>
+
+    <CtpPrompt
+      open={ctpPromptHole !== null}
+      holeNumber={ctpPromptHole ?? 0}
+      groupPlayers={orderedPlayers.map((p) => ({ id: p.id, name: p.name }))}
+      existingWinnerPlayerId={
+        existingCtpEntry === undefined
+          ? undefined
+          : existingCtpEntry.winnerPlayerId
+      }
+      submittingFor={ctpSubmittingFor}
+      error={ctpError}
+      onSubmit={(winnerPlayerId) => {
+        if (ctpPromptHole === null) return;
+        setCtpSubmittingFor(winnerPlayerId === null ? 'none' : winnerPlayerId);
+        setCtpError(null);
+        ctpMutation.mutate({ holeNumber: ctpPromptHole, winnerPlayerId });
+      }}
+      onClose={() => {
+        if (ctpSubmittingFor !== null) return;
+        setCtpPromptHole(null);
+        setCtpError(null);
+      }}
+    />
+    </>
   );
 }
