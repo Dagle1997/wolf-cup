@@ -13,7 +13,8 @@ import {
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
 import type { Tee } from '@wolf-cup/engine';
 import { db } from '../db/index.js';
-import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults, sideGames, holeCompletions } from '../db/schema.js';
+import { rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, seasons, harveyResults, sideGames, holeCompletions, sideGameCtpEntries } from '../db/schema.js';
+import { resolvePerHoleWinners, tallyByPlayer, type CtpEntry as CtpEntryShape } from '../lib/ctp.js';
 import { battingOrderSchema, submitHoleScoresSchema, wolfDecisionSchema, addGuestSchema, createPracticeRoundSchema } from '../schemas/round.js';
 import { computeRoundMoneyBreakdown } from '../lib/money-breakdown.js';
 
@@ -2130,6 +2131,61 @@ app.get('/rounds/:roundId/highlights', async (c) => {
         category: 'bonus',
       });
     }
+  }
+
+  // --- Par 3 Champion (CTP per-par-3 track, spec AC #17/18) -----------
+  // When a single player wins >=2 par 3s in this round, surface them as a
+  // Par 3 Champion in the highlight reel. Multiple qualifying players each
+  // get their own highlight entry. Data source is side_game_ctp_entries,
+  // filtered by rounds.status (we already know round.status is finalized /
+  // completed by this point).
+  try {
+    const ctpRows = await db
+      .select({
+        id: sideGameCtpEntries.id,
+        roundId: sideGameCtpEntries.roundId,
+        groupId: sideGameCtpEntries.groupId,
+        holeNumber: sideGameCtpEntries.holeNumber,
+        winnerPlayerId: sideGameCtpEntries.winnerPlayerId,
+        winnerName: sideGameCtpEntries.winnerName,
+        holeCompletedAt: sideGameCtpEntries.holeCompletedAt,
+      })
+      .from(sideGameCtpEntries)
+      .where(eq(sideGameCtpEntries.roundId, roundId))
+      // Deterministic ordering — locks "holes X, Y, Z" output even under
+      // implementation changes to the resolver helpers.
+      .orderBy(sideGameCtpEntries.holeNumber, sideGameCtpEntries.groupId);
+
+    if (ctpRows.length > 0) {
+      const entries: CtpEntryShape[] = ctpRows.map((r) => ({
+        id: r.id,
+        roundId: r.roundId,
+        groupId: r.groupId,
+        holeNumber: r.holeNumber,
+        winnerPlayerId: r.winnerPlayerId,
+        // Prefer live player name via the existing nameMap for consistency
+        // with other highlights in this response; fall back to the stored
+        // snapshot if the player is gone.
+        winnerName: (r.winnerPlayerId != null ? nameMap.get(r.winnerPlayerId) : null) ?? r.winnerName,
+        holeCompletedAt: r.holeCompletedAt,
+      }));
+
+      const perHoleWinners = resolvePerHoleWinners(entries);
+      const tally = tallyByPlayer(perHoleWinners);
+      for (const [, { playerName, holes }] of tally) {
+        if (holes.length < 2) continue;
+        const holesText = holes.join(', ');
+        highlights.push({
+          emoji: '🎯',
+          title: 'Par 3 Champion',
+          detail: `${playerName} — ${holes.length} CTPs (holes ${holesText})`,
+          category: 'bonus',
+        });
+      }
+    }
+  } catch (err) {
+    // Non-fatal — CTP highlight is additive; the rest of the reel still renders.
+    console.error('Failed to compute Par 3 Champion highlight (non-fatal):', err);
   }
 
   const totalSandies = [...sandieCount.values()].reduce((a, b) => a + b, 0);

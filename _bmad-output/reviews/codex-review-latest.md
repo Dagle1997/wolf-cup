@@ -1,26 +1,22 @@
 # Codex Review
 
-- Generated: 2026-04-22T18:16:48.900Z
+- Generated: 2026-04-22T18:24:14.103Z
 - Model: gpt-5.2
 - Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: apps/api/src/routes/history.ts, apps/api/src/routes/history.test.ts
+- Reviewed files: apps/api/src/routes/rounds.ts, apps/api/src/routes/rounds.test.ts
 
 ## Summary
 
-PASS — ready to commit and proceed to step 9.
+A) Round-1 items: 
+- #1 (High, nondeterministic hole ordering): Closed. The CTP query now has an explicit `.orderBy(sideGameCtpEntries.holeNumber, sideGameCtpEntries.groupId)` in `GET /rounds/:roundId/highlights` (apps/api/src/routes/rounds.ts ~2133-2160 in the diff), which removes DB-return-order nondeterminism and stabilizes the downstream “holes X, Y, Z” text.
+- #3 (Low, silent failure): Closed. The `try/catch` now logs a `console.error('Failed to compute Par 3 Champion highlight (non-fatal):', err);` (apps/api/src/routes/rounds.ts ~2185-2191 in the diff), matching your stated non-fatal pattern.
 
-A) Round-3 items:
-1) (Med) “Unknown name locked across rounds” is addressed for the new CTP-derived credits path: when a `winCountMap` entry already exists, you now upgrade `existing.playerName` from `'Unknown'` to a non-`'Unknown'` name if later-processed CTP data has better info (apps/api/src/routes/history.ts:205-212). This closes the specific regression described.
-2) (Low) The previously-vacuous unfinalized-round test is now concrete: it asserts `side_game_champion` exists and verifies year 2061 does not appear in any recipient’s `years` (apps/api/src/routes/history.test.ts:283-291). That closes the issue.
+B) ORDER BY behavior:
+- Yes—Drizzle’s `orderBy(colA, colB)` produces ascending sort by default, so results come out by `holeNumber` then `groupId`. This should yield the expected numerically sorted “holes 6, 7, 15” output (assuming the helper preserves encounter/insertion order, which was the original nondeterminism concern). The new test `credits a sweeper with 3 CTPs — detail lists all three holes` asserts the ordered string via `/holes 6, 7, 15/` (apps/api/src/routes/rounds.test.ts in the added Par 3 Champion describe).
 
-B) New issues from the winCountMap “upgrade” logic:
-- No concrete new bugs evident in the diff. The upgrade is intentionally narrow (only upgrades `'Unknown'` → real name), and because CTP rows prefer `players.name` via `livePlayerName ?? winnerName`, the displayed name will generally stabilize to the current canonical player name (apps/api/src/routes/history.ts:178-180, 209-211).
-- If a player’s display name changes mid-season, this implementation will *not* attempt to reconcile non-`Unknown` variants (it will typically show the current `players.name` if the player record exists). Given your stated intent (“stabilization is the point”), this behavior is consistent/acceptable.
-
-C) Overall:
-- The added tests cover the key acceptance criteria: per-round unique-winner crediting, finalized-round gating, and ignoring/missing per-entry `finalizedAt` (apps/api/src/routes/history.test.ts:173-349).
-- No additional blocking issues found in the provided changes.
+C) PASS/Ready:
+- PASS. The changes are small, targeted, add coverage, and directly address the prior determinism + logging concerns. I don’t see any new concrete correctness/security regressions in the provided diff/content. Ready to commit and proceed to step 10.
 
 Overall risk: low
 
@@ -30,10 +26,11 @@ No concrete findings were identified from the supplied evidence.
 
 ## Strengths
 
-- CTP crediting is correctly gated on `rounds.status = 'finalized'`, matching the stated authoritative finalization source and supporting legacy rows with null `finalizedAt` (apps/api/src/routes/history.ts:143-147, 165).
-- Per-round uniqueness is implemented explicitly (Map of playerId→name per round) and aligns with AC #14 (apps/api/src/routes/history.ts:188-213).
-- Tests now assert meaningful behavior rather than implicitly passing when the award isn’t present (apps/api/src/routes/history.test.ts:283-291).
+- Deterministic ordering added at the query boundary, which is the most reliable place to fix nondeterministic output.
+- Non-fatal failure mode now emits an error log, improving observability without breaking the endpoint.
+- Added focused integration tests covering omit/include behavior, multi-qualifier behavior, ordered hole list formatting, and ignoring winnerPlayerId=null (“Nobody”) entries.
 
 ## Warnings
 
-None.
+- Truncated file content for review: apps/api/src/routes/rounds.ts
+- Truncated file content for review: apps/api/src/routes/rounds.test.ts

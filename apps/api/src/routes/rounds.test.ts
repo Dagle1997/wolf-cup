@@ -16,7 +16,7 @@ vi.mock('../db/index.js', async () => {
 
 import roundsApp from './rounds.js';
 import { db } from '../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions } from '../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, roundResults, wolfDecisions, sideGameCtpEntries } from '../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1403,5 +1403,144 @@ describe('Guest player endpoints', () => {
     const guestPlayer = guestGroup!.players.find((p) => p.id === addBody.player.id);
     expect(guestPlayer).toBeDefined();
     expect(guestPlayer!.name).toBe('Visible Guest');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /rounds/:id/highlights — Par 3 Champion (CTP per-par-3 track)
+// ---------------------------------------------------------------------------
+
+type HighlightResponse = {
+  highlights: Array<{ emoji: string; title: string; detail: string; category: string }>;
+};
+
+describe('GET /rounds/:id/highlights — Par 3 Champion', () => {
+  let p3p1Id: number;
+  let p3p2Id: number;
+  let p3GroupId: number;
+  let p3RoundId: number;
+
+  beforeAll(async () => {
+    // Fresh finalized round + 2 players for CTP highlight scenarios. Using a
+    // dedicated round keeps these tests isolated from the existing scenarios
+    // above that share finalizedRoundId.
+    const [round] = await db
+      .insert(rounds)
+      .values({
+        seasonId,
+        type: 'official',
+        status: 'finalized',
+        scheduledDate: TODAY,
+        entryCodeHash,
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    p3RoundId = round!.id;
+
+    const [group] = await db
+      .insert(groups)
+      .values({ roundId: p3RoundId, groupNumber: 1, battingOrder: null })
+      .returning({ id: groups.id });
+    p3GroupId = group!.id;
+
+    const [p1, p2] = await db
+      .insert(players)
+      .values([
+        { name: 'Par Three Alpha', ghinNumber: null, isActive: 1, createdAt: Date.now() },
+        { name: 'Par Three Bravo', ghinNumber: null, isActive: 1, createdAt: Date.now() },
+      ])
+      .returning({ id: players.id });
+    p3p1Id = p1!.id;
+    p3p2Id = p2!.id;
+
+    await db.insert(roundPlayers).values([
+      { roundId: p3RoundId, groupId: p3GroupId, playerId: p3p1Id, handicapIndex: 10, isSub: 0 },
+      { roundId: p3RoundId, groupId: p3GroupId, playerId: p3p2Id, handicapIndex: 12, isSub: 0 },
+    ]);
+  });
+
+  afterEach(async () => {
+    await db.delete(sideGameCtpEntries).where(eq(sideGameCtpEntries.roundId, p3RoundId));
+  });
+
+  it('omits Par 3 Champion when every winner has exactly 1 CTP', async () => {
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 6, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 7, winnerPlayerId: p3p2Id, winnerName: 'Par Three Bravo', holeCompletedAt: 2000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+    const res = await roundsApp.request(`/rounds/${p3RoundId}/highlights`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as HighlightResponse;
+    const par3Champ = body.highlights.find((h) => h.title === 'Par 3 Champion');
+    expect(par3Champ).toBeUndefined();
+  });
+
+  it('includes Par 3 Champion when a player has 2 CTP wins, listing both holes', async () => {
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 6, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 12, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 3000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+    const res = await roundsApp.request(`/rounds/${p3RoundId}/highlights`);
+    const body = await res.json() as HighlightResponse;
+    const champ = body.highlights.find((h) => h.title === 'Par 3 Champion');
+    expect(champ).toBeDefined();
+    expect(champ!.emoji).toBe('🎯');
+    expect(champ!.category).toBe('bonus');
+    expect(champ!.detail).toContain('Par Three Alpha');
+    expect(champ!.detail).toContain('2 CTPs');
+    expect(champ!.detail).toContain('6');
+    expect(champ!.detail).toContain('12');
+  });
+
+  it('credits a sweeper with 3 CTPs — detail lists all three holes', async () => {
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 6, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 7, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 2000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 15, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 4000, finalizedAt: now, createdAt: now, updatedAt: now },
+      // hole 12 won by someone else so they don't qualify
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 12, winnerPlayerId: p3p2Id, winnerName: 'Par Three Bravo', holeCompletedAt: 3000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+    const res = await roundsApp.request(`/rounds/${p3RoundId}/highlights`);
+    const body = await res.json() as HighlightResponse;
+    const champs = body.highlights.filter((h) => h.title === 'Par 3 Champion');
+    expect(champs).toHaveLength(1);
+    expect(champs[0]!.detail).toContain('3 CTPs');
+    expect(champs[0]!.detail).toMatch(/holes 6, 7, 15/);
+  });
+
+  it('emits one highlight per qualifying player when multiple qualify', async () => {
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      // Alpha wins 6 + 7
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 6, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 7, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 2000, finalizedAt: now, createdAt: now, updatedAt: now },
+      // Bravo wins 12 + 15
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 12, winnerPlayerId: p3p2Id, winnerName: 'Par Three Bravo', holeCompletedAt: 3000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 15, winnerPlayerId: p3p2Id, winnerName: 'Par Three Bravo', holeCompletedAt: 4000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+    const res = await roundsApp.request(`/rounds/${p3RoundId}/highlights`);
+    const body = await res.json() as HighlightResponse;
+    const champs = body.highlights.filter((h) => h.title === 'Par 3 Champion');
+    expect(champs).toHaveLength(2);
+    expect(champs.some((c) => c.detail.includes('Par Three Alpha'))).toBe(true);
+    expect(champs.some((c) => c.detail.includes('Par Three Bravo'))).toBe(true);
+  });
+
+  it('ignores "Nobody" entries (winnerPlayerId null) when tallying', async () => {
+    const now = Date.now();
+    await db.insert(sideGameCtpEntries).values([
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 6, winnerPlayerId: p3p1Id, winnerName: 'Par Three Alpha', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 7, winnerPlayerId: null, winnerName: null, holeCompletedAt: 2000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: p3RoundId, groupId: p3GroupId, holeNumber: 12, winnerPlayerId: null, winnerName: null, holeCompletedAt: 3000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+    const res = await roundsApp.request(`/rounds/${p3RoundId}/highlights`);
+    const body = await res.json() as HighlightResponse;
+    // Alpha has 1 win; should not trigger Par 3 Champion
+    const champ = body.highlights.find((h) => h.title === 'Par 3 Champion');
+    expect(champ).toBeUndefined();
   });
 });
