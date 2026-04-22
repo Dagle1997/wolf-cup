@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { CtpPrompt } from '@/components/CtpPrompt';
 import { apiFetch } from '@/lib/api';
 import { getSession, clearSession } from '@/lib/session-store';
-import { enqueueScore } from '@/lib/offline-queue';
+import { enqueueScore, enqueueCtpEntry } from '@/lib/offline-queue';
 import { useOfflineQueue } from '@/hooks/useOfflineQueue';
 import { cn } from '@/lib/utils';
 import { shortName } from '@/lib/names';
@@ -401,6 +401,9 @@ function ScoreEntryHolePage() {
         } else {
           setCurrentHole(19);
         }
+        // Fire CTP prompt on offline advance too — the ctpMutation's own
+        // onError handler queues to the CTP store if the POST also fails.
+        maybeOpenCtpPrompt(holeNum);
       } else {
         if (err.message === 'INVALID_DECISION') {
           setWolfError('Invalid wolf decision — please check your inputs.');
@@ -458,7 +461,44 @@ function ScoreEntryHolePage() {
       setCtpPromptHole(null);
       void queryClient.invalidateQueries({ queryKey: ['ctp-entries', session?.roundId ?? 0] });
     },
-    onError: (err: Error) => {
+    onError: (err: Error, vars) => {
+      if (isNetworkError(err)) {
+        // Network failure — persist to the offline queue BEFORE closing the
+        // prompt. If the IDB write itself fails (unlikely — usually quota
+        // or private-mode), we keep the prompt open with an error so the
+        // user's answer isn't silently dropped. Drain replays against the
+        // endpoint on reconnect, after any queued scores create the
+        // server-side hole_completions row the CTP POST depends on.
+        if (!session || session.groupId == null) {
+          setCtpSubmittingFor(null);
+          setCtpError('Session lost — please re-join the round.');
+          return;
+        }
+        void enqueueCtpEntry({
+          roundId: session.roundId,
+          groupId: session.groupId,
+          holeNumber: vars.holeNumber,
+          winnerPlayerId: vars.winnerPlayerId,
+          entryCode: session.entryCode ?? null,
+          timestamp: Date.now(),
+        }).then(
+          () => {
+            // Queued successfully — safe to close the prompt. refreshCount
+            // surfaces the queued entry in the pendingCount badge.
+            void refreshCount();
+            setCtpSubmittingFor(null);
+            setCtpError(null);
+            setCtpPromptHole(null);
+          },
+          () => {
+            // IDB write failed — keep prompt open with an error so the
+            // answer isn't silently lost.
+            setCtpSubmittingFor(null);
+            setCtpError('Could not queue offline — please try again.');
+          },
+        );
+        return;
+      }
       setCtpSubmittingFor(null);
       if (err.message === 'ROUND_FINALIZED') {
         setCtpError('Round has been finalized — CTP is locked.');
@@ -477,12 +517,11 @@ function ScoreEntryHolePage() {
   // Open the CTP prompt for a just-finished par 3 if this is a CTP week,
   // the hole is a par 3, and this group hasn't already answered.
   //
-  // Called from ONLINE-success paths only (submitMutation.onSuccess +
-  // wolfDecisionMutation.onSuccess). Offline paths intentionally skip the
-  // prompt — step 7 (offline queue support) will add per-par-3 CTP
-  // queueing + re-prompt on reconnect. Step 5 accepts that an offline par-3
-  // completion will not surface a prompt until step 7 ships; the
-  // leaderboard card in step 6 will let users see current CTP state.
+  // Called from BOTH online-success paths and offline-advance paths. The
+  // ctpMutation's onError handler recognizes network failures and enqueues
+  // the answer into the CTP IDB store for replay on reconnect — so the
+  // offline experience is: prompt appears, user picks answer, prompt
+  // closes cleanly, and the queued entry drains behind the scenes.
   //
   // Defer behavior: if ctpEntriesData hasn't loaded when the user advances
   // past a par 3 (rare — only in the first few hundred ms of page load),
@@ -645,6 +684,9 @@ function ScoreEntryHolePage() {
             } else {
               setCurrentHole(19);
             }
+            // Fire CTP prompt on offline advance. ctpMutation.onError will
+            // queue the answer to the CTP store if the POST also fails.
+            maybeOpenCtpPrompt(holeNum);
           })
           .catch(() => {
             setSubmitError('Could not save score offline — please retry when connected.');
@@ -740,7 +782,7 @@ function ScoreEntryHolePage() {
         {pendingCount > 0 && (
           <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-300 text-amber-800 text-sm px-3 py-2">
             <WifiOff className="w-4 h-4 shrink-0" />
-            {pendingCount} score{pendingCount !== 1 ? 's' : ''} pending sync
+            {pendingCount} update{pendingCount !== 1 ? 's' : ''} pending sync
             {isDraining && <Loader2 className="w-4 h-4 ml-1 animate-spin" />}
           </div>
         )}
@@ -928,7 +970,7 @@ function ScoreEntryHolePage() {
         {pendingCount > 0 && (
           <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm px-3 py-2 mb-3">
             <WifiOff className="w-4 h-4 shrink-0" />
-            {pendingCount} score{pendingCount !== 1 ? 's' : ''} pending sync
+            {pendingCount} update{pendingCount !== 1 ? 's' : ''} pending sync
             {isDraining && <Loader2 className="w-4 h-4 ml-1 animate-spin" />}
           </div>
         )}
