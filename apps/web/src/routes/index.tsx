@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, Fragment } from 'react';
 import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CtpSideGameCard } from '@/components/CtpSideGameCard';
 import { apiFetch } from '@/lib/api';
 import { getSession, clearSession } from '@/lib/session-store';
 
@@ -1115,24 +1116,38 @@ function LeaderboardPage() {
           {(currentRound.status === 'finalized' || currentRound.status === 'completed') && (
             <HighlightReel roundId={currentRound.id} />
           )}
-          {currentData.sideGameWinner && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 mb-3 text-center">
-              <p className="text-sm font-semibold text-amber-900">
-                {currentData.sideGame?.name} Winner: {currentData.sideGameWinner.playerName}{currentData.sideGameWinner.detail ? ` (${currentData.sideGameWinner.detail})` : ''}
-              </p>
-            </div>
-          )}
-          {currentData.sideGame && !currentData.sideGameWinner && (
-            <div className="rounded-xl border bg-card p-3 mb-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
-              <p className="font-semibold">{currentData.sideGame.name}</p>
-              <p className="text-sm text-muted-foreground">{currentData.sideGame.format}</p>
-              {currentData.sideGameLeader && (
-                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mt-1">
-                  Leader: {currentData.sideGameLeader.playerName} ({currentData.sideGameLeader.detail})
-                </p>
+          {/* CTP weeks render the dedicated 4-par-3 card instead of the
+              generic side-game display. calculationType === 'manual' is
+              the stable CTP identity; matches the server-side check. */}
+          {currentData.sideGame?.calculationType === 'manual' ? (
+            <CtpSideGameCard
+              roundId={currentRound.id}
+              name={currentData.sideGame.name}
+              format={currentData.sideGame.format}
+              roundStatus={currentRound.status}
+            />
+          ) : (
+            <>
+              {currentData.sideGameWinner && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 mb-3 text-center">
+                  <p className="text-sm font-semibold text-amber-900">
+                    {currentData.sideGame?.name} Winner: {currentData.sideGameWinner.playerName}{currentData.sideGameWinner.detail ? ` (${currentData.sideGameWinner.detail})` : ''}
+                  </p>
+                </div>
               )}
-            </div>
+              {currentData.sideGame && !currentData.sideGameWinner && (
+                <div className="rounded-xl border bg-card p-3 mb-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
+                  <p className="font-semibold">{currentData.sideGame.name}</p>
+                  <p className="text-sm text-muted-foreground">{currentData.sideGame.format}</p>
+                  {currentData.sideGameLeader && (
+                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mt-1">
+                      Leader: {currentData.sideGameLeader.playerName} ({currentData.sideGameLeader.detail})
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           )}
           <LeaderboardTable
             data={currentData}
@@ -1148,24 +1163,35 @@ function LeaderboardPage() {
           {(currentRound.status === 'finalized' || currentRound.status === 'completed') && (
             <HighlightReel roundId={currentRound.id} />
           )}
-          {liveData.sideGameWinner && (
-            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 mb-3 text-center">
-              <p className="text-sm font-semibold text-amber-900">
-                {liveData.sideGame?.name} Winner: {liveData.sideGameWinner.playerName}{liveData.sideGameWinner.detail ? ` (${liveData.sideGameWinner.detail})` : ''}
-              </p>
-            </div>
-          )}
-          {liveData.sideGame && !liveData.sideGameWinner && (
-            <div className="rounded-xl border bg-card p-3 mb-3">
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
-              <p className="font-semibold">{liveData.sideGame.name}</p>
-              <p className="text-sm text-muted-foreground">{liveData.sideGame.format}</p>
-              {liveData.sideGameLeader && (
-                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mt-1">
-                  Leader: {liveData.sideGameLeader.playerName} ({liveData.sideGameLeader.detail})
-                </p>
+          {liveData.sideGame?.calculationType === 'manual' ? (
+            <CtpSideGameCard
+              roundId={currentRound.id}
+              name={liveData.sideGame.name}
+              format={liveData.sideGame.format}
+              roundStatus={currentRound.status}
+            />
+          ) : (
+            <>
+              {liveData.sideGameWinner && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 mb-3 text-center">
+                  <p className="text-sm font-semibold text-amber-900">
+                    {liveData.sideGame?.name} Winner: {liveData.sideGameWinner.playerName}{liveData.sideGameWinner.detail ? ` (${liveData.sideGameWinner.detail})` : ''}
+                  </p>
+                </div>
               )}
-            </div>
+              {liveData.sideGame && !liveData.sideGameWinner && (
+                <div className="rounded-xl border bg-card p-3 mb-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Side Game</p>
+                  <p className="font-semibold">{liveData.sideGame.name}</p>
+                  <p className="text-sm text-muted-foreground">{liveData.sideGame.format}</p>
+                  {liveData.sideGameLeader && (
+                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mt-1">
+                      Leader: {liveData.sideGameLeader.playerName} ({liveData.sideGameLeader.detail})
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           )}
           <LeaderboardTable
             data={liveData}
