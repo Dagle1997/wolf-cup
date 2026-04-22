@@ -1003,6 +1003,45 @@ function ScoreEntryHolePage() {
           </div>
         )}
 
+        {/* CTP status chip — only renders on CTP weeks + par-3 holes + once
+            all 4 scores for this hole are submitted (matches the auto-prompt
+            trigger condition and ensures the backend's hole_completions row
+            exists so the POST won't 422 HOLE_NOT_COMPLETE). Gated on
+            ctpEntriesData being loaded so we don't mislabel "Tap to answer"
+            when an entry actually exists but hasn't arrived yet — that would
+            surprise the user with an overwrite flow when they expected
+            review/change. Tapping reopens the CtpPrompt for this hole. */}
+        {isCtpWeek && PAR3_HOLES.has(currentHole) && ctpEntriesData && (() => {
+          const hasAllScores =
+            (submittedScores.get(currentHole)?.size ?? 0) === orderedPlayers.length;
+          if (!hasAllScores) return null;
+          const myEntry = ctpEntriesData.entries.find(
+            (e) => e.groupId === session.groupId && e.holeNumber === currentHole,
+          );
+          const label =
+            myEntry === undefined
+              ? 'Tap to answer Closest to Pin'
+              : myEntry.winnerPlayerId === null
+                ? 'My group said: Nobody'
+                : `My group said: ${myEntry.winnerName ?? 'Unknown'}`;
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                setCtpError(null);
+                setCtpSubmittingFor(null);
+                setCtpPromptHole(currentHole);
+              }}
+              className="w-full mb-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-400 text-xs px-3 py-2 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors text-left flex items-center justify-between"
+            >
+              <span>🎯 {label}</span>
+              <span className="text-[10px] text-amber-600 dark:text-amber-500 font-semibold uppercase tracking-wider">
+                {myEntry === undefined ? 'Answer' : 'Change'}
+              </span>
+            </button>
+          );
+        })()}
+
         {/* Score inputs — compact card per player, auto-advance on digit entry */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           {orderedPlayers.map((player, idx) => (
