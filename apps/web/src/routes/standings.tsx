@@ -471,7 +471,9 @@ function SubsSection({
       {expanded && (
         <div className="space-y-1.5 mt-2 opacity-80">
           {[...subs].sort((a, b) => a.rank - b.rank).map((player, i, arr) => {
-            const prev = i > 0 ? arr[i - 1] : null;
+            // arr[i - 1] types as T | undefined under noUncheckedIndexedAccess;
+            // coalesce to match PlayerCard's `prev: T | null` expectation.
+            const prev = i > 0 ? arr[i - 1] ?? null : null;
             const gap = prev ? prev.combinedTotal - player.combinedTotal : 0;
             return (
               <PlayerCard
