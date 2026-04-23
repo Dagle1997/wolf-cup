@@ -1,3 +1,5 @@
+import type { Logger } from 'pino';
+
 /**
  * Hono Variables augmentation. Declared in a dedicated `.d.ts` file so
  * TS picks it up project-wide via `tsconfig.app.json`'s `include: ["src"]`,
@@ -10,11 +12,15 @@
  * .d.ts files in the include glob unconditionally.
  *
  * Populated by:
+ *   - `src/middleware/request-id.ts` → sets `c.set('requestId', ...)` +
+ *     `c.set('logger', logger.child({ requestId }))` on every request.
  *   - `src/middleware/require-session.ts` → sets `c.set('session', ...)`
  *     + `c.set('player', ...)` after a successful session validate.
  */
 declare module 'hono' {
   interface ContextVariableMap {
+    requestId: string;
+    logger: Logger;
     session: {
       sessionId: string;
       playerId: string;

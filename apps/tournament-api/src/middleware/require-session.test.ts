@@ -20,6 +20,10 @@ const { db } = await import('../db/index.js');
 const { players, sessions } = await import('../db/schema/index.js');
 const { createSession } = await import('../lib/session.js');
 const { requireSession } = await import('./require-session.js');
+// T1-7: requireSession reads `requestId` from ctx (set by the global
+// request-id middleware). Tests wrap it under the middleware to match
+// the production flow — there's no fallback path in the handler.
+const { requestIdMiddleware } = await import('./request-id.js');
 
 const ALICE = 'player-alice-req-session';
 
@@ -40,6 +44,7 @@ beforeEach(async () => {
 
 function makeApp() {
   const app = new Hono();
+  app.use('*', requestIdMiddleware);
   app.use('*', requireSession);
   app.get('/protected', (c) => {
     const session = c.get('session');
@@ -89,6 +94,7 @@ describe('requireSession middleware', () => {
   test('typing: c.get("session").sessionId is string (compile-time via Variables augmentation)', async () => {
     const { sessionId } = await createSession(ALICE, { userAgent: 'vitest', ip: '::1' });
     const app = new Hono();
+    app.use('*', requestIdMiddleware);
     app.use('*', requireSession);
     app.get('/typed', (c) => {
       // TypeScript: the `.sessionId` access below must compile without

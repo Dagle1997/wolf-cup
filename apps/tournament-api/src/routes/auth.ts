@@ -80,7 +80,8 @@ authRouter.get('/google', (c) => {
  * taxonomy is easy to audit in one read.
  */
 authRouter.get('/google/callback', async (c) => {
-  const requestId = randomUUID();
+  const requestId = c.get('requestId');
+  const log = c.get('logger');
   const q = c.req.query();
 
   // ---- 1. Provider error branch (user declined / upstream config error)
@@ -107,9 +108,15 @@ authRouter.get('/google/callback', async (c) => {
 
     // Any other provider error code (invalid_request, invalid_scope,
     // unauthorized_client, etc.) indicates misconfiguration on our side.
-    // Log the raw provider payload + requestId for ops diagnosis; respond
-    // generically so a broken console config doesn't leak to users.
-    logOAuthProviderError(err, q, requestId);
+    // Log the raw provider payload for ops diagnosis; respond generically
+    // so a broken console config doesn't leak to users. The child logger
+    // already carries `requestId`.
+    log.error({
+      event: 'oauth_provider_error',
+      providerErr: err,
+      errorDescription: q['error_description'] ?? null,
+      errorUri: q['error_uri'] ?? null,
+    });
     return c.json(
       { error: 'internal', code: 'oauth_provider_error', requestId },
       500,
@@ -172,7 +179,13 @@ authRouter.get('/google/callback', async (c) => {
     }
     // Unknown error shape — fail closed (503) but log at error level with
     // full context so operators can classify and upgrade the handler.
-    logUnknownOAuthError(err, requestId);
+    const e = err as { message?: unknown; stack?: unknown; cause?: unknown } | null;
+    log.error({
+      event: 'oauth_unknown_error',
+      message: e?.message ?? null,
+      stack: e?.stack ?? null,
+      cause: e?.cause ? String(e.cause) : null,
+    });
     return c.json(
       { error: 'auth_unavailable', code: 'auth_provider_outage', requestId },
       503,
@@ -189,7 +202,11 @@ authRouter.get('/google/callback', async (c) => {
     // their purpose and should not linger.
     appendClearCookies(c);
     // Generic response; specific reason stays in the server log.
-    logInvalidIdToken(idToken, requestId);
+    // Redact the raw id_token — record only its length for triage.
+    log.warn({
+      event: 'oauth_invalid_id_token',
+      idTokenLength: idToken.length,
+    });
     return c.json(
       { error: 'upstream_invalid', code: 'oauth_invalid_id_token', requestId },
       502,
@@ -205,7 +222,15 @@ authRouter.get('/google/callback', async (c) => {
     // validation, intermediates have served their purpose. Clearing on
     // 500 here keeps a botched DB write from leaving stale cookies.
     appendClearCookies(c);
-    logOAuthBindError(err, sub, requestId);
+    const e = err as { message?: unknown; rawCode?: unknown } | null;
+    log.error({
+      event: 'oauth_bind_error',
+      message: e?.message ?? null,
+      rawCode: e?.rawCode ?? null,
+      // `sub` is a Google opaque id — not PII by itself, useful for correlation.
+      sub,
+      provider: 'google',
+    });
     return c.json(
       { error: 'internal', code: 'oauth_bind_race', requestId },
       500,
@@ -458,68 +483,7 @@ function extractCookie(header: string, name: string): string | null {
   return null;
 }
 
-// ---------------------------------------------------------------------
-// Logging. Until T1-7's structured JSON log sink lands, these go to
-// console.error so Docker's log driver captures them. Each call
-// includes requestId for correlation.
-// ---------------------------------------------------------------------
-
-function logOAuthProviderError(
-  providerErr: string,
-  q: Record<string, string | undefined>,
-  requestId: string,
-): void {
-  console.error(
-    JSON.stringify({
-      level: 'error',
-      event: 'oauth_provider_error',
-      providerErr,
-      errorDescription: q['error_description'] ?? null,
-      errorUri: q['error_uri'] ?? null,
-      requestId,
-    }),
-  );
-}
-
-function logUnknownOAuthError(err: unknown, requestId: string): void {
-  const e = err as { message?: unknown; stack?: unknown; cause?: unknown } | null;
-  console.error(
-    JSON.stringify({
-      level: 'error',
-      event: 'oauth_unknown_error',
-      message: e?.message ?? null,
-      stack: e?.stack ?? null,
-      cause: e?.cause ? String(e.cause) : null,
-      requestId,
-    }),
-  );
-}
-
-function logInvalidIdToken(idToken: string, requestId: string): void {
-  console.error(
-    JSON.stringify({
-      level: 'warn',
-      event: 'oauth_invalid_id_token',
-      // Redact the raw token — just record its length for triage. The
-      // token may contain sensitive claims if a future scope is added.
-      idTokenLength: idToken.length,
-      requestId,
-    }),
-  );
-}
-
-function logOAuthBindError(err: unknown, sub: string, requestId: string): void {
-  const e = err as { message?: unknown; rawCode?: unknown } | null;
-  console.error(
-    JSON.stringify({
-      level: 'error',
-      event: 'oauth_bind_error',
-      message: e?.message ?? null,
-      rawCode: e?.rawCode ?? null,
-      // `sub` is a Google opaque id — not PII by itself, useful for correlation.
-      sub,
-      provider: 'google',
-      requestId,
-    }),
-  );
-}
+// Logging was centralized in T1-7 — the four log helper functions that
+// used `console.error(JSON.stringify(...))` in T1-6b are now inline
+// `c.get('logger').error(...)` / `.warn(...)` calls at each call-site.
+// The request-scoped child logger already carries `requestId`.

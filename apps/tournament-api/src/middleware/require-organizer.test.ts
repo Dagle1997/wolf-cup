@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { Hono } from 'hono';
 import { requireOrganizer } from './require-organizer.js';
+// T1-7: requireOrganizer reads requestId + ctx logger from the global
+// request-id middleware. Tests mount it in the chain.
+import { requestIdMiddleware } from './request-id.js';
 
 /**
  * The real flow always pairs requireSession + requireOrganizer. For unit
@@ -20,6 +23,7 @@ function stubPlayerMiddleware(player: { id: string; isOrganizer: boolean } | und
 describe('requireOrganizer middleware', () => {
   test('next() called when player.isOrganizer is true', async () => {
     const app = new Hono();
+    app.use('*', requestIdMiddleware);
     app.use('*', stubPlayerMiddleware({ id: 'p-org', isOrganizer: true }));
     app.use('*', requireOrganizer);
     app.get('/admin', (c) => c.json({ ok: true }));
@@ -32,6 +36,7 @@ describe('requireOrganizer middleware', () => {
 
   test('403 not_organizer when player.isOrganizer is false', async () => {
     const app = new Hono();
+    app.use('*', requestIdMiddleware);
     app.use('*', stubPlayerMiddleware({ id: 'p-plain', isOrganizer: false }));
     app.use('*', requireOrganizer);
     app.get('/admin', (c) => c.json({ ok: true }));
@@ -45,6 +50,7 @@ describe('requireOrganizer middleware', () => {
 
   test('500 middleware_misuse when player variable is not set (requireSession missing)', async () => {
     const app = new Hono();
+    app.use('*', requestIdMiddleware);
     // Intentionally omit the stub — mimics a developer chaining
     // `app.use(requireOrganizer)` without `requireSession` ahead of it.
     app.use('*', requireOrganizer);

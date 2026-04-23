@@ -18,6 +18,8 @@
     "arctic": "^3.7.0",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.0.0",
+    "pino": "^10.3.0",
+    "pino-roll": "^4.0.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

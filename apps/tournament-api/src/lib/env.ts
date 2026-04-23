@@ -78,9 +78,35 @@ const envSchema = z.object({
   // shipping with a broken auth flow.
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1),
+  // Logging (T1-7). LOG_LEVEL defaults to 'info' which is what prod wants;
+  // dev can override via .env. LOG_DIR is optional at the schema level and
+  // resolved below by the post-parse transform — that way env.LOG_DIR is
+  // always a non-optional string for consumers (path.join safety), and
+  // production gets '/app/data/logs' (existing tournament_sqlite_data
+  // volume) without needing docker-compose to set it explicitly.
+  LOG_LEVEL: z
+    .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal'])
+    .default('info'),
+  // `.refine(non-whitespace)` mirrors DB_PATH's guard — a compose value
+  // of `"   "` or `""` would otherwise resolve to a whitespace path
+  // rather than triggering the NODE_ENV-sensitive default below.
+  LOG_DIR: z
+    .string()
+    .min(1)
+    .refine((v) => v.trim().length > 0, 'LOG_DIR must not be whitespace-only')
+    .optional(),
 });
 
-export type Env = z.infer<typeof envSchema>;
+// Post-parse transform resolves LOG_DIR based on NODE_ENV. The result has
+// LOG_DIR as a guaranteed string — downstream `path.join(env.LOG_DIR, ...)`
+// is safe with no undefined branch.
+const envWithDefaults = envSchema.transform((parsed) => ({
+  ...parsed,
+  LOG_DIR:
+    parsed.LOG_DIR ?? (parsed.NODE_ENV === 'production' ? '/app/data/logs' : './data/logs'),
+}));
+
+export type Env = z.infer<typeof envWithDefaults>;
 
 // Parse at module load. Throws on invalid config — fail-fast at boot.
-export const env: Env = envSchema.parse(process.env);
+export const env: Env = envWithDefaults.parse(process.env);

@@ -64,7 +64,7 @@ development_status:
   # Magic-link returns to the plan as a future T3.x story when players.email lands.
   T1-6a-auth-schema-middleware-env: done
   T1-6b-arctic-google-sso: done
-  T1-7-structured-json-log-sink: backlog
+  T1-7-structured-json-log-sink: review
 
   epic-T1-retrospective: optional
 

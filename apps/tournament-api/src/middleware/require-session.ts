@@ -1,5 +1,4 @@
 import type { MiddlewareHandler } from 'hono';
-import { randomUUID } from 'node:crypto';
 import { SESSION_COOKIE_NAME, sessionCookieHeader, validateSession } from '../lib/session.js';
 
 /**
@@ -13,16 +12,16 @@ import { SESSION_COOKIE_NAME, sessionCookieHeader, validateSession } from '../li
  *     next request cleanly hits `session_missing` instead of repeating.
  *   - next() — valid; `c.get('session')` and `c.get('player')` are set.
  *
- * `requestId` is a short correlation id for logs/support. Until T1-7's
- * structured log sink lands, this is a per-request randomUUID — enough
- * for request-by-request debugging.
+ * `requestId` is read from the context variable populated by the global
+ * request-id middleware (T1-7). The middleware runs before auth and
+ * guarantees a string id; no local generation is needed here.
  *
  * Typing: the Hono Variables augmentation lives in `src/types/hono.d.ts`.
  * Downstream handlers can write `const { playerId } = c.get('session')`
  * with full type safety, no `as any` casts.
  */
 export const requireSession: MiddlewareHandler = async (c, next) => {
-  const requestId = randomUUID();
+  const requestId = c.get('requestId');
 
   // Read the session cookie. Hono's getCookie would work but we avoid the
   // extra import — the raw Cookie header is fine and handles the one name

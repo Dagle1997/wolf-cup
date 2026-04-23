@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { Hono } from 'hono';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
@@ -42,6 +43,17 @@ vi.mock('../lib/arctic.js', () => ({
 const { db } = await import('../db/index.js');
 const { players, oauthIdentities, sessions } = await import('../db/schema/index.js');
 const { authRouter } = await import('./auth.js');
+// T1-7: auth handlers read `requestId` + `logger` from ctx set by the
+// global request-id middleware. Wrap the router under the middleware
+// for tests so the production flow is mirrored.
+const { requestIdMiddleware } = await import('../middleware/request-id.js');
+
+// Build a test app that mounts the middleware and routes exactly like
+// the production `app.ts` would. All existing tests call
+// `testApp.request(...)` instead of `testApp.request(...)`.
+const testApp = new Hono();
+testApp.use('*', requestIdMiddleware);
+testApp.route('/', authRouter);
 
 const TEST_CLIENT_ID = 'test-client-id';
 const PAST_EXP = Math.floor(Date.now() / 1000) - 60; // unused, reserved for future exp-failure tests
@@ -124,7 +136,7 @@ function getSetCookies(res: Response): string[] {
 describe('auth router (T1-6b: Google OAuth)', () => {
   // AC #11 boundary — GET /status stays byte-identical.
   test('GET /status returns the T1-6a placeholder (unchanged)', async () => {
-    const res = await authRouter.request('/status');
+    const res = await testApp.request('/status');
     expect(res.status).toBe(200);
     const body = (await res.json()) as { auth: string; oauth: string };
     expect(body).toEqual({ auth: 'infrastructure-ready', oauth: 'pending-t1-6b' });
@@ -133,7 +145,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
   // ---- /google sign-in entry -----------------------------------------
 
   test('GET /google sets both intermediate cookies with dev attributes', async () => {
-    const res = await authRouter.request('/google');
+    const res = await testApp.request('/google');
     expect(res.status).toBe(302);
     const cookies = getSetCookies(res);
     // Both intermediates must be present.
@@ -153,7 +165,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
   });
 
   test('GET /google redirects 302 to a URL starting with https://accounts.google.com/', async () => {
-    const res = await authRouter.request('/google');
+    const res = await testApp.request('/google');
     expect(res.status).toBe(302);
     const location = res.headers.get('location') ?? '';
     expect(location.startsWith('https://accounts.google.com/')).toBe(true);
@@ -162,7 +174,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
   // ---- /google/callback error branches -------------------------------
 
   test('GET /google/callback?error=access_denied → 302 /auth/declined + clear-cookies', async () => {
-    const res = await authRouter.request('/google/callback?error=access_denied');
+    const res = await testApp.request('/google/callback?error=access_denied');
     expect(res.status).toBe(302);
     const location = res.headers.get('location') ?? '';
     expect(location.endsWith('/auth/declined')).toBe(true);
@@ -179,42 +191,42 @@ describe('auth router (T1-6b: Google OAuth)', () => {
   });
 
   test('GET /google/callback?error=server_error → 503 auth_provider_outage', async () => {
-    const res = await authRouter.request('/google/callback?error=server_error');
+    const res = await testApp.request('/google/callback?error=server_error');
     expect(res.status).toBe(503);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('auth_provider_outage');
   });
 
   test('GET /google/callback?error=temporarily_unavailable → 503 auth_provider_outage', async () => {
-    const res = await authRouter.request('/google/callback?error=temporarily_unavailable');
+    const res = await testApp.request('/google/callback?error=temporarily_unavailable');
     expect(res.status).toBe(503);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('auth_provider_outage');
   });
 
   test('GET /google/callback?error=invalid_request → 500 oauth_provider_error', async () => {
-    const res = await authRouter.request('/google/callback?error=invalid_request');
+    const res = await testApp.request('/google/callback?error=invalid_request');
     expect(res.status).toBe(500);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('oauth_provider_error');
   });
 
   test('GET /google/callback with no code and no error → 400 oauth_missing_params', async () => {
-    const res = await authRouter.request('/google/callback');
+    const res = await testApp.request('/google/callback');
     expect(res.status).toBe(400);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('oauth_missing_params');
   });
 
   test('GET /google/callback with missing state cookie → 400 oauth_cookies_missing', async () => {
-    const res = await authRouter.request('/google/callback?code=C&state=S');
+    const res = await testApp.request('/google/callback?code=C&state=S');
     expect(res.status).toBe(400);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('oauth_cookies_missing');
   });
 
   test('GET /google/callback with state mismatch → 400 oauth_state_mismatch + clear-cookies', async () => {
-    const res = await authRouter.request(
+    const res = await testApp.request(
       '/google/callback?code=C&state=MISMATCH',
       {
         headers: {
@@ -241,7 +253,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
 
   test('GET /google/callback with ArcticFetchError → 503 auth_provider_outage', async () => {
     mockValidateAuthorizationCode.mockRejectedValueOnce(new ArcticFetchError(new Error('econnreset')));
-    const res = await authRouter.request('/google/callback?code=C&state=S', {
+    const res = await testApp.request('/google/callback?code=C&state=S', {
       headers: {
         cookie: cookieHeader(
           ['tournament_oauth_state', 'S'],
@@ -258,7 +270,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
     mockValidateAuthorizationCode.mockRejectedValueOnce(
       new OAuth2RequestError('invalid_grant', 'bad code', null, null),
     );
-    const res = await authRouter.request('/google/callback?code=C&state=S', {
+    const res = await testApp.request('/google/callback?code=C&state=S', {
       headers: {
         cookie: cookieHeader(
           ['tournament_oauth_state', 'S'],
@@ -279,12 +291,17 @@ describe('auth router (T1-6b: Google OAuth)', () => {
 
   test('GET /google/callback with unknown validateAuthorizationCode error → 503 + log', async () => {
     // A plain `Error` is neither ArcticFetchError nor OAuth2RequestError,
-    // so the handler's "unknown shape" branch fires: 503 + logUnknownOAuthError.
+    // so the handler's "unknown shape" branch fires: 503 + logger.error
+    // with event: 'oauth_unknown_error'.
+    //
+    // Post-T1-7 the log routes through the pino singleton → stdout. Spy
+    // on process.stdout.write and grep for the event marker. The file
+    // sink is also written, but stdout is the primary destination and
+    // doesn't require a tmpdir dance for this assertion.
     mockValidateAuthorizationCode.mockRejectedValueOnce(new Error('unexpected upstream shape'));
-    // Spy on console.error so we can assert the unknown-error log fires.
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     try {
-      const res = await authRouter.request('/google/callback?code=C&state=S', {
+      const res = await testApp.request('/google/callback?code=C&state=S', {
         headers: {
           cookie: cookieHeader(
             ['tournament_oauth_state', 'S'],
@@ -295,13 +312,20 @@ describe('auth router (T1-6b: Google OAuth)', () => {
       expect(res.status).toBe(503);
       const body = (await res.json()) as { code: string };
       expect(body.code).toBe('auth_provider_outage');
-      // Verify the unknown-error log fired (event: 'oauth_unknown_error').
-      const logged = errorSpy.mock.calls.some(
-        (args) => typeof args[0] === 'string' && args[0].includes('oauth_unknown_error'),
-      );
+      // Verify the unknown-error log fired.
+      const logged = stdoutSpy.mock.calls.some((args) => {
+        const raw = args[0];
+        const s =
+          typeof raw === 'string'
+            ? raw
+            : raw instanceof Uint8Array
+              ? Buffer.from(raw).toString('utf-8')
+              : '';
+        return s.includes('oauth_unknown_error');
+      });
       expect(logged).toBe(true);
     } finally {
-      errorSpy.mockRestore();
+      stdoutSpy.mockRestore();
     }
   });
 
@@ -316,7 +340,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
         }),
       ),
     );
-    const res = await authRouter.request('/google/callback?code=C&state=S', {
+    const res = await testApp.request('/google/callback?code=C&state=S', {
       headers: {
         cookie: cookieHeader(
           ['tournament_oauth_state', 'S'],
@@ -333,7 +357,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
     mockValidateAuthorizationCode.mockResolvedValueOnce(
       tokensWithIdToken(validIdToken({ aud: 'some-other-client-id' })),
     );
-    const res = await authRouter.request('/google/callback?code=C&state=S', {
+    const res = await testApp.request('/google/callback?code=C&state=S', {
       headers: {
         cookie: cookieHeader(
           ['tournament_oauth_state', 'S'],
@@ -353,7 +377,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
     mockValidateAuthorizationCode.mockResolvedValueOnce(
       tokensWithIdToken(validIdToken({ sub })),
     );
-    const res = await authRouter.request('/google/callback?code=C&state=S', {
+    const res = await testApp.request('/google/callback?code=C&state=S', {
       headers: {
         cookie: cookieHeader(
           ['tournament_oauth_state', 'S'],
@@ -420,7 +444,7 @@ describe('auth router (T1-6b: Google OAuth)', () => {
       tokensWithIdToken(validIdToken({ sub })),
     );
 
-    const res = await authRouter.request('/google/callback?code=C&state=S', {
+    const res = await testApp.request('/google/callback?code=C&state=S', {
       headers: {
         cookie: cookieHeader(
           ['tournament_oauth_state', 'S'],
