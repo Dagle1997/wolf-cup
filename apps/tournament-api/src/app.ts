@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { csrf } from 'hono/csrf';
 import { env } from './lib/env.js';
+import { authRouter } from './routes/auth.js';
 
 const STARTUP_TIME = Date.now();
 
@@ -20,5 +21,9 @@ app.use('*', csrf({ origin }));
 app.get('/api/health', (c) =>
   c.json({ status: 'ok', startupTime: STARTUP_TIME }),
 );
+
+// Auth router (T1-6b). Mounted at /api/auth so routes appear at
+// /api/auth/status, /api/auth/google, /api/auth/google/callback.
+app.route('/api/auth', authRouter);
 
 export { app };

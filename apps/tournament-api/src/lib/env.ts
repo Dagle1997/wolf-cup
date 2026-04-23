@@ -72,6 +72,12 @@ const envSchema = z.object({
       'AUTH_COOKIE_DOMAIN must be a bare hostname (letters, digits, dots, hyphens only — no underscores, no scheme, no path)',
     ),
   PUBLIC_APP_URL: z.string().url(),
+  // Google OAuth client credentials (T1-6b). Required, no defaults —
+  // same fail-fast posture as AUTH_COOKIE_DOMAIN / PUBLIC_APP_URL. Missing
+  // values on the VPS crash the container at boot rather than silently
+  // shipping with a broken auth flow.
+  GOOGLE_OAUTH_CLIENT_ID: z.string().min(1),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

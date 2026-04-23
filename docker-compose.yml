@@ -56,6 +56,12 @@ services:
       # wrong cookie scope or CSRF origin.
       - AUTH_COOKIE_DOMAIN=${AUTH_COOKIE_DOMAIN}
       - PUBLIC_APP_URL=${PUBLIC_APP_URL}
+      # Google OAuth (T1-6b). Same fail-fast posture as the cookie/url
+      # vars above — no `${VAR:-default}` fallback. Missing values on
+      # the VPS crash the container at boot via Zod parse rather than
+      # shipping a broken auth flow.
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
     volumes:
       - tournament_sqlite_data:/app/data
     networks:
