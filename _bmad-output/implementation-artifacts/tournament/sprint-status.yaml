@@ -63,7 +63,7 @@ development_status:
   # from the schema+middleware infrastructure so T2 can begin in parallel with arctic OAuth work.
   # Magic-link returns to the plan as a future T3.x story when players.email lands.
   T1-6a-auth-schema-middleware-env: done
-  T1-6b-arctic-google-sso: review
+  T1-6b-arctic-google-sso: done
   T1-7-structured-json-log-sink: backlog
 
   epic-T1-retrospective: optional
