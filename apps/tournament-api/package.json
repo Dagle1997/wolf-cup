@@ -10,6 +10,7 @@
     "build": "tsc",
     "db:generate": "node scripts/drizzle-kit.mjs generate",
     "db:migrate": "node scripts/drizzle-kit.mjs migrate",
+    "seed": "tsx src/db/seed.ts",
     "test": "vitest run"
   },
   "dependencies": {

@@ -76,7 +76,7 @@ development_status:
   epic-T2: in-progress
 
   T2-1-courses-revisions-schema: done
-  T2-2-pinehurst-seed-importer-course-list-api: backlog
+  T2-2-pinehurst-seed-importer-course-list-api: review
   T2-3-scorecard-pdf-vision-parser: backlog
   T2-4-course-validator: backlog
   T2-5-course-admin-ui-manual-pdf-upload-review: backlog

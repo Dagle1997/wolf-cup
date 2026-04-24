@@ -51,6 +51,12 @@ COPY --from=builder /app/apps/tournament-api/dist/ ./apps/tournament-api/dist/
 # `import.meta.url`). Pattern mirrors apps/api/Dockerfile's migrations COPY.
 COPY apps/tournament-api/src/db/migrations/ ./apps/tournament-api/dist/db/migrations/
 
+# Seed data (T2-2) lives at repo-root `reference/`. tsc doesn't copy .json
+# through the build, so copy it separately into a location the compiled
+# seed script can find via `new URL('../reference/...', import.meta.url)`
+# from dist/db/seed.js.
+COPY reference/pinehurst-may-2026-courses.json ./apps/tournament-api/dist/reference/pinehurst-may-2026-courses.json
+
 WORKDIR /app/apps/tournament-api
 
 ENV NODE_ENV=production

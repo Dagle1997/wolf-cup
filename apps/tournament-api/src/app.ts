@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { csrf } from 'hono/csrf';
 import { env } from './lib/env.js';
 import { authRouter } from './routes/auth.js';
+import { coursesRouter } from './routes/courses.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -29,5 +30,8 @@ app.get('/api/health', (c) =>
 // Auth router (T1-6b). Mounted at /api/auth so routes appear at
 // /api/auth/status, /api/auth/google, /api/auth/google/callback.
 app.route('/api/auth', authRouter);
+
+// Courses router (T2-2). Single route: GET /api/courses.
+app.route('/api/courses', coursesRouter);
 
 export { app };
