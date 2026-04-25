@@ -2297,9 +2297,13 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     partnerId: number | null;
   };
 
+  // Biggest Wolf Win/Loss highlights only count LONE wolf holes (alone or
+  // blind_wolf). 2v2 partner-wolf hole money goes through team math, not
+  // a "lone wolf" outcome — so 2v2 wolves are excluded from these awards.
   const wolfHoleMoneys: WolfHoleMoney[] = [];
   for (const hb of moneyBreakdown.holes) {
     if (hb.holeType !== 'wolf' || hb.wolfPlayerId === null || hb.decision === null) continue;
+    if (hb.decision !== 'alone' && hb.decision !== 'blind_wolf') continue;
     const wolfEntry = hb.perPlayer.get(hb.wolfPlayerId);
     if (!wolfEntry) continue;
     wolfHoleMoneys.push({
