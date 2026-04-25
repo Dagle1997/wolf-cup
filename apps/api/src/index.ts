@@ -151,15 +151,19 @@ async function autoRefreshHandicaps(): Promise<void> {
   try {
     const today = new Date().toISOString().slice(0, 10);
 
-    // Find today's scheduled official round
+    // Find today's official round (scheduled or already activated).
+    // Including 'active' covers rounds activated before 6 AM ET (e.g. created
+    // earlier in the week with status='active' from creation, or activated
+    // overnight). Excluding finalized/completed/cancelled prevents the cron
+    // from rewriting HIs on a round that's already locked.
     const round = await db
       .select({ id: rounds.id })
       .from(rounds)
-      .where(andOp(eqOp(rounds.scheduledDate, today), eqOp(rounds.type, 'official'), eqOp(rounds.status, 'scheduled')))
+      .where(andOp(eqOp(rounds.scheduledDate, today), eqOp(rounds.type, 'official'), inArray(rounds.status, ['scheduled', 'active'])))
       .get();
 
     if (!round) {
-      console.log(`No scheduled round for ${today} — skipping auto-refresh`);
+      console.log(`No scheduled or active round for ${today} — skipping auto-refresh`);
       return;
     }
 

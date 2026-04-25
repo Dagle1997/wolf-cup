@@ -906,11 +906,11 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/scores', async (c) 
 
   // Fetch round
   let round:
-    | { id: number; type: string; status: string; entryCodeHash: string | null; seasonId: number }
+    | { id: number; type: string; status: string; entryCodeHash: string | null; seasonId: number; tee: string | null }
     | undefined;
   try {
     round = await db
-      .select({ id: rounds.id, type: rounds.type, status: rounds.status, entryCodeHash: rounds.entryCodeHash, seasonId: rounds.seasonId })
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status, entryCodeHash: rounds.entryCodeHash, seasonId: rounds.seasonId, tee: rounds.tee })
       .from(rounds)
       .where(eq(rounds.id, roundId))
       .get();
@@ -1062,12 +1062,13 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/scores', async (c) 
   }
 
   // Recalculate Stableford totals across all submitted holes
+  const stablefordTee = (round.tee as Tee | null) ?? 'blue';
   const handicapMap = new Map(groupPlayerRows.map((p) => [p.playerId, p.handicapIndex]));
   const stablefordTotals = new Map<number, number>();
   for (const row of allHoleScores) {
     const hi = handicapMap.get(row.playerId) ?? 0;
     const courseHole = getCourseHole(row.holeNumber as HoleNumber);
-    const points = calculateStablefordPoints(row.grossScore, hi, courseHole.par, courseHole.strokeIndex);
+    const points = calculateStablefordPoints(row.grossScore, hi, courseHole.par, courseHole.strokeIndex, stablefordTee);
     stablefordTotals.set(row.playerId, (stablefordTotals.get(row.playerId) ?? 0) + points);
   }
 
@@ -1821,13 +1822,14 @@ app.get('/rounds/:roundId/players/:playerId/scorecard', async (c) => {
       continue;
     }
 
-    const strokes = getHandicapStrokes(handicapIndex, courseHole.strokeIndex);
+    const strokes = getHandicapStrokes(handicapIndex, courseHole.strokeIndex, roundTee);
     const netScore = grossScore - strokes;
     const stablefordPoints = calculateStablefordPoints(
       grossScore,
       handicapIndex,
       courseHole.par,
       courseHole.strokeIndex,
+      roundTee,
     );
 
     let moneyNet = 0;

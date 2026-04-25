@@ -184,12 +184,12 @@ async function rescoreGroup(roundId: number, groupId: number, tee: Tee = 'blue')
   const minCH = Math.min(...courseHandicaps.map((r) => r.courseHandicap));
   const handicapMap = new Map(courseHandicaps.map((r) => [r.playerId, r.courseHandicap - minCH]));
 
-  // Recalculate Stableford
+  // Recalculate Stableford (USGA CH = HI × slope/113 + (CR − par); pass tee so engine computes CH)
   const stablefordTotals = new Map<number, number>();
   for (const row of allScoresRows) {
     const hi = fullHandicapMap.get(row.playerId) ?? 0;
     const courseHole = getCourseHole(row.holeNumber as HoleNumber);
-    const points = calculateStablefordPoints(row.grossScore, hi, courseHole.par, courseHole.strokeIndex);
+    const points = calculateStablefordPoints(row.grossScore, hi, courseHole.par, courseHole.strokeIndex, tee);
     stablefordTotals.set(row.playerId, (stablefordTotals.get(row.playerId) ?? 0) + points);
   }
 

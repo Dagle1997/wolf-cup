@@ -1,11 +1,15 @@
+import { calcCourseHandicap, type Tee } from './course.js';
+
 /**
  * Returns the number of handicap strokes a player receives on a given hole.
  *
- * @param handicapIndex - Whole-number playing handicap (non-integers are rounded)
- * @param strokeIndex   - Hole stroke index, 1 (hardest) to 18 (easiest)
+ * When `tee` is provided, the slope-adjusted USGA course handicap is computed
+ * from the raw handicap index. Without `tee`, the first argument is treated as
+ * an already-rounded course handicap (legacy; preserved for callers that pass
+ * relative CH).
  */
-export function getHandicapStrokes(handicapIndex: number, strokeIndex: number): number {
-  const ch = Math.round(handicapIndex);
+export function getHandicapStrokes(handicapIndex: number, strokeIndex: number, tee?: Tee): number {
+  const ch = tee !== undefined ? calcCourseHandicap(handicapIndex, tee) : Math.round(handicapIndex);
   const base = Math.floor(ch / 18);
   const extra = ch % 18;
   return base + (strokeIndex <= extra ? 1 : 0);
@@ -21,19 +25,15 @@ export function getHandicapStrokes(handicapIndex: number, strokeIndex: number): 
  *    0   → 2 (par)
  *   +1   → 1 (bogey)
  *   ≥ +2 → 0 (double bogey or worse)
- *
- * @param grossScore    - Player's actual strokes taken on the hole
- * @param handicapIndex - Whole-number playing handicap
- * @param par           - Hole par (3, 4, or 5)
- * @param strokeIndex   - Hole stroke index, 1 (hardest) to 18 (easiest)
  */
 export function calculateStablefordPoints(
   grossScore: number,
   handicapIndex: number,
   par: 3 | 4 | 5,
   strokeIndex: number,
+  tee?: Tee,
 ): number {
-  const strokes = getHandicapStrokes(handicapIndex, strokeIndex);
+  const strokes = getHandicapStrokes(handicapIndex, strokeIndex, tee);
   const netScore = grossScore - strokes;
   const netVsPar = netScore - par;
 

@@ -190,6 +190,7 @@ function apply2v2(
 function apply1v3(
   bonusSkins: [number, number, number, number],
   netScores: readonly [number, number, number, number],
+  grossScores: readonly [number, number, number, number],
   bonusInput: BonusInput,
   wolfIdx: BattingPosition,
   par: number,
@@ -197,25 +198,45 @@ function apply1v3(
   const opps = ALL_POSITIONS.filter((i): i is BattingPosition => i !== wolfIdx) as
     [BattingPosition, BattingPosition, BattingPosition];
 
-  // Wolf bonus events — birdie/eagle based on NET score
-  let W = skinCount(detectBonusLevel(netScores[wolfIdx], par));
-  if (bonusInput.polies.includes(wolfIdx)) W += 1;
-  if (bonusInput.greenies.includes(wolfIdx)) W += 1;
-  if (bonusInput.sandies.includes(wolfIdx)) W += 1;
+  // SCORE-BASED bonus skin: 1 skin per hole based on max LEVEL on each side
+  // (mirrors competitiveScoreSkins for 2v2). Tied levels = no blood.
+  // Double birdie bonus (1v3 variant): when opps win, ≥2 opp net birdie+,
+  // ≥1 natural (gross) birdie, AND wolf has no net birdie → +1 skin.
+  const wolfLevel = skinCount(detectBonusLevel(netScores[wolfIdx], par));
+  const oppLevels = opps.map((i) => skinCount(detectBonusLevel(netScores[i], par)));
+  const maxOppLevel = Math.max(oppLevels[0]!, oppLevels[1]!, oppLevels[2]!);
 
-  // Opponent bonus events (each counted individually; no double bonus in 1v3)
-  let O = 0;
-  for (const opp of opps) {
-    O += skinCount(detectBonusLevel(netScores[opp], par));
-    if (bonusInput.polies.includes(opp)) O += 1;
-    if (bonusInput.greenies.includes(opp)) O += 1;
-    if (bonusInput.sandies.includes(opp)) O += 1;
+  let scoreSkinsToWolf = 0; // positive = wolf wins, negative = opps win
+  if (wolfLevel > maxOppLevel) {
+    scoreSkinsToWolf = wolfLevel;
+  } else if (maxOppLevel > wolfLevel) {
+    let oppSkins = maxOppLevel;
+    const oppNetBirdies = opps.filter((i) => netScores[i] <= par - 1).length;
+    const oppNaturalBirdies = opps.filter((i) => grossScores[i] <= par - 1).length;
+    const wolfHasBirdie = netScores[wolfIdx] <= par - 1;
+    if (oppNetBirdies >= 2 && oppNaturalBirdies >= 1 && !wolfHasBirdie) {
+      oppSkins += 1;
+    }
+    scoreSkinsToWolf = -oppSkins;
   }
 
-  // Group skin payout: wolf × 3, each opp × 1
-  bonusSkins[wolfIdx] = 3 * W - 3 * O;
+  // MANUAL bonuses (polies/greenies/sandies): each event counts independently,
+  // group-scaled (preserves prior behavior for these — no rule change).
+  let W_manual = 0;
+  if (bonusInput.polies.includes(wolfIdx)) W_manual += 1;
+  if (bonusInput.greenies.includes(wolfIdx)) W_manual += 1;
+  if (bonusInput.sandies.includes(wolfIdx)) W_manual += 1;
+  let O_manual = 0;
   for (const opp of opps) {
-    bonusSkins[opp] = O - W;
+    if (bonusInput.polies.includes(opp)) O_manual += 1;
+    if (bonusInput.greenies.includes(opp)) O_manual += 1;
+    if (bonusInput.sandies.includes(opp)) O_manual += 1;
+  }
+
+  // Combine: wolf takes 3×(score + manual), each opp takes 1×(opp share)
+  bonusSkins[wolfIdx] = 3 * scoreSkinsToWolf + 3 * (W_manual - O_manual);
+  for (const opp of opps) {
+    bonusSkins[opp] = -scoreSkinsToWolf + (O_manual - W_manual);
   }
 }
 
@@ -256,7 +277,7 @@ export function applyBonusModifiers(
       par,
     );
   } else {
-    apply1v3(bonusSkins, netScores, bonusInput, holeAssignment.wolfBatterIndex, par);
+    apply1v3(bonusSkins, netScores, grossScores, bonusInput, holeAssignment.wolfBatterIndex, par);
   }
 
   const result: HoleMoneyResult = [

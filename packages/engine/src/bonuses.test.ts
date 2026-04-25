@@ -330,9 +330,32 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
     expect(bs(r)).toEqual([-9, 3, 3, 3]);
   });
 
-  it('two opponents net birdie → 2 separate group skins (no double birdie bonus in 1v3)', () => {
+  it('two opp net birdies, both NATURAL → double birdie bonus = 2 skins (wolf −6, each opp +2)', () => {
+    // gross == net means both opp birdies are natural — double birdie bonus fires
     const r = applyBonusModifiers(zeroBase(), [5, 3, 3, 5], [5, 3, 3, 5], NO_BONUS, WOLF(0), ALONE, par);
     expect(bs(r)).toEqual([-6, 2, 2, 2]);
+  });
+
+  it('two opp net birdies, NEITHER natural (via strokes) → 1 group skin (wolf −3, each opp +1)', () => {
+    // net 3 from gross 4 with stroke applied externally — no natural birdie, no double bonus
+    const r = applyBonusModifiers(zeroBase(), [5, 3, 3, 5], [5, 4, 4, 5], NO_BONUS, WOLF(0), ALONE, par);
+    expect(bs(r)).toEqual([-3, 1, 1, 1]);
+  });
+
+  it('two opp net birdies, ONE natural → double birdie bonus = 2 skins', () => {
+    // pos1 natural birdie (gross 3), pos2 net birdie via stroke (gross 4) — natural present, bonus fires
+    const r = applyBonusModifiers(zeroBase(), [5, 3, 3, 5], [5, 3, 4, 5], NO_BONUS, WOLF(0), ALONE, par);
+    expect(bs(r)).toEqual([-6, 2, 2, 2]);
+  });
+
+  it('wolf net birdie + opp net birdie → tied levels, no blood', () => {
+    const r = applyBonusModifiers(zeroBase(), [3, 3, 5, 5], [3, 3, 5, 5], NO_BONUS, WOLF(0), ALONE, par);
+    expect(bs(r)).toEqual([0, 0, 0, 0]);
+  });
+
+  it('wolf eagle + opp birdie → wolf wins 2 skins (eagle level beats birdie level)', () => {
+    const r = applyBonusModifiers(zeroBase(), [2, 3, 5, 5], [2, 3, 5, 5], NO_BONUS, WOLF(0), ALONE, par);
+    expect(bs(r)).toEqual([6, -2, -2, -2]);
   });
 
   it('wolf polie → wolf +3, each opp −1', () => {

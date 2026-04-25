@@ -15,6 +15,8 @@ import {
 } from '../db/schema.js';
 import { getCourseHole, getHandicapStrokes, calculateHarveyPoints } from '@wolf-cup/engine';
 import type { HoleNumber, Tee } from '@wolf-cup/engine';
+
+const DEFAULT_TEE: Tee = 'blue';
 import { computeSideGameLeaderLive } from '../lib/side-game-calc-db.js';
 import { wolfDecisions } from '../db/schema.js';
 
@@ -133,10 +135,11 @@ async function buildLeaderboard(round: RoundRow) {
   const thruHoleMap = new Map<number, number>(); // groupId → max holeNumber
   const playerStatsMap = new Map<number, { grossTotal: number; netToPar: number }>();
 
+  const roundTee = (round.tee as Tee | null) ?? DEFAULT_TEE;
   for (const row of allHoleScoreRows) {
     const courseHole = getCourseHole(row.holeNumber as HoleNumber);
     const hi = handicapMap.get(row.playerId) ?? 0;
-    const strokes = getHandicapStrokes(hi, courseHole.strokeIndex);
+    const strokes = getHandicapStrokes(hi, courseHole.strokeIndex, roundTee);
     const net = row.grossScore - strokes;
 
     thruHoleMap.set(row.groupId, Math.max(thruHoleMap.get(row.groupId) ?? 0, row.holeNumber));
