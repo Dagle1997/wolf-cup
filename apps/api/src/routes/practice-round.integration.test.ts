@@ -186,14 +186,17 @@ async function runGroupFlow(roundId: number, groupId: number, playerIds: number[
 
 /**
  * Compute expected Stableford total for PLAYER_DATA[idx] via direct engine call.
- * Uses getCourseHole() from @wolf-cup/engine — stays in sync with course data.
+ * Passes 'blue' tee so the helper uses the same USGA slope-aware course-handicap
+ * math the API path uses on finalization. Without it the helper falls back to
+ * the legacy `Math.round(HI)` allocation and diverges from the API by ±1 point
+ * for handicaps where the slope adjustment crosses an integer boundary.
  */
 function engineStableford(playerIdx: number): number {
   const { handicapIndex, scores } = PLAYER_DATA[playerIdx]!;
   let total = 0;
   for (let h = 1; h <= 18; h++) {
     const { par, strokeIndex } = getCourseHole(h);
-    total += calculateStablefordPoints(scores[h - 1]!, handicapIndex, par, strokeIndex);
+    total += calculateStablefordPoints(scores[h - 1]!, handicapIndex, par, strokeIndex, 'blue');
   }
   return total;
 }
