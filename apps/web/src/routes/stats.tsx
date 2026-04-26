@@ -890,7 +890,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                     <div className="text-[9px] text-green-500 font-medium uppercase tracking-wider mb-1">Best Teammate</div>
                     <div className="text-sm font-bold">{sn(best.name)}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
-                      <span className="text-green-500 font-bold">{best.winRate}%</span> win rate · {best.wins}W-{best.losses}L-{best.pushes}P
+                      <span className="text-green-500 font-bold">{best.winRate}%</span> · {best.wins}-{best.losses}-{best.pushes}
                     </div>
                     <div className="text-[9px] text-muted-foreground/50">{best.holes} holes on same team</div>
                   </div>
@@ -898,7 +898,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                     <div className="text-[9px] text-red-500 font-medium uppercase tracking-wider mb-1">Worst Teammate</div>
                     <div className="text-sm font-bold">{sn(worst.name)}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
-                      <span className="text-red-500 font-bold">{worst.winRate}%</span> win rate · {worst.wins}W-{worst.losses}L-{worst.pushes}P
+                      <span className="text-red-500 font-bold">{worst.winRate}%</span> · {worst.wins}-{worst.losses}-{worst.pushes}
                     </div>
                     <div className="text-[9px] text-muted-foreground/50">{worst.holes} holes on same team</div>
                   </div>
@@ -916,23 +916,26 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">When Grouped With</p>
                 <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
                   <span className="flex-1">Player</span>
-                  <span className="w-10 text-center" title="Holes won / lost on opponent-only holes">W/L</span>
-                  <span className="w-14 text-right" title="Your running season total across rounds you were grouped with them">You</span>
-                  <span className="w-14 text-right" title="Their running season total across rounds they were grouped with you">Them</span>
+                  <span className="w-20 text-center" title="Your win rate on holes when on opposite teams from them">Vs Win</span>
+                  <span className="w-16 text-right" title="Net money attributable to holes you and they were on opposite teams">Vs $</span>
                 </div>
                 <div className="space-y-1.5">
-                  {rivalsSorted.map((r) => (
-                    <div key={r.playerId} className="flex items-center justify-between text-xs">
-                      <span className="font-medium flex-1">{r.name}</span>
-                      <span className="text-muted-foreground w-10 text-center tabular-nums text-[10px]">{r.holesWon}/{r.holesLost}</span>
-                      <span className={`w-14 text-right tabular-nums ${r.myMoney > 0 ? 'text-green-600' : r.myMoney < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                        {formatMoney(r.myMoney)}
-                      </span>
-                      <span className={`w-14 text-right tabular-nums ${r.theirMoney > 0 ? 'text-green-600' : r.theirMoney < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                        {formatMoney(r.theirMoney)}
-                      </span>
-                    </div>
-                  ))}
+                  {rivalsSorted.map((r) => {
+                    const oppDecided = r.holesWon + r.holesLost;
+                    const vsWinPct = oppDecided > 0 ? Math.round((r.holesWon / oppDecided) * 100) : null;
+                    const vsMoney = r.dominate - r.rival;
+                    return (
+                      <div key={r.playerId} className="flex items-center justify-between text-xs">
+                        <span className="font-medium flex-1">{r.name}</span>
+                        <span className="text-muted-foreground w-20 text-center tabular-nums text-[10px]">
+                          {vsWinPct === null ? '—' : `${vsWinPct}% (${r.holesWon}-${r.holesLost})`}
+                        </span>
+                        <span className={`w-16 text-right tabular-nums ${vsMoney > 0 ? 'text-green-600' : vsMoney < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                          {formatMoney(vsMoney)}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
 
               </div>
