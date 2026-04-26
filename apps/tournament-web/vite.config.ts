@@ -36,24 +36,19 @@ export default defineConfig({
       workbox: {
         clientsClaim: true,
         skipWaiting: true,
+        // Static assets only — the API is intentionally NOT cached by the
+        // service worker. The original T1-3 scaffold included a
+        // NetworkFirst rule for /api/* with networkTimeoutSeconds: 3. Two
+        // bugs verified in production 2026-04-26:
+        //   1. OAuth callback (302 with Set-Cookie) does not round-trip
+        //      cleanly through workbox's cache-aware fetch wrapper — the
+        //      browser saw a stale "Not Found" instead of the redirect.
+        //   2. T2-3 vision parse-pdf takes 10-15s; 3s networkTimeoutSeconds
+        //      would force a fallback to (empty) cache mid-flight on every
+        //      organizer upload.
+        // Apps that want client-side API caching should do it at the
+        // TanStack Query layer (already in deps), not in the SW.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}', '**/*.webmanifest'],
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\//i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'tournament-api-cache',
-              networkTimeoutSeconds: 3,
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 300,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-        ],
       },
     }),
   ],
