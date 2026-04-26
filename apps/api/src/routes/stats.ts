@@ -961,14 +961,28 @@ app.get('/stats/:playerId/detail', async (c) => {
       grossByRound.set(row.roundId, (grossByRound.get(row.roundId) ?? 0) + row.grossScore);
     }
 
+    // Course par for Guyan G&CC = 71 (36 out / 35 in). diffToPar uses net
+    // score (gross − slope-aware CH); CH falls back to Math.round(HI) only
+    // when the round has no valid tee recorded (legacy / casual data).
+    const COURSE_PAR = 71;
+    const VALID_TEES = new Set<string>(['black', 'blue', 'white']);
     const roundSummaries = playerRoundRows.map((pr) => {
       const rr = rrMap.get(pr.roundId);
+      const gross = grossByRound.get(pr.roundId) ?? 0;
+      const ch = pr.tee && VALID_TEES.has(pr.tee)
+        ? calcCourseHandicap(pr.handicapIndex, pr.tee as Tee)
+        : Math.round(pr.handicapIndex);
+      const net = gross > 0 ? gross - ch : 0;
+      const diffToPar = gross > 0 ? net - COURSE_PAR : 0;
       return {
         roundId: pr.roundId,
         date: pr.scheduledDate,
         tee: pr.tee,
         handicapIndex: pr.handicapIndex,
-        gross: grossByRound.get(pr.roundId) ?? 0,
+        ch,
+        gross,
+        net,
+        diffToPar,
         stableford: rr?.stablefordTotal ?? 0,
         money: rr?.moneyTotal ?? 0,
       };

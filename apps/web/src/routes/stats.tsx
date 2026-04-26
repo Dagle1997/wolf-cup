@@ -94,6 +94,9 @@ type RoundSummary = {
   date: string;
   tee: string | null;
   handicapIndex: number;
+  ch: number;
+  net: number;
+  diffToPar: number;
   gross: number;
   stableford: number;
   money: number;
@@ -879,9 +882,10 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
           {/* Round history */}
           {detail.rounds.length > 0 && (() => {
             const bestRound = detail.rounds.reduce((a, b) => a.gross < b.gross ? a : b);
-            const bestNet = bestRound.gross - Math.round(bestRound.handicapIndex);
+            const bestNet = bestRound.net;
             const moneyTrend = detail.rounds.map((r) => r.money);
             const stabTrend = detail.rounds.map((r) => r.stableford);
+            const fmtVsPar = (d: number) => d === 0 ? 'E' : d > 0 ? `+${d}` : String(d);
             return (
               <div className="px-4 py-3 border-b">
                 <div className="flex items-center justify-between mb-2">
@@ -905,24 +909,25 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
-                  <span className="w-14">Date</span>
-                  <span className="w-10 text-center">Tee</span>
-                  <span className="w-10 text-center">Gross</span>
-                  <span className="w-10 text-center">Net</span>
-                  <span className="w-10 text-center">Stab</span>
+                  <span className="w-12">Date</span>
+                  <span className="w-8 text-center">Tee</span>
+                  <span className="w-9 text-center">Gross</span>
+                  <span className="w-9 text-center" title="Net = Gross − Course Handicap (slope-aware)">Net</span>
+                  <span className="w-9 text-center" title="Net score relative to course par (71)">Vs Par</span>
+                  <span className="w-9 text-center">Stab</span>
                   <span className="w-12 text-right">Money</span>
                 </div>
                 <div className="space-y-1">
                   {detail.rounds.map((r) => {
                     const isBest = r.roundId === bestRound.roundId;
-                    const net = r.gross - Math.round(r.handicapIndex);
                     return (
                       <div key={r.roundId} className={`flex items-center justify-between text-xs py-1 ${isBest ? 'bg-green-500/5 rounded' : ''}`}>
-                        <span className="text-muted-foreground w-14">{new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                        <span className="w-10 text-center capitalize text-muted-foreground/60 text-[10px]">{r.tee ?? '—'}</span>
-                        <span className={`w-10 text-center tabular-nums font-medium ${isBest ? 'text-green-500' : ''}`}>{r.gross}</span>
-                        <span className="w-10 text-center tabular-nums text-muted-foreground">{net}</span>
-                        <span className="w-10 text-center tabular-nums">{r.stableford}</span>
+                        <span className="text-muted-foreground w-12">{new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        <span className="w-8 text-center capitalize text-muted-foreground/60 text-[10px]">{r.tee ?? '—'}</span>
+                        <span className={`w-9 text-center tabular-nums font-medium ${isBest ? 'text-green-500' : ''}`}>{r.gross}</span>
+                        <span className="w-9 text-center tabular-nums text-muted-foreground">{r.net}</span>
+                        <span className={`w-9 text-center tabular-nums ${r.diffToPar < 0 ? 'text-green-600 font-semibold' : 'text-muted-foreground'}`}>{fmtVsPar(r.diffToPar)}</span>
+                        <span className="w-9 text-center tabular-nums">{r.stableford}</span>
                         <span className={`w-12 text-right tabular-nums font-medium ${r.money > 0 ? 'text-green-600' : r.money < 0 ? 'text-destructive' : ''}`}>
                           {formatMoney(r.money)}
                         </span>
