@@ -61,6 +61,11 @@ type SeasonHighlights = {
   // Money winner. teamMoney = sum of both pair members' per-hole money on
   // their 2v2 partner holes (combined take-home as a team).
   bestFinancialPartnership: { player1: string; player2: string; teamMoney: number; holes: number } | null;
+  // Secret achievement (Seve nickname). Unlocked when the same player(s)
+  // top BOTH the Sandman (most sandies) and Putting Master (most polies)
+  // leaderboards this season. Honors short-game dominance — sand saves
+  // PLUS lights-out putting. Hidden when nobody qualifies.
+  wizard: { playerNames: string[] } | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -361,15 +366,30 @@ async function computeSeasonHighlights(
     };
   }
 
+  const mostBirdies = topWithTies(birdiesByPlayer);
+  const mostGreenies = topWithTies(greeniesByPlayer);
+  const mostPolies = topWithTies(poliesByPlayer);
+  const mostSandies = topWithTies(sandiesByPlayer);
+
+  // The Wizard — a player who is on BOTH the Sandman and Putting Master
+  // leader lists this season. Intersection of the two leader sets.
+  let wizard: SeasonHighlights['wizard'] = null;
+  if (mostPolies && mostSandies) {
+    const polieSet = new Set(mostPolies.playerNames);
+    const both = mostSandies.playerNames.filter((n) => polieSet.has(n));
+    if (both.length > 0) wizard = { playerNames: both };
+  }
+
   return {
-    mostBirdies: topWithTies(birdiesByPlayer),
-    mostGreenies: topWithTies(greeniesByPlayer),
-    mostPolies: topWithTies(poliesByPlayer),
-    mostSandies: topWithTies(sandiesByPlayer),
+    mostBirdies,
+    mostGreenies,
+    mostPolies,
+    mostSandies,
     lowestGrossRound,
     lowestNetRound,
     bestPartnership,
     bestFinancialPartnership,
+    wizard,
   };
 }
 

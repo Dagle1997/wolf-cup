@@ -69,6 +69,7 @@ type SeasonHighlights = {
   lowestNetRound: { playerName: string; net: number; gross: number; ch: number; date: string; tee: string | null } | null;
   bestPartnership: { player1: string; player2: string; winRate: number; wins: number; losses: number; pushes: number; holes: number } | null;
   bestFinancialPartnership: { player1: string; player2: string; teamMoney: number; holes: number } | null;
+  wizard: { playerNames: string[] } | null;
 };
 
 type StatsResponse = {
@@ -189,7 +190,7 @@ type HighlightSlide = {
   label: string;
   title: string;
   detail: string;
-  tone: 'birdies' | 'greenies' | 'polies' | 'sandies' | 'gross' | 'net' | 'partnership' | 'money';
+  tone: 'birdies' | 'greenies' | 'polies' | 'sandies' | 'gross' | 'net' | 'partnership' | 'money' | 'wizard';
 };
 
 function buildHighlightSlides(h: SeasonHighlights, allNames: string[]): HighlightSlide[] {
@@ -220,8 +221,8 @@ function buildHighlightSlides(h: SeasonHighlights, allNames: string[]): Highligh
   if (h.mostPolies) {
     slides.push({
       key: 'polies',
-      emoji: '🪀',
-      label: 'Most Polies',
+      emoji: '⛳',
+      label: 'Putting Master',
       title: fmtNames(h.mostPolies.playerNames),
       detail: `${h.mostPolies.count} pol${h.mostPolies.count !== 1 ? 'ies' : 'ie'} this season`,
       tone: 'polies',
@@ -231,7 +232,7 @@ function buildHighlightSlides(h: SeasonHighlights, allNames: string[]): Highligh
     slides.push({
       key: 'sandies',
       emoji: '🏖️',
-      label: 'Most Sandies',
+      label: 'Sandman',
       title: fmtNames(h.mostSandies.playerNames),
       detail: `${h.mostSandies.count} sand save${h.mostSandies.count !== 1 ? 's' : ''} this season`,
       tone: 'sandies',
@@ -277,6 +278,19 @@ function buildHighlightSlides(h: SeasonHighlights, allNames: string[]): Highligh
       tone: 'money',
     });
   }
+  if (h.wizard) {
+    // Secret achievement — only appears when the same player(s) top BOTH
+    // the Sandman and Putting Master leaderboards. Seve Ballesteros's
+    // nickname; honors short-game dominance.
+    slides.push({
+      key: 'wizard',
+      emoji: '🧙',
+      label: 'The Wizard',
+      title: fmtNames(h.wizard.playerNames),
+      detail: 'Sandman + Putting Master · short-game dominance',
+      tone: 'wizard',
+    });
+  }
   return slides;
 }
 
@@ -289,6 +303,7 @@ const TONE_BG: Record<HighlightSlide['tone'], string> = {
   net: 'bg-yellow-500/10 border-yellow-500/20',
   partnership: 'bg-green-500/10 border-green-500/20',
   money: 'bg-emerald-500/10 border-emerald-500/20',
+  wizard: 'bg-purple-500/15 border-purple-500/30 ring-1 ring-purple-500/30',
 };
 
 function StatsHighlights({ data }: { data: StatsResponse }) {

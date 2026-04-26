@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, and, desc, countDistinct, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults, sideGameCtpEntries, holeCompletions, galleryPhotos } from '../../db/schema.js';
+import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults, sideGameCtpEntries, holeCompletions, galleryPhotos, sentEmails } from '../../db/schema.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
 import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
@@ -835,9 +835,13 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     console.error('Failed to lock CTP entries (non-fatal):', err);
   }
 
-  // Email updated season workbook to Jason (non-fatal — doesn't affect standings)
+  // Email updated season workbook to Jason (non-fatal — doesn't affect
+  // standings). Each attempt also writes a row to sent_emails so we have
+  // a durable receipt even after container redeploys eat the logs.
   if (emailConfigured) {
     void (async () => {
+      const subject = `Wolf Cup — round results`;
+      let recipients = '';
       try {
         const season = await db
           .select({ year: seasons.year })
@@ -851,6 +855,8 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
           .get();
         if (!season || !roundRow) return;
 
+        recipients = (process.env['EMAIL_RECIPIENTS'] ?? '').trim();
+        const subjectFinal = `Wolf Cup — ${roundRow.scheduledDate} results`;
         const { buffer, filename } = await buildSeasonWorkbook(season.year);
         const info = await sendRoundResultsEmail({
           roundDate: roundRow.scheduledDate,
@@ -860,9 +866,32 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
         });
         if (info) {
           console.log(`Round-results email sent: accepted=${info.accepted.length} rejected=${info.rejected.length}`);
+          await db.insert(sentEmails).values({
+            roundId: id,
+            kind: 'round_results',
+            subject: subjectFinal,
+            recipients,
+            status: 'sent',
+            acceptedCount: info.accepted.length,
+            rejectedCount: info.rejected.length,
+            sentAt: Date.now(),
+          });
         }
       } catch (err) {
         console.error('Failed to send round-results email (non-fatal):', err);
+        try {
+          await db.insert(sentEmails).values({
+            roundId: id,
+            kind: 'round_results',
+            subject,
+            recipients,
+            status: 'failed',
+            errorMessage: err instanceof Error ? err.message : String(err),
+            sentAt: Date.now(),
+          });
+        } catch (logErr) {
+          console.error('Also failed to log sent_emails row:', logErr);
+        }
       }
     })();
   }

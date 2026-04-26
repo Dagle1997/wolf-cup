@@ -618,3 +618,39 @@ export const galleryPhotos = sqliteTable(
     createdIdx: index('idx_gallery_photos_created').on(t.createdAt),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// Sent Emails — durable receipt log for outbound transactional emails.
+// ---------------------------------------------------------------------------
+//
+// Single use case today: on-finalize round-results email to Jason. Container
+// logs evaporate on every redeploy, so this table is how we answer "did
+// the email actually fire?" without crawling the sender's Sent folder.
+//
+// kind='round_results' for now; reserved for future email types.
+// recipients = comma-separated list captured at send time.
+// Failures get status='failed' + error_message; a row is written either way
+// so a missing email is detectable as an absent row.
+
+export const sentEmails = sqliteTable(
+  'sent_emails',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    roundId: integer('round_id').references(() => rounds.id),
+    kind: text('kind').notNull(),
+    subject: text('subject').notNull(),
+    recipients: text('recipients').notNull(),
+    status: text('status').notNull(),
+    acceptedCount: integer('accepted_count').notNull().default(0),
+    rejectedCount: integer('rejected_count').notNull().default(0),
+    errorMessage: text('error_message'),
+    contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
+    tenantId: text('tenant_id').notNull().default('guyan'),
+    sentAt: integer('sent_at').notNull(),
+  },
+  (t) => ({
+    statusCheck: check('chk_sent_emails_status', sql`status IN ('sent', 'failed')`),
+    roundIdx: index('idx_sent_emails_round_id').on(t.roundId),
+    sentAtIdx: index('idx_sent_emails_sent_at').on(t.sentAt),
+  }),
+);
