@@ -134,12 +134,84 @@ function getSetCookies(res: Response): string[] {
 }
 
 describe('auth router (T1-6b: Google OAuth)', () => {
-  // AC #11 boundary — GET /status stays byte-identical.
-  test('GET /status returns the T1-6a placeholder (unchanged)', async () => {
+  // T2-3b rewrites GET /status from the T1-6a stub (`{auth, oauth}`) to
+  // `{ player: null }` (anonymous/invalid) or `{ player: { id, isOrganizer } }`
+  // (valid). The 4 cases below pin the new contract.
+
+  test('GET /status anonymous (no cookie) → 200 { player: null }', async () => {
     const res = await testApp.request('/status');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { auth: string; oauth: string };
-    expect(body).toEqual({ auth: 'infrastructure-ready', oauth: 'pending-t1-6b' });
+    const body = (await res.json()) as { player: unknown };
+    expect(body).toEqual({ player: null });
+  });
+
+  test('GET /status with invalid session_id (cookie sent but no DB row) → 200 { player: null }', async () => {
+    // Defense-in-depth: a stale cookie from a deleted session must be
+    // treated as anonymous, not 5xx or 401.
+    const res = await testApp.request('/status', {
+      headers: {
+        cookie: cookieHeader(['tournament_session', 'absent-session-id-1234567890absent']),
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { player: unknown };
+    expect(body).toEqual({ player: null });
+  });
+
+  test('GET /status authenticated organizer → 200 { player: { id, isOrganizer: true } }', async () => {
+    const playerId = 'organizer-player-1';
+    const sessionId = 'organizer-session-id-1234567890ab';
+    const now = Date.now();
+    await db.insert(players).values({
+      id: playerId,
+      isOrganizer: true,
+      createdAt: now - 1000,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(sessions).values({
+      sessionId,
+      playerId,
+      createdAt: now - 1000,
+      lastSeenAt: now - 1000,
+      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      deviceInfo: null,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+
+    const res = await testApp.request('/status', {
+      headers: { cookie: cookieHeader(['tournament_session', sessionId]) },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { player: { id: string; isOrganizer: boolean } };
+    expect(body).toEqual({ player: { id: playerId, isOrganizer: true } });
+  });
+
+  test('GET /status authenticated non-organizer → 200 { player: { id, isOrganizer: false } }', async () => {
+    const playerId = 'regular-player-1';
+    const sessionId = 'regular-session-id-1234567890abce';
+    const now = Date.now();
+    await db.insert(players).values({
+      id: playerId,
+      isOrganizer: false,
+      createdAt: now - 1000,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(sessions).values({
+      sessionId,
+      playerId,
+      createdAt: now - 1000,
+      lastSeenAt: now - 1000,
+      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      deviceInfo: null,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+
+    const res = await testApp.request('/status', {
+      headers: { cookie: cookieHeader(['tournament_session', sessionId]) },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { player: { id: string; isOrganizer: boolean } };
+    expect(body).toEqual({ player: { id: playerId, isOrganizer: false } });
   });
 
   // ---- /google sign-in entry -----------------------------------------

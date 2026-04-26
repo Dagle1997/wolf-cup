@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { ArcticFetchError, OAuth2RequestError, generateCodeVerifier, generateState } from 'arctic';
 import { googleOAuth } from '../lib/arctic.js';
 import { env } from '../lib/env.js';
-import { createSession } from '../lib/session.js';
+import { SESSION_COOKIE_NAME, createSession, validateSession } from '../lib/session.js';
 import {
   oauthFlowCookieHeader,
   oauthFlowClearHeader,
@@ -18,12 +18,16 @@ import { oauthIdentities, players } from '../db/schema/index.js';
  * Auth sub-router. T1-6a shipped the infrastructure (schema, middleware,
  * env, session helpers). T1-6b adds the Google OAuth sign-in + callback
  * that binds Google `sub` → `players.id` via `oauth_identities`, then
- * issues a `tournament_session` cookie.
+ * issues a `tournament_session` cookie. T2-3b rewrites `GET /status` from
+ * the T1-6a stub into a real auth-state endpoint for the SPA loader.
  *
  * Mount: `app.route('/api/auth', authRouter)` in src/app.ts.
  *
- * Routes after T1-6b:
- *   GET /status           — T1-6a liveness stub (kept byte-identical)
+ * Routes after T2-3b:
+ *   GET /status           — auth state for SPA loaders: returns
+ *                           `{ player: null }` (anonymous / invalid session)
+ *                           OR `{ player: { id, isOrganizer } }`. Anonymous-
+ *                           tolerant; does NOT use require-session middleware.
  *   GET /google           — OAuth sign-in entry (redirect to Google)
  *   GET /google/callback  — OAuth callback (bind + session + redirect home)
  */
@@ -47,9 +51,61 @@ const GOOGLE_ISS = new Set(['https://accounts.google.com', 'accounts.google.com'
 // matches any of the three to stay robust across patch upgrades.
 const SQLITE_UNIQUE_RAW_CODE = 2067;
 
-authRouter.get('/status', (c) =>
-  c.json({ auth: 'infrastructure-ready', oauth: 'pending-t1-6b' }),
-);
+/**
+ * GET /status — current authentication state for the SPA's route loaders
+ * (T2-3b). Returns `{ player: null }` for anonymous OR invalid-session
+ * requests; returns `{ player: { id, isOrganizer } }` for valid sessions.
+ *
+ * Replaces the T1-6a stub that returned `{ auth, oauth }` debugging
+ * strings — those had no consumers and were stale post-T1-6b.
+ *
+ * Anonymous-tolerant: does NOT use `requireSession` middleware. A missing
+ * cookie or stale session_id (deleted from sessions table, or expired)
+ * yields `{ player: null }` with HTTP 200 — the client can then redirect
+ * to the OAuth flow. Treating stale sessions as 200-with-null is gentler
+ * UX than 401 (avoids the SPA needing two distinct error-paths).
+ *
+ * Side effect on valid sessions: validateSession rolls expires_at forward
+ * (rolling 7-day lifetime). Status checks during normal SPA navigation
+ * thus extend the session — desired behavior for an actively-used tab.
+ */
+authRouter.get('/status', async (c) => {
+  const cookieHeader = c.req.header('cookie') ?? '';
+  const sessionId = extractCookieValue(cookieHeader, SESSION_COOKIE_NAME);
+
+  if (!sessionId) {
+    return c.json({ player: null });
+  }
+
+  // Cheap shape guard before hitting the DB — same idiom as
+  // require-session middleware. base64url session IDs are 16-128 chars.
+  if (sessionId.length < 16 || sessionId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+    return c.json({ player: null });
+  }
+
+  const validated = await validateSession(sessionId);
+  if (!validated) {
+    return c.json({ player: null });
+  }
+
+  return c.json({
+    player: { id: validated.playerId, isOrganizer: validated.isOrganizer },
+  });
+});
+
+/** Extracts a single cookie value from a Cookie header. Returns null if absent or empty. */
+function extractCookieValue(header: string, name: string): string | null {
+  if (!header) return null;
+  for (const part of header.split(';')) {
+    const trimmed = part.trim();
+    const eq = trimmed.indexOf('=');
+    if (eq < 0) continue;
+    if (trimmed.slice(0, eq) !== name) continue;
+    const value = trimmed.slice(eq + 1);
+    return value.length === 0 ? null : value;
+  }
+  return null;
+}
 
 /**
  * GET /google — sign-in entry. Generates state + PKCE verifier, stores

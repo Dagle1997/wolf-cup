@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthDeclinedRouteImport } from './routes/auth.declined'
+import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const AuthDeclinedRoute = AuthDeclinedRouteImport.update({
   path: '/auth/declined',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminCoursesUploadRoute = AdminCoursesUploadRouteImport.update({
+  id: '/admin/courses/upload',
+  path: '/admin/courses/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth/declined': typeof AuthDeclinedRoute
+  '/admin/courses/upload': typeof AdminCoursesUploadRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth/declined': typeof AuthDeclinedRoute
+  '/admin/courses/upload': typeof AdminCoursesUploadRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth/declined': typeof AuthDeclinedRoute
+  '/admin/courses/upload': typeof AdminCoursesUploadRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth/declined'
+  fullPaths: '/' | '/auth/declined' | '/admin/courses/upload'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth/declined'
-  id: '__root__' | '/' | '/auth/declined'
+  to: '/' | '/auth/declined' | '/admin/courses/upload'
+  id: '__root__' | '/' | '/auth/declined' | '/admin/courses/upload'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthDeclinedRoute: typeof AuthDeclinedRoute
+  AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthDeclinedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/courses/upload': {
+      id: '/admin/courses/upload'
+      path: '/admin/courses/upload'
+      fullPath: '/admin/courses/upload'
+      preLoaderRoute: typeof AdminCoursesUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthDeclinedRoute: AuthDeclinedRoute,
+  AdminCoursesUploadRoute: AdminCoursesUploadRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
