@@ -3,7 +3,7 @@ import { eq, and, isNotNull, count, desc, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { players, rounds, wolfDecisions, holeScores, roundResults, seasons, groups, roundPlayers, sideGameCtpEntries } from '../db/schema.js';
 import { resolvePerHoleWinners, PAR3_HOLES as CTP_PAR3_HOLES, type CtpEntry as CtpEntryShape } from '../lib/ctp.js';
-import { getCourseHole, calculateSandbaggerStatus, TEE_RATINGS, getWolfAssignment } from '@wolf-cup/engine';
+import { getCourseHole, calculateSandbaggerStatus, TEE_RATINGS, getWolfAssignment, calcCourseHandicap } from '@wolf-cup/engine';
 import type { SandbaggerRoundInput, Tee } from '@wolf-cup/engine';
 import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS } from '../db/history-data.js';
 import { computeAllAwards, computePlayerBadges } from '../lib/badges.js';
@@ -41,6 +41,258 @@ type PlayerStats = {
   badges?: PlayerBadge[];
   sandbagging?: { beatsCount: number; totalRounds: number; tier: 1 | 2 | 3 };
 };
+
+// Season highlights — drives the rotating widget at the top of the stats
+// page. Each field is null when there's no data to show that slide
+// (e.g. mostSandies stays null until anyone has recorded a sandie).
+//
+// "Par 3 Champion" on the UI maps to mostGreenies — total greenies all
+// season. CTP side game (sideGameCtpEntries) is a separate thing that
+// only shows up as a banner on the leaderboard for the week it runs.
+type SeasonHighlights = {
+  mostBirdies: { playerNames: string[]; count: number } | null;
+  mostGreenies: { playerNames: string[]; count: number } | null;
+  mostPolies: { playerNames: string[]; count: number } | null;
+  mostSandies: { playerNames: string[]; count: number } | null;
+  lowestGrossRound: { playerName: string; gross: number; date: string; tee: string | null } | null;
+  lowestNetRound: { playerName: string; net: number; gross: number; ch: number; date: string; tee: string | null } | null;
+  bestPartnership: { player1: string; player2: string; winRate: number; wins: number; losses: number; pushes: number; holes: number } | null;
+};
+
+// ---------------------------------------------------------------------------
+// computeSeasonHighlights
+// ---------------------------------------------------------------------------
+// Builds the SeasonHighlights bundle for the rotating widget on the stats
+// top section. Scoped to one season's finalized official rounds. Each
+// highlight is null when no data qualifies (e.g. nobody has a sandie yet).
+
+async function computeSeasonHighlights(
+  seasonId: number,
+  allPlayers: Array<{ id: number; name: string }>,
+): Promise<SeasonHighlights> {
+  const playerNameById = new Map(allPlayers.map((p) => [p.id, p.name]));
+  const seasonRoundFilter = and(
+    eq(rounds.seasonId, seasonId),
+    eq(rounds.type, 'official'),
+    eq(rounds.status, 'finalized'),
+  );
+
+  // Hole scores (with round metadata) — drives birdies + lowest gross/net round.
+  const holeRows = await db
+    .select({
+      roundId: holeScores.roundId,
+      playerId: holeScores.playerId,
+      holeNumber: holeScores.holeNumber,
+      grossScore: holeScores.grossScore,
+      tee: rounds.tee,
+      date: rounds.scheduledDate,
+    })
+    .from(holeScores)
+    .innerJoin(rounds, eq(rounds.id, holeScores.roundId))
+    .where(seasonRoundFilter);
+
+  // Wolf decisions — drives polies/sandies + best partnership.
+  const wolfRows = await db
+    .select({
+      roundId: wolfDecisions.roundId,
+      groupId: wolfDecisions.groupId,
+      decision: wolfDecisions.decision,
+      wolfPlayerId: wolfDecisions.wolfPlayerId,
+      partnerPlayerId: wolfDecisions.partnerPlayerId,
+      outcome: wolfDecisions.outcome,
+      bonusesJson: wolfDecisions.bonusesJson,
+    })
+    .from(wolfDecisions)
+    .innerJoin(rounds, eq(rounds.id, wolfDecisions.roundId))
+    .where(seasonRoundFilter);
+
+  // Round players — drives net round (handicap index per round).
+  const rpRows = await db
+    .select({
+      roundId: roundPlayers.roundId,
+      groupId: roundPlayers.groupId,
+      playerId: roundPlayers.playerId,
+      handicapIndex: roundPlayers.handicapIndex,
+    })
+    .from(roundPlayers)
+    .innerJoin(rounds, eq(rounds.id, roundPlayers.roundId))
+    .where(seasonRoundFilter);
+
+  // ---- Most birdies / polies / sandies (with ties) ----
+  const birdiesByPlayer = new Map<number, number>();
+  for (const r of holeRows) {
+    const par = getCourseHole(r.holeNumber as Parameters<typeof getCourseHole>[0]).par;
+    if (r.grossScore === par - 1) {
+      birdiesByPlayer.set(r.playerId, (birdiesByPlayer.get(r.playerId) ?? 0) + 1);
+    }
+  }
+
+  const greeniesByPlayer = new Map<number, number>();
+  const poliesByPlayer = new Map<number, number>();
+  const sandiesByPlayer = new Map<number, number>();
+  for (const d of wolfRows) {
+    if (!d.bonusesJson) continue;
+    try {
+      const parsed = JSON.parse(d.bonusesJson) as { greenies?: number[]; polies?: number[]; sandies?: number[] };
+      for (const pid of parsed.greenies ?? []) {
+        greeniesByPlayer.set(pid, (greeniesByPlayer.get(pid) ?? 0) + 1);
+      }
+      for (const pid of parsed.polies ?? []) {
+        poliesByPlayer.set(pid, (poliesByPlayer.get(pid) ?? 0) + 1);
+      }
+      for (const pid of parsed.sandies ?? []) {
+        sandiesByPlayer.set(pid, (sandiesByPlayer.get(pid) ?? 0) + 1);
+      }
+    } catch {
+      // skip malformed JSON
+    }
+  }
+
+  function topWithTies(map: Map<number, number>): { playerNames: string[]; count: number } | null {
+    if (map.size === 0) return null;
+    let max = 0;
+    for (const v of map.values()) if (v > max) max = v;
+    if (max === 0) return null;
+    const tied = [...map.entries()]
+      .filter(([, v]) => v === max)
+      .map(([id]) => playerNameById.get(id) ?? 'Unknown')
+      .sort();
+    return { playerNames: tied, count: max };
+  }
+
+  // ---- Lowest gross / net round (complete 18-hole rounds only) ----
+  const grossByRoundPlayer = new Map<string, { roundId: number; playerId: number; gross: number; tee: string | null; date: string; holeCount: number }>();
+  for (const r of holeRows) {
+    const key = `${r.roundId}-${r.playerId}`;
+    const existing = grossByRoundPlayer.get(key);
+    if (existing) {
+      existing.gross += r.grossScore;
+      existing.holeCount += 1;
+    } else {
+      grossByRoundPlayer.set(key, {
+        roundId: r.roundId,
+        playerId: r.playerId,
+        gross: r.grossScore,
+        tee: r.tee,
+        date: r.date,
+        holeCount: 1,
+      });
+    }
+  }
+
+  const hiByRoundPlayer = new Map<string, number>();
+  for (const rp of rpRows) {
+    hiByRoundPlayer.set(`${rp.roundId}-${rp.playerId}`, rp.handicapIndex);
+  }
+
+  let lowestGrossRound: SeasonHighlights['lowestGrossRound'] = null;
+  let lowestNetRound: SeasonHighlights['lowestNetRound'] = null;
+  const validTees = new Set<string>(['black', 'blue', 'white']);
+  for (const [key, gp] of grossByRoundPlayer) {
+    if (gp.holeCount < 18) continue;
+
+    if (lowestGrossRound === null || gp.gross < lowestGrossRound.gross) {
+      lowestGrossRound = {
+        playerName: playerNameById.get(gp.playerId) ?? 'Unknown',
+        gross: gp.gross,
+        date: gp.date,
+        tee: gp.tee,
+      };
+    }
+
+    if (gp.tee && validTees.has(gp.tee)) {
+      const hi = hiByRoundPlayer.get(key);
+      if (hi !== undefined) {
+        const ch = calcCourseHandicap(hi, gp.tee as Tee);
+        const net = gp.gross - ch;
+        if (lowestNetRound === null || net < lowestNetRound.net) {
+          lowestNetRound = {
+            playerName: playerNameById.get(gp.playerId) ?? 'Unknown',
+            net,
+            gross: gp.gross,
+            ch,
+            date: gp.date,
+            tee: gp.tee,
+          };
+        }
+      }
+    }
+  }
+
+  // ---- Best 2v2 Partnership (season) — mirrors the lifetime logic but
+  // restricted to this season's wolf decisions / group rosters.
+  const partnerDecisions = wolfRows.filter((d) => d.decision === 'partner' && d.wolfPlayerId !== null && d.partnerPlayerId !== null);
+  const groupRosters = new Map<string, number[]>();
+  for (const rp of rpRows) {
+    const key = `${rp.roundId}-${rp.groupId}`;
+    const arr = groupRosters.get(key) ?? [];
+    arr.push(rp.playerId);
+    groupRosters.set(key, arr);
+  }
+
+  const pairMap = new Map<string, { ids: [number, number]; holes: number; wins: number; losses: number; pushes: number }>();
+  for (const d of partnerDecisions) {
+    const wolfId = d.wolfPlayerId!;
+    const partnerId = d.partnerPlayerId!;
+    // Wolf-team pair
+    const wolfPairKey = [wolfId, partnerId].sort((a, b) => a - b).join('-');
+    const wolfPair = pairMap.get(wolfPairKey) ?? {
+      ids: [Math.min(wolfId, partnerId), Math.max(wolfId, partnerId)] as [number, number],
+      holes: 0, wins: 0, losses: 0, pushes: 0,
+    };
+    wolfPair.holes++;
+    if (d.outcome === 'win') wolfPair.wins++;
+    else if (d.outcome === 'loss') wolfPair.losses++;
+    else if (d.outcome === 'push') wolfPair.pushes++;
+    pairMap.set(wolfPairKey, wolfPair);
+
+    // Opponent-team pair (the leftover two players in the group)
+    const roster = groupRosters.get(`${d.roundId}-${d.groupId}`) ?? [];
+    const opponents = roster.filter((pid) => pid !== wolfId && pid !== partnerId);
+    if (opponents.length === 2) {
+      const oppPairKey = opponents.sort((a, b) => a - b).join('-');
+      const oppPair = pairMap.get(oppPairKey) ?? {
+        ids: [opponents[0]!, opponents[1]!] as [number, number],
+        holes: 0, wins: 0, losses: 0, pushes: 0,
+      };
+      oppPair.holes++;
+      if (d.outcome === 'win') oppPair.losses++;
+      else if (d.outcome === 'loss') oppPair.wins++;
+      else if (d.outcome === 'push') oppPair.pushes++;
+      pairMap.set(oppPairKey, oppPair);
+    }
+  }
+
+  let bestPartnership: SeasonHighlights['bestPartnership'] = null;
+  const qualified = [...pairMap.values()].filter((p) => p.holes > 0 && p.wins / p.holes > 0.5);
+  if (qualified.length > 0) {
+    const best = qualified.reduce((a, b) => {
+      const aRate = a.wins / a.holes;
+      const bRate = b.wins / b.holes;
+      if (Math.abs(aRate - bRate) > 0.001) return bRate > aRate ? b : a;
+      return b.holes > a.holes ? b : a;
+    });
+    bestPartnership = {
+      player1: playerNameById.get(best.ids[0]) ?? 'Unknown',
+      player2: playerNameById.get(best.ids[1]) ?? 'Unknown',
+      holes: best.holes,
+      wins: best.wins,
+      losses: best.losses,
+      pushes: best.pushes,
+      winRate: Math.round((best.wins / best.holes) * 100),
+    };
+  }
+
+  return {
+    mostBirdies: topWithTies(birdiesByPlayer),
+    mostGreenies: topWithTies(greeniesByPlayer),
+    mostPolies: topWithTies(poliesByPlayer),
+    mostSandies: topWithTies(sandiesByPlayer),
+    lowestGrossRound,
+    lowestNetRound,
+    bestPartnership,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // GET /stats — public, no auth middleware
@@ -489,7 +741,27 @@ app.get('/stats', async (c) => {
       console.error('Failed to compute Par 3 Champion stat (non-fatal):', err);
     }
 
-    return c.json({ players: playerStats, bestPartnership, par3Champion, lastUpdated: new Date().toISOString() }, 200);
+    // ---- Season Highlights (rotating widget on stats top) ---------------
+    // All highlights are scoped to the current (max-year) season's finalized
+    // official rounds. Wrapped in try/catch so a single failed query doesn't
+    // 500 the whole stats endpoint.
+    let seasonHighlights: SeasonHighlights | null = null;
+    try {
+      const latestSeasonForHighlights = await db
+        .select({ id: seasons.id })
+        .from(seasons)
+        .orderBy(desc(seasons.year))
+        .limit(1)
+        .get();
+      const currentSeasonId = latestSeasonForHighlights?.id ?? null;
+      if (currentSeasonId != null) {
+        seasonHighlights = await computeSeasonHighlights(currentSeasonId, allPlayers);
+      }
+    } catch (err) {
+      console.error('Failed to compute season highlights (non-fatal):', err);
+    }
+
+    return c.json({ players: playerStats, bestPartnership, par3Champion, seasonHighlights, lastUpdated: new Date().toISOString() }, 200);
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }

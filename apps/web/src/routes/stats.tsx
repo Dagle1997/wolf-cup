@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useMemo } from 'react';
-import { RefreshCw, AlertCircle, ChevronDown } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { RefreshCw, AlertCircle, ChevronDown, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sparkline } from '@/components/sparkline';
 import { apiFetch } from '@/lib/api';
@@ -60,10 +60,21 @@ type Par3ChampionEntry = {
   holes: number[];
 };
 
+type SeasonHighlights = {
+  mostBirdies: { playerNames: string[]; count: number } | null;
+  mostGreenies: { playerNames: string[]; count: number } | null;
+  mostPolies: { playerNames: string[]; count: number } | null;
+  mostSandies: { playerNames: string[]; count: number } | null;
+  lowestGrossRound: { playerName: string; gross: number; date: string; tee: string | null } | null;
+  lowestNetRound: { playerName: string; net: number; gross: number; ch: number; date: string; tee: string | null } | null;
+  bestPartnership: { player1: string; player2: string; winRate: number; wins: number; losses: number; pushes: number; holes: number } | null;
+};
+
 type StatsResponse = {
   players: PlayerStats[];
   bestPartnership: BestPartnership | null;
   par3Champion: Par3ChampionEntry[];
+  seasonHighlights: SeasonHighlights | null;
   lastUpdated: string;
 };
 
@@ -159,6 +170,171 @@ function wolfRecord(p: PlayerStats): string {
 function formatMoney(n: number): string {
   if (n === 0) return '$0';
   return n > 0 ? `+$${n}` : `-$${Math.abs(n)}`;
+}
+
+// ---------------------------------------------------------------------------
+// StatsHighlights — rotating widget at the top of the stats page
+// ---------------------------------------------------------------------------
+//
+// Mirrors the leaderboard's HighlightReel pattern: one slide visible at a
+// time, auto-advancing every 4s, with pip indicators and prev/next. Slides
+// are derived from the `seasonHighlights` API field; null fields are
+// skipped. First slide is randomized per pageload so the page doesn't
+// always show the same thing first.
+
+type HighlightSlide = {
+  key: string;
+  emoji: string;
+  label: string;
+  title: string;
+  detail: string;
+  tone: 'birdies' | 'greenies' | 'polies' | 'sandies' | 'gross' | 'net' | 'partnership';
+};
+
+function buildHighlightSlides(h: SeasonHighlights, allNames: string[]): HighlightSlide[] {
+  const slides: HighlightSlide[] = [];
+  const sn = (name: string) => shortName(name, allNames);
+  const fmtNames = (names: string[]) => names.map(sn).join(' & ');
+
+  if (h.mostBirdies) {
+    slides.push({
+      key: 'birdies',
+      emoji: '🐦',
+      label: 'Most Birdies',
+      title: fmtNames(h.mostBirdies.playerNames),
+      detail: `${h.mostBirdies.count} birdie${h.mostBirdies.count !== 1 ? 's' : ''} this season`,
+      tone: 'birdies',
+    });
+  }
+  if (h.mostGreenies) {
+    slides.push({
+      key: 'greenies',
+      emoji: '🎯',
+      label: 'Par 3 Champion',
+      title: fmtNames(h.mostGreenies.playerNames),
+      detail: `${h.mostGreenies.count} greenie${h.mostGreenies.count !== 1 ? 's' : ''} this season`,
+      tone: 'greenies',
+    });
+  }
+  if (h.mostPolies) {
+    slides.push({
+      key: 'polies',
+      emoji: '🪀',
+      label: 'Most Polies',
+      title: fmtNames(h.mostPolies.playerNames),
+      detail: `${h.mostPolies.count} pol${h.mostPolies.count !== 1 ? 'ies' : 'ie'} this season`,
+      tone: 'polies',
+    });
+  }
+  if (h.mostSandies) {
+    slides.push({
+      key: 'sandies',
+      emoji: '🏖️',
+      label: 'Most Sandies',
+      title: fmtNames(h.mostSandies.playerNames),
+      detail: `${h.mostSandies.count} sand save${h.mostSandies.count !== 1 ? 's' : ''} this season`,
+      tone: 'sandies',
+    });
+  }
+  if (h.lowestGrossRound) {
+    slides.push({
+      key: 'lowest-gross',
+      emoji: '🏆',
+      label: 'Lowest Gross Round',
+      title: `${sn(h.lowestGrossRound.playerName)} — ${h.lowestGrossRound.gross}`,
+      detail: `${h.lowestGrossRound.date}${h.lowestGrossRound.tee ? ` · ${h.lowestGrossRound.tee} tees` : ''}`,
+      tone: 'gross',
+    });
+  }
+  if (h.lowestNetRound) {
+    slides.push({
+      key: 'lowest-net',
+      emoji: '⭐',
+      label: 'Lowest Net Round',
+      title: `${sn(h.lowestNetRound.playerName)} — ${h.lowestNetRound.net} net`,
+      detail: `${h.lowestNetRound.gross} gross − ${h.lowestNetRound.ch} CH · ${h.lowestNetRound.date}`,
+      tone: 'net',
+    });
+  }
+  if (h.bestPartnership) {
+    slides.push({
+      key: 'best-partnership',
+      emoji: '🤝',
+      label: 'Best 2v2 Partnership',
+      title: `${sn(h.bestPartnership.player1)} & ${sn(h.bestPartnership.player2)}`,
+      detail: `${h.bestPartnership.winRate}% · ${h.bestPartnership.wins}-${h.bestPartnership.losses}-${h.bestPartnership.pushes} · ${h.bestPartnership.holes} holes`,
+      tone: 'partnership',
+    });
+  }
+  return slides;
+}
+
+const TONE_BG: Record<HighlightSlide['tone'], string> = {
+  birdies: 'bg-blue-500/10 border-blue-500/20',
+  greenies: 'bg-amber-500/10 border-amber-500/20',
+  polies: 'bg-rose-500/10 border-rose-500/20',
+  sandies: 'bg-orange-500/10 border-orange-500/20',
+  gross: 'bg-violet-500/10 border-violet-500/20',
+  net: 'bg-yellow-500/10 border-yellow-500/20',
+  partnership: 'bg-green-500/10 border-green-500/20',
+};
+
+function StatsHighlights({ data }: { data: StatsResponse }) {
+  const allNames = data.players.map((p) => p.name);
+  const slides = data.seasonHighlights
+    ? buildHighlightSlides(data.seasonHighlights, allNames)
+    : [];
+
+  const [current, setCurrent] = useState(() =>
+    slides.length > 0 ? Math.floor(Math.random() * slides.length) : 0,
+  );
+
+  // Auto-advance every 4s
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    const t = setInterval(() => {
+      setCurrent((prev) => (prev + 1) % slides.length);
+    }, 4000);
+    return () => clearInterval(t);
+  }, [slides.length]);
+
+  if (slides.length === 0) return null;
+
+  const slide = slides[current % slides.length]!;
+  return (
+    <div className={`rounded-lg border ${TONE_BG[slide.tone]} px-4 py-2.5 mb-3 transition-all duration-300`}>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+            {slide.label}
+          </span>
+        </div>
+        {slides.length > 1 && (
+          <div className="flex items-center gap-1">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setCurrent(i)}
+                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                  i === current % slides.length ? 'bg-foreground' : 'bg-foreground/20'
+                }`}
+                aria-label={`Highlight ${i + 1}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-start gap-3 mt-1">
+        <span className="text-2xl shrink-0 leading-none mt-0.5">{slide.emoji}</span>
+        <div className="min-w-0 flex-1">
+          <div className="font-bold text-sm leading-tight">{slide.title}</div>
+          <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{slide.detail}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -265,64 +441,10 @@ function StatsPage() {
         🏆 View Awards Wall & Badge Explanations
       </Link>
 
-      {/* Season Par 3 Champion — hidden when no CTPs recorded this season.
-          Leader row is labeled "🎯 Par 3 Champion"; ties listed as co-leaders. */}
-      {data && data.par3Champion && data.par3Champion.length > 0 && (
-        <div className="mb-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-2.5">
-          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-medium uppercase tracking-wider mb-1.5">
-            🎯 Par 3 Champion — Season
-          </div>
-          {(() => {
-            const leaderCtps = data.par3Champion[0]!.ctps;
-            return (
-              <ul className="space-y-0.5">
-                {data.par3Champion.map((e) => {
-                  const isLeader = e.ctps === leaderCtps;
-                  return (
-                    <li
-                      key={e.playerId}
-                      className="flex items-center justify-between text-sm"
-                    >
-                      <span
-                        className={`truncate ${
-                          isLeader ? 'font-bold text-amber-700 dark:text-amber-400' : ''
-                        }`}
-                        title={e.name}
-                      >
-                        {isLeader ? '🎯 ' : ''}
-                        {shortName(e.name, data.par3Champion.map((p) => p.name))}
-                      </span>
-                      <span className="font-mono tabular-nums text-muted-foreground">
-                        {e.ctps} CTP{e.ctps !== 1 ? 's' : ''}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Best Partnership spotlight */}
-      {data?.bestPartnership && (
-        <div className="mb-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-2.5">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-[10px] text-green-600 dark:text-green-400 font-medium uppercase tracking-wider">Best 2v2 Partnership</div>
-              <div className="text-sm font-bold mt-0.5">
-                {shortName(data.bestPartnership.player1, data.players.map((pl) => pl.name))} & {shortName(data.bestPartnership.player2, data.players.map((pl) => pl.name))}
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-lg font-bold text-green-600 dark:text-green-400">{data.bestPartnership.winRate}%</div>
-              <div className="text-[10px] text-muted-foreground">
-                {data.bestPartnership.wins}W-{data.bestPartnership.losses}L-{data.bestPartnership.pushes}P · {data.bestPartnership.holes} holes
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Season Highlights — rotating widget (Par 3 Champion, Best Partnership,
+          Most Birdies/Greenies/Polies/Sandies, Lowest Gross/Net Round). Replaces
+          the prior standalone Par 3 Champion + Best Partnership cards. */}
+      {data && <StatsHighlights data={data} />}
 
       {/* Sort buttons */}
       {data && data.players.length > 0 && (
@@ -583,7 +705,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                     </span>
                   ) : <span />}
                   {rivalBest ? (
-                    <span className="text-red-500" title="Money they've taken from you on opponent-only holes">
+                    <span className="text-red-500" title="Player who has taken the most money from you on opp-team holes">
                       🎯 <span className="font-bold">{sn(rivalBest.name)}</span> <span className="tabular-nums">-${rivalBest.rival}</span>
                     </span>
                   ) : <span />}
@@ -595,7 +717,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 </div>
                 <div className="flex items-center justify-between gap-1 text-[8px] text-muted-foreground/50 mt-0.5">
                   <span>{charm ? 'Lucky Charm' : ''}</span>
-                  <span>{rivalBest ? 'Rival' : ''}</span>
+                  <span>{rivalBest ? 'Nemesis' : ''}</span>
                   <span>{dominate ? 'Dominate' : ''}</span>
                 </div>
               </div>
@@ -1029,7 +1151,7 @@ function CompareView({ playerA, playerB, allNames, onClose }: { playerA: PlayerS
                 <div className={`text-base font-bold tabular-nums ${h2h.rival > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                   {h2h.rival > 0 ? `-$${h2h.rival}` : '—'}
                 </div>
-                <div className="text-[9px] text-muted-foreground">Rival</div>
+                <div className="text-[9px] text-muted-foreground">Nemesis</div>
               </div>
             </div>
           </div>
