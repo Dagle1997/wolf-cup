@@ -63,8 +63,9 @@ sqlite3 ./restore.db "PRAGMA integrity_check;"   # expect: ok
 sqlite3 ./restore.db "SELECT COUNT(*) FROM rounds;"
 
 # 3. SSH to the VPS and stop the API container
-ssh root@wolf.dagle.cloud
-cd /path/to/wolf-cup
+# (Post-2026-04-26 hardening: root SSH disabled, use stollie1997 + sudo where needed.)
+ssh stollie1997@wolf.dagle.cloud
+cd /opt/wolf-cup
 docker compose stop api
 
 # 4. Back up the CURRENT live DB before overwriting (belt-and-suspenders)
