@@ -863,7 +863,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                       <div className="text-[10px] tabular-nums mt-1">{bp.avgStableford} stab</div>
                       {wolfTotal > 0 && (
                         <div className="text-[9px] text-muted-foreground/50 mt-0.5">
-                          🐺 {wolfPct}% ({bp.wolfRecord.wins}-{bp.wolfRecord.losses}-{bp.wolfRecord.pushes})
+                          Win {wolfPct}% ({bp.wolfRecord.wins}-{bp.wolfRecord.losses}-{bp.wolfRecord.pushes})
                         </div>
                       )}
                       <div className="text-[8px] text-muted-foreground/30 mt-0.5">{bp.rounds} rds</div>
@@ -874,7 +874,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             </div>
           )}
 
-          {/* Chemistry — best/worst partners from 2v2 holes */}
+          {/* Chemistry — best/worst teammates across every same-team wolf hole */}
           {detail.chemistry?.length > 0 && (() => {
             const minHoles = 3;
             const qualified = detail.chemistry.filter((c) => c.holes >= minHoles);
@@ -887,20 +887,20 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Chemistry</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-green-500/10 rounded-lg p-2.5">
-                    <div className="text-[9px] text-green-500 font-medium uppercase tracking-wider mb-1">Best Partner</div>
+                    <div className="text-[9px] text-green-500 font-medium uppercase tracking-wider mb-1">Best Teammate</div>
                     <div className="text-sm font-bold">{sn(best.name)}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
                       <span className="text-green-500 font-bold">{best.winRate}%</span> win rate · {best.wins}W-{best.losses}L-{best.pushes}P
                     </div>
-                    <div className="text-[9px] text-muted-foreground/50">{best.holes} holes together</div>
+                    <div className="text-[9px] text-muted-foreground/50">{best.holes} holes on same team</div>
                   </div>
                   <div className="bg-red-500/10 rounded-lg p-2.5">
-                    <div className="text-[9px] text-red-500 font-medium uppercase tracking-wider mb-1">Worst Partner</div>
+                    <div className="text-[9px] text-red-500 font-medium uppercase tracking-wider mb-1">Worst Teammate</div>
                     <div className="text-sm font-bold">{sn(worst.name)}</div>
                     <div className="text-[10px] text-muted-foreground mt-0.5">
                       <span className="text-red-500 font-bold">{worst.winRate}%</span> win rate · {worst.wins}W-{worst.losses}L-{worst.pushes}P
                     </div>
-                    <div className="text-[9px] text-muted-foreground/50">{worst.holes} holes together</div>
+                    <div className="text-[9px] text-muted-foreground/50">{worst.holes} holes on same team</div>
                   </div>
                 </div>
               </div>

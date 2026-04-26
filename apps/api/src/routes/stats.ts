@@ -791,7 +791,10 @@ app.get('/stats/:playerId/detail', async (c) => {
       }))
       .sort((a, b) => b.rival - a.rival);
 
-    // Chemistry: partner relationships from wolf_decisions on 2v2 holes
+    // Chemistry: same-team relationships across every wolf-hole decision.
+    // "Same team" = any hole where player and X ended up on the same side —
+    // 2v2 partner pair, both on the 3-side of a 1v3, or both non-wolf in a
+    // blind-wolf hole. Decision-agnostic so it reconciles with rivals.
     const decisionRows = await db
       .select({
         roundId: wolfDecisions.roundId,
@@ -803,10 +806,7 @@ app.get('/stats/:playerId/detail', async (c) => {
         outcome: wolfDecisions.outcome,
       })
       .from(wolfDecisions)
-      .where(and(
-        inArray(wolfDecisions.roundId, roundIds),
-        eq(wolfDecisions.decision, 'partner'),
-      ));
+      .where(inArray(wolfDecisions.roundId, roundIds));
 
     // Build a map: groupId+roundId → list of player IDs in that group
     const groupPlayersMap = new Map<string, number[]>();
@@ -817,51 +817,45 @@ app.get('/stats/:playerId/detail', async (c) => {
       groupPlayersMap.set(key, arr);
     }
 
-    // For each 2v2 hole, determine if this player was involved and who their partner was
     const chemMap = new Map<number, { name: string; holes: number; wins: number; losses: number; pushes: number }>();
     for (const d of decisionRows) {
-      // Only process holes where this player was in the group
+      if (d.wolfPlayerId === null) continue;
+      if (d.decision !== 'alone' && d.decision !== 'partner' && d.decision !== 'blind_wolf') continue;
       const key = `${d.roundId}-${d.groupId}`;
       const groupPlayers = groupPlayersMap.get(key) ?? [];
       if (!groupPlayers.includes(playerId)) continue;
 
-      let partnerId: number | null = null;
-      let playerWon: string | null = null; // from this player's perspective
+      const composition = getHoleTeamFor(playerId, d.holeNumber, groupPlayers, {
+        decision: d.decision,
+        wolfPlayerId: d.wolfPlayerId,
+        partnerPlayerId: d.partnerPlayerId,
+      });
+      if (composition.teammates.size === 0) continue;
 
-      if (d.wolfPlayerId === playerId) {
-        // This player was wolf, their partner is partnerPlayerId
-        partnerId = d.partnerPlayerId;
-        playerWon = d.outcome; // wolf's outcome = this player's outcome
-      } else if (d.partnerPlayerId === playerId) {
-        // This player was picked as partner
-        partnerId = d.wolfPlayerId;
-        playerWon = d.outcome; // same team as wolf
-      } else {
-        // This player is on the opposing team — find the other opponent
-        const opponents = groupPlayers.filter(
-          (pid) => pid !== d.wolfPlayerId && pid !== d.partnerPlayerId,
-        );
-        partnerId = opponents.find((pid) => pid !== playerId) ?? null;
-        // Invert outcome: wolf win = opponent loss, wolf loss = opponent win
-        if (d.outcome === 'win') playerWon = 'loss';
-        else if (d.outcome === 'loss') playerWon = 'win';
-        else playerWon = d.outcome; // push stays push, null stays null
+      // Outcome from player's perspective: wolf-side keeps d.outcome,
+      // non-wolf-side inverts. push/null pass through.
+      const onWolfSide = d.wolfPlayerId === playerId
+        || (d.decision === 'partner' && d.partnerPlayerId === playerId);
+      let playerOutcome = d.outcome;
+      if (!onWolfSide) {
+        if (d.outcome === 'win') playerOutcome = 'loss';
+        else if (d.outcome === 'loss') playerOutcome = 'win';
       }
 
-      if (partnerId == null) continue;
-
-      const entry = chemMap.get(partnerId) ?? {
-        name: nameMap.get(partnerId) ?? 'Unknown',
-        holes: 0,
-        wins: 0,
-        losses: 0,
-        pushes: 0,
-      };
-      entry.holes++;
-      if (playerWon === 'win') entry.wins++;
-      else if (playerWon === 'loss') entry.losses++;
-      else if (playerWon === 'push') entry.pushes++;
-      chemMap.set(partnerId, entry);
+      for (const teammateId of composition.teammates) {
+        const entry = chemMap.get(teammateId) ?? {
+          name: nameMap.get(teammateId) ?? 'Unknown',
+          holes: 0,
+          wins: 0,
+          losses: 0,
+          pushes: 0,
+        };
+        entry.holes++;
+        if (playerOutcome === 'win') entry.wins++;
+        else if (playerOutcome === 'loss') entry.losses++;
+        else if (playerOutcome === 'push') entry.pushes++;
+        chemMap.set(teammateId, entry);
+      }
     }
 
     const chemistry = [...chemMap.entries()]
