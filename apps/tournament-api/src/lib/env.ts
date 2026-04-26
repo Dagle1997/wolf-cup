@@ -32,6 +32,13 @@ import { z } from 'zod';
  * `http://localhost:5173` accidentally shipped to production would break
  * CSRF origin checks and scope cookies to the wrong host.
  *
+ * `ANTHROPIC_API_KEY` is supplied via docker-compose in production (bare
+ * `${ANTHROPIC_API_KEY}` reference — no compose fallback so a missing
+ * VPS `.env` entry fails fast at boot). In local dev it comes from
+ * `apps/tournament-api/.env`; in tests it's injected by `src/test-setup.ts`
+ * with a non-secret placeholder. Required / no default / min(1) — same
+ * fail-fast posture as GOOGLE_OAUTH_*.
+ *
  * Note on `ADMIN_SESSION_SECRET`: intentionally NOT included. Session
  * cookie value IS the opaque server-side-stored `session_id`; no HMAC
  * signing is used or needed. Reserved for a hypothetical future signed-
@@ -78,6 +85,11 @@ const envSchema = z.object({
   // shipping with a broken auth flow.
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(1),
+  // Anthropic Vision API key (T2-3). Required for the scorecard-PDF parser
+  // route. Same fail-fast posture as GOOGLE_OAUTH_* — missing value on the
+  // VPS crashes the container at boot rather than silently 503-ing every
+  // parse request with an opaque auth error from Anthropic.
+  ANTHROPIC_API_KEY: z.string().min(1),
   // Logging (T1-7). LOG_LEVEL defaults to 'info' which is what prod wants;
   // dev can override via .env. LOG_DIR is optional at the schema level and
   // resolved below by the post-parse transform — that way env.LOG_DIR is

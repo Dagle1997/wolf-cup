@@ -62,6 +62,11 @@ services:
       # shipping a broken auth flow.
       - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
       - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      # Anthropic Vision (T2-3). Same fail-fast posture as the auth vars
+      # above — no `${VAR:-default}`. Missing VPS `.env` entry crashes the
+      # container at boot via Zod rather than silently 503-ing every
+      # scorecard-parse request with an Anthropic auth error.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     volumes:
       - tournament_sqlite_data:/app/data
     networks:

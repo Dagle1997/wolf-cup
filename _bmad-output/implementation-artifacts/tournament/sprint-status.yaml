@@ -77,7 +77,7 @@ development_status:
 
   T2-1-courses-revisions-schema: done
   T2-2-pinehurst-seed-importer-course-list-api: done
-  T2-3-scorecard-pdf-vision-parser: backlog
+  T2-3-scorecard-pdf-vision-parser: done
   T2-4-course-validator: backlog
   T2-5-course-admin-ui-manual-pdf-upload-review: backlog
 

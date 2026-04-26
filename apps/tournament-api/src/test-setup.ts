@@ -18,3 +18,5 @@ process.env['GOOGLE_OAUTH_CLIENT_ID'] =
   process.env['GOOGLE_OAUTH_CLIENT_ID'] ?? 'test-client-id';
 process.env['GOOGLE_OAUTH_CLIENT_SECRET'] =
   process.env['GOOGLE_OAUTH_CLIENT_SECRET'] ?? 'test-client-secret';
+process.env['ANTHROPIC_API_KEY'] =
+  process.env['ANTHROPIC_API_KEY'] ?? 'test-anthropic-key-not-a-real-secret';
