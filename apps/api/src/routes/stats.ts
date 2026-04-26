@@ -806,7 +806,11 @@ app.get('/stats/:playerId/detail', async (c) => {
         outcome: wolfDecisions.outcome,
       })
       .from(wolfDecisions)
-      .where(inArray(wolfDecisions.roundId, roundIds));
+      .where(and(
+        inArray(wolfDecisions.roundId, roundIds),
+        isNotNull(wolfDecisions.wolfPlayerId),
+        inArray(wolfDecisions.decision, ['alone', 'partner', 'blind_wolf']),
+      ));
 
     // Build a map: groupId+roundId → list of player IDs in that group
     const groupPlayersMap = new Map<string, number[]>();

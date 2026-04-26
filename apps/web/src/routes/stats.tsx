@@ -309,7 +309,7 @@ function StatsPage() {
         <div className="mb-3 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-2.5">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-[10px] text-green-600 dark:text-green-400 font-medium uppercase tracking-wider">Best Partnership</div>
+              <div className="text-[10px] text-green-600 dark:text-green-400 font-medium uppercase tracking-wider">Best 2v2 Partnership</div>
               <div className="text-sm font-bold mt-0.5">
                 {shortName(data.bestPartnership.player1, data.players.map((pl) => pl.name))} & {shortName(data.bestPartnership.player2, data.players.map((pl) => pl.name))}
               </div>
