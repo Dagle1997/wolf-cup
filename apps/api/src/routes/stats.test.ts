@@ -811,3 +811,239 @@ describe('GET /stats — par3Champion', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// GET /stats/:playerId/detail — chemistry (same-team) reconciliation
+// ---------------------------------------------------------------------------
+//
+// Chemistry counts every wolf hole where two players ended up on the same
+// team (2v2 partner pair, both on the 3-side of a 1v3, both non-wolf in a
+// blind-wolf). Outcome is recorded from each player's team perspective —
+// wolf-side keeps `d.outcome`, non-wolf-side inverts win↔loss.
+//
+// These tests use a dedicated 4-player round so the input shapes and
+// outputs are fully controllable. They assert the rewritten aggregation
+// in `apps/api/src/routes/stats.ts` chemistry block reconciles with the
+// `getHoleTeamFor` helper across all decision types.
+
+describe('GET /stats/:playerId/detail — chemistry', () => {
+  let chemRoundId: number;
+  let chemGroupId: number;
+  let aId: number;
+  let bId: number;
+  let cId: number;
+  let dId: number;
+
+  type ChemEntry = {
+    playerId: number;
+    name: string;
+    holes: number;
+    wins: number;
+    losses: number;
+    pushes: number;
+    winRate: number;
+  };
+
+  type DetailResponse = {
+    chemistry: ChemEntry[];
+  };
+
+  beforeAll(async () => {
+    const [round] = await db
+      .insert(rounds)
+      .values({
+        seasonId,
+        type: 'official',
+        status: 'finalized',
+        scheduledDate: '2026-02-15',
+        entryCodeHash: null,
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    chemRoundId = round!.id;
+
+    const [group] = await db
+      .insert(groups)
+      .values({ roundId: chemRoundId, groupNumber: 1, battingOrder: null })
+      .returning({ id: groups.id });
+    chemGroupId = group!.id;
+
+    const fourPlayers = await db
+      .insert(players)
+      .values([
+        { name: 'ChemA', ghinNumber: null, isActive: 1, isGuest: 0, createdAt: Date.now() },
+        { name: 'ChemB', ghinNumber: null, isActive: 1, isGuest: 0, createdAt: Date.now() },
+        { name: 'ChemC', ghinNumber: null, isActive: 1, isGuest: 0, createdAt: Date.now() },
+        { name: 'ChemD', ghinNumber: null, isActive: 1, isGuest: 0, createdAt: Date.now() },
+      ])
+      .returning({ id: players.id });
+    [aId, bId, cId, dId] = fourPlayers.map((p) => p.id) as [number, number, number, number];
+
+    await db.insert(roundPlayers).values([
+      { roundId: chemRoundId, groupId: chemGroupId, playerId: aId, handicapIndex: 10, isSub: 0 },
+      { roundId: chemRoundId, groupId: chemGroupId, playerId: bId, handicapIndex: 8, isSub: 0 },
+      { roundId: chemRoundId, groupId: chemGroupId, playerId: cId, handicapIndex: 6, isSub: 0 },
+      { roundId: chemRoundId, groupId: chemGroupId, playerId: dId, handicapIndex: 4, isSub: 0 },
+    ]);
+  });
+
+  afterEach(async () => {
+    await db.delete(wolfDecisions).where(eq(wolfDecisions.roundId, chemRoundId));
+  });
+
+  it('partner hole: wolf+partner counted as teammates with direct outcome; opp pair counted as teammates with inverted outcome', async () => {
+    // A is wolf, picks B → A+B vs C+D, A's team wins
+    await db.insert(wolfDecisions).values({
+      roundId: chemRoundId,
+      groupId: chemGroupId,
+      holeNumber: 4,
+      wolfPlayerId: aId,
+      decision: 'partner',
+      partnerPlayerId: bId,
+      bonusesJson: null,
+      outcome: 'win',
+      createdAt: Date.now(),
+    });
+
+    // From A's drill-down: chemistry shows B as 1-hole, 1-win teammate
+    const aRes = await statsApp.request(`/stats/${aId}/detail`);
+    expect(aRes.status).toBe(200);
+    const aBody = (await aRes.json()) as DetailResponse;
+    const aB = aBody.chemistry.find((c) => c.playerId === bId);
+    expect(aB).toBeDefined();
+    expect(aB!.holes).toBe(1);
+    expect(aB!.wins).toBe(1);
+    expect(aB!.losses).toBe(0);
+    expect(aB!.pushes).toBe(0);
+    // A had no other teammates on this hole
+    expect(aBody.chemistry.find((c) => c.playerId === cId)).toBeUndefined();
+    expect(aBody.chemistry.find((c) => c.playerId === dId)).toBeUndefined();
+
+    // From C's drill-down: chemistry shows D as 1-hole, 1-loss teammate (inverted)
+    const cRes = await statsApp.request(`/stats/${cId}/detail`);
+    const cBody = (await cRes.json()) as DetailResponse;
+    const cD = cBody.chemistry.find((c) => c.playerId === dId);
+    expect(cD).toBeDefined();
+    expect(cD!.holes).toBe(1);
+    expect(cD!.wins).toBe(0);
+    expect(cD!.losses).toBe(1);
+  });
+
+  it('alone hole: wolf has no teammates; the 3-side counts each other as teammates with inverted outcome', async () => {
+    // A goes alone, A wins → B/C/D are on the 3-side, all see A's "win" as their loss
+    await db.insert(wolfDecisions).values({
+      roundId: chemRoundId,
+      groupId: chemGroupId,
+      holeNumber: 5,
+      wolfPlayerId: aId,
+      decision: 'alone',
+      partnerPlayerId: null,
+      bonusesJson: null,
+      outcome: 'win',
+      createdAt: Date.now(),
+    });
+
+    // A is wolf, no chemistry rows for this hole
+    const aRes = await statsApp.request(`/stats/${aId}/detail`);
+    const aBody = (await aRes.json()) as DetailResponse;
+    expect(aBody.chemistry).toHaveLength(0);
+
+    // B sees C and D as 1-hole, 1-loss teammates
+    const bRes = await statsApp.request(`/stats/${bId}/detail`);
+    const bBody = (await bRes.json()) as DetailResponse;
+    const bC = bBody.chemistry.find((c) => c.playerId === cId);
+    const bD = bBody.chemistry.find((c) => c.playerId === dId);
+    expect(bC?.holes).toBe(1);
+    expect(bC?.losses).toBe(1);
+    expect(bC?.wins).toBe(0);
+    expect(bD?.holes).toBe(1);
+    expect(bD?.losses).toBe(1);
+    // B does NOT see A as a teammate (A was wolf)
+    expect(bBody.chemistry.find((c) => c.playerId === aId)).toBeUndefined();
+  });
+
+  it('blind_wolf hole: same as alone — wolf has no teammates; the 3-side counts each other', async () => {
+    // B goes blind_wolf, B loses → A/C/D are on the 3-side, all see B's "loss" as their win
+    await db.insert(wolfDecisions).values({
+      roundId: chemRoundId,
+      groupId: chemGroupId,
+      holeNumber: 7,
+      wolfPlayerId: bId,
+      decision: 'blind_wolf',
+      partnerPlayerId: null,
+      bonusesJson: null,
+      outcome: 'loss',
+      createdAt: Date.now(),
+    });
+
+    // B is wolf, no chemistry rows
+    const bRes = await statsApp.request(`/stats/${bId}/detail`);
+    const bBody = (await bRes.json()) as DetailResponse;
+    expect(bBody.chemistry).toHaveLength(0);
+
+    // A sees C and D as 1-hole, 1-win teammates (inverted from B's loss)
+    const aRes = await statsApp.request(`/stats/${aId}/detail`);
+    const aBody = (await aRes.json()) as DetailResponse;
+    const aC = aBody.chemistry.find((c) => c.playerId === cId);
+    const aD = aBody.chemistry.find((c) => c.playerId === dId);
+    expect(aC?.wins).toBe(1);
+    expect(aC?.losses).toBe(0);
+    expect(aD?.wins).toBe(1);
+  });
+
+  it('skins-hole rows (wolfPlayerId null) do not contribute to chemistry', async () => {
+    await db.insert(wolfDecisions).values({
+      roundId: chemRoundId,
+      groupId: chemGroupId,
+      holeNumber: 1,
+      wolfPlayerId: null,
+      decision: null,
+      partnerPlayerId: null,
+      bonusesJson: null,
+      outcome: null,
+      createdAt: Date.now(),
+    });
+
+    const aRes = await statsApp.request(`/stats/${aId}/detail`);
+    const aBody = (await aRes.json()) as DetailResponse;
+    expect(aBody.chemistry).toHaveLength(0);
+  });
+
+  it('reconciliation across decision types — A perspective sums up correctly across mixed round', async () => {
+    const now = Date.now();
+    await db.insert(wolfDecisions).values([
+      // Hole 4: A wolf, picks B → A+B teammates, win
+      { roundId: chemRoundId, groupId: chemGroupId, holeNumber: 4, wolfPlayerId: aId, decision: 'partner', partnerPlayerId: bId, bonusesJson: null, outcome: 'win', createdAt: now },
+      // Hole 5: A alone (1v3) → A has no teammates this hole
+      { roundId: chemRoundId, groupId: chemGroupId, holeNumber: 5, wolfPlayerId: aId, decision: 'alone', partnerPlayerId: null, bonusesJson: null, outcome: 'loss', createdAt: now },
+      // Hole 6: B blind_wolf (1v3) → A on 3-side with C, D, push
+      { roundId: chemRoundId, groupId: chemGroupId, holeNumber: 6, wolfPlayerId: bId, decision: 'blind_wolf', partnerPlayerId: null, bonusesJson: null, outcome: 'push', createdAt: now },
+      // Hole 8: C wolf, picks D → A+B teammates (the leftover non-wolf pair), loss for A's side
+      { roundId: chemRoundId, groupId: chemGroupId, holeNumber: 8, wolfPlayerId: cId, decision: 'partner', partnerPlayerId: dId, bonusesJson: null, outcome: 'win', createdAt: now },
+    ]);
+
+    const aRes = await statsApp.request(`/stats/${aId}/detail`);
+    const aBody = (await aRes.json()) as DetailResponse;
+
+    const aB = aBody.chemistry.find((c) => c.playerId === bId);
+    const aC = aBody.chemistry.find((c) => c.playerId === cId);
+    const aD = aBody.chemistry.find((c) => c.playerId === dId);
+
+    // A+B teammates on hole 4 (win, direct) and hole 8 (C/D won → A/B lost, inverted)
+    expect(aB?.holes).toBe(2);
+    expect(aB?.wins).toBe(1);
+    expect(aB?.losses).toBe(1);
+    expect(aB?.pushes).toBe(0);
+
+    // A+C teammates on hole 6 (push) — and that's it
+    expect(aC?.holes).toBe(1);
+    expect(aC?.pushes).toBe(1);
+    expect(aC?.wins).toBe(0);
+    expect(aC?.losses).toBe(0);
+
+    // A+D teammates on hole 6 (push) — same shape
+    expect(aD?.holes).toBe(1);
+    expect(aD?.pushes).toBe(1);
+  });
+});
