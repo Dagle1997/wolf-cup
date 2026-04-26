@@ -80,7 +80,7 @@ development_status:
   T2-3-scorecard-pdf-vision-parser: done
   T2-3a-scorecard-image-input: done
   T2-3b-minimal-organizer-upload-ui: done
-  T2-4-course-validator: review
+  T2-4-course-validator: done
   T2-5-course-admin-ui-manual-pdf-upload-review: backlog
 
   epic-T2-retrospective: optional
