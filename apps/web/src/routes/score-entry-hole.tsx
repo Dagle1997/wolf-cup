@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter, Link } from '@tanstack/react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle2, Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff, TriangleAlert, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CtpPrompt } from '@/components/CtpPrompt';
 import { apiFetch } from '@/lib/api';
@@ -987,10 +987,27 @@ function ScoreEntryHolePage() {
             <h2 className="text-2xl font-black">Hole {currentHole}</h2>
             <span className="text-sm text-muted-foreground">Par {par} · SI {si}</span>
           </div>
-          <div className="text-right">
-            <div className="text-xs text-muted-foreground">{submittedScores.size} / 18</div>
-            <div className="text-xs font-medium text-muted-foreground">
-              {wolfHole.type === 'skins' ? '⛳ Skins' : `🐺 ${wolfHole.wolfPlayerName ?? '—'}`}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void queryClient.invalidateQueries({ queryKey: ['round', session.roundId] });
+                void queryClient.invalidateQueries({ queryKey: ['scores', session.roundId, session.groupId] });
+                void queryClient.invalidateQueries({ queryKey: ['wolf-decisions', session.roundId, session.groupId] });
+                void queryClient.invalidateQueries({ queryKey: ['ctp-entries', session.roundId] });
+                void refreshCount();
+              }}
+              className="text-muted-foreground/60 hover:text-foreground p-1 -m-1 rounded"
+              title="Refresh data — re-fetch this group's scores and round info from the server. Does not change anything you've entered."
+              aria-label="Refresh data"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">{submittedScores.size} / 18</div>
+              <div className="text-xs font-medium text-muted-foreground">
+                {wolfHole.type === 'skins' ? '⛳ Skins' : `🐺 ${wolfHole.wolfPlayerName ?? '—'}`}
+              </div>
             </div>
           </div>
         </div>

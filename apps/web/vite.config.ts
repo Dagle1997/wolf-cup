@@ -38,26 +38,19 @@ export default defineConfig({
       workbox: {
         clientsClaim: true,
         skipWaiting: true,
+        // Static assets only — the API is intentionally NOT cached by the
+        // service worker. The original scaffold included a NetworkFirst rule
+        // for /api/* with networkTimeoutSeconds: 3. On a slow course
+        // connection that timeout would force a fallback to the cached
+        // (often stale) GET response, which then convinced score-entry that
+        // no holes had been entered yet — initialising currentHole to 1 and
+        // trapping the scorer with both Prev and Next disabled (verified
+        // 2026-04-24 round). TanStack Query + the IndexedDB offline queue
+        // already handle offline-first correctness with explicit invalidation;
+        // SW caching of /api/* added nothing and masked writes.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,pdf}'],
         globIgnores: ['**/icon-*.png'],
         navigateFallbackDenylist: [/\.pdf$/i],
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\//i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'wolf-api-cache',
-              networkTimeoutSeconds: 3,
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 300,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-        ],
       },
     }),
   ],
