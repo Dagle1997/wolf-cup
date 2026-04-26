@@ -67,6 +67,12 @@ services:
       # container at boot via Zod rather than silently 503-ing every
       # scorecard-parse request with an Anthropic auth error.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Optional auto-organizer-promotion on container start (T2-3.2).
+      # Empty default → no-op (seed logs `seed_organizer_skipped: env_unset`).
+      # Set in /opt/wolf-cup/.env to a Google `sub` to auto-promote that
+      # player to organizer on every container start. Idempotent — repeated
+      # boots log `seed_organizer_already_set` once promotion sticks.
+      - ORGANIZER_GOOGLE_SUB=${ORGANIZER_GOOGLE_SUB:-}
     volumes:
       - tournament_sqlite_data:/app/data
     networks:
