@@ -263,8 +263,11 @@ async function computeSeasonHighlights(
     }
   }
 
+  // 5-hole minimum gate — early-season pairs with 1 or 2 holes shouldn't lock
+  // in the slide at 100%. Below that, slide hides until enough samples.
+  const MIN_PARTNERSHIP_HOLES = 5;
   let bestPartnership: SeasonHighlights['bestPartnership'] = null;
-  const qualified = [...pairMap.values()].filter((p) => p.holes > 0 && p.wins / p.holes > 0.5);
+  const qualified = [...pairMap.values()].filter((p) => p.holes >= MIN_PARTNERSHIP_HOLES && p.wins / p.holes > 0.5);
   if (qualified.length > 0) {
     const best = qualified.reduce((a, b) => {
       const aRate = a.wins / a.holes;
@@ -615,11 +618,10 @@ app.get('/stats', async (c) => {
       }
     }
 
-    // Find best partnership — actually winning together (win rate > 50%).
-    // Sample-size floor removed; a pair with 1-0 qualifies if nobody else is > 50%.
-    // Below-50% and exactly-50% pairs aren't "best" of anything, so the stat
-    // hides until someone earns it.
-    const qualifiedPairs = [...pairMap.values()].filter((p) => p.holes > 0 && p.wins / p.holes > 0.5);
+    // Find best partnership — actually winning together (win rate > 50%) with
+    // a 5-hole minimum so an early-season 1-0 doesn't lock in the slide. Hides
+    // until someone clears both bars; matches the seasonHighlights gate above.
+    const qualifiedPairs = [...pairMap.values()].filter((p) => p.holes >= 5 && p.wins / p.holes > 0.5);
     let bestPartnership: { player1: string; player2: string; holes: number; wins: number; losses: number; pushes: number; winRate: number } | null = null;
     if (qualifiedPairs.length > 0) {
       const best = qualifiedPairs.reduce((a, b) => {
