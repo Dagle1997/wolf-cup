@@ -669,6 +669,78 @@ So that loading a new course doesn't require manual cell-by-cell entry.
 
 **Note:** This story is target-miss-tolerable per PRD sequencing. T2.5 manual entry covers all 5 known v1 courses; this story is convenience for future-course loading.
 
+#### Story T2.3a: Phone-Photographed Scorecard Input (extends T2.3)
+
+As an organizer (Josh),
+I want to upload a phone photo of a printed scorecard (in addition to the PDF path T2.3 already supports),
+So that I can onboard a course while standing at the course on tournament day, without needing a PDF download from the club's website.
+
+**Context (added 2026-04-26 post-T2.3 deploy):** real-PDF smoke testing confirmed the parser shape is robust to layout variation across 5 different scorecards (4–9 tees, color-named / rating-named / architect-themed / combo-tee patterns). The "find online first" path (T2.3) handles cases where an official PDF exists; T2.3a covers the "no official PDF available" cases (Tobacco Road has none; Talamore Golf Resort publishes JPG-only at `https://talamoregolfresort.com/wp-content/uploads/2025/08/TGR-Scorecard-2025-Final-2.jpg`). Phone-photographed scorecards taken at the course are also a real product flow.
+
+**Acceptance Criteria:**
+
+**Given** the existing `POST /api/admin/courses/parse-pdf` route from T2.3
+**When** an organizer uploads a multipart file with MIME `image/jpeg`, `image/png`, `image/webp`, or `image/heic`
+**Then** the route accepts it identically to PDF inputs and returns the same `ParsedCourse` JSON shape on success. The endpoint name stays `parse-pdf` for backward-compat with T2.3 consumers (T2.4, T2.5); a future story may rename to `parse-scorecard` if the path semantics warrant it.
+
+**Given** the magic-byte validation step from T2.3
+**When** an image input is uploaded
+**Then** the magic-byte check is extended to accept JPEG (`FF D8 FF`), PNG (`89 50 4E 47`), WebP (`52 49 46 46 .. .. .. .. 57 45 42 50`), and HEIC (variable; ftyp box detection) in addition to the existing PDF magic. Mismatched magic still returns 400 `wrong_magic`.
+
+**Given** the Anthropic content-block construction in `course-parser.ts`
+**When** the input is detected as an image (vs PDF)
+**Then** the SDK message is built with `{ type: 'image', source: { type: 'base64', media_type: <detected-mime>, data: <b64> } }` instead of the `{ type: 'document', ... }` block currently used for PDFs. Both are documented SDK shapes; the Vision API handles them via the same `tool_use` round-trip.
+
+**Given** the body-limit middleware
+**When** image inputs are accepted
+**Then** the `MAX_PDF_BYTES` cap (10 MiB) is reviewed and possibly raised — modern phone photos pre-compression are commonly 4–8 MiB. A 15 MiB cap with the existing 64 KiB multipart-framing slack is the suggested target; final value pinned during impl.
+
+**Given** the system prompt
+**When** image inputs become a regular path
+**Then** the prompt is reviewed for photographed-vs-scanned considerations (lighting, glare, perspective skew, partial occlusion) — possibly adding a short paragraph instructing the model to handle photographed cards. Decision: minimal change vs. full re-prompt is impl-time call.
+
+**Given** test coverage
+**When** the story is complete
+**Then** at least 5 new tests exist exercising image inputs end-to-end (mocked SDK), covering: happy-path JPEG, happy-path PNG, magic-byte mismatch on image, MIME-type acceptance variants, and the document-vs-image content-block branching logic. Real-API smoke against a downloaded scorecard JPG (Talamore Resort) is mandatory before commit (per T2.3 retrospective methodology — codex review is not a substitute for live API testing on external integrations).
+
+**Note:** UI work for the upload flow (camera button, file picker, progress indicator) is OUT of scope here — see T2.3b. This story is backend-only, curl-testable.
+
+#### Story T2.3b: Minimal Organizer Upload UI (covers T2.3 + T2.3a)
+
+As an organizer (Josh),
+I want a simple SPA route at `/admin/courses/upload` where I can pick a PDF or take a phone photo and see the parsed JSON,
+So that the phone-photo and PDF-upload paths are usable end-to-end without curl.
+
+**Context:** T2.3 + T2.3a build the backend; T2.3b is the minimum frontend that lets an organizer actually exercise it on a phone or laptop. This is INTENTIONALLY minimal — no save flow (that's T2.5), no edit form (that's T2.5), no thumbnail preview (deferred). Just upload → wait → display parsed JSON or error.
+
+**Acceptance Criteria:**
+
+**Given** `apps/tournament-web/src/routes/admin.courses.upload.tsx` (TanStack file-route convention → `/admin/courses/upload`)
+**When** an authenticated organizer navigates there
+**Then** they see a single page with: (a) one `<input type="file">` element with `accept="application/pdf,image/jpeg,image/png,image/webp,image/heic"`, (b) on iOS/Android, the input also carries `capture="environment"` so tapping it offers "Take Photo" + "Photo Library" + "Choose File" (the standard mobile picker), (c) a Submit button (disabled until a file is chosen), (d) a status area (idle / uploading / parsing / done / error).
+
+**Given** a non-organizer or unauthenticated user navigates to `/admin/courses/upload`
+**When** the route loads
+**Then** the SPA's loader detects no organizer session (via a `GET /api/auth/status` call returning `{ player: null }` or `{ player: { is_organizer: false } }`) and redirects to a `/auth/forbidden` page (or to `/api/auth/google` for unauthenticated users — minimal, exact UX is impl call).
+
+**Given** a successful parse
+**When** the API returns 200 with `ParsedCourse` JSON
+**Then** the UI renders the parsed data as a read-only summary: course name, tee count + tee list (color/rating/slope), printed totals, and the first hole's per-tee yardages as an example. NOT a full edit form — that's T2.5. A "Try another" button resets to the upload state.
+
+**Given** a 4xx error
+**When** the API returns one of T2.3's error codes (`missing_file`, `file_too_large`, `wrong_mime`, `wrong_magic`)
+**Then** the UI shows a user-friendly message tied to the error code (lookup table, no raw code exposure), plus a "Try another file" button. The 503 `vision_api_failed` case shows "Parser unavailable, please try again or contact admin" with a retry button.
+
+**Given** the long parse latency (10–18s observed in T2.3 smoke)
+**When** the user clicks Submit
+**Then** the UI shows a clear progress state ("Reading scorecard... this may take ~15 seconds") so they don't think it crashed. AbortController on the front-end so the user can cancel.
+
+**Given** test coverage
+**When** the story is complete
+**Then** the route component has at least 4 component-level tests (Vitest + Testing Library) covering: idle state, uploading state, success state, error state. NO E2E browser tests required — those land in a future testing story.
+
+**Note:** This is the FIRST UI story in the Tournament app. Establishes patterns for: route auth guards, file upload with TanStack Query mutations, error-message-by-code lookup. Subsequent UI stories (T2.5 admin) will build on these patterns; over-design here is wasted work, but pattern shipped here is what others will reach for.
+
 #### Story T2.4: Course Validator
 
 As a developer (consumed by T2.3 parser output and T2.5 form submission),

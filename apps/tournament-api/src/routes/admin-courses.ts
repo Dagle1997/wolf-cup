@@ -24,6 +24,7 @@ import { requireSession } from '../middleware/require-session.js';
 import {
   type ParsedCourse,
   ParserError,
+  detectContentKind,
   parseCoursePdf,
 } from '../lib/course-parser.js';
 
@@ -33,8 +34,27 @@ import {
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 const BODY_LIMIT_MAX_BYTES = MAX_PDF_BYTES + 65_536;
 
-// PDF magic bytes: '%PDF' in ASCII = 0x25 0x50 0x44 0x46.
-const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46];
+// MIME-class allowlist for the soft pre-filter (T2-3a). Magic-byte
+// detection is authoritative; this just rejects obvious non-payload MIMEs
+// before we waste cycles buffering. HEIC/HEIF/GIF are deliberately
+// included so the request reaches `detectContentKind` where we return
+// the friendly tailored error codes (`unsupported_mime_heic`/`_gif`).
+// Without HEIC/HEIF/GIF in this list those friendly codes would be
+// unreachable — the request would be rejected at this stage with a
+// generic `wrong_mime`. (Round-1 codex HIGH #1 — preserved as a regression
+// hazard via test coverage.)
+const ACCEPTED_MIMES = new Set([
+  '',                          // some clients omit per-part Content-Type
+  'application/pdf',           // T2-3 baseline
+  'application/octet-stream',  // de-facto default in many clients
+  'image/jpeg',                // T2-3a
+  'image/jpg',                 // T2-3a — non-standard alias some clients emit
+  'image/png',                 // T2-3a
+  'image/webp',                // T2-3a
+  'image/heic',                // T2-3a — accepted at MIME stage so magic-byte can return unsupported_mime_heic
+  'image/heif',                // T2-3a — same family as HEIC; magic-byte returns unsupported_mime_heic
+  'image/gif',                 // T2-3a — accepted at MIME stage so magic-byte can return unsupported_mime_gif
+]);
 
 export const adminCoursesRouter = new Hono();
 
@@ -77,16 +97,14 @@ adminCoursesRouter.post(
       );
     }
 
-    // MIME validation — extract main-type, lowercase, tolerate empty AND
-    // `application/octet-stream` (many HTTP clients — curl, FormData in
-    // Node/undici — default unspecified file parts to octet-stream). The
-    // magic-byte check below is authoritative in those cases.
+    // MIME validation (SOFT pre-filter) — extract full type/subtype,
+    // lowercase, trim, and check against ACCEPTED_MIMES. Empty +
+    // application/octet-stream tolerated (some clients omit MIME or
+    // default to octet-stream). HEIC/HEIF/GIF accepted here so the
+    // request reaches `detectContentKind` where it returns the friendly
+    // tailored error code rather than generic wrong_mime.
     const mainType = (pdf.type ?? '').split(';')[0]?.trim().toLowerCase() ?? '';
-    const mimeIsAcceptable =
-      mainType === '' ||
-      mainType === 'application/pdf' ||
-      mainType === 'application/octet-stream';
-    if (!mimeIsAcceptable) {
+    if (!ACCEPTED_MIMES.has(mainType)) {
       return c.json(
         { error: 'bad_upload', code: 'wrong_mime', requestId },
         400,
@@ -96,25 +114,48 @@ adminCoursesRouter.post(
     // Buffer once. 10 MiB max is bounded by the checks above.
     const bytes = new Uint8Array(await pdf.arrayBuffer());
 
-    // Magic-byte check — always authoritative.
-    if (
-      bytes.length < 4 ||
-      bytes[0] !== PDF_MAGIC[0] ||
-      bytes[1] !== PDF_MAGIC[1] ||
-      bytes[2] !== PDF_MAGIC[2] ||
-      bytes[3] !== PDF_MAGIC[3]
-    ) {
-      return c.json(
-        { error: 'bad_upload', code: 'wrong_magic', requestId },
-        400,
-      );
+    // Magic-byte detection (T2-3a) — bytes-only authoritative classifier.
+    // Declared MIME from the prior step is NOT re-consulted: if the bytes
+    // start with %PDF we parse as PDF regardless of declared MIME, and
+    // vice versa. This matches T2-3's posture (broad MIME accept, trust
+    // bytes). Discriminator narrowed exhaustively below — TypeScript
+    // would fail to compile if a new MagicByteResult variant were added
+    // without updating this switch.
+    const detected = detectContentKind(bytes);
+    let parseKind: { kind: 'pdf' } | { kind: 'image'; mime: 'image/jpeg' | 'image/png' | 'image/webp' };
+    let inputKind: 'pdf' | 'image/jpeg' | 'image/png' | 'image/webp';
+    switch (detected.kind) {
+      case 'pdf':
+        parseKind = { kind: 'pdf' };
+        inputKind = 'pdf';
+        break;
+      case 'image':
+        parseKind = { kind: 'image', mime: detected.mime };
+        inputKind = detected.mime;
+        break;
+      case 'unsupported_image':
+        return c.json(
+          {
+            error: 'bad_upload',
+            code: detected.mime === 'image/heic'
+              ? 'unsupported_mime_heic'
+              : 'unsupported_mime_gif',
+            requestId,
+          },
+          400,
+        );
+      case 'mismatch':
+        return c.json(
+          { error: 'bad_upload', code: 'wrong_magic', requestId },
+          400,
+        );
     }
 
     // Invoke parser. Any failure → 503. Sub-codes are logged for
     // operator diagnosis but NOT leaked to the client.
     let parsed: ParsedCourse;
     try {
-      parsed = await parseCoursePdf(bytes);
+      parsed = await parseCoursePdf(bytes, parseKind);
     } catch (err) {
       const errorCode =
         err instanceof ParserError ? err.code : 'unknown';
@@ -150,6 +191,7 @@ adminCoursesRouter.post(
     log.info({
       event: 'vision_parse_success',
       fileSize: pdf.size,
+      inputKind, // T2-3a: 'pdf' | 'image/jpeg' | 'image/png' | 'image/webp'
       courseName: parsed.name,
       teeCount: parsed.tees.length,
       holeCount: parsed.holes.length,

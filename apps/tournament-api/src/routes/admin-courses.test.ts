@@ -327,4 +327,151 @@ describe('POST /api/admin/courses/parse-pdf', () => {
       Array.from(originalBytes.slice(0, 8)),
     );
   });
+
+  // ===========================================================================
+  // T2-3a: phone-photographed scorecard input — image MIME variants
+  // ===========================================================================
+
+  /** Build a 1 KB image blob beginning with the given magic bytes. */
+  function makeImageBytes(magic: readonly number[]): Uint8Array {
+    const size = 1024;
+    const bytes = new Uint8Array(new ArrayBuffer(size));
+    for (let i = 0; i < magic.length && i < size; i++) {
+      bytes[i] = magic[i]!;
+    }
+    return bytes;
+  }
+
+  /** Build a multipart FormData body with a single `pdf` field carrying an image. */
+  function imageForm(bytes: Uint8Array, mime: string): FormData {
+    const form = new FormData();
+    const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: mime });
+    form.append('pdf', blob, 'scorecard.img');
+    return form;
+  }
+
+  it('T2-3a: JPEG happy path → 200, parser invoked with kind=image mime=image/jpeg', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    mockParseCoursePdf.mockResolvedValueOnce(canonicalParsed());
+
+    const jpegBytes = makeImageBytes([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+    const res = await testApp.request('/api/admin/courses/parse-pdf', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId) },
+      body: imageForm(jpegBytes, 'image/jpeg'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockParseCoursePdf).toHaveBeenCalledTimes(1);
+    const callArgs = mockParseCoursePdf.mock.calls[0]!;
+    expect(callArgs[1]).toEqual({ kind: 'image', mime: 'image/jpeg' });
+  });
+
+  it('T2-3a: PNG happy path → 200, parser invoked with kind=image mime=image/png', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    mockParseCoursePdf.mockResolvedValueOnce(canonicalParsed());
+
+    const pngBytes = makeImageBytes([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+    const res = await testApp.request('/api/admin/courses/parse-pdf', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId) },
+      body: imageForm(pngBytes, 'image/png'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockParseCoursePdf).toHaveBeenCalledTimes(1);
+    expect(mockParseCoursePdf.mock.calls[0]![1]).toEqual({
+      kind: 'image',
+      mime: 'image/png',
+    });
+  });
+
+  it('T2-3a: WebP happy path → 200, parser invoked with kind=image mime=image/webp', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    mockParseCoursePdf.mockResolvedValueOnce(canonicalParsed());
+
+    // RIFF + WEBP composite at bytes 0-3 and 8-11.
+    const webpBytes = makeImageBytes([
+      0x52, 0x49, 0x46, 0x46, // RIFF
+      0x00, 0x00, 0x00, 0x00, // size
+      0x57, 0x45, 0x42, 0x50, // WEBP
+    ]);
+
+    const res = await testApp.request('/api/admin/courses/parse-pdf', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId) },
+      body: imageForm(webpBytes, 'image/webp'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockParseCoursePdf).toHaveBeenCalledTimes(1);
+    expect(mockParseCoursePdf.mock.calls[0]![1]).toEqual({
+      kind: 'image',
+      mime: 'image/webp',
+    });
+  });
+
+  it('T2-3a: HEIC rejection → 400 unsupported_mime_heic, parser NOT invoked', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+
+    // ftyp box with `heic` brand at bytes 8-11.
+    const heicBytes = makeImageBytes([
+      0x00, 0x00, 0x00, 0x18,
+      0x66, 0x74, 0x79, 0x70, // ftyp
+      0x68, 0x65, 0x69, 0x63, // brand: heic
+    ]);
+
+    const res = await testApp.request('/api/admin/courses/parse-pdf', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId) },
+      body: imageForm(heicBytes, 'image/heic'),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.error).toBe('bad_upload');
+    expect(body.code).toBe('unsupported_mime_heic');
+    expect(mockParseCoursePdf).not.toHaveBeenCalled();
+  });
+
+  it('T2-3a: GIF rejection → 400 unsupported_mime_gif, parser NOT invoked', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+
+    // GIF89a header.
+    const gifBytes = makeImageBytes([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+
+    const res = await testApp.request('/api/admin/courses/parse-pdf', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId) },
+      body: imageForm(gifBytes, 'image/gif'),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.error).toBe('bad_upload');
+    expect(body.code).toBe('unsupported_mime_gif');
+    expect(mockParseCoursePdf).not.toHaveBeenCalled();
+  });
+
+  it('T2-3a: MIME=image/jpeg but bytes=%PDF → 200 with PDF parse (magic wins; declared MIME ignored)', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    mockParseCoursePdf.mockResolvedValueOnce(canonicalParsed());
+
+    // %PDF magic but declared as image/jpeg. Per the magic-byte authoritative
+    // policy (Risk Acceptance §3 + §8), this MUST parse as PDF — the declared
+    // MIME is a soft pre-filter only and is NOT re-consulted after buffering.
+    const pdfBytesWithImageMime = makeImageBytes([0x25, 0x50, 0x44, 0x46]);
+
+    const res = await testApp.request('/api/admin/courses/parse-pdf', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId) },
+      body: imageForm(pdfBytesWithImageMime, 'image/jpeg'),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockParseCoursePdf).toHaveBeenCalledTimes(1);
+    expect(mockParseCoursePdf.mock.calls[0]![1]).toEqual({ kind: 'pdf' });
+  });
 });

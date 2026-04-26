@@ -37,7 +37,9 @@ import {
   TOOL_INPUT_SCHEMA,
   TOOL_NAME,
   _resetClientForTests,
+  detectContentKind,
   parseCoursePdf,
+  type MagicByteResult,
 } from './course-parser.js';
 
 // Minimal valid tool_use response matching ParsedCourseSchema. Tests
@@ -543,6 +545,154 @@ describe('course-parser', () => {
       walk(TOOL_INPUT_SCHEMA, '$');
 
       expect(violations).toEqual([]);
+    });
+  });
+
+  // ===========================================================================
+  // T2-3a: phone-photographed scorecard input (image MIME variants)
+  // ===========================================================================
+
+  describe('detectContentKind (T2-3a)', () => {
+    // Parameterized table test covering every documented detection path.
+    // Per AC #7, includes ≥2 distinct HEIC brands so a future iPhone-OS
+    // variant introducing a new brand is more likely to be caught.
+    const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x01, 0x02]);
+    const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xde, 0xad]);
+    const WEBP_BYTES = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, // RIFF
+      0x00, 0x00, 0x00, 0x00, // size (don't-care)
+      0x57, 0x45, 0x42, 0x50, // WEBP
+    ]);
+    // Two HEIC variants: standard `heic` brand AND the `mif1` variant
+    // commonly seen in iOS multi-image HEIC outputs. Both must classify
+    // as `unsupported_image, mime: image/heic`.
+    const HEIC_BYTES_HEIC = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18, // box size (24 bytes — don't-care for detection)
+      0x66, 0x74, 0x79, 0x70, // ftyp
+      0x68, 0x65, 0x69, 0x63, // brand: heic
+      0x00, 0x00, 0x00, 0x00, // minor version (don't-care)
+    ]);
+    const HEIC_BYTES_MIF1 = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18,
+      0x66, 0x74, 0x79, 0x70,
+      0x6d, 0x69, 0x66, 0x31, // brand: mif1
+      0x00, 0x00, 0x00, 0x00,
+    ]);
+    const HEIC_BYTES_HEVX = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18,
+      0x66, 0x74, 0x79, 0x70,
+      0x68, 0x65, 0x76, 0x78, // brand: hevx
+      0x00, 0x00, 0x00, 0x00,
+    ]);
+    const GIF87_BYTES = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x37, 0x61, 0x10, 0x10]);
+    const GIF89_BYTES = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x10, 0x10]);
+    // Random non-magic bytes — no known signature
+    const RANDOM_BYTES = new Uint8Array([0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0x11, 0x22, 0x33, 0x44]);
+    // ftyp box but with an unknown brand (e.g., AVIF) — should fall to mismatch
+    const AVIF_BYTES = new Uint8Array([
+      0x00, 0x00, 0x00, 0x18,
+      0x66, 0x74, 0x79, 0x70,
+      0x61, 0x76, 0x69, 0x66, // brand: avif (NOT in HEIC_BRANDS)
+      0x00, 0x00, 0x00, 0x00,
+    ]);
+
+    const cases: Array<[string, Uint8Array, MagicByteResult]> = [
+      ['PDF', PDF_BYTES, { kind: 'pdf' }],
+      ['JPEG (FF D8 FF)', JPEG_BYTES, { kind: 'image', mime: 'image/jpeg' }],
+      ['PNG (full magic)', PNG_BYTES, { kind: 'image', mime: 'image/png' }],
+      ['WebP (RIFF + WEBP)', WEBP_BYTES, { kind: 'image', mime: 'image/webp' }],
+      ['HEIC brand=heic', HEIC_BYTES_HEIC, { kind: 'unsupported_image', mime: 'image/heic' }],
+      ['HEIC brand=mif1', HEIC_BYTES_MIF1, { kind: 'unsupported_image', mime: 'image/heic' }],
+      ['HEIC brand=hevx', HEIC_BYTES_HEVX, { kind: 'unsupported_image', mime: 'image/heic' }],
+      ['GIF87a', GIF87_BYTES, { kind: 'unsupported_image', mime: 'image/gif' }],
+      ['GIF89a', GIF89_BYTES, { kind: 'unsupported_image', mime: 'image/gif' }],
+      ['random bytes (no magic match)', RANDOM_BYTES, { kind: 'mismatch' }],
+      ['ftyp box with non-HEIC brand (AVIF)', AVIF_BYTES, { kind: 'mismatch' }],
+    ];
+
+    it.each(cases)('classifies %s correctly', (_label, bytes, expected) => {
+      expect(detectContentKind(bytes)).toEqual(expected);
+    });
+
+    it('returns mismatch for empty input', () => {
+      expect(detectContentKind(new Uint8Array(0))).toEqual({ kind: 'mismatch' });
+    });
+
+    it('returns mismatch for too-short input (3 bytes — below all magic minimums)', () => {
+      // PDF is the shortest at 4 bytes; anything <4 cannot match.
+      expect(detectContentKind(new Uint8Array([0x25, 0x50, 0x44]))).toEqual({ kind: 'mismatch' });
+    });
+  });
+
+  describe('parseCoursePdf — image content-kind branching (T2-3a)', () => {
+    const FIXTURE_BYTES_FOR_PARSER = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
+
+    it('emits an image content block with image/jpeg media_type when contentKind is jpeg', async () => {
+      mockCreate.mockResolvedValueOnce(makeValidResponse());
+
+      await parseCoursePdf(FIXTURE_BYTES_FOR_PARSER, { kind: 'image', mime: 'image/jpeg' });
+
+      const [params] = mockCreate.mock.calls[0] as [Record<string, unknown>];
+      const messages = params['messages'] as Array<{
+        role: string;
+        content: Array<{ type: string; source?: { media_type: string; type: string } }>;
+      }>;
+      const content = messages[0]!.content;
+      // Ordering preservation contract per AC #2: discriminator block at
+      // index 0, text block at index 1.
+      expect(content[0]?.type).toBe('image');
+      expect(content[0]?.source?.media_type).toBe('image/jpeg');
+      expect(content[0]?.source?.type).toBe('base64');
+      expect(content[1]?.type).toBe('text');
+    });
+
+    it('emits an image content block with image/png media_type when contentKind is png', async () => {
+      mockCreate.mockResolvedValueOnce(makeValidResponse());
+
+      await parseCoursePdf(FIXTURE_BYTES_FOR_PARSER, { kind: 'image', mime: 'image/png' });
+
+      const [params] = mockCreate.mock.calls[0] as [Record<string, unknown>];
+      const messages = params['messages'] as Array<{
+        role: string;
+        content: Array<{ type: string; source?: { media_type: string } }>;
+      }>;
+      const content = messages[0]!.content;
+      expect(content[0]?.type).toBe('image');
+      expect(content[0]?.source?.media_type).toBe('image/png');
+      expect(content[1]?.type).toBe('text');
+    });
+
+    it('emits an image content block with image/webp media_type when contentKind is webp', async () => {
+      mockCreate.mockResolvedValueOnce(makeValidResponse());
+
+      await parseCoursePdf(FIXTURE_BYTES_FOR_PARSER, { kind: 'image', mime: 'image/webp' });
+
+      const [params] = mockCreate.mock.calls[0] as [Record<string, unknown>];
+      const messages = params['messages'] as Array<{
+        role: string;
+        content: Array<{ type: string; source?: { media_type: string } }>;
+      }>;
+      expect(messages[0]!.content[0]?.type).toBe('image');
+      expect(messages[0]!.content[0]?.source?.media_type).toBe('image/webp');
+    });
+
+    it('backward-compat: parseCoursePdf without contentKind still emits a document block (PDF default + ordering pinned)', async () => {
+      mockCreate.mockResolvedValueOnce(makeValidResponse());
+
+      // T2-3 callers passed bytes-only; that contract MUST hold byte-identical.
+      await parseCoursePdf(FIXTURE_BYTES_FOR_PARSER);
+
+      const [params] = mockCreate.mock.calls[0] as [Record<string, unknown>];
+      const messages = params['messages'] as Array<{
+        role: string;
+        content: Array<{ type: string; source?: { media_type: string } }>;
+      }>;
+      const content = messages[0]!.content;
+      // Pin BOTH content[0].type AND content[1].type per AC #7 ordering contract.
+      expect(content[0]?.type).toBe('document');
+      expect(content[0]?.source?.media_type).toBe('application/pdf');
+      expect(content[1]?.type).toBe('text');
     });
   });
 });
