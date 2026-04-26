@@ -20,6 +20,10 @@ import {
   roundPlayers,
   players,
 } from '../db/schema.js';
+import { calcCourseHandicap } from '@wolf-cup/engine';
+import type { Tee } from '@wolf-cup/engine';
+
+const VALID_TEES = new Set<string>(['black', 'blue', 'white']);
 
 export interface SeasonExport {
   buffer: Buffer;
@@ -39,6 +43,7 @@ export async function buildSeasonWorkbook(year?: number): Promise<SeasonExport> 
     .select({
       id: rounds.id,
       scheduledDate: rounds.scheduledDate,
+      tee: rounds.tee,
     })
     .from(rounds)
     .where(and(eq(rounds.seasonId, season.id), eq(rounds.status, 'finalized')))
@@ -46,6 +51,7 @@ export async function buildSeasonWorkbook(year?: number): Promise<SeasonExport> 
     .all();
 
   const roundIds = finalizedRounds.map((r) => r.id);
+  const teeByRound = new Map<number, string | null>(finalizedRounds.map((r) => [r.id, r.tee]));
 
   const allResults = roundIds.length
     ? await db
@@ -56,6 +62,7 @@ export async function buildSeasonWorkbook(year?: number): Promise<SeasonExport> 
           money: roundResults.moneyTotal,
           playerName: players.name,
           isSub: roundPlayers.isSub,
+          handicapIndex: roundPlayers.handicapIndex,
         })
         .from(roundResults)
         .innerJoin(players, eq(roundResults.playerId, players.id))
@@ -108,6 +115,8 @@ export async function buildSeasonWorkbook(year?: number): Promise<SeasonExport> 
     const sheet = wb.addWorksheet(round.scheduledDate);
     sheet.columns = [
       { header: 'Player', key: 'name', width: 24 },
+      { header: 'HI', key: 'hi', width: 8 },
+      { header: 'Course HCP', key: 'ch', width: 12 },
       { header: 'Gross Score', key: 'gross', width: 12 },
       { header: 'Stableford', key: 'stableford', width: 12 },
       { header: 'Money', key: 'money', width: 10 },
@@ -119,9 +128,17 @@ export async function buildSeasonWorkbook(year?: number): Promise<SeasonExport> 
       .slice()
       .sort((a, b) => b.stableford - a.stableford);
 
+    const tee = teeByRound.get(round.id);
+    const teeIsValid = tee != null && VALID_TEES.has(tee);
+
     for (const r of rows) {
+      const ch = teeIsValid && r.handicapIndex != null
+        ? calcCourseHandicap(r.handicapIndex, tee as Tee)
+        : null;
       sheet.addRow({
         name: r.playerName,
+        hi: r.handicapIndex ?? null,
+        ch,
         gross: grossByRoundPlayer.get(`${round.id}:${r.playerId}`) ?? null,
         stableford: r.stableford,
         money: r.money,
@@ -130,6 +147,7 @@ export async function buildSeasonWorkbook(year?: number): Promise<SeasonExport> 
     }
 
     sheet.getColumn('money').numFmt = '$#,##0;[Red]-$#,##0';
+    sheet.getColumn('hi').numFmt = '0.0';
   }
 
   const arrayBuffer = await wb.xlsx.writeBuffer();

@@ -68,6 +68,7 @@ type SeasonHighlights = {
   lowestGrossRound: { playerName: string; gross: number; date: string; tee: string | null } | null;
   lowestNetRound: { playerName: string; net: number; gross: number; ch: number; date: string; tee: string | null } | null;
   bestPartnership: { player1: string; player2: string; winRate: number; wins: number; losses: number; pushes: number; holes: number } | null;
+  bestFinancialPartnership: { player1: string; player2: string; teamMoney: number; holes: number } | null;
 };
 
 type StatsResponse = {
@@ -188,7 +189,7 @@ type HighlightSlide = {
   label: string;
   title: string;
   detail: string;
-  tone: 'birdies' | 'greenies' | 'polies' | 'sandies' | 'gross' | 'net' | 'partnership';
+  tone: 'birdies' | 'greenies' | 'polies' | 'sandies' | 'gross' | 'net' | 'partnership' | 'money';
 };
 
 function buildHighlightSlides(h: SeasonHighlights, allNames: string[]): HighlightSlide[] {
@@ -266,6 +267,16 @@ function buildHighlightSlides(h: SeasonHighlights, allNames: string[]): Highligh
       tone: 'partnership',
     });
   }
+  if (h.bestFinancialPartnership) {
+    slides.push({
+      key: 'best-financial-partnership',
+      emoji: '💰',
+      label: 'Best Financial Partnership',
+      title: `${sn(h.bestFinancialPartnership.player1)} & ${sn(h.bestFinancialPartnership.player2)}`,
+      detail: `+$${h.bestFinancialPartnership.teamMoney} together · ${h.bestFinancialPartnership.holes} holes`,
+      tone: 'money',
+    });
+  }
   return slides;
 }
 
@@ -277,6 +288,7 @@ const TONE_BG: Record<HighlightSlide['tone'], string> = {
   gross: 'bg-violet-500/10 border-violet-500/20',
   net: 'bg-yellow-500/10 border-yellow-500/20',
   partnership: 'bg-green-500/10 border-green-500/20',
+  money: 'bg-emerald-500/10 border-emerald-500/20',
 };
 
 function StatsHighlights({ data }: { data: StatsResponse }) {

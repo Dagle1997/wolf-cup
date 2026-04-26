@@ -56,7 +56,11 @@ type SeasonHighlights = {
   mostSandies: { playerNames: string[]; count: number } | null;
   lowestGrossRound: { playerName: string; gross: number; date: string; tee: string | null } | null;
   lowestNetRound: { playerName: string; net: number; gross: number; ch: number; date: string; tee: string | null } | null;
+  // Win-rate winner. winRate = wins / (wins + losses); pushes don't penalize.
   bestPartnership: { player1: string; player2: string; winRate: number; wins: number; losses: number; pushes: number; holes: number } | null;
+  // Money winner. teamMoney = sum of both pair members' per-hole money on
+  // their 2v2 partner holes (combined take-home as a team).
+  bestFinancialPartnership: { player1: string; player2: string; teamMoney: number; holes: number } | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -96,6 +100,7 @@ async function computeSeasonHighlights(
     .select({
       roundId: wolfDecisions.roundId,
       groupId: wolfDecisions.groupId,
+      holeNumber: wolfDecisions.holeNumber,
       decision: wolfDecisions.decision,
       wolfPlayerId: wolfDecisions.wolfPlayerId,
       partnerPlayerId: wolfDecisions.partnerPlayerId,
@@ -219,8 +224,12 @@ async function computeSeasonHighlights(
     }
   }
 
-  // ---- Best 2v2 Partnership (season) — mirrors the lifetime logic but
-  // restricted to this season's wolf decisions / group rosters.
+  // ---- Best 2v2 Partnership (season) — both win-rate and money flavors.
+  //
+  // Win rate uses wins / (wins + losses); pushes are excluded from the
+  // denominator so they don't penalize a duo that won every decided hole.
+  // Money uses sum of both teammates' per-hole money — that's the team's
+  // combined take-home across their 2v2 partner holes (bonuses included).
   const partnerDecisions = wolfRows.filter((d) => d.decision === 'partner' && d.wolfPlayerId !== null && d.partnerPlayerId !== null);
   const groupRosters = new Map<string, number[]>();
   for (const rp of rpRows) {
@@ -230,48 +239,94 @@ async function computeSeasonHighlights(
     groupRosters.set(key, arr);
   }
 
-  const pairMap = new Map<string, { ids: [number, number]; holes: number; wins: number; losses: number; pushes: number }>();
+  // Per-hole money breakdown for each round in scope. One query per round
+  // (the helper does its own internal queries). At 25 rounds this is fine
+  // for an endpoint that's already a heavy aggregator.
+  const { computeRoundMoneyBreakdown } = await import('../lib/money-breakdown.js');
+  const partnerRoundIds = [...new Set(partnerDecisions.map((d) => d.roundId))];
+  const moneyByRound = new Map<number, Awaited<ReturnType<typeof computeRoundMoneyBreakdown>>>();
+  for (const rId of partnerRoundIds) {
+    moneyByRound.set(rId, await computeRoundMoneyBreakdown(rId));
+  }
+  const lookupHoleMoney = (roundId: number, groupId: number, holeNumber: number) => {
+    const breakdown = moneyByRound.get(roundId);
+    if (!breakdown) return null;
+    return breakdown.holes.find((h) => h.groupId === groupId && h.holeNumber === holeNumber) ?? null;
+  };
+
+  type PairAccumulator = {
+    ids: [number, number];
+    holes: number;
+    wins: number;
+    losses: number;
+    pushes: number;
+    teamMoney: number; // sum of both teammates' per-hole money on these holes
+  };
+  const pairMap = new Map<string, PairAccumulator>();
+  const ensurePair = (a: number, b: number) => {
+    const key = [a, b].sort((x, y) => x - y).join('-');
+    const existing = pairMap.get(key);
+    if (existing) return existing;
+    const created: PairAccumulator = {
+      ids: [Math.min(a, b), Math.max(a, b)],
+      holes: 0, wins: 0, losses: 0, pushes: 0, teamMoney: 0,
+    };
+    pairMap.set(key, created);
+    return created;
+  };
+
   for (const d of partnerDecisions) {
     const wolfId = d.wolfPlayerId!;
     const partnerId = d.partnerPlayerId!;
-    // Wolf-team pair
-    const wolfPairKey = [wolfId, partnerId].sort((a, b) => a - b).join('-');
-    const wolfPair = pairMap.get(wolfPairKey) ?? {
-      ids: [Math.min(wolfId, partnerId), Math.max(wolfId, partnerId)] as [number, number],
-      holes: 0, wins: 0, losses: 0, pushes: 0,
-    };
+    const roster = groupRosters.get(`${d.roundId}-${d.groupId}`) ?? [];
+    const opponents = roster.filter((pid) => pid !== wolfId && pid !== partnerId);
+    const holeMoney = lookupHoleMoney(d.roundId, d.groupId, d.holeNumber);
+
+    // Wolf-team pair (wolf + partner, same team)
+    const wolfPair = ensurePair(wolfId, partnerId);
     wolfPair.holes++;
     if (d.outcome === 'win') wolfPair.wins++;
     else if (d.outcome === 'loss') wolfPair.losses++;
     else if (d.outcome === 'push') wolfPair.pushes++;
-    pairMap.set(wolfPairKey, wolfPair);
+    if (holeMoney) {
+      wolfPair.teamMoney +=
+        (holeMoney.perPlayer.get(wolfId)?.total ?? 0) +
+        (holeMoney.perPlayer.get(partnerId)?.total ?? 0);
+    }
 
-    // Opponent-team pair (the leftover two players in the group)
-    const roster = groupRosters.get(`${d.roundId}-${d.groupId}`) ?? [];
-    const opponents = roster.filter((pid) => pid !== wolfId && pid !== partnerId);
+    // Opponent-team pair (the leftover two players, same team vs the wolf duo)
     if (opponents.length === 2) {
-      const oppPairKey = opponents.sort((a, b) => a - b).join('-');
-      const oppPair = pairMap.get(oppPairKey) ?? {
-        ids: [opponents[0]!, opponents[1]!] as [number, number],
-        holes: 0, wins: 0, losses: 0, pushes: 0,
-      };
+      const opp1 = opponents[0]!;
+      const opp2 = opponents[1]!;
+      const oppPair = ensurePair(opp1, opp2);
       oppPair.holes++;
+      // Inverted outcome from opponents' perspective
       if (d.outcome === 'win') oppPair.losses++;
       else if (d.outcome === 'loss') oppPair.wins++;
       else if (d.outcome === 'push') oppPair.pushes++;
-      pairMap.set(oppPairKey, oppPair);
+      if (holeMoney) {
+        oppPair.teamMoney +=
+          (holeMoney.perPlayer.get(opp1)?.total ?? 0) +
+          (holeMoney.perPlayer.get(opp2)?.total ?? 0);
+      }
     }
   }
 
-  // 5-hole minimum gate — early-season pairs with 1 or 2 holes shouldn't lock
-  // in the slide at 100%. Below that, slide hides until enough samples.
+  // 5-hole minimum gate — keeps small samples out of both flavors.
   const MIN_PARTNERSHIP_HOLES = 5;
+
+  // Best (win-rate) — wins / (wins + losses), pushes excluded from denom.
   let bestPartnership: SeasonHighlights['bestPartnership'] = null;
-  const qualified = [...pairMap.values()].filter((p) => p.holes >= MIN_PARTNERSHIP_HOLES && p.wins / p.holes > 0.5);
-  if (qualified.length > 0) {
-    const best = qualified.reduce((a, b) => {
-      const aRate = a.wins / a.holes;
-      const bRate = b.wins / b.holes;
+  const winRateQualified = [...pairMap.values()].filter((p) => {
+    if (p.holes < MIN_PARTNERSHIP_HOLES) return false;
+    const decided = p.wins + p.losses;
+    if (decided === 0) return false; // all pushes — undefined rate, skip
+    return p.wins / decided > 0.5;
+  });
+  if (winRateQualified.length > 0) {
+    const best = winRateQualified.reduce((a, b) => {
+      const aRate = a.wins / (a.wins + a.losses);
+      const bRate = b.wins / (b.wins + b.losses);
       if (Math.abs(aRate - bRate) > 0.001) return bRate > aRate ? b : a;
       return b.holes > a.holes ? b : a;
     });
@@ -282,7 +337,27 @@ async function computeSeasonHighlights(
       wins: best.wins,
       losses: best.losses,
       pushes: best.pushes,
-      winRate: Math.round((best.wins / best.holes) * 100),
+      winRate: Math.round((best.wins / (best.wins + best.losses)) * 100),
+    };
+  }
+
+  // Best (money) — pair with the highest combined take-home across their
+  // 2v2 partner holes. Negative or zero net doesn't qualify (nobody is
+  // proud of breaking even or losing money together).
+  let bestFinancialPartnership: SeasonHighlights['bestFinancialPartnership'] = null;
+  const moneyQualified = [...pairMap.values()].filter(
+    (p) => p.holes >= MIN_PARTNERSHIP_HOLES && p.teamMoney > 0,
+  );
+  if (moneyQualified.length > 0) {
+    const best = moneyQualified.reduce((a, b) => {
+      if (a.teamMoney !== b.teamMoney) return b.teamMoney > a.teamMoney ? b : a;
+      return b.holes > a.holes ? b : a;
+    });
+    bestFinancialPartnership = {
+      player1: playerNameById.get(best.ids[0]) ?? 'Unknown',
+      player2: playerNameById.get(best.ids[1]) ?? 'Unknown',
+      teamMoney: best.teamMoney,
+      holes: best.holes,
     };
   }
 
@@ -294,6 +369,7 @@ async function computeSeasonHighlights(
     lowestGrossRound,
     lowestNetRound,
     bestPartnership,
+    bestFinancialPartnership,
   };
 }
 
@@ -618,15 +694,21 @@ app.get('/stats', async (c) => {
       }
     }
 
-    // Find best partnership — actually winning together (win rate > 50%) with
-    // a 5-hole minimum so an early-season 1-0 doesn't lock in the slide. Hides
-    // until someone clears both bars; matches the seasonHighlights gate above.
-    const qualifiedPairs = [...pairMap.values()].filter((p) => p.holes >= 5 && p.wins / p.holes > 0.5);
+    // Find best partnership — wins / (wins + losses) so pushes don't penalize
+    // a duo that won every decided hole. 5-hole minimum total volume; pairs
+    // whose decided count is 0 (all pushes) are skipped. Matches the
+    // seasonHighlights formula.
+    const qualifiedPairs = [...pairMap.values()].filter((p) => {
+      if (p.holes < 5) return false;
+      const decided = p.wins + p.losses;
+      if (decided === 0) return false;
+      return p.wins / decided > 0.5;
+    });
     let bestPartnership: { player1: string; player2: string; holes: number; wins: number; losses: number; pushes: number; winRate: number } | null = null;
     if (qualifiedPairs.length > 0) {
       const best = qualifiedPairs.reduce((a, b) => {
-        const aRate = a.wins / a.holes;
-        const bRate = b.wins / b.holes;
+        const aRate = a.wins / (a.wins + a.losses);
+        const bRate = b.wins / (b.wins + b.losses);
         if (Math.abs(aRate - bRate) > 0.001) return bRate > aRate ? b : a;
         return b.holes > a.holes ? b : a; // tiebreak: more holes
       });
@@ -637,7 +719,7 @@ app.get('/stats', async (c) => {
         wins: best.wins,
         losses: best.losses,
         pushes: best.pushes,
-        winRate: Math.round((best.wins / best.holes) * 100),
+        winRate: Math.round((best.wins / (best.wins + best.losses)) * 100),
       };
     }
 
