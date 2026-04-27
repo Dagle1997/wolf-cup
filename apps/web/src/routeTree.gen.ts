@@ -14,6 +14,7 @@ import { Route as StandingsRouteImport } from './routes/standings'
 import { Route as ScoreEntryHoleRouteImport } from './routes/score-entry-hole'
 import { Route as ScoreEntryRouteImport } from './routes/score-entry'
 import { Route as PracticeRouteImport } from './routes/practice'
+import { Route as PairingHistoryRouteImport } from './routes/pairing-history'
 import { Route as OddsRouteImport } from './routes/odds'
 import { Route as HelpRouteImport } from './routes/help'
 import { Route as GuideRouteImport } from './routes/guide'
@@ -56,6 +57,11 @@ const ScoreEntryRoute = ScoreEntryRouteImport.update({
 const PracticeRoute = PracticeRouteImport.update({
   id: '/practice',
   path: '/practice',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PairingHistoryRoute = PairingHistoryRouteImport.update({
+  id: '/pairing-history',
+  path: '/pairing-history',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OddsRoute = OddsRouteImport.update({
@@ -159,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/guide': typeof GuideRoute
   '/help': typeof HelpRoute
   '/odds': typeof OddsRoute
+  '/pairing-history': typeof PairingHistoryRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
   '/score-entry-hole': typeof ScoreEntryHoleRoute
@@ -183,6 +190,7 @@ export interface FileRoutesByTo {
   '/guide': typeof GuideRoute
   '/help': typeof HelpRoute
   '/odds': typeof OddsRoute
+  '/pairing-history': typeof PairingHistoryRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
   '/score-entry-hole': typeof ScoreEntryHoleRoute
@@ -209,6 +217,7 @@ export interface FileRoutesById {
   '/guide': typeof GuideRoute
   '/help': typeof HelpRoute
   '/odds': typeof OddsRoute
+  '/pairing-history': typeof PairingHistoryRoute
   '/practice': typeof PracticeRoute
   '/score-entry': typeof ScoreEntryRoute
   '/score-entry-hole': typeof ScoreEntryHoleRoute
@@ -236,6 +245,7 @@ export interface FileRouteTypes {
     | '/guide'
     | '/help'
     | '/odds'
+    | '/pairing-history'
     | '/practice'
     | '/score-entry'
     | '/score-entry-hole'
@@ -260,6 +270,7 @@ export interface FileRouteTypes {
     | '/guide'
     | '/help'
     | '/odds'
+    | '/pairing-history'
     | '/practice'
     | '/score-entry'
     | '/score-entry-hole'
@@ -285,6 +296,7 @@ export interface FileRouteTypes {
     | '/guide'
     | '/help'
     | '/odds'
+    | '/pairing-history'
     | '/practice'
     | '/score-entry'
     | '/score-entry-hole'
@@ -311,6 +323,7 @@ export interface RootRouteChildren {
   GuideRoute: typeof GuideRoute
   HelpRoute: typeof HelpRoute
   OddsRoute: typeof OddsRoute
+  PairingHistoryRoute: typeof PairingHistoryRoute
   PracticeRoute: typeof PracticeRoute
   ScoreEntryRoute: typeof ScoreEntryRoute
   ScoreEntryHoleRoute: typeof ScoreEntryHoleRoute
@@ -356,6 +369,13 @@ declare module '@tanstack/react-router' {
       path: '/practice'
       fullPath: '/practice'
       preLoaderRoute: typeof PracticeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pairing-history': {
+      id: '/pairing-history'
+      path: '/pairing-history'
+      fullPath: '/pairing-history'
+      preLoaderRoute: typeof PairingHistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/odds': {
@@ -517,6 +537,7 @@ const rootRouteChildren: RootRouteChildren = {
   GuideRoute: GuideRoute,
   HelpRoute: HelpRoute,
   OddsRoute: OddsRoute,
+  PairingHistoryRoute: PairingHistoryRoute,
   PracticeRoute: PracticeRoute,
   ScoreEntryRoute: ScoreEntryRoute,
   ScoreEntryHoleRoute: ScoreEntryHoleRoute,

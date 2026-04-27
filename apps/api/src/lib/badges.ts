@@ -400,14 +400,19 @@ export function computeAllAwards(
 
   // Side Game Champion
   if (sideGameWins && sideGameWins.length > 0) {
-    // Group by year, find max wins per year
+    // Group by year, find max wins per year. Wins are fractional when ties
+    // split a round's credit (round-leader-takes-all) — render with one
+    // decimal place when not an integer so "0.5" and "1.5" don't render
+    // as "0.5 wins" via raw stringification of the number type.
+    const formatWins = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
     const yearMap = new Map<number, SideGameWinEntry[]>();
     for (const entry of sideGameWins) {
       if (!yearMap.has(entry.year)) yearMap.set(entry.year, []);
       yearMap.get(entry.year)!.push(entry);
     }
 
-    const recipients: { playerName: string; years: number[]; detail: string }[] = [];
+    const recipients: { playerName: string; years: number[]; detail: string; bestWins: number }[] = [];
     for (const [year, entries] of yearMap) {
       const maxWins = Math.max(...entries.map((e) => e.wins));
       if (maxWins === 0) continue;
@@ -416,11 +421,16 @@ export function computeAllAwards(
         const existing = recipients.find((r) => r.playerName === w.playerName);
         if (existing) {
           existing.years.push(year);
-          // Show max wins across all years
-          const maxAcrossYears = Math.max(Number(existing.detail.split(' ')[0]), w.wins);
-          existing.detail = `${maxAcrossYears} wins`;
+          // Track best season across years for the detail label
+          if (w.wins > existing.bestWins) existing.bestWins = w.wins;
+          existing.detail = `${formatWins(existing.bestWins)} wins`;
         } else {
-          recipients.push({ playerName: w.playerName, years: [year], detail: `${w.wins} wins` });
+          recipients.push({
+            playerName: w.playerName,
+            years: [year],
+            detail: `${formatWins(w.wins)} wins`,
+            bestWins: w.wins,
+          });
         }
       }
     }
@@ -432,7 +442,7 @@ export function computeAllAwards(
         name: 'Side Game Champion',
         category: 'superlatives',
         description: 'Most side game wins in a season.',
-        recipients,
+        recipients: recipients.map(({ bestWins: _drop, ...r }) => r),
       });
     }
   }

@@ -471,6 +471,14 @@ function StatsPage() {
         🏆 View Awards Wall & Badge Explanations
       </Link>
 
+      {/* Pairing History link — transparency for the weighted-pairing algorithm */}
+      <Link
+        to="/pairing-history"
+        className="block mb-3 rounded-lg bg-muted/40 border px-4 py-2.5 text-center text-sm font-medium text-muted-foreground hover:bg-muted/60 transition-colors"
+      >
+        Pairing History — see how often everyone&apos;s been grouped
+      </Link>
+
       {/* Season Highlights — rotating widget (Par 3 Champion, Best Partnership,
           Most Birdies/Greenies/Polies/Sandies, Lowest Gross/Net Round). Replaces
           the prior standalone Par 3 Champion + Best Partnership cards. */}
@@ -1070,6 +1078,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">When Grouped With</p>
                 <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
                   <span className="flex-1">Player</span>
+                  <span className="w-10 text-center" title="Number of finalized rounds you've been grouped with this player">Together</span>
                   <span className="w-20 text-center" title="Your win rate on holes when on opposite teams from them">Vs Win</span>
                   <span className="w-16 text-right" title="Net money attributable to holes you and they were on opposite teams">Vs $</span>
                 </div>
@@ -1081,6 +1090,9 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                     return (
                       <div key={r.playerId} className="flex items-center justify-between text-xs">
                         <span className="font-medium flex-1">{r.name}</span>
+                        <span className="text-muted-foreground w-10 text-center tabular-nums text-[10px]">
+                          {r.roundsTogether}x
+                        </span>
                         <span className="text-muted-foreground w-20 text-center tabular-nums text-[10px]">
                           {vsWinPct === null ? '—' : `${vsWinPct}% (${r.holesWon}-${r.holesLost})`}
                         </span>

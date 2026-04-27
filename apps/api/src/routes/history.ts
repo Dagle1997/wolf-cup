@@ -133,12 +133,18 @@ app.get('/history', async (c) => {
       }
       winCountMap.get(key)!.wins++;
     }
-    // CTP-derived side game wins. Spec AC #14: per-round, 1 credit per
-    // UNIQUE winner (a player who wins 3 of 4 par 3s gets 1 credit toward
-    // Side Game Champion, not 3 — per-par-3 recognition flows through the
-    // separate Par 3 Champion track). Per-hole winners come from the same
-    // resolvePerHoleWinners helper used at read time, so the counting rule
-    // matches the leaderboard display exactly.
+    // CTP-derived side game wins — round-leader-takes-all. Each finalized CTP
+    // round contributes exactly 1.0 Side Game Champion credit total, awarded to
+    // the player(s) who took the MOST par 3s in that round. Ties split equally
+    // (2-way tie = 0.5 each; 4-way tie = 0.25 each).
+    //
+    // Why this and not "1 credit per unique winner": with the prior rule, a
+    // player who took 1 of 4 CTPs got the same credit as the player who swept
+    // 3 of 4 — Side Game Champion stopped tracking dominance. The per-par-3
+    // recognition still flows through the separate Par 3 Champion track.
+    //
+    // Per-hole winners come from the same resolvePerHoleWinners helper used at
+    // read time, so the counting rule matches the leaderboard display exactly.
     //
     // Gated on rounds.status = 'finalized' — the authoritative finalization
     // signal — rather than sideGameCtpEntries.finalizedAt. Reason: the
@@ -182,30 +188,47 @@ app.get('/history', async (c) => {
 
       for (const [, { year, entries }] of perRound) {
         const winners = resolvePerHoleWinners(entries);
-        // Prefer a real name over the 'Unknown' fallback — a player won 2 par 3s
-        // where one entry had a missing snapshot and the other had a real name
-        // should show the real name.
-        const uniqueWinners = new Map<number, string>();
+        // Count par-3 wins per player and remember the best name we've seen
+        // for each (a player who won 2 par 3s where one entry had a missing
+        // snapshot and the other had a real name should show the real name).
+        const winsByPlayer = new Map<number, { count: number; name: string }>();
         for (const hole of PAR3_HOLES) {
           const w = winners[hole];
           if (!w) continue;
-          const current = uniqueWinners.get(w.playerId);
-          if (!current || (current === 'Unknown' && w.playerName !== 'Unknown')) {
-            uniqueWinners.set(w.playerId, w.playerName);
+          const cur = winsByPlayer.get(w.playerId);
+          if (!cur) {
+            winsByPlayer.set(w.playerId, { count: 1, name: w.playerName });
+          } else {
+            cur.count++;
+            if (cur.name === 'Unknown' && w.playerName !== 'Unknown') {
+              cur.name = w.playerName;
+            }
           }
         }
-        for (const [playerId, playerName] of uniqueWinners) {
+        if (winsByPlayer.size === 0) continue; // round had zero par-3 winners
+
+        // Round-leader-takes-all: only the player(s) tied at the highest hole
+        // count get credit, split evenly so each round contributes 1.0 total.
+        let maxCount = 0;
+        for (const v of winsByPlayer.values()) {
+          if (v.count > maxCount) maxCount = v.count;
+        }
+        if (maxCount === 0) continue;
+        const leaders: { playerId: number; name: string }[] = [];
+        for (const [playerId, v] of winsByPlayer) {
+          if (v.count === maxCount) leaders.push({ playerId, name: v.name });
+        }
+        const credit = 1 / leaders.length;
+
+        for (const { playerId, name: playerName } of leaders) {
           const key = `${playerId}-${year}`;
           const existing = winCountMap.get(key);
           if (!existing) {
-            winCountMap.set(key, { playerName, year, wins: 1 });
+            winCountMap.set(key, { playerName, year, wins: credit });
             continue;
           }
-          existing.wins++;
-          // If an earlier round processed with a stale 'Unknown' snapshot
-          // and a later round has the real name, upgrade. Keeps the award
-          // display truthful even when CTP rounds are processed in arbitrary
-          // order.
+          existing.wins += credit;
+          // Upgrade Unknown → real name if a later round has it.
           if (existing.playerName === 'Unknown' && playerName !== 'Unknown') {
             existing.playerName = playerName;
           }

@@ -27,7 +27,7 @@ const migrationsFolder = resolve(__dirname, '../db/migrations');
 let adminSessionId: string;
 let p1Id: number;
 let p2Id: number;
-let _p3Id: number;
+let p3Id: number;
 
 type HistoryResponse = {
   seasons: {
@@ -64,7 +64,7 @@ beforeAll(async () => {
       { name: 'Player Three', ghinNumber: null, isActive: 0, isGuest: 0, createdAt: Date.now() },
     ])
     .returning({ id: players.id });
-  [p1Id, p2Id, _p3Id] = playerInserts.map((p) => p.id) as [number, number, number];
+  [p1Id, p2Id, p3Id] = playerInserts.map((p) => p.id) as [number, number, number];
 });
 
 // ---------------------------------------------------------------------------
@@ -170,12 +170,13 @@ describe('GET /history', () => {
     expect(s2017!.standings).toEqual([]);
   });
 
-  it('CTP round contributes 1 Side Game Champion credit per unique winner, not per par-3 win', async () => {
+  it('CTP round credits the round leader 1.0; non-leaders get 0 (round-leader-takes-all)', async () => {
     // Finalized CTP round with 4 par 3s: Player One wins 3 (holes 6, 7, 15),
-    // Player Two wins 1 (hole 12). Per spec AC #14 the Side Game Champion
-    // trophy counts this round as one credit per unique winner — so Player
-    // One gets +1 (not +3), Player Two gets +1. Per-par-3 recognition flows
-    // through the separate Par 3 Champion track (step 9/10).
+    // Player Two wins 1 (hole 12). Round-leader-takes-all: each finalized
+    // round contributes exactly 1.0 Side Game Champion credit to the player(s)
+    // tied at the most par-3 wins. Player One swept the lead → +1.0.
+    // Player Two took 1 of 4 → 0 (per-par-3 recognition still flows through
+    // the separate Par 3 Champion track).
     const [season] = await db
       .insert(seasons)
       .values({
@@ -218,16 +219,80 @@ describe('GET /history', () => {
     };
     const sgc = body.awards.find((a) => a.id === 'side_game_champion');
     expect(sgc).toBeDefined();
-    // Both players get 1 credit for the 2060 season → tie → both are listed
+    // Player One swept the lead → +1.0; Player Two only had 1 hole → 0,
+    // so 2060 should not appear in their season list.
     const p1Recipient = sgc!.recipients.find((r) => r.playerName === 'Player One');
     const p2Recipient = sgc!.recipients.find((r) => r.playerName === 'Player Two');
     expect(p1Recipient).toBeDefined();
-    expect(p2Recipient).toBeDefined();
-    // Detail format is "N wins" — both should be "1 wins" for this season
     expect(p1Recipient!.detail).toBe('1 wins');
-    expect(p2Recipient!.detail).toBe('1 wins');
     expect(p1Recipient!.years).toContain(2060);
-    expect(p2Recipient!.years).toContain(2060);
+    if (p2Recipient) {
+      expect(p2Recipient.years).not.toContain(2060);
+    }
+  });
+
+  it('CTP round with all par-3s split evenly splits 1.0 credit four ways', async () => {
+    // Edge case: 4 different players each win 1 par-3 in the same round.
+    // Round-leader-takes-all + four-way tie → each gets 0.25, totaling 1.0.
+    // (This was the case the old "1 credit per unique winner" rule inflated
+    // to 4.0 total — the visible bug Josh flagged with Ben taking 1/4.)
+    const [season] = await db
+      .insert(seasons)
+      .values({
+        name: 'CTP four-way split test',
+        year: 2063,
+        startDate: '2063-04-01',
+        endDate: '2063-09-30',
+        totalRounds: 0,
+        playoffFormat: 'top8',
+        harveyLiveEnabled: 0,
+        createdAt: Date.now(),
+      })
+      .returning({ id: seasons.id });
+    const [round] = await db
+      .insert(rounds)
+      .values({
+        seasonId: season!.id,
+        type: 'official',
+        status: 'finalized',
+        scheduledDate: '2063-04-24',
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    const [group] = await db
+      .insert(groups)
+      .values({ roundId: round!.id, groupNumber: 1, battingOrder: null })
+      .returning({ id: groups.id });
+    const now = Date.now();
+    // Need a fourth distinct player for the four-way split — p1, p2, p3 exist
+    // from beforeAll; create p4 inline.
+    const [p4] = await db
+      .insert(players)
+      .values({ name: 'Player Four', isActive: 1, isGuest: 0, createdAt: now })
+      .returning({ id: players.id });
+    await db.insert(sideGameCtpEntries).values([
+      { roundId: round!.id, groupId: group!.id, holeNumber: 6, winnerPlayerId: p1Id, winnerName: 'Player One', holeCompletedAt: 1000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: round!.id, groupId: group!.id, holeNumber: 7, winnerPlayerId: p2Id, winnerName: 'Player Two', holeCompletedAt: 2000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: round!.id, groupId: group!.id, holeNumber: 12, winnerPlayerId: p3Id, winnerName: 'Player Three', holeCompletedAt: 3000, finalizedAt: now, createdAt: now, updatedAt: now },
+      { roundId: round!.id, groupId: group!.id, holeNumber: 15, winnerPlayerId: p4!.id, winnerName: 'Player Four', holeCompletedAt: 4000, finalizedAt: now, createdAt: now, updatedAt: now },
+    ]);
+
+    const res = await historyApp.request('/history');
+    const body = (await res.json()) as HistoryResponse & {
+      awards: Array<{ id: string; recipients: { playerName: string; years: number[]; detail: string }[] }>;
+    };
+    const sgc = body.awards.find((a) => a.id === 'side_game_champion');
+    expect(sgc).toBeDefined();
+    // Max wins for season 2063 is 0.25 — but only the leaders are listed,
+    // and on a four-way tie EVERYONE is a co-leader at 0.25.
+    const winnersFor2063 = sgc!.recipients.filter((r) => r.years.includes(2063));
+    expect(winnersFor2063).toHaveLength(4);
+    for (const w of winnersFor2063) {
+      // Detail uses bestWins-across-all-years; for a player whose only year
+      // is 2063 the formatted value is "0.3" (0.25 → toFixed(1) = "0.3").
+      expect(['0.3', '0.5', '1', '1.5', '2', '3', '4'].some((v) => w.detail.startsWith(v))).toBe(true);
+    }
   });
 
   it('CTP entries on an unfinalized round do NOT contribute to Side Game Champion credits', async () => {
