@@ -1,18 +1,29 @@
 import { Hono, type Context } from 'hono';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { ArcticFetchError, OAuth2RequestError, generateCodeVerifier, generateState } from 'arctic';
 import { googleOAuth } from '../lib/arctic.js';
 import { env } from '../lib/env.js';
-import { SESSION_COOKIE_NAME, createSession, validateSession } from '../lib/session.js';
+import {
+  SESSION_COOKIE_NAME,
+  createSession,
+  sessionCookieHeader,
+  validateSession,
+} from '../lib/session.js';
 import {
   oauthFlowCookieHeader,
   oauthFlowClearHeader,
   STATE_COOKIE_NAME,
   VERIFIER_COOKIE_NAME,
 } from '../lib/oauth-cookies.js';
+import { requireSession } from '../middleware/require-session.js';
 import { db } from '../db/index.js';
-import { oauthIdentities, players } from '../db/schema/index.js';
+import { deviceBindings, oauthIdentities, players, sessions } from '../db/schema/index.js';
+import {
+  DEVICE_COOKIE_NAME,
+  TENANT_ID as DEVICE_TENANT_ID,
+  deviceCookieClearHeader,
+} from './invites.js';
 
 /**
  * Auth sub-router. T1-6a shipped the infrastructure (schema, middleware,
@@ -50,6 +61,26 @@ const GOOGLE_ISS = new Set(['https://accounts.google.com', 'accounts.google.com'
 // generic 'SQLITE_CONSTRAINT' depending on version. Catch-predicate
 // matches any of the three to stay robust across patch upgrades.
 const SQLITE_UNIQUE_RAW_CODE = 2067;
+
+// Cheap shape guard for the device cookie value (T3-7). The cookie value
+// is the device_bindings.id UUID as set by T3-6's invite-claim flow.
+// Anything off-shape is treated as no-cookie before any DB lookup —
+// keeps malformed/attacker-controlled values from generating noisy
+// SELECT log lines and codifies the "safe no-op" behavior.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Thrown by `lookupOrBindOAuthIdentity` (T3-7) when an invite-claimed
+ * device's player already has a Google `oauth_identities` row bound to
+ * a DIFFERENT `provider_sub`. Callers redirect to /auth/conflict; no
+ * session is created and no device_binding row is mutated.
+ */
+export class OAuthRebindConflictError extends Error {
+  constructor(message = 'oauth_rebind_conflict') {
+    super(message);
+    this.name = 'OAuthRebindConflictError';
+  }
+}
 
 /**
  * GET /status — current authentication state for the SPA's route loaders
@@ -269,11 +300,35 @@ authRouter.get('/google/callback', async (c) => {
     );
   }
 
-  // ---- 7. Look up or bind oauth_identity, with race-safe insert
-  let playerId: string;
+  // ---- 7. Look up or bind oauth_identity, with race-safe insert + T3-7
+  //         device-binding rebind branch.
+  //
+  // Read the `tournament_device_id` cookie ONCE here and pass into
+  // lookupOrBindOAuthIdentity. The function returns `consolidatableDeviceBindingId`
+  // which gates the post-session UPDATE step below. Critically, the
+  // callback does NOT independently re-read the cookie later — that
+  // would risk drift from the rebind decision (T3-7 High #1 regression
+  // class).
+  const deviceCookieValue = extractCookie(cookieHeader, DEVICE_COOKIE_NAME);
+  let lookupResult: LookupOrBindResult;
   try {
-    playerId = await lookupOrBindOAuthIdentity(sub);
+    lookupResult = await lookupOrBindOAuthIdentity(sub, deviceCookieValue);
   } catch (err) {
+    // T3-7: rebind conflict redirects to a SPA error page rather than
+    // returning JSON (the user is mid-OAuth-redirect; JSON would break
+    // the browser flow).
+    if (err instanceof OAuthRebindConflictError) {
+      appendClearCookies(c);
+      log.info({
+        event: 'oauth_rebind_conflict',
+        sub,
+      });
+      const conflictURL = new URL(
+        '/auth/conflict?reason=device_binding_conflict',
+        env.PUBLIC_APP_URL,
+      ).toString();
+      return c.redirect(conflictURL, 302);
+    }
     // Same hygiene as the upstream catches — once the flow is past state
     // validation, intermediates have served their purpose. Clearing on
     // 500 here keeps a botched DB write from leaving stale cookies.
@@ -292,18 +347,111 @@ authRouter.get('/google/callback', async (c) => {
       500,
     );
   }
+  const { playerId, consolidatableDeviceBindingId, rebindOccurred } = lookupResult;
 
   // ---- 8. Issue session
-  const { setCookieHeader } = await createSession(playerId, {
+  const session = await createSession(playerId, {
     userAgent: c.req.header('user-agent') ?? '',
     ip: c.req.header('x-forwarded-for') ?? '',
   });
 
+  // ---- 8.5. T3-7 device_binding consolidation — UPDATE the row's
+  // session_id ONLY if the lookup function returned a non-null
+  // `consolidatableDeviceBindingId`. Quadruple-WHERE guard is
+  // defense-in-depth: under any race (concurrent UPDATE, foreign tenant
+  // leak, rebind theft) the UPDATE becomes a no-op rather than
+  // overwriting another player's binding.
+  if (consolidatableDeviceBindingId !== null) {
+    const updateRes = await db
+      .update(deviceBindings)
+      .set({ sessionId: session.sessionId })
+      .where(
+        and(
+          eq(deviceBindings.id, consolidatableDeviceBindingId),
+          eq(deviceBindings.playerId, playerId),
+          eq(deviceBindings.tenantId, DEVICE_TENANT_ID),
+          // session_id IS NULL — the rebind candidate state. If a racer
+          // already set session_id, do nothing.
+          isNull(deviceBindings.sessionId),
+        ),
+      );
+    // Drizzle/libsql exposes `rowsAffected` on update results; defensively
+    // coerce in case the field name differs across libsql patch versions.
+    const affected =
+      typeof (updateRes as { rowsAffected?: unknown }).rowsAffected === 'number'
+        ? (updateRes as { rowsAffected: number }).rowsAffected
+        : null;
+    log.info({
+      event: 'device_binding_consolidated',
+      playerId,
+      deviceBindingId: consolidatableDeviceBindingId,
+      sessionId: session.sessionId,
+      rebindOccurred,
+      affectedRows: affected,
+    });
+  }
+
   // ---- 9. Emit 3 Set-Cookie headers (session + 2 clears) + 302 home
-  c.header('Set-Cookie', setCookieHeader, { append: true });
+  c.header('Set-Cookie', session.setCookieHeader, { append: true });
   appendClearCookies(c);
   const homeURL = new URL('/', env.PUBLIC_APP_URL).toString();
   return c.redirect(homeURL, 302);
+});
+
+// ---------------------------------------------------------------------
+// POST /api/auth/that-is-not-me — T3-7 escape hatch.
+//
+// Deletes the current session row + the device_binding row referenced by
+// the device cookie (if any), then emits clear-cookie Set-Cookies for both
+// session + device cookies. Tenant-scoped per spec to avoid cross-tenant
+// device-binding deletion via leaked UUIDs (defense for v1.5+ multi-tenant).
+// ---------------------------------------------------------------------
+authRouter.post('/that-is-not-me', requireSession, async (c) => {
+  const log = c.get('logger');
+  const sessionData = c.get('session');
+  const currentSessionId = sessionData.sessionId;
+
+  // 1. DELETE the current session row.
+  await db.delete(sessions).where(eq(sessions.sessionId, currentSessionId));
+
+  // 2. Read device cookie + DELETE matching device_binding row (tenant-scoped).
+  const deviceCookieValue = extractCookie(
+    c.req.header('cookie') ?? '',
+    DEVICE_COOKIE_NAME,
+  );
+  let deviceDeleted = false;
+  if (deviceCookieValue !== null && UUID_RE.test(deviceCookieValue)) {
+    const deleteRes = await db
+      .delete(deviceBindings)
+      .where(
+        and(
+          eq(deviceBindings.id, deviceCookieValue),
+          eq(deviceBindings.tenantId, DEVICE_TENANT_ID),
+        ),
+      );
+    const affected =
+      typeof (deleteRes as { rowsAffected?: unknown }).rowsAffected === 'number'
+        ? (deleteRes as { rowsAffected: number }).rowsAffected
+        : 0;
+    deviceDeleted = affected > 0;
+  }
+
+  // 3. Emit clear-cookie Set-Cookies for BOTH cookies. Append semantics
+  // mandatory — Hono's default `c.header` SETS (overwrites), so the
+  // second call would clobber the first without `{ append: true }`.
+  c.header('Set-Cookie', sessionCookieHeader(null), { append: true });
+  c.header('Set-Cookie', deviceCookieClearHeader(), { append: true });
+
+  log.info({
+    event: 'that_is_not_me',
+    playerId: sessionData.playerId,
+    sessionId: currentSessionId,
+    deviceCookiePresent: deviceCookieValue !== null,
+    deviceBindingDeleted: deviceDeleted,
+  });
+
+  // 4. 204 No Content — the client redirects from the success branch.
+  return c.body(null, 204);
 });
 
 // ---------------------------------------------------------------------
@@ -374,15 +522,58 @@ function extractSubFromIdToken(idToken: string): string {
   return claims.sub;
 }
 
+interface LookupOrBindResult {
+  playerId: string;
+  rebindOccurred: boolean;
+  consolidatableDeviceBindingId: string | null;
+}
+
 /**
  * Look up `oauth_identities` by (tenant_id, provider, provider_sub).
- * On a hit, return the bound `player_id`. On a miss, insert `players` +
- * `oauth_identities` inside a transaction. If a concurrent first-SSO
- * hits the UNIQUE constraint, retry the lookup once — the winning
- * insert's row is now readable.
+ *
+ * **Existing T1-6b behavior** (preserved):
+ * 1. Outer lookup — returning user → return early.
+ * 2. Inside `db.transaction`: inner re-select (race-safe).
+ * 3. (Falls through to) INSERT new player + new oauth_identity.
+ *
+ * **T3-7 step 2.5 — device-binding rebind branch** (NEW):
+ * Between the inner re-select miss and the INSERT-new-player path, if
+ * `deviceBindingCookieValue` is non-null AND UUID-shaped, look up the
+ * `device_bindings` row scoped to (id, tenant_id). If 1 row exists with
+ * `session_id IS NULL` (the rebind candidate from T3-6's invite-claim
+ * flow), check the player's google identity:
+ *   - **Case A** (no google identity): INSERT new oauth_identity binding
+ *     the device's player to the SSO sub. UNIQUE-collision retry checks
+ *     for race winner; if winner's player_id differs, throw
+ *     OAuthRebindConflictError.
+ *   - **Case B** (google identity matches the incoming sub): no-op INSERT,
+ *     return the device's player as already-bound. Caller still consolidates
+ *     session_id (the row's session_id was NULL).
+ *   - **Case C** (google identity exists but with a DIFFERENT sub): throw
+ *     OAuthRebindConflictError. Two different Google accounts on the same
+ *     player is an identity-merge scenario, admin-only.
+ *
+ * Returns `{ playerId, rebindOccurred, consolidatableDeviceBindingId }`.
+ * The caller uses `consolidatableDeviceBindingId !== null` to decide
+ * whether to fire the post-session `device_bindings.session_id = ...`
+ * UPDATE — gating on the function's return rather than re-reading the
+ * cookie keeps the rebind decision and consolidation decision in sync,
+ * preventing stale-cookie leak bugs.
+ *
+ * The `deviceBindingCookieValue` parameter is the cookie's raw string
+ * value as extracted by the caller. Pre-validation by the caller is OK
+ * but not required — this function applies the UUID-shape guard before
+ * any SELECT.
  */
-async function lookupOrBindOAuthIdentity(sub: string): Promise<string> {
+async function lookupOrBindOAuthIdentity(
+  sub: string,
+  deviceBindingCookieValue: string | null,
+): Promise<LookupOrBindResult> {
   // Outer lookup: single round-trip path for returning users.
+  // CRITICAL (T3-7 High #1 regression guard): on this branch
+  // `consolidatableDeviceBindingId` MUST be null. Even if the device
+  // cookie points at some unrelated device_binding row, that row MUST
+  // NOT be consolidated under the returning user's session.
   const outer = await db
     .select({ playerId: oauthIdentities.playerId })
     .from(oauthIdentities)
@@ -394,8 +585,22 @@ async function lookupOrBindOAuthIdentity(sub: string): Promise<string> {
       ),
     );
   if (outer[0]) {
-    return outer[0].playerId;
+    return {
+      playerId: outer[0].playerId,
+      rebindOccurred: false,
+      consolidatableDeviceBindingId: null,
+    };
   }
+
+  // Cheap UUID-shape guard before any DB lookup. Anything off-shape is
+  // treated as no-cookie. SQLite's TEXT-id semantics don't 500 on a
+  // malformed value (just returns 0 rows), but the guard keeps bot/garbage
+  // traffic from generating noisy SELECT log lines and codifies the
+  // "safe no-op" intent for malformed cookies.
+  const validatedCookie =
+    deviceBindingCookieValue !== null && UUID_RE.test(deviceBindingCookieValue)
+      ? deviceBindingCookieValue
+      : null;
 
   // Miss: bind inside a transaction. Re-select inside the tx to catch the
   // case where a concurrent first-SSO already inserted between our outer
@@ -412,9 +617,114 @@ async function lookupOrBindOAuthIdentity(sub: string): Promise<string> {
         ),
       );
     if (inner[0]) {
-      return inner[0].playerId;
+      return {
+        playerId: inner[0].playerId,
+        rebindOccurred: false,
+        consolidatableDeviceBindingId: null,
+      };
     }
 
+    // ---- T3-7 step 2.5 — device-binding rebind branch.
+    if (validatedCookie !== null) {
+      const dbRows = await tx
+        .select()
+        .from(deviceBindings)
+        .where(
+          and(
+            eq(deviceBindings.id, validatedCookie),
+            eq(deviceBindings.tenantId, DEVICE_TENANT_ID),
+          ),
+        );
+      const candidate = dbRows[0];
+      if (candidate && candidate.sessionId === null) {
+        // Candidate row exists with no session yet — the T3-6 invite-claim
+        // path. Check what oauth identities the player already has,
+        // scoped to provider='google' (per spec, multi-provider per
+        // player is allowed — only Google-vs-Google sub conflicts block).
+        const existing = await tx
+          .select()
+          .from(oauthIdentities)
+          .where(
+            and(
+              eq(oauthIdentities.playerId, candidate.playerId),
+              eq(oauthIdentities.provider, 'google'),
+              eq(oauthIdentities.tenantId, DEFAULT_TENANT_ID),
+            ),
+          );
+        if (existing.length === 0) {
+          // Case A — INSERT a new identity binding the device's player to
+          // the SSO sub. Catch UNIQUE → check for race-winner conflict.
+          try {
+            await tx.insert(oauthIdentities).values({
+              id: randomUUID(),
+              provider: 'google',
+              providerSub: sub,
+              playerId: candidate.playerId,
+              createdAt: Date.now(),
+              tenantId: DEFAULT_TENANT_ID,
+              contextId: DEFAULT_CONTEXT_ID,
+            });
+            return {
+              playerId: candidate.playerId,
+              rebindOccurred: true,
+              consolidatableDeviceBindingId: candidate.id,
+            };
+          } catch (err) {
+            if (!isUniqueConstraintError(err)) {
+              throw err;
+            }
+            // A concurrent first-SSO inserted ahead of us. Re-SELECT
+            // and decide: idempotent (same player) or conflict.
+            const retry = await tx
+              .select({ playerId: oauthIdentities.playerId })
+              .from(oauthIdentities)
+              .where(
+                and(
+                  eq(oauthIdentities.tenantId, DEFAULT_TENANT_ID),
+                  eq(oauthIdentities.provider, 'google'),
+                  eq(oauthIdentities.providerSub, sub),
+                ),
+              );
+            const winner = retry[0];
+            if (!winner) {
+              // Pathological — UNIQUE fired but no row visible.
+              throw new Error('oauth_bind_race_retry_empty');
+            }
+            if (winner.playerId !== candidate.playerId) {
+              // The race winner bound the sub to a DIFFERENT player.
+              // Treat as Case C — conflict.
+              throw new OAuthRebindConflictError();
+            }
+            // Idempotent — winner is the same player. Treat as Case B.
+            return {
+              playerId: candidate.playerId,
+              rebindOccurred: false,
+              consolidatableDeviceBindingId: candidate.id,
+            };
+          }
+        }
+        // Case B/C — player already has a Google identity. Compare subs.
+        const matching = existing.find((row) => row.providerSub === sub);
+        if (matching) {
+          // Case B — already bound to this sub. No-op INSERT. Caller
+          // still consolidates session_id (still NULL on the device row).
+          return {
+            playerId: candidate.playerId,
+            rebindOccurred: false,
+            consolidatableDeviceBindingId: candidate.id,
+          };
+        }
+        // Case C — player has a Google identity with a different sub.
+        // Two distinct Google accounts on one player is an identity-merge
+        // scenario, admin-only. Reject.
+        throw new OAuthRebindConflictError();
+      }
+      // Either no row found, or the row already has session_id (already
+      // consolidated). Fall through to INSERT-new-player path.
+    }
+
+    // ---- Step 3 — existing INSERT-new-player path (T1-6b unchanged
+    // semantics; just the return shape is wider now).
     const newPlayerId = randomUUID();
     const now = Date.now();
     try {
@@ -434,7 +744,11 @@ async function lookupOrBindOAuthIdentity(sub: string): Promise<string> {
         tenantId: DEFAULT_TENANT_ID,
         contextId: DEFAULT_CONTEXT_ID,
       });
-      return newPlayerId;
+      return {
+        playerId: newPlayerId,
+        rebindOccurred: false,
+        consolidatableDeviceBindingId: null,
+      };
     } catch (err) {
       // If the UNIQUE on (tenant_id, provider, provider_sub) fired, a
       // concurrent first-SSO won the race. Re-SELECT — the winner's row
@@ -453,7 +767,11 @@ async function lookupOrBindOAuthIdentity(sub: string): Promise<string> {
           ),
         );
       if (retry[0]) {
-        return retry[0].playerId;
+        return {
+          playerId: retry[0].playerId,
+          rebindOccurred: false,
+          consolidatableDeviceBindingId: null,
+        };
       }
       // Pathological — the UNIQUE fired on a different column (e.g.,
       // players.id UUID collision, ~0 probability). Bubble to the handler

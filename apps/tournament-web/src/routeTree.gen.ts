@@ -9,15 +9,22 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as MeRouteImport } from './routes/me'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AuthDeclinedRouteImport } from './routes/auth.declined'
+import { Route as AuthConflictRouteImport } from './routes/auth.conflict'
 import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
 import { Route as AdminRuleSetsIdEditRouteImport } from './routes/admin.rule-sets.$id.edit'
 import { Route as AdminGroupsGroupIdEditRouteImport } from './routes/admin.groups.$groupId.edit'
 
+const MeRoute = MeRouteImport.update({
+  id: '/me',
+  path: '/me',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,6 +38,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
 const AuthDeclinedRoute = AuthDeclinedRouteImport.update({
   id: '/auth/declined',
   path: '/auth/declined',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthConflictRoute = AuthConflictRouteImport.update({
+  id: '/auth/conflict',
+  path: '/auth/conflict',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminEventsNewRoute = AdminEventsNewRouteImport.update({
@@ -61,6 +73,8 @@ const AdminGroupsGroupIdEditRoute = AdminGroupsGroupIdEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/me': typeof MeRoute
+  '/auth/conflict': typeof AuthConflictRoute
   '/auth/declined': typeof AuthDeclinedRoute
   '/invite/$token': typeof InviteTokenRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
@@ -71,6 +85,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/me': typeof MeRoute
+  '/auth/conflict': typeof AuthConflictRoute
   '/auth/declined': typeof AuthDeclinedRoute
   '/invite/$token': typeof InviteTokenRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
@@ -82,6 +98,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/me': typeof MeRoute
+  '/auth/conflict': typeof AuthConflictRoute
   '/auth/declined': typeof AuthDeclinedRoute
   '/invite/$token': typeof InviteTokenRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
@@ -94,6 +112,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/me'
+    | '/auth/conflict'
     | '/auth/declined'
     | '/invite/$token'
     | '/admin/courses/new'
@@ -104,6 +124,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/me'
+    | '/auth/conflict'
     | '/auth/declined'
     | '/invite/$token'
     | '/admin/courses/new'
@@ -114,6 +136,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/me'
+    | '/auth/conflict'
     | '/auth/declined'
     | '/invite/$token'
     | '/admin/courses/new'
@@ -125,6 +149,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MeRoute: typeof MeRoute
+  AuthConflictRoute: typeof AuthConflictRoute
   AuthDeclinedRoute: typeof AuthDeclinedRoute
   InviteTokenRoute: typeof InviteTokenRoute
   AdminCoursesNewRoute: typeof AdminCoursesNewRoute
@@ -136,6 +162,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/me': {
+      id: '/me'
+      path: '/me'
+      fullPath: '/me'
+      preLoaderRoute: typeof MeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -155,6 +188,13 @@ declare module '@tanstack/react-router' {
       path: '/auth/declined'
       fullPath: '/auth/declined'
       preLoaderRoute: typeof AuthDeclinedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/conflict': {
+      id: '/auth/conflict'
+      path: '/auth/conflict'
+      fullPath: '/auth/conflict'
+      preLoaderRoute: typeof AuthConflictRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/events/new': {
@@ -197,6 +237,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MeRoute: MeRoute,
+  AuthConflictRoute: AuthConflictRoute,
   AuthDeclinedRoute: AuthDeclinedRoute,
   InviteTokenRoute: InviteTokenRoute,
   AdminCoursesNewRoute: AdminCoursesNewRoute,

@@ -27,6 +27,7 @@ const {
   groupMembers,
   invites,
   deviceBindings,
+  sessions,
   courses,
   courseRevisions,
 } = await import('../db/schema/index.js');
@@ -128,6 +129,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(deviceBindings);
+  await db.delete(sessions);
   await db.delete(invites);
   await db.delete(groupMembers);
   await db.delete(groups);
@@ -327,6 +329,73 @@ describe('POST /api/invites/:token/claim', () => {
     const rowB = all.find((r) => r.id === secondBody.deviceBindingId)!;
     expect(rowA.contextId).toBe(`event:${a.eventId}`);
     expect(rowB.contextId).toBe(`event:${b.eventId}`);
+  });
+
+  it('T3-7 cross-protection: cookie row already consolidated (session_id non-null) → INSERT new row, consolidated row UNTOUCHED', async () => {
+    // Setup: event A, claim once, simulate T3-7 consolidation by setting
+    // session_id on the row, then re-claim within the SAME event with the
+    // same cookie + a DIFFERENT player. Without the T3-7 cross-protection
+    // fix, the existing UPDATE branch would mutate player_id on a
+    // session-bound row, leaving session_id pointing at the original
+    // player's session — a silent identity drift.
+    const a = await seedEventWithRoster({ playerCount: 2 });
+
+    // First claim: player[0]
+    const first = await testApp.request(`/api/invites/${a.inviteToken}/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ playerId: a.playerIds[0]! }),
+    });
+    expect(first.status).toBe(201);
+    const firstBody = (await first.json()) as { deviceBindingId: string };
+
+    // Simulate T3-7 SSO consolidation: directly set session_id non-null.
+    // (Avoids stitching the full OAuth flow into this T3-6 test.)
+    const fakeSessionId = 'fake-session-id-for-t3-7-protection';
+    const fakePlayerId = a.playerIds[0]!;
+    await db.insert(players).values({
+      id: 'consolidator',
+      isOrganizer: false,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(sessions).values({
+      sessionId: fakeSessionId,
+      playerId: fakePlayerId,
+      createdAt: Date.now(),
+      lastSeenAt: Date.now(),
+      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      deviceInfo: null,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db
+      .update(deviceBindings)
+      .set({ sessionId: fakeSessionId })
+      .where(eq(deviceBindings.id, firstBody.deviceBindingId));
+
+    // Re-claim within the same event with the same cookie + a DIFFERENT player.
+    const second = await testApp.request(`/api/invites/${a.inviteToken}/claim`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        cookie: `tournament_device_id=${firstBody.deviceBindingId}`,
+      },
+      body: JSON.stringify({ playerId: a.playerIds[1]! }),
+    });
+    // INSERT new row (201, NOT update-200).
+    expect(second.status).toBe(201);
+    const secondBody = (await second.json()) as { deviceBindingId: string };
+    expect(secondBody.deviceBindingId).not.toBe(firstBody.deviceBindingId);
+
+    // CRITICAL: original consolidated row UNTOUCHED.
+    const original = await db
+      .select()
+      .from(deviceBindings)
+      .where(eq(deviceBindings.id, firstBody.deviceBindingId));
+    expect(original).toHaveLength(1);
+    expect(original[0]!.sessionId).toBe(fakeSessionId);
+    expect(original[0]!.playerId).toBe(fakePlayerId); // NOT mutated to a.playerIds[1]
   });
 
   it('Cookie value bogus (no matching row) → INSERT new row (treats as no-cookie)', async () => {

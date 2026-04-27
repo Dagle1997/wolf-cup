@@ -99,7 +99,7 @@ development_status:
   T3-4-ghin-client: done
   T3-5-rule-set-editor-tenant-scoped-revisioned: done
   T3-6-invite-link-first-arrival-flow-no-sso: done
-  T3-7-post-sso-device-cookie-thats-not-me-re-bind: backlog
+  T3-7-post-sso-device-cookie-thats-not-me-re-bind: done
   T3-8-permissions-middleware-event-level-role-matrix: backlog
   T3-9-sub-game-opt-in-ui-on-round-setup: backlog
   T3-10-optional-ghin-enrichment-profile-action: backlog

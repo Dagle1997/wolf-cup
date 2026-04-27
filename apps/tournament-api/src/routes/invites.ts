@@ -47,8 +47,12 @@ import {
 } from '../db/schema/index.js';
 
 const SAVE_BODY_LIMIT_BYTES = 8 * 1024;
-const TENANT_ID = 'guyan';
-const DEVICE_COOKIE_NAME = 'tournament_device_id';
+// Exported so the auth router (T3-7 post-SSO consolidation + that-is-not-me)
+// can scope its device_bindings reads/writes to the same tenant constant.
+// FD-6 plan calls for a tenant resolver; until that lands, exporting the
+// constant is the right tradeoff vs duplicating the literal.
+export const TENANT_ID = 'guyan';
+export const DEVICE_COOKIE_NAME = 'tournament_device_id';
 // 90 days. Long enough for a Pinehurst-trip arc; short enough that lost
 // devices auto-clear within a quarter.
 const DEVICE_COOKIE_MAX_AGE_S = 90 * 24 * 60 * 60;
@@ -74,6 +78,33 @@ function deviceCookieHeader(value: string): string {
     'SameSite=Lax',
     'Path=/',
     `Max-Age=${DEVICE_COOKIE_MAX_AGE_S}`,
+  ];
+  if (env.NODE_ENV === 'production') {
+    parts.splice(1, 0, 'Secure');
+  }
+  return parts.join('; ');
+}
+
+/**
+ * Sibling of `deviceCookieHeader`. Emits a Set-Cookie that clears the
+ * device-id cookie by setting `Max-Age=0` while mirroring every other
+ * attribute (HttpOnly + SameSite=Lax + Path=/ + conditional Secure in
+ * production). Browsers ignore Set-Cookie for "clear" intent if the
+ * attributes (especially Path / Secure) don't match the original — so this
+ * helper exists colocated with the setter to keep the two in sync.
+ *
+ * Used by T3-7's `POST /api/auth/that-is-not-me` to wipe the device cookie
+ * alongside the session cookie. NOT used by the rebind/consolidation path
+ * (which leaves the device cookie unchanged because the binding row is
+ * updated in place).
+ */
+export function deviceCookieClearHeader(): string {
+  const parts = [
+    `${DEVICE_COOKIE_NAME}=`,
+    'HttpOnly',
+    'SameSite=Lax',
+    'Path=/',
+    'Max-Age=0',
   ];
   if (env.NODE_ENV === 'production') {
     parts.splice(1, 0, 'Secure');
@@ -293,16 +324,39 @@ inviteRouter.post(
     let deviceBindingId: string;
 
     if (cookieValue) {
+      // T3-6 cross-event protection + T3-7 cross-tenant + post-consolidation
+      // protection. Branch into UPDATE only when the existing row is in the
+      // current tenant, the current event, AND has not yet been consolidated
+      // by SSO (session_id IS NULL). Anything else falls through to INSERT
+      // a fresh row + new cookie, preserving the consolidated row intact.
+      // (Caught by T3-7 party-codex Med: a re-claim of a consolidated cookie
+      // would otherwise leave session_id and player_id referencing different
+      // players.)
       const existingRows = await db
         .select()
         .from(deviceBindings)
-        .where(eq(deviceBindings.id, cookieValue));
-      if (existingRows.length > 0 && existingRows[0]!.contextId === expectedContextId) {
+        .where(
+          and(
+            eq(deviceBindings.id, cookieValue),
+            eq(deviceBindings.tenantId, TENANT_ID),
+          ),
+        );
+      const existing = existingRows[0];
+      if (
+        existing !== undefined &&
+        existing.contextId === expectedContextId &&
+        existing.sessionId === null
+      ) {
         // UPDATE in place. Preserve created_at; refresh player_id + device_info.
         await db
           .update(deviceBindings)
           .set({ playerId, deviceInfo })
-          .where(eq(deviceBindings.id, cookieValue));
+          .where(
+            and(
+              eq(deviceBindings.id, cookieValue),
+              eq(deviceBindings.tenantId, TENANT_ID),
+            ),
+          );
         deviceBindingId = cookieValue;
         updated = true;
       } else {
