@@ -107,6 +107,17 @@ const envSchema = z.object({
     .min(1)
     .refine((v) => v.trim().length > 0, 'LOG_DIR must not be whitespace-only')
     .optional(),
+  // GHIN credentials (T3-4). OPTIONAL — non-essential integration. Both
+  // missing/undefined OR empty string evaluate as "credentials not set",
+  // and the GHIN client singleton becomes `null`. Routes that depend on
+  // it (/api/players/search + /api/players/lookup) return 503
+  // service_unavailable. Mirrors Wolf Cup's `process.env['GHIN_USERNAME'] &&
+  // process.env['GHIN_PASSWORD']` truthy-check at apps/api/src/lib/ghin-client.ts:105-106.
+  // Differs from AUTH_COOKIE_DOMAIN / PUBLIC_APP_URL / ANTHROPIC_API_KEY
+  // (REQUIRED, fail-fast) because GHIN can be unset without breaking the
+  // app's core flow — the player can fall back to manual handicap entry.
+  GHIN_USERNAME: z.string().optional(),
+  GHIN_PASSWORD: z.string().optional(),
 });
 
 // Post-parse transform resolves LOG_DIR based on NODE_ENV. The result has

@@ -5,6 +5,7 @@ import { adminCoursesRouter } from './routes/admin-courses.js';
 import { adminEventsRouter } from './routes/admin-events.js';
 import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
+import { playersRouter } from './routes/players.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -45,5 +46,10 @@ app.route('/api/admin', adminCoursesRouter);
 // Mounted alongside adminCoursesRouter under /api/admin; each defines its
 // own subroutes so they don't conflict.
 app.route('/api/admin', adminEventsRouter);
+
+// Players router (T3-4). GHIN proxy endpoints (search + lookup). Both
+// gated by requireSession only — any authenticated player may use them.
+// Returns 503 service_unavailable when GHIN credentials are unset.
+app.route('/api/players', playersRouter);
 
 export { app };

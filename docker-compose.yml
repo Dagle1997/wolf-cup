@@ -73,6 +73,12 @@ services:
       # player to organizer on every container start. Idempotent — repeated
       # boots log `seed_organizer_already_set` once promotion sticks.
       - ORGANIZER_GOOGLE_SUB=${ORGANIZER_GOOGLE_SUB:-}
+      # GHIN credentials (T3-4). Empty default → ghinClient singleton
+      # is null and /api/players/search + /api/players/lookup return
+      # 503 service_unavailable. Mirrors Wolf Cup's existing GHIN env
+      # wiring at lines 16-17. Set both in /opt/wolf-cup/.env to enable.
+      - GHIN_USERNAME=${GHIN_USERNAME:-}
+      - GHIN_PASSWORD=${GHIN_PASSWORD:-}
     volumes:
       - tournament_sqlite_data:/app/data
     networks:

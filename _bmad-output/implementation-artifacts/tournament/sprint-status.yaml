@@ -96,7 +96,7 @@ development_status:
   T3-1-event-group-rule-set-invite-sub-game-device-binding-schema: done
   T3-2-event-creation-wizard: done
   T3-3-group-crud-ui: backlog
-  T3-4-ghin-client: backlog
+  T3-4-ghin-client: done
   T3-5-rule-set-editor-tenant-scoped-revisioned: backlog
   T3-6-invite-link-first-arrival-flow-no-sso: backlog
   T3-7-post-sso-device-cookie-thats-not-me-re-bind: backlog
