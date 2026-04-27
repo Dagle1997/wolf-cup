@@ -16,6 +16,7 @@ type Highlight = {
   title: string;
   detail: string;
   category: 'scoring' | 'money' | 'bonus' | 'wolf';
+  rare?: boolean;
 };
 
 type HighlightsResponse = {
@@ -606,20 +607,25 @@ function HighlightReel({ roundId }: { roundId: number }) {
   if (items.length === 0) return null;
 
   const item = items[current]!;
-  const catColor = {
-    scoring: 'bg-blue-500/10 border-blue-500/20',
-    money: 'bg-green-500/10 border-green-500/20',
-    bonus: 'bg-emerald-500/10 border-emerald-500/20',
-    wolf: 'bg-amber-500/10 border-amber-500/20',
-  }[item.category];
+  // Rare achievements (Eagle, Perfect Day, Round of the Day, Pack of One,
+  // Leap of Faith, Apex Predator) get a gold gradient border + warmer fill
+  // to set them apart from the routine slides.
+  const containerStyle = item.rare
+    ? 'bg-gradient-to-br from-amber-100/80 via-yellow-50 to-amber-100/80 dark:from-amber-950/40 dark:via-yellow-950/30 dark:to-amber-950/40 border-2 border-amber-400 dark:border-amber-500 shadow-[0_0_0_1px_rgba(251,191,36,0.3)]'
+    : ({
+        scoring: 'bg-blue-500/10 border-blue-500/20',
+        money: 'bg-green-500/10 border-green-500/20',
+        bonus: 'bg-emerald-500/10 border-emerald-500/20',
+        wolf: 'bg-amber-500/10 border-amber-500/20',
+      }[item.category] + ' border');
 
   return (
-    <div className={`rounded-xl border ${catColor} p-4 mb-3 transition-all duration-300`}>
+    <div className={`rounded-xl ${containerStyle} p-4 mb-3 transition-all duration-300`}>
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-            Highlight Reel
+          <Sparkles className={`h-3.5 w-3.5 ${item.rare ? 'text-amber-600 dark:text-amber-300' : 'text-amber-500'}`} />
+          <span className={`text-[10px] font-bold uppercase tracking-widest ${item.rare ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}>
+            {item.rare ? '✦ Rare ✦' : 'Highlight Reel'}
           </span>
         </div>
         {items.length > 1 && (

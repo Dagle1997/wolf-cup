@@ -1928,6 +1928,11 @@ type Highlight = {
   title: string;
   detail: string;
   category: 'scoring' | 'money' | 'bonus' | 'wolf';
+  // `rare: true` marks the slide for gold treatment in the UI. Used for
+  // achievements that require a high bar or stack multiple events together
+  // (Eagle, Perfect Day, Round of the Day, Pack of One, Leap of Faith,
+  // Apex Predator). Common slides leave it undefined.
+  rare?: boolean;
 };
 
 app.get('/rounds/:roundId/highlights', async (c) => {
@@ -1935,11 +1940,12 @@ app.get('/rounds/:roundId/highlights', async (c) => {
 
   // Validate round exists and is finalized
   const [round] = await db
-    .select({ id: rounds.id, status: rounds.status, scheduledDate: rounds.scheduledDate })
+    .select({ id: rounds.id, status: rounds.status, scheduledDate: rounds.scheduledDate, tee: rounds.tee })
     .from(rounds)
     .where(eq(rounds.id, roundId));
   if (!round) return c.json({ error: 'ROUND_NOT_FOUND' }, 404);
   if (round.status !== 'finalized' && round.status !== 'completed') return c.json({ highlights: [] });
+  const roundTee = (round.tee as Tee) ?? 'blue';
 
   // Fetch all data in parallel
   const [playerRows, scoreRows, resultRows, decisionRows] = await Promise.all([
@@ -2056,6 +2062,7 @@ app.get('/rounds/:roundId/highlights', async (c) => {
             ? `${sweeperNames} swept — +$${maxMoney} and ${maxStab} stableford`
             : `${sweeperNames} all swept — +$${maxMoney} and ${maxStab} stableford`,
           category: 'scoring',
+          rare: true,
         });
       }
     }
@@ -2084,6 +2091,7 @@ app.get('/rounds/:roundId/highlights', async (c) => {
       title: 'Eagle!',
       detail: `${nameMap.get(e.playerId)} — ${e.gross} on Hole ${e.hole} (Par ${e.par})`,
       category: 'scoring',
+      rare: true,
     });
   }
 
@@ -2263,13 +2271,14 @@ app.get('/rounds/:roundId/highlights', async (c) => {
   for (const bw of blindWolfWins) {
     highlights.push({
       emoji: '😎',
-      title: 'Blind Wolf Victory',
-      detail: `${nameMap.get(bw.playerId)} went blind on Hole ${bw.hole} and won`,
+      title: 'Leap of Faith',
+      detail: `${nameMap.get(bw.playerId)} called blind on Hole ${bw.hole} — and stuck the landing`,
       category: 'wolf',
+      rare: true,
     });
   }
 
-  // Players with 2+ lone wolf wins get a combined highlight
+  // Players with 2+ lone wolf wins get a combined highlight ("Apex Predator").
   for (const [pid, holes] of loneWolfWinsByPlayer) {
     // Exclude blind wolf holes already highlighted
     const _nonBlindHoles = holes.filter((h) => !blindWolfWins.some((bw) => bw.playerId === pid && bw.hole === h));
@@ -2277,9 +2286,10 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     if (totalWins >= 2) {
       highlights.push({
         emoji: '🐺',
-        title: `${totalWins} Lone Wolf Wins`,
-        detail: `${nameMap.get(pid)} dominated going solo (Holes ${holes.join(', ')})`,
+        title: 'Apex Predator',
+        detail: `${nameMap.get(pid)} won ${totalWins} lone wolf holes (Holes ${holes.join(', ')})`,
         category: 'wolf',
+        rare: true,
       });
     }
   }
@@ -2399,6 +2409,7 @@ app.get('/rounds/:roundId/highlights', async (c) => {
         title: 'Pack of One',
         detail: details.join(', '),
         category: 'wolf',
+        rare: true,
       });
     }
   }
@@ -2418,14 +2429,21 @@ app.get('/rounds/:roundId/highlights', async (c) => {
   for (const [pid, totals] of grossByPlayer) {
     if (totals.holes < 18) continue; // only full rounds
     const hi = hiMap.get(pid) ?? 0;
-    const courseHandicap = Math.round(hi); // simplified — CH ≈ HI for net-to-par check
+    // Slope-aware CH from the round's tee — same source of truth as the
+    // leaderboard net column. Using Math.round(hi) here under-reported CH on
+    // non-blue tees (slope > 113) and pushed legitimately dialed-in rounds
+    // above the -4 threshold (Ronnie's net-66 = -5 round 41 missed the
+    // award before this fix).
+    const courseHandicap = calcCourseHandicap(hi, roundTee);
     const netToPar = totals.gross - courseHandicap - totals.par;
     if (netToPar <= -4) {
+      const formatted = netToPar < 0 ? String(netToPar) : netToPar === 0 ? 'E' : `+${netToPar}`;
       highlights.push({
         emoji: '🔥',
         title: 'Round of the Day',
-        detail: `${nameMap.get(pid)} went ${netToPar} net — absolutely dialed in`,
+        detail: `${nameMap.get(pid)} went ${formatted} net — absolutely dialed in`,
         category: 'scoring',
+        rare: true,
       });
     }
   }

@@ -306,7 +306,10 @@ const TONE_BG: Record<HighlightSlide['tone'], string> = {
   net: 'bg-yellow-500/10 border-yellow-500/20',
   partnership: 'bg-green-500/10 border-green-500/20',
   money: 'bg-emerald-500/10 border-emerald-500/20',
-  wizard: 'bg-purple-500/15 border-purple-500/30 ring-1 ring-purple-500/30',
+  // The Wizard is the secret short-game-dominance slide — gold gradient
+  // matches the Highlight Reel rare-tier styling so the rarity reads at
+  // a glance across the app.
+  wizard: 'bg-gradient-to-br from-amber-100/80 via-yellow-50 to-amber-100/80 dark:from-amber-950/40 dark:via-yellow-950/30 dark:to-amber-950/40 border-2 border-amber-400 dark:border-amber-500 shadow-[0_0_0_1px_rgba(251,191,36,0.3)]',
 };
 
 function StatsHighlights({ data }: { data: StatsResponse }) {
@@ -331,13 +334,17 @@ function StatsHighlights({ data }: { data: StatsResponse }) {
   if (slides.length === 0) return null;
 
   const slide = slides[current % slides.length]!;
+  // The wizard tone supplies its own border width (gold ring); other tones
+  // share a default 1px border. Keeping the conditional here avoids stacking
+  // `border` and `border-2` on the same element.
+  const borderWidth = slide.tone === 'wizard' ? '' : 'border';
   return (
-    <div className={`rounded-lg border ${TONE_BG[slide.tone]} px-4 py-2.5 mb-3 transition-all duration-300`}>
+    <div className={`rounded-lg ${borderWidth} ${TONE_BG[slide.tone]} px-4 py-2.5 mb-3 transition-all duration-300`}>
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-            {slide.label}
+          <Sparkles className={`h-3.5 w-3.5 ${slide.tone === 'wizard' ? 'text-amber-600 dark:text-amber-300' : 'text-amber-500'}`} />
+          <span className={`text-[10px] font-bold uppercase tracking-widest ${slide.tone === 'wizard' ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}>
+            {slide.tone === 'wizard' ? '✦ Rare ✦' : slide.label}
           </span>
         </div>
         {slides.length > 1 && (

@@ -251,7 +251,7 @@ function HelpPage() {
         </p>
         <p>
           🕳️ <strong>Deepest Hole</strong> — lowest round total money. Ties
-          all get named (last week Kyle &amp; Jaquint both dropped -$16).
+          all get named.
         </p>
 
         <p className="font-semibold text-foreground pt-2">Scoring</p>
@@ -292,26 +292,31 @@ function HelpPage() {
         <p className="font-semibold text-foreground pt-2">Wolf</p>
         <p>
           🐺 <strong>Biggest Wolf Win</strong> — biggest single-hole $ win
-          for any wolf on their own wolf hole (alone, blind, or with a
-          partner). Detail string calls out the type.
+          for a lone wolf (alone or blind). 2v2 wolf wins go through team
+          math and aren't counted here.
         </p>
         <p>
           🥩 <strong>Biggest Wolf Loss</strong> — mirror; the biggest $ drop
-          the wolf took on a single hole. You do NOT want this one.
+          a lone wolf took on a single hole. You do NOT want this one.
         </p>
         <p>
-          🐺 <strong>Pack of One</strong> — 3+ lone/blind wolf attempts in a
-          single round. Going wolf once is mandatory; going 3+ times is a
+          🐺 <strong>Pack of One</strong> ✦ — 3+ lone/blind wolf attempts in
+          a single round. Going wolf once is mandatory; going 3+ times is a
           statement.
         </p>
         <p>
-          😎 <strong>Blind Wolf Victory</strong> — committed to blind wolf
-          (before seeing anyone tee off) and won. Each blind-win gets its
+          😎 <strong>Leap of Faith</strong> ✦ — committed to blind wolf
+          (before seeing anyone tee off) and won. Each blind win gets its
           own card.
         </p>
         <p>
-          🐺 <strong>Multi Lone Wolf Wins</strong> — same player won 2+
-          lone/blind wolf holes in the round.
+          🐺 <strong>Apex Predator</strong> ✦ — same player won 2+ lone/blind
+          wolf holes in the round. Pack of one, hunting clean.
+        </p>
+        <p className="text-[11px] italic text-muted-foreground/70 pt-2">
+          ✦ marks the rare achievements. They show up with a gold border in
+          the highlight reel — Eagle, Round of the Day, Perfect Day, Pack of
+          One, Leap of Faith, and Apex Predator all qualify.
         </p>
       </Section>
 
