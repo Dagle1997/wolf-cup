@@ -2448,6 +2448,11 @@ app.get('/rounds/:roundId/highlights', async (c) => {
     }
   }
 
+  // Surface rare achievements first so they get airtime before the routine
+  // slides cycle past. Array#sort is stable (ES2019+), so the relative order
+  // of slides within each tier is preserved.
+  highlights.sort((a, b) => Number(!!b.rare) - Number(!!a.rare));
+
   return c.json({ highlights });
 });
 
