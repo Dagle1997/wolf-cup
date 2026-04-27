@@ -29,6 +29,16 @@ declare module 'hono' {
       id: string;
       isOrganizer: boolean;
     };
+    // T3-8: populated by `require-invite-token` middleware on a valid,
+    // non-expired token. Optional shape — only set on routes gated by
+    // that middleware. The `?:` makes `c.get('invite')` return
+    // `{eventId,inviteId} | undefined` rather than an always-present
+    // shape, so handlers on non-token-gated routes can't accidentally
+    // dereference it.
+    invite?: {
+      eventId: string;
+      inviteId: string;
+    };
   }
 }
 
