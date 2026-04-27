@@ -19,6 +19,7 @@ import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.u
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
 import { Route as AdminRuleSetsIdEditRouteImport } from './routes/admin.rule-sets.$id.edit'
 import { Route as AdminGroupsGroupIdEditRouteImport } from './routes/admin.groups.$groupId.edit'
+import { Route as AdminEventRoundsEventRoundIdSubGamesRouteImport } from './routes/admin.event-rounds.$eventRoundId.sub-games'
 
 const MeRoute = MeRouteImport.update({
   id: '/me',
@@ -70,6 +71,12 @@ const AdminGroupsGroupIdEditRoute = AdminGroupsGroupIdEditRouteImport.update({
   path: '/admin/groups/$groupId/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminEventRoundsEventRoundIdSubGamesRoute =
+  AdminEventRoundsEventRoundIdSubGamesRouteImport.update({
+    id: '/admin/event-rounds/$eventRoundId/sub-games',
+    path: '/admin/event-rounds/$eventRoundId/sub-games',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
 }
@@ -92,6 +100,7 @@ export interface FileRoutesByTo {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
 }
@@ -105,6 +114,7 @@ export interface FileRoutesById {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
 }
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
   fileRoutesByTo: FileRoutesByTo
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
   id:
@@ -143,6 +155,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
   fileRoutesById: FileRoutesById
@@ -156,6 +169,7 @@ export interface RootRouteChildren {
   AdminCoursesNewRoute: typeof AdminCoursesNewRoute
   AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
   AdminEventsNewRoute: typeof AdminEventsNewRoute
+  AdminEventRoundsEventRoundIdSubGamesRoute: typeof AdminEventRoundsEventRoundIdSubGamesRoute
   AdminGroupsGroupIdEditRoute: typeof AdminGroupsGroupIdEditRoute
   AdminRuleSetsIdEditRoute: typeof AdminRuleSetsIdEditRoute
 }
@@ -232,6 +246,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminGroupsGroupIdEditRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/event-rounds/$eventRoundId/sub-games': {
+      id: '/admin/event-rounds/$eventRoundId/sub-games'
+      path: '/admin/event-rounds/$eventRoundId/sub-games'
+      fullPath: '/admin/event-rounds/$eventRoundId/sub-games'
+      preLoaderRoute: typeof AdminEventRoundsEventRoundIdSubGamesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -244,6 +265,8 @@ const rootRouteChildren: RootRouteChildren = {
   AdminCoursesNewRoute: AdminCoursesNewRoute,
   AdminCoursesUploadRoute: AdminCoursesUploadRoute,
   AdminEventsNewRoute: AdminEventsNewRoute,
+  AdminEventRoundsEventRoundIdSubGamesRoute:
+    AdminEventRoundsEventRoundIdSubGamesRoute,
   AdminGroupsGroupIdEditRoute: AdminGroupsGroupIdEditRoute,
   AdminRuleSetsIdEditRoute: AdminRuleSetsIdEditRoute,
 }

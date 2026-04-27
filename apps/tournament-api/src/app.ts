@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { csrf } from 'hono/csrf';
 import { env } from './lib/env.js';
 import { adminCoursesRouter } from './routes/admin-courses.js';
+import { adminEventRoundsRouter } from './routes/admin-event-rounds.js';
 import { adminEventsRouter } from './routes/admin-events.js';
 import { adminGroupsRouter } from './routes/admin-groups.js';
 import { adminRuleSetsRouter } from './routes/admin-rule-sets.js';
@@ -64,6 +65,12 @@ app.route('/api/admin', adminGroupsRouter);
 // 4th /api/admin mount; per T3-3 party Winston note, promote umbrella
 // adminRouter at ~5 mounts. T3-5 holds the existing pattern.
 app.route('/api/admin', adminRuleSetsRouter);
+
+// Admin-event-rounds router (T3-9). 2 endpoints under
+// /api/admin/event-rounds/:eventRoundId/sub-games (GET + POST).
+// 5th /api/admin mount — Winston's threshold case. T3-9 holds the
+// existing pattern; umbrella adminRouter promotion is a future story.
+app.route('/api/admin', adminEventRoundsRouter);
 
 // Invites router (T3-6). 2 anonymous-friendly endpoints under
 // /api/invites/... — first-arrival flow per FR-E1; no SSO triggered.
