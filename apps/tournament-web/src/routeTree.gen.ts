@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthDeclinedRouteImport } from './routes/auth.declined'
+import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const AuthDeclinedRoute = AuthDeclinedRouteImport.update({
   id: '/auth/declined',
   path: '/auth/declined',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminEventsNewRoute = AdminEventsNewRouteImport.update({
+  id: '/admin/events/new',
+  path: '/admin/events/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminCoursesUploadRoute = AdminCoursesUploadRouteImport.update({
@@ -40,12 +46,14 @@ export interface FileRoutesByFullPath {
   '/auth/declined': typeof AuthDeclinedRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
+  '/admin/events/new': typeof AdminEventsNewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth/declined': typeof AuthDeclinedRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
+  '/admin/events/new': typeof AdminEventsNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,6 +61,7 @@ export interface FileRoutesById {
   '/auth/declined': typeof AuthDeclinedRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
+  '/admin/events/new': typeof AdminEventsNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -61,14 +70,21 @@ export interface FileRouteTypes {
     | '/auth/declined'
     | '/admin/courses/new'
     | '/admin/courses/upload'
+    | '/admin/events/new'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth/declined' | '/admin/courses/new' | '/admin/courses/upload'
+  to:
+    | '/'
+    | '/auth/declined'
+    | '/admin/courses/new'
+    | '/admin/courses/upload'
+    | '/admin/events/new'
   id:
     | '__root__'
     | '/'
     | '/auth/declined'
     | '/admin/courses/new'
     | '/admin/courses/upload'
+    | '/admin/events/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -76,6 +92,7 @@ export interface RootRouteChildren {
   AuthDeclinedRoute: typeof AuthDeclinedRoute
   AdminCoursesNewRoute: typeof AdminCoursesNewRoute
   AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
+  AdminEventsNewRoute: typeof AdminEventsNewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -92,6 +109,13 @@ declare module '@tanstack/react-router' {
       path: '/auth/declined'
       fullPath: '/auth/declined'
       preLoaderRoute: typeof AuthDeclinedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/events/new': {
+      id: '/admin/events/new'
+      path: '/admin/events/new'
+      fullPath: '/admin/events/new'
+      preLoaderRoute: typeof AdminEventsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/courses/upload': {
@@ -116,6 +140,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthDeclinedRoute: AuthDeclinedRoute,
   AdminCoursesNewRoute: AdminCoursesNewRoute,
   AdminCoursesUploadRoute: AdminCoursesUploadRoute,
+  AdminEventsNewRoute: AdminEventsNewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

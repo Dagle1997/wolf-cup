@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { csrf } from 'hono/csrf';
 import { env } from './lib/env.js';
 import { adminCoursesRouter } from './routes/admin-courses.js';
+import { adminEventsRouter } from './routes/admin-events.js';
 import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
@@ -38,5 +39,11 @@ app.route('/api/courses', coursesRouter);
 // Admin-courses router (T2-3). POST /api/admin/courses/parse-pdf —
 // organizer-gated scorecard-PDF → Anthropic Vision → structured JSON.
 app.route('/api/admin', adminCoursesRouter);
+
+// Admin-events router (T3-2). POST /api/admin/events — organizer-gated
+// transactional create across events + event_rounds + invites + groups.
+// Mounted alongside adminCoursesRouter under /api/admin; each defines its
+// own subroutes so they don't conflict.
+app.route('/api/admin', adminEventsRouter);
 
 export { app };
