@@ -7,6 +7,7 @@ import { adminGroupsRouter } from './routes/admin-groups.js';
 import { adminRuleSetsRouter } from './routes/admin-rule-sets.js';
 import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
+import { inviteRouter } from './routes/invites.js';
 import { playersRouter } from './routes/players.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
@@ -63,5 +64,9 @@ app.route('/api/admin', adminGroupsRouter);
 // 4th /api/admin mount; per T3-3 party Winston note, promote umbrella
 // adminRouter at ~5 mounts. T3-5 holds the existing pattern.
 app.route('/api/admin', adminRuleSetsRouter);
+
+// Invites router (T3-6). 2 anonymous-friendly endpoints under
+// /api/invites/... — first-arrival flow per FR-E1; no SSO triggered.
+app.route('/api/invites', inviteRouter);
 
 export { app };

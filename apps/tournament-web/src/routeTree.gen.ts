@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AuthDeclinedRouteImport } from './routes/auth.declined'
 import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
@@ -20,6 +21,11 @@ import { Route as AdminGroupsGroupIdEditRouteImport } from './routes/admin.group
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthDeclinedRoute = AuthDeclinedRouteImport.update({
@@ -56,6 +62,7 @@ const AdminGroupsGroupIdEditRoute = AdminGroupsGroupIdEditRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth/declined': typeof AuthDeclinedRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
@@ -65,6 +72,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth/declined': typeof AuthDeclinedRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
@@ -75,6 +83,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/auth/declined': typeof AuthDeclinedRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
@@ -86,6 +95,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth/declined'
+    | '/invite/$token'
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth/declined'
+    | '/invite/$token'
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/auth/declined'
+    | '/invite/$token'
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
@@ -114,6 +126,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthDeclinedRoute: typeof AuthDeclinedRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   AdminCoursesNewRoute: typeof AdminCoursesNewRoute
   AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
   AdminEventsNewRoute: typeof AdminEventsNewRoute
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/declined': {
@@ -178,6 +198,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthDeclinedRoute: AuthDeclinedRoute,
+  InviteTokenRoute: InviteTokenRoute,
   AdminCoursesNewRoute: AdminCoursesNewRoute,
   AdminCoursesUploadRoute: AdminCoursesUploadRoute,
   AdminEventsNewRoute: AdminEventsNewRoute,
