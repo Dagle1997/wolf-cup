@@ -91,7 +91,7 @@ development_status:
   # wizards, CRUD UIs, GHIN client port, rule-set editor, invite-link flow,
   # post-SSO device rebind, permissions middleware, sub-game opt-in.
   # ---------------------------------------------------------------------------
-  epic-T3: in-progress
+  epic-T3: done
 
   T3-1-event-group-rule-set-invite-sub-game-device-binding-schema: done
   T3-2-event-creation-wizard: done
