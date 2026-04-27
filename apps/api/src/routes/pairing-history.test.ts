@@ -82,20 +82,43 @@ afterEach(async () => {
 });
 
 describe('GET /pairing-history', () => {
-  it('returns the latest season by default with empty pairs when no history exists', async () => {
+  it('returns empty seasons + null season when no pairing history exists anywhere', async () => {
+    // No pairing rows seeded → the picker has nothing to show; the page
+    // falls into its "no data yet" empty state. Seasons in the DB without
+    // pairing rows (the historical 2015–2025 import) are intentionally
+    // excluded from the seasons array.
+    const res = await pairingHistoryApp.request('/pairing-history');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      season: { id: number; year: number } | null;
+      seasons: { id: number; year: number }[];
+      players: { id: number; name: string }[];
+      pairs: { playerAId: number; playerBId: number; pairCount: number }[];
+    };
+    expect(body.seasons).toEqual([]);
+    expect(body.season).toBeNull();
+    expect(body.pairs).toEqual([]);
+    expect(body.players).toEqual([]);
+  });
+
+  it('seasons array only contains seasons with pairing data (omits 2015–2025 historical seasons)', async () => {
+    // Seed 2026 pairings only — 2025 has no pairing rows, so it must NOT
+    // appear in the picker even though the season exists in the seasons table.
+    const [aLow, aHigh] = aliceId < bobId ? [aliceId, bobId] : [bobId, aliceId];
+    await db.insert(pairingHistory).values([
+      { seasonId: season2026Id, playerAId: aLow, playerBId: aHigh, pairCount: 1 },
+    ]);
+
     const res = await pairingHistoryApp.request('/pairing-history');
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       season: { id: number; year: number };
       seasons: { id: number; year: number }[];
-      players: { id: number; name: string }[];
-      pairs: { playerAId: number; playerBId: number; pairCount: number }[];
     };
-    expect(body.season.id).toBe(season2026Id); // max year wins
-    expect(body.seasons.map((s) => s.id)).toContain(season2025Id);
-    expect(body.seasons.map((s) => s.id)).toContain(season2026Id);
-    expect(body.pairs).toEqual([]);
-    expect(body.players).toEqual([]);
+    const seasonIds = body.seasons.map((s) => s.id);
+    expect(seasonIds).toContain(season2026Id);
+    expect(seasonIds).not.toContain(season2025Id);
+    expect(body.season.id).toBe(season2026Id);
   });
 
   it('returns season-scoped pairing rows with player names attached', async () => {
@@ -156,7 +179,9 @@ describe('GET /pairing-history', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns empty pairs (not 404) for a pre-2026 season — public empty-state path', async () => {
+  it('explicit ?seasonId=X for a known season with no pairing data returns 200 with empty pairs', async () => {
+    // Direct API callers can still query a season without data; the picker
+    // just won't expose it. 200 + empty pairs is the right contract.
     const res = await pairingHistoryApp.request(
       `/pairing-history?seasonId=${season2025Id}`,
     );

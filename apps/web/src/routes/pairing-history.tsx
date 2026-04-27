@@ -105,8 +105,6 @@ function PairingHistoryPage() {
     return an.localeCompare(bn);
   });
 
-  // Pre-2026 historical seasons have no group-level pairing data.
-  const isPre2026 = data.season ? data.season.year < 2026 : false;
   const hasAnyData = data.pairs.length > 0;
 
   return (
@@ -161,19 +159,8 @@ function PairingHistoryPage() {
         </div>
       )}
 
-      {/* Empty states */}
-      {isPre2026 && (
-        <div className="rounded-lg border bg-muted/30 px-4 py-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            Group-level pairing data available from 2026 season onward.
-          </p>
-          <p className="text-xs text-muted-foreground/70 mt-1">
-            Historical rounds (2022–2025) were imported without group records.
-          </p>
-        </div>
-      )}
-
-      {!isPre2026 && !hasAnyData && (
+      {/* Empty state — no pairing data yet (e.g. brand-new season pre-round-1) */}
+      {!hasAnyData && (
         <div className="rounded-lg border bg-muted/30 px-4 py-6 text-center">
           <p className="text-sm text-muted-foreground">
             No pairing data yet for this season.
@@ -184,7 +171,7 @@ function PairingHistoryPage() {
         </div>
       )}
 
-      {!isPre2026 && hasAnyData && (
+      {hasAnyData && (
         <>
           {/* Player picker */}
           <div className="mb-3">

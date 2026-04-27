@@ -141,8 +141,16 @@ function HelpPage() {
           players who earned them (see Money section below).
         </Step>
         <Step n={6}>
+          On <strong>CTP weeks</strong> (Closest to the Pin), the app will
+          prompt you after each par 3 to record the closest-to-pin winner —
+          or tap <strong>"No Winner"</strong> if nobody hit the green. One
+          prompt per par 3, four chances per round.
+        </Step>
+        <Step n={7}>
           Use the <strong>arrow buttons</strong> to move between holes, or tap
           the hole number bar to jump to any hole. Scores save automatically.
+          A small <strong>refresh icon</strong> in the hole header is there if
+          things ever look stale — tap it to re-pull the latest scores.
         </Step>
       </Section>
 
@@ -188,15 +196,44 @@ function HelpPage() {
           other player in the group pays you.
         </p>
         <p>
-          <strong>Polie</strong> (any hole): Make a putt longer than the flagstick
-          pole — extra bonus skin for your team.
+          <strong>Polie</strong> (any hole): your <em>first</em> putt is longer
+          than the flagstick — and you make it. Extra bonus skin for your team.
         </p>
         <p>
-          <strong>Sandie</strong> (any hole): Up and down from the sand — one
+          <strong>Sandie</strong> (any hole): up and down from the sand — one
           shot out of the bunker and one putt in. Worth $1 per sandie (same team
           and wolf logic as polies — sandies on opposite teams net to zero).
           Polies and sandies are tracked on hole 1 and 3 for stats but do not
           pay out on skins holes.
+        </p>
+        <p>
+          <strong>Closest to the Pin</strong> (CTP weeks only, par 3s): each par
+          3 is its own contest. Track them as you go via the in-play prompt.
+          See <em>Side Games</em> below for how this rolls up.
+        </p>
+      </Section>
+
+      <Section emoji="🎯" title="Side Games">
+        <p>
+          Each round has a <strong>side game</strong> rotation — Skins, Net Pars,
+          Least Putts, Net Under Par, Most Polies, or Closest to the Pin. The
+          <strong> Side Game card</strong> on the leaderboard shows the running
+          leader during play, not just after finalization.
+        </p>
+        <p>
+          Two season-level recognition tracks come out of side games:
+        </p>
+        <p>
+          🏅 <strong>Side Game Champion</strong> — round-by-round leader-takes-all.
+          Each finalized round is worth <strong>1 credit</strong>: the player who
+          won the side game (or won the most CTPs) gets the credit. Ties split
+          the credit (2-way tie = 0.5 each). Winning 1 of 4 CTPs when someone
+          else won 3 of 4 doesn't earn a credit.
+        </p>
+        <p>
+          ⛳ <strong>Par 3 Champion</strong> — total CTPs won across the season,
+          counted per hole (not per round). A player who wins 3 of 4 CTPs in a
+          round earns 3 toward Par 3 Champion.
         </p>
       </Section>
 
@@ -288,18 +325,75 @@ function HelpPage() {
           Only your <strong>best 10 of 20</strong> rounds count toward the
           final standings, so a bad week won't sink your season.
         </p>
-      </Section>
-
-      <Section emoji="📈" title="Stats & Awards">
+        <p className="font-semibold text-foreground pt-1">Reading the board</p>
         <p>
-          The <strong>Stats</strong> tab shows league-wide statistics and the{' '}
-          <strong>awards showcase</strong> — trophies and badges earned across
-          all seasons.
+          The top <strong>Season Leader</strong> card is gold. Below it, every
+          player gets their own card with a rank pill (🏆 / 2 / 3 medals at
+          the top). A green ✓ inside the pill means you're <strong>currently
+          in playoff position</strong>. A dashed red line shows the playoff cut
+          — finish above it to qualify.
         </p>
         <p>
-          Tap any player to see their <strong>drill-down</strong>: highlight
-          reel (birdies, greenies, polies), partner chemistry, performance by
-          batting order position, and more.
+          Each card shows a delta chip (↑ / ↓ / – / ●) for movement since the
+          last round, a sparkline of your money trend, and a "− N to [First]"
+          gap chip so you know how far back you are. Tap any card to expand
+          and see your average / low / high / stableford-money / pairing pills.
+        </p>
+        <p>
+          <strong>Pin yourself:</strong> tap the 📍 pin icon on your card to
+          highlight it — your row stays focused with a blue ring and
+          auto-scrolls into view next time you open Standings. Tap again to
+          unpin.
+        </p>
+      </Section>
+
+      <Section emoji="📈" title="Stats">
+        <p>
+          The <strong>Stats</strong> tab shows league-wide statistics, the
+          <strong> Season Highlights</strong> rotating widget at the top
+          (Most Birdies, Par 3 Champion, Putting Master, Sandman, Lowest
+          Gross/Net Round, Best 2v2 Partnership, Best Financial Partnership),
+          and the <strong>awards showcase</strong> — trophies and badges
+          earned across all seasons.
+        </p>
+        <p>
+          Tap any player to expand their <strong>drill-down</strong>: round
+          history (with Vs Par), highlight totals (birdies, greenies, polies,
+          sandies), batting-order chemistry, and a <strong>When Grouped With</strong> table.
+        </p>
+        <p className="font-semibold text-foreground pt-1">When Grouped With</p>
+        <p>
+          For each rival who's shared a group with you this season, you'll
+          see three columns:
+        </p>
+        <p>
+          <strong>Together</strong> — number of finalized rounds you've been
+          in the same group.
+        </p>
+        <p>
+          <strong>Vs Win</strong> — your win rate on the holes where the two
+          of you were on opposite teams.
+        </p>
+        <p>
+          <strong>Vs $</strong> — net money attributable to those opposite-team
+          holes. Green = you're up on them, red = they're up on you.
+        </p>
+      </Section>
+
+      <Section emoji="🤝" title="Pairing History (Transparency)">
+        <p>
+          The app builds groups each week using a <strong>weighted-pairing
+          algorithm</strong> — the goal is to rotate everyone through the
+          league instead of stacking the same foursomes. To prove the
+          algorithm is fair, the <strong>Pairing History</strong> page (linked
+          from Stats) lets anyone pick any player and see how many times
+          they've been grouped with every other player this season.
+        </p>
+        <p>
+          Counts come from finalized official rounds only — practice rounds,
+          cancelled rounds, and hidden rounds don't count. With 15+ players
+          and a fresh season most counts will sit at 1 for a while; that's
+          the system working.
         </p>
       </Section>
 
