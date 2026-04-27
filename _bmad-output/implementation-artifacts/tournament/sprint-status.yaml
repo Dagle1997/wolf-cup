@@ -93,7 +93,7 @@ development_status:
   # ---------------------------------------------------------------------------
   epic-T3: backlog
 
-  T3-1-event-group-rule-set-invite-sub-game-device-binding-schema: backlog
+  T3-1-event-group-rule-set-invite-sub-game-device-binding-schema: done
   T3-2-event-creation-wizard: backlog
   T3-3-group-crud-ui: backlog
   T3-4-ghin-client: backlog
