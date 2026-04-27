@@ -14,6 +14,7 @@ import { Route as AuthDeclinedRouteImport } from './routes/auth.declined'
 import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
+import { Route as AdminRuleSetsIdEditRouteImport } from './routes/admin.rule-sets.$id.edit'
 import { Route as AdminGroupsGroupIdEditRouteImport } from './routes/admin.groups.$groupId.edit'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +42,11 @@ const AdminCoursesNewRoute = AdminCoursesNewRouteImport.update({
   path: '/admin/courses/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRuleSetsIdEditRoute = AdminRuleSetsIdEditRouteImport.update({
+  id: '/admin/rule-sets/$id/edit',
+  path: '/admin/rule-sets/$id/edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminGroupsGroupIdEditRoute = AdminGroupsGroupIdEditRouteImport.update({
   id: '/admin/groups/$groupId/edit',
   path: '/admin/groups/$groupId/edit',
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
+  '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
+  '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +79,7 @@ export interface FileRoutesById {
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
+  '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +90,7 @@ export interface FileRouteTypes {
     | '/admin/courses/upload'
     | '/admin/events/new'
     | '/admin/groups/$groupId/edit'
+    | '/admin/rule-sets/$id/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +99,7 @@ export interface FileRouteTypes {
     | '/admin/courses/upload'
     | '/admin/events/new'
     | '/admin/groups/$groupId/edit'
+    | '/admin/rule-sets/$id/edit'
   id:
     | '__root__'
     | '/'
@@ -97,6 +108,7 @@ export interface FileRouteTypes {
     | '/admin/courses/upload'
     | '/admin/events/new'
     | '/admin/groups/$groupId/edit'
+    | '/admin/rule-sets/$id/edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -106,6 +118,7 @@ export interface RootRouteChildren {
   AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
   AdminEventsNewRoute: typeof AdminEventsNewRoute
   AdminGroupsGroupIdEditRoute: typeof AdminGroupsGroupIdEditRoute
+  AdminRuleSetsIdEditRoute: typeof AdminRuleSetsIdEditRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -145,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCoursesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/rule-sets/$id/edit': {
+      id: '/admin/rule-sets/$id/edit'
+      path: '/admin/rule-sets/$id/edit'
+      fullPath: '/admin/rule-sets/$id/edit'
+      preLoaderRoute: typeof AdminRuleSetsIdEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/groups/$groupId/edit': {
       id: '/admin/groups/$groupId/edit'
       path: '/admin/groups/$groupId/edit'
@@ -162,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminCoursesUploadRoute: AdminCoursesUploadRoute,
   AdminEventsNewRoute: AdminEventsNewRoute,
   AdminGroupsGroupIdEditRoute: AdminGroupsGroupIdEditRoute,
+  AdminRuleSetsIdEditRoute: AdminRuleSetsIdEditRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

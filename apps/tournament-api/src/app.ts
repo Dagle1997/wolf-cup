@@ -4,6 +4,7 @@ import { env } from './lib/env.js';
 import { adminCoursesRouter } from './routes/admin-courses.js';
 import { adminEventsRouter } from './routes/admin-events.js';
 import { adminGroupsRouter } from './routes/admin-groups.js';
+import { adminRuleSetsRouter } from './routes/admin-rule-sets.js';
 import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
 import { playersRouter } from './routes/players.js';
@@ -57,5 +58,10 @@ app.route('/api/players', playersRouter);
 // Mounted under /api/admin matching adminCoursesRouter + adminEventsRouter
 // (each defines its own subroutes; they coexist without path conflict).
 app.route('/api/admin', adminGroupsRouter);
+
+// Admin-rule-sets router (T3-5). 3 endpoints under /api/admin/rule-sets/...
+// 4th /api/admin mount; per T3-3 party Winston note, promote umbrella
+// adminRouter at ~5 mounts. T3-5 holds the existing pattern.
+app.route('/api/admin', adminRuleSetsRouter);
 
 export { app };
