@@ -3,6 +3,7 @@ import { csrf } from 'hono/csrf';
 import { env } from './lib/env.js';
 import { adminCoursesRouter } from './routes/admin-courses.js';
 import { adminEventsRouter } from './routes/admin-events.js';
+import { adminGroupsRouter } from './routes/admin-groups.js';
 import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
 import { playersRouter } from './routes/players.js';
@@ -51,5 +52,10 @@ app.route('/api/admin', adminEventsRouter);
 // gated by requireSession only — any authenticated player may use them.
 // Returns 503 service_unavailable when GHIN credentials are unset.
 app.route('/api/players', playersRouter);
+
+// Admin-groups router (T3-3). 4 endpoints under /api/admin/groups/...
+// Mounted under /api/admin matching adminCoursesRouter + adminEventsRouter
+// (each defines its own subroutes; they coexist without path conflict).
+app.route('/api/admin', adminGroupsRouter);
 
 export { app };
