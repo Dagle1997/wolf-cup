@@ -185,8 +185,58 @@ describe('auth router (T1-6b: Google OAuth)', () => {
       headers: { cookie: cookieHeader(['tournament_session', sessionId]) },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { player: { id: string; isOrganizer: boolean } };
-    expect(body).toEqual({ player: { id: playerId, isOrganizer: true } });
+    const body = (await res.json()) as {
+      player: {
+        id: string;
+        isOrganizer: boolean;
+        ghin: string | null;
+        manualHandicapIndex: number | null;
+      };
+    };
+    expect(body).toEqual({
+      player: { id: playerId, isOrganizer: true, ghin: null, manualHandicapIndex: null },
+    });
+  });
+
+  test('GET /status (T3-10): response includes additive ghin + manualHandicapIndex fields', async () => {
+    const playerId = 'profile-player-1';
+    const sessionId = 'profile-session-1234567890absent';
+    const now = Date.now();
+    await db.insert(players).values({
+      id: playerId,
+      isOrganizer: false,
+      createdAt: now - 1000,
+      name: 'Profile Player',
+      ghin: '1234567',
+      manualHandicapIndex: 12.5,
+      tenantId: 'guyan',
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(sessions).values({
+      sessionId,
+      playerId,
+      createdAt: now - 1000,
+      lastSeenAt: now - 1000,
+      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      deviceInfo: null,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+
+    const res = await testApp.request('/status', {
+      headers: { cookie: cookieHeader(['tournament_session', sessionId]) },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      player: {
+        id: string;
+        isOrganizer: boolean;
+        ghin: string | null;
+        manualHandicapIndex: number | null;
+      };
+    };
+    expect(body.player.id).toBe(playerId);
+    expect(body.player.ghin).toBe('1234567');
+    expect(body.player.manualHandicapIndex).toBe(12.5);
   });
 
   test('GET /status authenticated non-organizer → 200 { player: { id, isOrganizer: false } }', async () => {
@@ -213,8 +263,17 @@ describe('auth router (T1-6b: Google OAuth)', () => {
       headers: { cookie: cookieHeader(['tournament_session', sessionId]) },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { player: { id: string; isOrganizer: boolean } };
-    expect(body).toEqual({ player: { id: playerId, isOrganizer: false } });
+    const body = (await res.json()) as {
+      player: {
+        id: string;
+        isOrganizer: boolean;
+        ghin: string | null;
+        manualHandicapIndex: number | null;
+      };
+    };
+    expect(body).toEqual({
+      player: { id: playerId, isOrganizer: false, ghin: null, manualHandicapIndex: null },
+    });
   });
 
   // ---- /google sign-in entry -----------------------------------------

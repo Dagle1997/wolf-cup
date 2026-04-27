@@ -102,7 +102,7 @@ development_status:
   T3-7-post-sso-device-cookie-thats-not-me-re-bind: done
   T3-8-permissions-middleware-event-level-role-matrix: done
   T3-9-sub-game-opt-in-ui-on-round-setup: done
-  T3-10-optional-ghin-enrichment-profile-action: backlog
+  T3-10-optional-ghin-enrichment-profile-action: done
 
   epic-T3-retrospective: optional
 

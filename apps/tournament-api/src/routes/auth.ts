@@ -119,8 +119,33 @@ authRouter.get('/status', async (c) => {
     return c.json({ player: null });
   }
 
+  // T3-10 — additive shape: read the player row to surface ghin +
+  // manual_handicap_index for the /profile page. Tenant-scoped per the
+  // post-T3-7/T3-9 hardening pattern. Existing T2-3b consumers extract
+  // only `id` + `isOrganizer` and ignore unknown keys, so this is
+  // forward-compat (verified at spec-time, see T3-10 Risk §2.2).
+  const playerRows = await db
+    .select({
+      id: players.id,
+      ghin: players.ghin,
+      manualHandicapIndex: players.manualHandicapIndex,
+    })
+    .from(players)
+    .where(
+      and(
+        eq(players.id, validated.playerId),
+        eq(players.tenantId, DEFAULT_TENANT_ID),
+      ),
+    );
+  const profile = playerRows[0];
+
   return c.json({
-    player: { id: validated.playerId, isOrganizer: validated.isOrganizer },
+    player: {
+      id: validated.playerId,
+      isOrganizer: validated.isOrganizer,
+      ghin: profile?.ghin ?? null,
+      manualHandicapIndex: profile?.manualHandicapIndex ?? null,
+    },
   });
 });
 
