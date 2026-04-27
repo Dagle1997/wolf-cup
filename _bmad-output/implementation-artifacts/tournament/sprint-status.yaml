@@ -110,9 +110,9 @@ development_status:
   # Epic T4: Pairings
   # Suggest engine, UI + persistence, PDF schedule + pairings export (port).
   # ---------------------------------------------------------------------------
-  epic-T4: backlog
+  epic-T4: in-progress
 
-  T4-1-pairings-suggest-engine: backlog
+  T4-1-pairings-suggest-engine: done
   T4-2-pairings-ui-persistence: backlog
   T4-3-pdf-schedule-pairings-export: backlog
 
