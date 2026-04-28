@@ -29,6 +29,13 @@
       "when": 1777375146254,
       "tag": "0003_t4_2_pairings",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1777380474146,
+      "tag": "0004_supreme_gambit",
+      "breakpoints": true
     }
   ]
 }

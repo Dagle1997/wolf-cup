@@ -20,3 +20,10 @@ export { subGameParticipants, type SubGameParticipant } from './subgames.js';
 // T4-2 pairings schema
 export { pairings, type Pairing } from './pairings.js';
 export { pairingMembers, type PairingMember } from './pairings.js';
+// T5-1 scoring + audit schema
+export { rounds, type Round } from './scoring.js';
+export { holeScores, type HoleScore } from './scoring.js';
+export { scoreCorrections, type ScoreCorrection } from './scoring.js';
+export { roundStates, type RoundState } from './scoring.js';
+export { scorerAssignments, type ScorerAssignment } from './scoring.js';
+export { auditLog, type AuditLog } from './audit.js';

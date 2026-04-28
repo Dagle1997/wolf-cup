@@ -126,9 +126,9 @@ development_status:
   # machine, score correction audit log, airplane-mode drill, mid-event rule
   # edits with effective-hole boundary.
   # ---------------------------------------------------------------------------
-  epic-T5: backlog
+  epic-T5: in-progress
 
-  T5-1-scoring-schema: backlog
+  T5-1-scoring-schema: done
   T5-2-scorer-entry-ui-ios-keyboard-fix: backlog
   T5-3-offline-queue-indexeddb-client-event-id-idempotency: backlog
   T5-4-offline-course-scorecard-shell-cache: backlog
