@@ -84,7 +84,6 @@ export function useOfflineQueue(roundId: string) {
         // path; we can't quarantine without an id, but we can at least
         // skip the entry so it doesn't block N+1.
         if (entry.id === undefined) {
-          // eslint-disable-next-line no-console
           console.warn(
             'useOfflineQueue: queue entry missing id; cannot quarantine. Skipping.',
           );

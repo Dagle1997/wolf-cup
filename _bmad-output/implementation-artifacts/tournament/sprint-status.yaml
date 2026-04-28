@@ -129,7 +129,7 @@ development_status:
   epic-T5: in-progress
 
   T5-1-scoring-schema: done
-  T5-2-scorer-entry-ui-ios-keyboard-fix: backlog
+  T5-2-scorer-entry-ui-ios-keyboard-fix: done
   T5-3-offline-queue-indexeddb-client-event-id-idempotency: done
   T5-4-offline-course-scorecard-shell-cache: backlog
   T5-5-cross-group-stroke-play-leaderboard-v1: backlog

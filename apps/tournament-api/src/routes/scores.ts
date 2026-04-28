@@ -22,14 +22,16 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   holeScores,
   pairings,
   pairingMembers,
+  players,
   rounds,
   roundStates,
+  scorerAssignments,
 } from '../db/schema/index.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireScorerForRound } from '../middleware/require-scorer-for-round.js';
@@ -52,6 +54,191 @@ export const scorePostBodySchema = z.object({
 export type ScorePostBody = z.infer<typeof scorePostBodySchema>;
 
 export const scoresRouter = new Hono();
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * T5-2 score-entry-context GET. Read-only; gated by requireSession only
+ * (non-scorers must be able to fetch the round to render the read-only
+ * placeholder). Returns 404 round_not_found uniformly for: round doesn't
+ * exist OR foreign tenant OR session.userId is not a member of any
+ * foursome for this round (round-existence obfuscation pattern).
+ *
+ * Returns the score-entry-context shape per T5-2 spec §3.
+ */
+scoresRouter.get('/:roundId', requireSession, async (c) => {
+  const requestId = c.get('requestId') ?? randomUUID();
+  const player = c.get('player')!;
+  const roundId = c.req.param('roundId')!;
+
+  if (!UUID_RE.test(roundId)) {
+    return c.json(
+      { error: 'bad_request', code: 'invalid_round_id', requestId },
+      400,
+    );
+  }
+
+  // (1) Round existence — uniform 404 for nonexistent / foreign-tenant.
+  const roundRows = await db
+    .select({
+      id: rounds.id,
+      eventId: rounds.eventId,
+      eventRoundId: rounds.eventRoundId,
+      holesToPlay: rounds.holesToPlay,
+    })
+    .from(rounds)
+    .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, TENANT_ID)))
+    .limit(1);
+  if (roundRows.length === 0) {
+    return c.json(
+      { error: 'not_found', code: 'round_not_found', requestId },
+      404,
+    );
+  }
+  const round = roundRows[0]!;
+
+  // (2) round_states — 422 if absent (no silent default).
+  const rsRows = await db
+    .select({ state: roundStates.state })
+    .from(roundStates)
+    .where(
+      and(
+        eq(roundStates.roundId, roundId),
+        eq(roundStates.tenantId, TENANT_ID),
+      ),
+    )
+    .limit(1);
+  if (rsRows.length === 0) {
+    return c.json(
+      { error: 'unprocessable', code: 'round_state_missing', requestId },
+      422,
+    );
+  }
+  const state = rsRows[0]!.state;
+
+  // (3) Locate the session player's foursome via pairing_members + pairings.
+  // Returns 404 (uniform with foreign-tenant) for non-participants — round
+  // existence obfuscation per T5-2 spec §3.
+  if (round.eventRoundId === null) {
+    // v1.5 standalone-round shape; v1 never writes nulls. Treat as
+    // non-participant (404 uniform).
+    return c.json(
+      { error: 'not_found', code: 'round_not_found', requestId },
+      404,
+    );
+  }
+
+  const myFoursomeRows = await db
+    .select({ foursomeNumber: pairings.foursomeNumber })
+    .from(pairingMembers)
+    .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
+    .where(
+      and(
+        eq(pairings.eventRoundId, round.eventRoundId),
+        eq(pairingMembers.playerId, player.id),
+        eq(pairings.tenantId, TENANT_ID),
+        eq(pairingMembers.tenantId, TENANT_ID),
+      ),
+    )
+    .limit(1);
+  if (myFoursomeRows.length === 0) {
+    return c.json(
+      { error: 'not_found', code: 'round_not_found', requestId },
+      404,
+    );
+  }
+  const myFoursomeNumber = myFoursomeRows[0]!.foursomeNumber;
+
+  // (4) Members of my foursome (ordered by slot_number ASC — load-bearing
+  // for ref-positional indexing in the UI).
+  const memberRows = await db
+    .select({
+      playerId: pairingMembers.playerId,
+      slotNumber: pairingMembers.slotNumber,
+      name: players.name,
+      handicapIndex: players.manualHandicapIndex,
+    })
+    .from(pairingMembers)
+    .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
+    .innerJoin(players, eq(pairingMembers.playerId, players.id))
+    .where(
+      and(
+        eq(pairings.eventRoundId, round.eventRoundId),
+        eq(pairings.foursomeNumber, myFoursomeNumber),
+        eq(pairings.tenantId, TENANT_ID),
+        eq(pairingMembers.tenantId, TENANT_ID),
+        eq(players.tenantId, TENANT_ID),
+      ),
+    )
+    .orderBy(pairingMembers.slotNumber);
+  const members = memberRows.map((m) => ({
+    playerId: m.playerId,
+    name: m.name,
+    handicapIndex: m.handicapIndex,
+  }));
+
+  // (5) Scorer assignment for my foursome (may be null pre-T5-7).
+  const scorerRows = await db
+    .select({
+      scorerPlayerId: scorerAssignments.scorerPlayerId,
+      scorerName: players.name,
+    })
+    .from(scorerAssignments)
+    .innerJoin(players, eq(scorerAssignments.scorerPlayerId, players.id))
+    .where(
+      and(
+        eq(scorerAssignments.roundId, roundId),
+        eq(scorerAssignments.foursomeNumber, myFoursomeNumber),
+        eq(scorerAssignments.tenantId, TENANT_ID),
+        eq(players.tenantId, TENANT_ID),
+      ),
+    )
+    .limit(1);
+  const scorerPlayerId = scorerRows[0]?.scorerPlayerId ?? null;
+  const scorerName = scorerRows[0]?.scorerName ?? null;
+  const isScorer = scorerPlayerId === player.id;
+
+  // (6) hole_scores filtered to my foursome's player_ids — pushed into
+  // the SQL WHERE so we don't read+filter-in-memory all of the round's
+  // hole_scores (could be 4 foursomes × 18 holes = 72 rows for a
+  // typical Pinehurst round; small, but tighter is better).
+  const memberPlayerIds = members.map((m) => m.playerId);
+  const myHoleScores = memberPlayerIds.length > 0
+    ? await db
+        .select({
+          holeNumber: holeScores.holeNumber,
+          playerId: holeScores.playerId,
+          grossStrokes: holeScores.grossStrokes,
+          putts: holeScores.putts,
+        })
+        .from(holeScores)
+        .where(
+          and(
+            eq(holeScores.roundId, roundId),
+            eq(holeScores.tenantId, TENANT_ID),
+            inArray(holeScores.playerId, memberPlayerIds),
+          ),
+        )
+    : [];
+
+  return c.json(
+    {
+      roundId,
+      state,
+      holesToPlay: round.holesToPlay,
+      myFoursome: {
+        foursomeNumber: myFoursomeNumber,
+        isScorer,
+        scorerPlayerId,
+        scorerName,
+        members,
+        holeScores: myHoleScores,
+      },
+    },
+    200,
+  );
+});
 
 scoresRouter.post(
   '/:roundId/holes/:holeNumber/scores',
