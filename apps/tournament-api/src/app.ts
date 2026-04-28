@@ -6,6 +6,7 @@ import { adminEventRoundsRouter } from './routes/admin-event-rounds.js';
 import { adminEventsRouter } from './routes/admin-events.js';
 import { adminGroupsRouter } from './routes/admin-groups.js';
 import { adminRuleSetsRouter } from './routes/admin-rule-sets.js';
+import { pdfScheduleRouter } from './routes/pdf-schedule.js';
 import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
 import { inviteRouter } from './routes/invites.js';
@@ -75,5 +76,10 @@ app.route('/api/admin', adminEventRoundsRouter);
 // Invites router (T3-6). 2 anonymous-friendly endpoints under
 // /api/invites/... — first-arrival flow per FR-E1; no SSO triggered.
 app.route('/api/invites', inviteRouter);
+
+// PDF schedule export router (T4-3). 1 endpoint:
+// GET /api/events/:eventId/pdf/schedule/:token. Token-gated via T3-8
+// requireInviteToken middleware (any participant; FR-H4 trip-day fallback).
+app.route('/api/events', pdfScheduleRouter);
 
 export { app };
