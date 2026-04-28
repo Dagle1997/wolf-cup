@@ -11,6 +11,7 @@ import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
 import { inviteRouter } from './routes/invites.js';
 import { playersRouter } from './routes/players.js';
+import { scoresRouter } from './routes/scores.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -81,5 +82,10 @@ app.route('/api/invites', inviteRouter);
 // GET /api/events/:eventId/pdf/schedule/:token. Token-gated via T3-8
 // requireInviteToken middleware (any participant; FR-H4 trip-day fallback).
 app.route('/api/events', pdfScheduleRouter);
+
+// Scores router (T5-6). 1 endpoint:
+// POST /api/rounds/:roundId/holes/:holeNumber/scores. Single-writer
+// enforcement via require-scorer-for-round middleware (FR-B10, FR-H3).
+app.route('/api/rounds', scoresRouter);
 
 export { app };

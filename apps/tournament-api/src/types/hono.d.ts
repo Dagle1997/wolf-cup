@@ -39,6 +39,19 @@ declare module 'hono' {
       eventId: string;
       inviteId: string;
     };
+    // T5-6: populated by `require-scorer-for-round` middleware after a
+    // successful Zod parse of the score-POST body. Optional — only set on
+    // routes mounting that middleware. Handlers MUST NOT dereference
+    // unguarded; on routes outside the middleware chain, this is undefined.
+    scorePostBody?: {
+      playerId: string;
+      grossStrokes: number;
+      // putts is optional (Zod `.optional()` on a nullable field permits
+      // undefined as well as null in the parsed shape); union with
+      // undefined here so exactOptionalPropertyTypes accepts the assign.
+      putts?: number | null | undefined;
+      clientEventId: string;
+    };
   }
 }
 
