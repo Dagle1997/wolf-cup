@@ -35,6 +35,14 @@ import {
 } from '../db/schema/index.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireScorerForRound } from '../middleware/require-scorer-for-round.js';
+import { requireEventParticipant } from '../middleware/require-event-participant.js';
+import {
+  courses,
+  courseRevisions,
+  courseHoles,
+  courseTees,
+  eventRounds,
+} from '../db/schema/index.js';
 import {
   AUDIT_ENTITY_TYPES,
   AUDIT_EVENT_TYPES,
@@ -225,6 +233,7 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
   return c.json(
     {
       roundId,
+      eventId: round.eventId,
       state,
       holesToPlay: round.holesToPlay,
       myFoursome: {
@@ -617,3 +626,226 @@ function isUniqueConstraintError(err: unknown): boolean {
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// T5-4 course endpoint: GET /api/events/:eventId/rounds/:roundId/course
+// Mounted in app.ts at `/api/events` via this separately-exported router.
+// Chain: requireSession → requireEventParticipant. Returns the course
+// payload (holes, tees, course meta) for the round. Read-only; cache
+// hydration target for the offline scorecard-shell cache.
+// ---------------------------------------------------------------------------
+
+export const eventRoundsCourseRouter = new Hono();
+
+/**
+ * Path-param UUID validator. Runs BEFORE requireEventParticipant so a
+ * malformed :eventId returns 400 rather than 403 (the participant
+ * lookup with a malformed ID would silently 0-row → 403, masking the
+ * bad-request shape). Round-1 codex catch.
+ */
+const courseRouterParamGuard: import('hono').MiddlewareHandler = async (
+  c,
+  next,
+) => {
+  const requestId = c.get('requestId') ?? randomUUID();
+  const eventId = c.req.param('eventId');
+  const roundId = c.req.param('roundId');
+  if (!eventId || !UUID_RE.test(eventId)) {
+    return c.json(
+      { error: 'bad_request', code: 'invalid_event_id', requestId },
+      400,
+    );
+  }
+  if (!roundId || !UUID_RE.test(roundId)) {
+    return c.json(
+      { error: 'bad_request', code: 'invalid_round_id', requestId },
+      400,
+    );
+  }
+  await next();
+  return;
+};
+
+eventRoundsCourseRouter.get(
+  '/:eventId/rounds/:roundId/course',
+  // Order matters: requireSession first so an unauthenticated request
+  // returns 401 even with malformed params (standard auth-first
+  // convention). Then param guard (validates UUID-shape; returns 400
+  // before requireEventParticipant runs a tenant query with a malformed
+  // ID). Then requireEventParticipant (the actual participant gate).
+  // Round-2 codex catch on auth precedence.
+  requireSession,
+  courseRouterParamGuard,
+  requireEventParticipant,
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const eventId = c.req.param('eventId')!;
+    const roundId = c.req.param('roundId')!;
+
+    // (1) Fetch round + verify event_id matches the URL :eventId.
+    const roundRows = await db
+      .select({
+        id: rounds.id,
+        eventId: rounds.eventId,
+        eventRoundId: rounds.eventRoundId,
+      })
+      .from(rounds)
+      .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, TENANT_ID)))
+      .limit(1);
+    if (roundRows.length === 0 || roundRows[0]!.eventId !== eventId) {
+      return c.json(
+        { error: 'not_found', code: 'round_not_found', requestId },
+        404,
+      );
+    }
+    const round = roundRows[0]!;
+
+    if (round.eventRoundId === null) {
+      // v1.5 standalone-round shape; v1 never writes nulls.
+      return c.json(
+        { error: 'not_found', code: 'course_not_found', requestId },
+        404,
+      );
+    }
+
+    // (2) event_rounds → course_revision → course chain. Defense-in-depth:
+    // verify event_round.event_id matches the URL :eventId. If a data-
+    // integrity bug ever points an event_round to the wrong event,
+    // this guards against cross-event course leakage within the tenant.
+    // Round-1 codex catch.
+    const erRows = await db
+      .select({
+        eventId: eventRounds.eventId,
+        teeColor: eventRounds.teeColor,
+        courseRevisionId: eventRounds.courseRevisionId,
+      })
+      .from(eventRounds)
+      .where(
+        and(
+          eq(eventRounds.id, round.eventRoundId),
+          eq(eventRounds.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (erRows.length === 0) {
+      return c.json(
+        { error: 'not_found', code: 'course_not_found', requestId },
+        404,
+      );
+    }
+    if (erRows[0]!.eventId !== eventId) {
+      // Defense-in-depth: event_round.event_id MUST match URL :eventId.
+      // Mismatch implies a data-integrity bug; return round_not_found
+      // (uniform with the rounds.event_id mismatch path above) so a
+      // caller can't infer the inconsistency.
+      return c.json(
+        { error: 'not_found', code: 'round_not_found', requestId },
+        404,
+      );
+    }
+    const eventRound = erRows[0]!;
+
+    const crRows = await db
+      .select({
+        id: courseRevisions.id,
+        courseId: courseRevisions.courseId,
+      })
+      .from(courseRevisions)
+      .where(
+        and(
+          eq(courseRevisions.id, eventRound.courseRevisionId),
+          eq(courseRevisions.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (crRows.length === 0) {
+      return c.json(
+        { error: 'not_found', code: 'course_not_found', requestId },
+        404,
+      );
+    }
+    const courseRevision = crRows[0]!;
+
+    const courseRows = await db
+      .select({ name: courses.name, clubName: courses.clubName })
+      .from(courses)
+      .where(
+        and(
+          eq(courses.id, courseRevision.courseId),
+          eq(courses.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (courseRows.length === 0) {
+      return c.json(
+        { error: 'not_found', code: 'course_not_found', requestId },
+        404,
+      );
+    }
+    const course = courseRows[0]!;
+
+    // (3) holes (ordered by hole_number ASC) + tees.
+    const holeRows = await db
+      .select({
+        holeNumber: courseHoles.holeNumber,
+        par: courseHoles.par,
+        si: courseHoles.si,
+        yardagePerTeeJson: courseHoles.yardagePerTeeJson,
+      })
+      .from(courseHoles)
+      .where(
+        and(
+          eq(courseHoles.courseRevisionId, courseRevision.id),
+          eq(courseHoles.tenantId, TENANT_ID),
+        ),
+      )
+      .orderBy(courseHoles.holeNumber);
+
+    const teeRows = await db
+      .select({
+        teeColor: courseTees.teeColor,
+        rating: courseTees.rating,
+        slope: courseTees.slope,
+      })
+      .from(courseTees)
+      .where(
+        and(
+          eq(courseTees.courseRevisionId, courseRevision.id),
+          eq(courseTees.tenantId, TENANT_ID),
+        ),
+      );
+
+    const holes = holeRows.map((h) => {
+      let yardagePerTee: Record<string, number> = {};
+      try {
+        yardagePerTee = JSON.parse(h.yardagePerTeeJson) as Record<
+          string,
+          number
+        >;
+      } catch {
+        yardagePerTee = {};
+      }
+      return {
+        holeNumber: h.holeNumber,
+        par: h.par,
+        si: h.si,
+        yardagePerTee,
+      };
+    });
+
+    return c.json(
+      {
+        roundId,
+        courseRevisionId: courseRevision.id,
+        course: {
+          name: course.name,
+          clubName: course.clubName,
+        },
+        holes,
+        tees: teeRows,
+        selectedTeeColor: eventRound.teeColor,
+      },
+      200,
+    );
+  },
+);

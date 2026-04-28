@@ -27,6 +27,7 @@ const P3_ID = 'p3-id';
 
 interface MockRoundDetail {
   roundId: string;
+  eventId?: string;
   state:
     | 'not_started'
     | 'in_progress'
@@ -59,6 +60,7 @@ function buildHappyPathDetail(
 ): MockRoundDetail {
   return {
     roundId: ROUND_ID,
+    eventId: 'event-id',
     state: 'not_started',
     holesToPlay: 18,
     myFoursome: {
@@ -79,8 +81,46 @@ function buildHappyPathDetail(
   };
 }
 
+interface MockRoundCourse {
+  roundId: string;
+  courseRevisionId: string;
+  course: { name: string; clubName: string };
+  holes: Array<{
+    holeNumber: number;
+    par: number;
+    si: number;
+    yardagePerTee: Record<string, number>;
+  }>;
+  tees: Array<{ teeColor: string; rating: number; slope: number }>;
+  selectedTeeColor: string;
+}
+
+function buildCourse(parOverrides: Partial<Record<number, number>> = {}): MockRoundCourse {
+  const holes = Array.from({ length: 18 }, (_, i) => ({
+    holeNumber: i + 1,
+    par: parOverrides[i + 1] ?? 4,
+    si: i + 1,
+    yardagePerTee: { blue: 350 + (i + 1) * 5 },
+  }));
+  return {
+    roundId: ROUND_ID,
+    courseRevisionId: 'crev-1',
+    course: { name: 'Pinehurst No. 2', clubName: 'Pinehurst' },
+    holes,
+    tees: [{ teeColor: 'blue', rating: 723, slope: 130 }],
+    selectedTeeColor: 'blue',
+  };
+}
+
 function jsonOk(detail: MockRoundDetail): Response {
   return new Response(JSON.stringify(detail), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function jsonOkCourse(course: MockRoundCourse): Response {
+  return new Response(JSON.stringify(course), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
@@ -90,6 +130,27 @@ function jsonErr(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+/**
+ * Routes fetch calls to detail vs course endpoints by URL pattern.
+ * Used by the integration tests that need both endpoints to respond.
+ */
+function mockFetchByUrl(opts: {
+  detail?: () => Promise<Response> | Response;
+  course?: () => Promise<Response> | Response;
+}): void {
+  vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+    if (url.includes('/course')) {
+      return opts.course
+        ? Promise.resolve(opts.course())
+        : Promise.reject(new TypeError('no course mock'));
+    }
+    return opts.detail
+      ? Promise.resolve(opts.detail())
+      : Promise.reject(new TypeError('no detail mock'));
   });
 }
 
@@ -128,6 +189,15 @@ beforeEach(async () => {
   await _resetDbForTests();
   _resetTerminalErrorsForTests();
   sessionStorage.clear();
+  // Wipe round-cache between tests too.
+  const { _resetCacheForTests } = await import('../lib/round-cache.js');
+  await _resetCacheForTests();
+  await new Promise<void>((resolve) => {
+    const req = indexedDB.deleteDatabase('tournament-round-cache');
+    req.onsuccess = () => resolve();
+    req.onerror = () => resolve();
+    req.onblocked = () => resolve();
+  });
 });
 
 afterEach(() => {
@@ -417,6 +487,90 @@ describe('ScoreEntryRoute', () => {
     await renderRoute();
     await waitFor(() =>
       expect(screen.getByTestId('not-in-round')).toBeInTheDocument(),
+    );
+  });
+
+  // ---------- T5-4 cache integration ----------
+  test('cold-online: GET succeeds, cache populates, par/SI strip renders, no offline chip', async () => {
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail()),
+      course: () => jsonOkCourse(buildCourse()),
+    });
+    await renderRoute();
+    await waitFor(() => screen.getByTestId('score-entry-form'));
+    await waitFor(() => screen.getByTestId('scorecard-shell-strip'));
+    expect(screen.getByTestId('scorecard-shell-strip').textContent).toMatch(
+      /Hole 1.*Par 4.*SI 1/,
+    );
+    expect(screen.queryByTestId('offline-chip')).not.toBeInTheDocument();
+    // Cache populated.
+    const { readCachedRoundDetail, readCachedRoundCourse } = await import(
+      '../lib/round-cache.js'
+    );
+    const cachedDetail = await readCachedRoundDetail(ROUND_ID);
+    expect(cachedDetail).not.toBeNull();
+    const cachedCourse = await readCachedRoundCourse(ROUND_ID);
+    expect(cachedCourse).not.toBeNull();
+  });
+
+  test('cold-offline: fetch rejects, cache hits, UI renders from cache, "Offline mode" chip visible', async () => {
+    // Pre-seed cache (simulating a prior online visit).
+    const { writeCachedRoundDetail, writeCachedRoundCourse } = await import(
+      '../lib/round-cache.js'
+    );
+    await writeCachedRoundDetail(ROUND_ID, buildHappyPathDetail());
+    await writeCachedRoundCourse(ROUND_ID, buildCourse());
+
+    // Now simulate offline: every fetch rejects.
+    vi.mocked(fetch).mockImplementation(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    await renderRoute();
+    await waitFor(() => screen.getByTestId('score-entry-form'));
+    await waitFor(() => screen.getByTestId('offline-chip'));
+    expect(screen.getByTestId('offline-chip')).toBeInTheDocument();
+    // Par/SI strip still renders from cache.
+    await waitFor(() => screen.getByTestId('scorecard-shell-strip'));
+    expect(screen.getByTestId('scorecard-shell-strip').textContent).toMatch(
+      /Hole 1.*Par 4.*SI 1/,
+    );
+  });
+
+  test('course-superseded banner: cached has par-4-on-hole-5; fresh has par-5-on-hole-5; banner fires + Dismiss + form unaffected', async () => {
+    // Pre-seed cache with course (par 4 everywhere).
+    const { writeCachedRoundDetail, writeCachedRoundCourse } = await import(
+      '../lib/round-cache.js'
+    );
+    await writeCachedRoundDetail(ROUND_ID, buildHappyPathDetail());
+    await writeCachedRoundCourse(ROUND_ID, buildCourse());
+
+    // Network returns the SAME detail but a DIFFERENT course (par 5 on hole 5).
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail()),
+      course: () => jsonOkCourse(buildCourse({ 5: 5 })),
+    });
+
+    await renderRoute();
+    await waitFor(() => screen.getByTestId('score-entry-form'));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('course-superseded-banner'),
+      ).toBeInTheDocument(),
+    );
+
+    // Form is still rendered (banner does NOT discard in-flight scores).
+    expect(screen.getByTestId('score-input-0')).toBeInTheDocument();
+
+    // Dismiss removes the banner.
+    const dismissBtn = screen.getByTestId('dismiss-banner') as HTMLButtonElement;
+    await act(async () => {
+      dismissBtn.click();
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('course-superseded-banner'),
+      ).not.toBeInTheDocument(),
     );
   });
 });

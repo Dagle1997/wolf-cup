@@ -31,6 +31,12 @@ import {
   registerTerminalErrors,
 } from '../lib/offline-queue.js';
 import { useOfflineQueue } from '../hooks/useOfflineQueue.js';
+import {
+  readCachedRoundCourse,
+  readCachedRoundDetail,
+  writeCachedRoundCourse,
+  writeCachedRoundDetail,
+} from '../lib/round-cache.js';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -56,6 +62,7 @@ interface HoleScore {
 
 interface RoundDetail {
   roundId: string;
+  eventId: string | null;
   state: RoundState;
   holesToPlay: 9 | 18;
   myFoursome: {
@@ -68,10 +75,37 @@ interface RoundDetail {
   };
 }
 
+interface CourseHole {
+  holeNumber: number;
+  par: number;
+  si: number;
+  yardagePerTee: Record<string, number>;
+}
+
+interface RoundCourse {
+  roundId: string;
+  courseRevisionId: string;
+  course: { name: string; clubName: string };
+  holes: CourseHole[];
+  tees: Array<{ teeColor: string; rating: number; slope: number }>;
+  selectedTeeColor: string;
+}
+
 interface ApiError {
   status: number;
   code?: string;
   body?: unknown;
+}
+
+function isApiError(err: unknown): err is ApiError {
+  return err !== null && typeof err === 'object' && 'status' in err;
+}
+
+function courseHash(c: RoundCourse | null | undefined): string {
+  if (!c) return '';
+  return c.holes
+    .map((h) => `${h.holeNumber}:${h.par}:${h.si}`)
+    .join('|');
 }
 
 // ---- Loader ---------------------------------------------------------------
@@ -93,6 +127,119 @@ async function fetchRoundDetail(roundId: string): Promise<RoundDetail> {
     throw err;
   }
   return (await res.json()) as RoundDetail;
+}
+
+async function fetchRoundCourse(
+  eventId: string,
+  roundId: string,
+): Promise<RoundCourse> {
+  const res = await fetch(`/api/events/${eventId}/rounds/${roundId}/course`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    let body: { code?: string } | null = null;
+    try {
+      body = (await res.json()) as { code?: string };
+    } catch {
+      body = null;
+    }
+    const err: ApiError = { status: res.status };
+    if (body?.code) err.code = body.code;
+    throw err;
+  }
+  return (await res.json()) as RoundCourse;
+}
+
+/**
+ * Cache-aside fetch with offline fall-through. Network success → write
+ * cache + return fresh. Network failure (TypeError, no .status) → read
+ * cache; if hit, return cached; if miss, re-throw network error. ApiError
+ * (HTTP 4xx/5xx with .status) propagates without cache fall-through.
+ *
+ * `onSource` receives 'network' or 'cache' as a side-effect signal so
+ * the consumer can render the "Offline mode" chip without polluting the
+ * data shape.
+ *
+ * Per Risk Acceptance §5: navigator.onLine===false short-circuit avoids
+ * a 15s loop of futile fetches when the device is known offline.
+ */
+async function fetchOrCacheRoundDetail(
+  roundId: string,
+  onSource: (s: 'network' | 'cache') => void,
+): Promise<RoundDetail> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const cached = await readCachedRoundDetail<RoundDetail>(roundId);
+    if (cached) {
+      onSource('cache');
+      return cached;
+    }
+    // Offline + no cache: throw a synthetic network error so the
+    // useQuery error branch fires.
+    throw new TypeError('Failed to fetch (offline, no cache)');
+  }
+  try {
+    const fresh = await fetchRoundDetail(roundId);
+    await writeCachedRoundDetail(roundId, fresh);
+    onSource('network');
+    return fresh;
+  } catch (err) {
+    if (isApiError(err)) throw err;
+    // Network error: try cache.
+    const cached = await readCachedRoundDetail<RoundDetail>(roundId);
+    if (cached) {
+      onSource('cache');
+      return cached;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Same cache-aside pattern as detail. ALSO computes the course-superseded
+ * banner trigger: reads cache BEFORE writing fresh; compares stable
+ * hash (holeNumber:par:si). On change AND prior cache existed (NOT
+ * first fetch), invokes `onCourseChanged` so the consumer can fire the
+ * banner state.
+ */
+async function fetchOrCacheRoundCourse(
+  eventId: string,
+  roundId: string,
+  onSource: (s: 'network' | 'cache') => void,
+  onCourseChanged: () => void,
+): Promise<RoundCourse> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const cached = await readCachedRoundCourse<RoundCourse>(roundId);
+    if (cached) {
+      onSource('cache');
+      return cached;
+    }
+    throw new TypeError('Failed to fetch (offline, no cache)');
+  }
+  // (1) READ cached BEFORE writing fresh — load-bearing for banner.
+  const cachedBefore = await readCachedRoundCourse<RoundCourse>(roundId);
+  try {
+    const fresh = await fetchRoundCourse(eventId, roundId);
+    // (2) Compare hashes BEFORE overwriting.
+    if (cachedBefore !== null) {
+      const oldHash = courseHash(cachedBefore);
+      const newHash = courseHash(fresh);
+      if (oldHash !== newHash) {
+        onCourseChanged();
+      }
+    }
+    // (3) Write fresh AFTER comparison.
+    await writeCachedRoundCourse(roundId, fresh);
+    onSource('network');
+    return fresh;
+  } catch (err) {
+    if (isApiError(err)) throw err;
+    if (cachedBefore) {
+      onSource('cache');
+      return cachedBefore;
+    }
+    throw err;
+  }
 }
 
 // ---- Score input validation + auto-advance state machine ------------------
@@ -131,14 +278,64 @@ function persistSkippedHoles(roundId: string, set: Set<number>): void {
 export function ScoreEntryRoute() {
   const { roundId } = Route.useParams();
   const queue = useOfflineQueue(roundId);
+
+  // Cache-source signal flows via ref (NOT __source field; NOT useState
+  // inside queryFn — both have R19 mid-fetch issues).
+  const sourceRef = useRef<{
+    detail: 'network' | 'cache' | null;
+    course: 'network' | 'cache' | null;
+  }>({ detail: null, course: null });
+  const [, forceSourceRender] = useState(0);
+  const setDetailSource = useCallback((s: 'network' | 'cache') => {
+    sourceRef.current = { ...sourceRef.current, detail: s };
+    // Trigger a render so the chip + dataUpdatedAt-keyed useMemo re-evaluates.
+    forceSourceRender((n) => n + 1);
+  }, []);
+  const setCourseSource = useCallback((s: 'network' | 'cache') => {
+    sourceRef.current = { ...sourceRef.current, course: s };
+    forceSourceRender((n) => n + 1);
+  }, []);
+
+  const [courseChangedAt, setCourseChangedAt] = useState(0);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const onCourseChanged = useCallback(() => {
+    setCourseChangedAt(Date.now());
+    setBannerDismissed(false);
+  }, []);
+
   const { data, isLoading, error } = useQuery<RoundDetail, ApiError>({
     queryKey: ['round-detail', roundId],
-    queryFn: () => fetchRoundDetail(roundId),
+    queryFn: () => fetchOrCacheRoundDetail(roundId, setDetailSource),
     staleTime: 0,
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
     retry: false,
   });
+
+  // Course query — only enabled once we know the eventId from the
+  // detail response. Placeholder enabled=false until then.
+  const eventId = data?.eventId ?? null;
+  const courseQuery = useQuery<RoundCourse, ApiError>({
+    queryKey: ['round-course', roundId, eventId],
+    queryFn: () =>
+      fetchOrCacheRoundCourse(eventId!, roundId, setCourseSource, onCourseChanged),
+    enabled: eventId !== null,
+    staleTime: 0,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+
+  // isOffline fires if EITHER query served from cache OR EITHER query
+  // failed with a non-ApiError (network failure with no cache available
+  // — partial-offline state). Round-2 impl-codex catch.
+  const courseError = courseQuery.error as ApiError | TypeError | null;
+  const isOffline =
+    sourceRef.current.detail === 'cache' ||
+    sourceRef.current.course === 'cache' ||
+    (courseError !== null && !isApiError(courseError));
+  const courseChanged =
+    courseChangedAt > 0 && !bannerDismissed && courseQuery.data !== undefined;
 
   // Register terminal errors for the 'hole_score' kind once at mount.
   useEffect(() => {
@@ -156,6 +353,18 @@ export function ScoreEntryRoute() {
     return <div data-testid="loading">Loading…</div>;
   }
   if (error) {
+    // TypeError without .status — pure network failure with no cached
+    // value (the queryFn already tried the cache fall-through and missed).
+    // Render the offline-no-cache placeholder rather than a confusing
+    // "status undefined" generic error. Round-1 impl-codex catch.
+    if (!isApiError(error)) {
+      return (
+        <div data-testid="offline-no-cache">
+          You're offline and this round isn't cached on this device. Reconnect
+          to load it.
+        </div>
+      );
+    }
     if (error.status === 404) {
       return (
         <div data-testid="not-in-round">
@@ -202,7 +411,31 @@ export function ScoreEntryRoute() {
     );
   }
 
-  return <ScoreEntryForm data={data} queue={queue} />;
+  return (
+    <>
+      {isOffline && (
+        <div data-testid="offline-chip" role="status">
+          Offline mode
+        </div>
+      )}
+      {courseChanged && (
+        <div data-testid="course-superseded-banner" role="alert">
+          Course data updated — review hole SIs.{' '}
+          <button
+            data-testid="dismiss-banner"
+            onClick={() => setBannerDismissed(true)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+      <ScoreEntryForm
+        data={data}
+        queue={queue}
+        course={courseQuery.data ?? null}
+      />
+    </>
+  );
 }
 
 // ---- ScoreEntryForm (the load-bearing piece) ------------------------------
@@ -210,9 +443,11 @@ export function ScoreEntryRoute() {
 function ScoreEntryForm({
   data,
   queue,
+  course,
 }: {
   data: RoundDetail;
   queue: ReturnType<typeof useOfflineQueue>;
+  course: RoundCourse | null;
 }) {
   const { roundId, holesToPlay } = data;
   const members = data.myFoursome.members;
@@ -551,6 +786,9 @@ function ScoreEntryForm({
     );
   }
 
+  // Scorecard-shell: par + SI for the current hole, populated from course data.
+  const currentHoleInfo = course?.holes.find((h) => h.holeNumber === currentHole);
+
   return (
     <div data-testid="score-entry-form">
       <header>
@@ -559,6 +797,14 @@ function ScoreEntryForm({
           {queue.pendingCount > 0 ? `${queue.pendingCount} queued` : 'All synced'}
         </span>
       </header>
+
+      {currentHoleInfo && (
+        <div data-testid="scorecard-shell-strip">
+          <span>Hole {currentHoleInfo.holeNumber}</span>
+          <span> • Par {currentHoleInfo.par}</span>
+          <span> • SI {currentHoleInfo.si}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         {members.map((member, idx) => (

@@ -11,7 +11,7 @@ import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
 import { inviteRouter } from './routes/invites.js';
 import { playersRouter } from './routes/players.js';
-import { scoresRouter } from './routes/scores.js';
+import { scoresRouter, eventRoundsCourseRouter } from './routes/scores.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -87,5 +87,10 @@ app.route('/api/events', pdfScheduleRouter);
 // POST /api/rounds/:roundId/holes/:holeNumber/scores. Single-writer
 // enforcement via require-scorer-for-round middleware (FR-B10, FR-H3).
 app.route('/api/rounds', scoresRouter);
+
+// T5-4 course endpoint mounted at /api/events (uses eventId in path so
+// requireEventParticipant can read it). Effective URL:
+// GET /api/events/:eventId/rounds/:roundId/course.
+app.route('/api/events', eventRoundsCourseRouter);
 
 export { app };
