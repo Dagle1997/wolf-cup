@@ -388,3 +388,860 @@ describe('POST /api/admin/events', () => {
     expect(sortedNumbers).toEqual([1, 2, 3, 4]);
   });
 });
+
+// =====================================================================
+// T4-2: pairings
+// =====================================================================
+
+const { groupMembers, pairings, pairingMembers } = await import(
+  '../db/schema/index.js'
+);
+
+interface PairingsSeedResult {
+  eventId: string;
+  eventRoundIds: string[];
+  groupId: string;
+  playerIds: string[];
+  organizerSessionId: string;
+  nonOrganizerSessionId: string;
+}
+
+/**
+ * Seed an event with N rounds + 1 group with M players. Both organizer
+ * and non-organizer sessions are created.
+ */
+async function seedEventForPairings(opts: {
+  numRounds: number;
+  numPlayers: number;
+}): Promise<PairingsSeedResult> {
+  const organizerSessionId = await seedSession({ isOrganizer: true });
+  const nonOrganizerSessionId = await seedSession({ isOrganizer: false });
+  // Get the organizer's playerId from the session.
+  const organizerSessionRows = await db
+    .select({ playerId: sessions.playerId })
+    .from(sessions)
+    .where(eq(sessions.sessionId, organizerSessionId));
+  const organizerPlayerId = organizerSessionRows[0]!.playerId;
+
+  await seedCourseRevision();
+  const eventId = randomUUID();
+  const now = Date.now();
+  await db.insert(events).values({
+    id: eventId,
+    name: 'Pinehurst Test',
+    startDate: 1_715_040_000_000,
+    endDate: 1_715_300_000_000,
+    timezone: VALID_TZ,
+    organizerPlayerId,
+    createdAt: now,
+    tenantId: TENANT_ID,
+    contextId: `event:${eventId}`,
+  });
+
+  const eventRoundIds: string[] = [];
+  for (let i = 0; i < opts.numRounds; i++) {
+    const erId = randomUUID();
+    eventRoundIds.push(erId);
+    await db.insert(eventRounds).values({
+      id: erId,
+      eventId,
+      roundNumber: i + 1,
+      roundDate: now,
+      courseRevisionId: 'cr1',
+      teeColor: 'blue',
+      holesToPlay: 18,
+      createdAt: now,
+      tenantId: TENANT_ID,
+      contextId: `event:${eventId}`,
+    });
+  }
+
+  const groupId = randomUUID();
+  await db.insert(groups).values({
+    id: groupId,
+    eventId,
+    name: 'Pinehurst Crew',
+    moneyVisibilityMode: 'open',
+    createdAt: now,
+    tenantId: TENANT_ID,
+    contextId: `event:${eventId}`,
+  });
+
+  const playerIds: string[] = [];
+  for (let i = 0; i < opts.numPlayers; i++) {
+    const pid = randomUUID();
+    playerIds.push(pid);
+    await db.insert(players).values({
+      id: pid,
+      isOrganizer: false,
+      createdAt: now,
+      name: `Player ${String.fromCharCode(65 + i)}`,
+      tenantId: TENANT_ID,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(groupMembers).values({
+      groupId,
+      playerId: pid,
+      tenantId: TENANT_ID,
+      contextId: `event:${eventId}`,
+    });
+  }
+
+  return {
+    eventId,
+    eventRoundIds,
+    groupId,
+    playerIds,
+    organizerSessionId,
+    nonOrganizerSessionId,
+  };
+}
+
+describe('GET /api/admin/events/:eventId/pairings', () => {
+  it('happy path: returns event + rounds + empty pairings + roster', async () => {
+    const s = await seedEventForPairings({ numRounds: 4, numPlayers: 8 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      { headers: { cookie: cookie(s.organizerSessionId) } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      event: { id: string; name: string };
+      rounds: Array<{ eventRoundId: string; pairings: unknown[] }>;
+      roster: Array<{ playerId: string; name: string }>;
+    };
+    expect(body.event.id).toBe(s.eventId);
+    expect(body.rounds).toHaveLength(4);
+    for (const r of body.rounds) {
+      expect(r.pairings).toEqual([]);
+    }
+    expect(body.roster).toHaveLength(8);
+  });
+
+  it('happy path with persisted pairings: members ASC by slot', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 8 });
+    const pairingId = randomUUID();
+    await db.insert(pairings).values({
+      id: pairingId,
+      eventRoundId: s.eventRoundIds[0]!,
+      foursomeNumber: 1,
+      locked: false,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: `event:${s.eventId}`,
+    });
+    for (let i = 0; i < 4; i++) {
+      await db.insert(pairingMembers).values({
+        pairingId,
+        playerId: s.playerIds[i]!,
+        slotNumber: i + 1,
+        tenantId: TENANT_ID,
+        contextId: `event:${s.eventId}`,
+      });
+    }
+
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      { headers: { cookie: cookie(s.organizerSessionId) } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      rounds: Array<{
+        pairings: Array<{
+          foursomeNumber: number;
+          locked: boolean;
+          members: Array<{ playerId: string; slotNumber: number }>;
+        }>;
+      }>;
+    };
+    expect(body.rounds[0]!.pairings).toHaveLength(1);
+    expect(body.rounds[0]!.pairings[0]!.foursomeNumber).toBe(1);
+    expect(body.rounds[0]!.pairings[0]!.members).toHaveLength(4);
+    const slots = body.rounds[0]!.pairings[0]!.members.map((m) => m.slotNumber);
+    expect(slots).toEqual([1, 2, 3, 4]);
+  });
+
+  it('404 event_not_found: unknown id', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 1 });
+    const res = await testApp.request(
+      `/api/admin/events/${randomUUID()}/pairings`,
+      { headers: { cookie: cookie(s.organizerSessionId) } },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('cross-tenant: foreign-tenant event → 404', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 1 });
+    await db
+      .update(events)
+      .set({ tenantId: 'other-tenant' })
+      .where(eq(events.id, s.eventId));
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      { headers: { cookie: cookie(s.organizerSessionId) } },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('401 anonymous', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 1 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('403 non-organizer', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 1 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      { headers: { cookie: cookie(s.nonOrganizerSessionId) } },
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/admin/events/:eventId/pairings', () => {
+  it('happy path: 1 round × 2 foursomes × 4 members → 2 pairings + 8 members', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 8 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: s.playerIds.slice(0, 4),
+                },
+                {
+                  foursomeNumber: 2,
+                  locked: false,
+                  memberPlayerIds: s.playerIds.slice(4, 8),
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { pairingCount: number; memberCount: number };
+    expect(body.pairingCount).toBe(2);
+    expect(body.memberCount).toBe(8);
+
+    const pRows = await db.select().from(pairings);
+    expect(pRows).toHaveLength(2);
+    const mRows = await db.select().from(pairingMembers);
+    expect(mRows).toHaveLength(8);
+  });
+
+  it('upsert REPLACES: re-save with different members drops old', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 8 });
+    // First save.
+    await testApp.request(`/api/admin/events/${s.eventId}/pairings`, {
+      method: 'POST',
+      headers: {
+        cookie: cookie(s.organizerSessionId),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        rounds: [
+          {
+            eventRoundId: s.eventRoundIds[0],
+            pairings: [
+              {
+                foursomeNumber: 1,
+                locked: false,
+                memberPlayerIds: s.playerIds.slice(0, 4),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    expect((await db.select().from(pairings)).length).toBe(1);
+
+    // Second save with different members.
+    await testApp.request(`/api/admin/events/${s.eventId}/pairings`, {
+      method: 'POST',
+      headers: {
+        cookie: cookie(s.organizerSessionId),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        rounds: [
+          {
+            eventRoundId: s.eventRoundIds[0],
+            pairings: [
+              {
+                foursomeNumber: 1,
+                locked: false,
+                memberPlayerIds: s.playerIds.slice(4, 8),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const pRows = await db.select().from(pairings);
+    expect(pRows).toHaveLength(1);
+    const mRows = await db.select().from(pairingMembers);
+    expect(mRows).toHaveLength(4);
+    const newPlayerIds = new Set(mRows.map((m) => m.playerId));
+    expect(newPlayerIds.has(s.playerIds[4]!)).toBe(true);
+    expect(newPlayerIds.has(s.playerIds[0]!)).toBe(false);
+  });
+
+  it('422 player_in_multiple_pairings_per_round: same player in 2 foursomes', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 8 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: [
+                    s.playerIds[0]!,
+                    s.playerIds[1]!,
+                    s.playerIds[2]!,
+                    s.playerIds[3]!,
+                  ],
+                },
+                {
+                  foursomeNumber: 2,
+                  locked: false,
+                  memberPlayerIds: [
+                    s.playerIds[0]!, // duplicate across foursomes
+                    s.playerIds[5]!,
+                    s.playerIds[6]!,
+                    s.playerIds[7]!,
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as {
+      code: string;
+      conflicts: Array<{
+        playerId: string;
+        eventRoundId: string;
+        foursomeNumbers: number[];
+      }>;
+    };
+    expect(body.code).toBe('player_in_multiple_pairings_per_round');
+    expect(body.conflicts).toHaveLength(1);
+    expect(body.conflicts[0]!.playerId).toBe(s.playerIds[0]!);
+    expect(body.conflicts[0]!.foursomeNumbers).toEqual([1, 2]);
+  });
+
+  it('400 duplicate_player_in_foursome: same playerId twice in one memberPlayerIds', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: [
+                    s.playerIds[0]!,
+                    s.playerIds[0]!,
+                    s.playerIds[1]!,
+                    s.playerIds[2]!,
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('duplicate_player_in_foursome');
+  });
+
+  it('400 unknown_event_round', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: randomUUID(),
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: s.playerIds.slice(0, 4),
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('unknown_event_round');
+  });
+
+  it('400 unknown_player', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    const outsiderId = randomUUID();
+    await db.insert(players).values({
+      id: outsiderId,
+      isOrganizer: false,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: [
+                    s.playerIds[0]!,
+                    s.playerIds[1]!,
+                    s.playerIds[2]!,
+                    outsiderId,
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('unknown_player');
+  });
+
+  it('400 invalid_body: missing required field', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ rounds: [] }), // empty rounds
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('invalid_body');
+  });
+
+  it('400 invalid_body: memberPlayerIds.length > 4', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 5 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: s.playerIds.slice(0, 5), // 5 > foursomeSize 4
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('invalid_body');
+  });
+
+  it('404 event_not_found on POST', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    const res = await testApp.request(
+      `/api/admin/events/${randomUUID()}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: s.playerIds.slice(0, 4),
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('cross-tenant POST: foreign-tenant event → 404', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    await db
+      .update(events)
+      .set({ tenantId: 'other-tenant' })
+      .where(eq(events.id, s.eventId));
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: s.playerIds.slice(0, 4),
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('partial-payload upsert: preserves rounds NOT in body (party-codex round-1 High)', async () => {
+    const s = await seedEventForPairings({ numRounds: 2, numPlayers: 8 });
+    // Round 1: persist pairings via first POST.
+    await testApp.request(`/api/admin/events/${s.eventId}/pairings`, {
+      method: 'POST',
+      headers: {
+        cookie: cookie(s.organizerSessionId),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        rounds: [
+          {
+            eventRoundId: s.eventRoundIds[0],
+            pairings: [
+              {
+                foursomeNumber: 1,
+                locked: false,
+                memberPlayerIds: s.playerIds.slice(0, 4),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    // Round 2: persist pairings via second POST.
+    await testApp.request(`/api/admin/events/${s.eventId}/pairings`, {
+      method: 'POST',
+      headers: {
+        cookie: cookie(s.organizerSessionId),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        rounds: [
+          {
+            eventRoundId: s.eventRoundIds[1],
+            pairings: [
+              {
+                foursomeNumber: 1,
+                locked: false,
+                memberPlayerIds: s.playerIds.slice(4, 8),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    // Both rounds should now have pairings.
+    const allPairings = await db.select().from(pairings);
+    expect(allPairings).toHaveLength(2);
+    // Round 1 pairings should still exist (not wiped by round-2 save).
+    const round1 = allPairings.find(
+      (p) => p.eventRoundId === s.eventRoundIds[0],
+    );
+    expect(round1).toBeDefined();
+  });
+
+  it('locked=true preserved across upsert', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    await testApp.request(`/api/admin/events/${s.eventId}/pairings`, {
+      method: 'POST',
+      headers: {
+        cookie: cookie(s.organizerSessionId),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        rounds: [
+          {
+            eventRoundId: s.eventRoundIds[0],
+            pairings: [
+              {
+                foursomeNumber: 1,
+                locked: true,
+                memberPlayerIds: s.playerIds.slice(0, 4),
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const pRows = await db.select().from(pairings);
+    expect(pRows).toHaveLength(1);
+    expect(pRows[0]!.locked).toBe(true);
+  });
+
+  it('403 non-organizer on POST', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.nonOrganizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/admin/events/:eventId/pairings/suggest', () => {
+  it('happy path 8x4x4: returns grid + empty warnings', async () => {
+    const s = await seedEventForPairings({ numRounds: 4, numPlayers: 8 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings/suggest`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          numRounds: 4,
+          foursomesPerRound: 2,
+          pins: [],
+          lockedRounds: [],
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      grid: { rounds: unknown[] };
+      warnings: string[];
+    };
+    expect(body.grid.rounds).toHaveLength(4);
+    expect(body.warnings).toEqual([]);
+  });
+
+  it('honors lockedRounds: replaces engine output with persisted pairings', async () => {
+    const s = await seedEventForPairings({ numRounds: 4, numPlayers: 8 });
+    // Persist a custom pairing for round 1 that is NOT what the engine
+    // would return.
+    const pairingId = randomUUID();
+    await db.insert(pairings).values({
+      id: pairingId,
+      eventRoundId: s.eventRoundIds[0]!,
+      foursomeNumber: 1,
+      locked: true,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: `event:${s.eventId}`,
+    });
+    // Use a custom slot order: players 7,6,5,4 in foursome 1.
+    const customSlot = [7, 6, 5, 4];
+    for (let i = 0; i < customSlot.length; i++) {
+      await db.insert(pairingMembers).values({
+        pairingId,
+        playerId: s.playerIds[customSlot[i]!]!,
+        slotNumber: i + 1,
+        tenantId: TENANT_ID,
+        contextId: `event:${s.eventId}`,
+      });
+    }
+    // Also persist foursome 2 of round 1.
+    const pairingId2 = randomUUID();
+    await db.insert(pairings).values({
+      id: pairingId2,
+      eventRoundId: s.eventRoundIds[0]!,
+      foursomeNumber: 2,
+      locked: true,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: `event:${s.eventId}`,
+    });
+    for (let i = 0; i < 4; i++) {
+      await db.insert(pairingMembers).values({
+        pairingId: pairingId2,
+        playerId: s.playerIds[i]!, // 0,1,2,3
+        slotNumber: i + 1,
+        tenantId: TENANT_ID,
+        contextId: `event:${s.eventId}`,
+      });
+    }
+
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings/suggest`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          numRounds: 4,
+          foursomesPerRound: 2,
+          pins: [],
+          lockedRounds: [1],
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      grid: {
+        rounds: Array<{
+          round: number;
+          foursomes: Array<{ foursome: number; playerIds: string[] }>;
+        }>;
+      };
+    };
+    // Round 1 should match the persisted state (custom slot order).
+    expect(body.grid.rounds[0]!.foursomes[0]!.playerIds).toEqual(
+      customSlot.map((idx) => s.playerIds[idx]!),
+    );
+  });
+
+  it('400 foursomes_per_round_mismatch: body value disagrees with roster-derived (party-codex round-1 High)', async () => {
+    const s = await seedEventForPairings({ numRounds: 4, numPlayers: 8 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings/suggest`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          numRounds: 4,
+          foursomesPerRound: 3, // 8 players / 4 size = 2, not 3
+          pins: [],
+          lockedRounds: [],
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('foursomes_per_round_mismatch');
+  });
+
+  it('lockedRounds with NO persisted pairings: warning emitted, engine output kept', async () => {
+    const s = await seedEventForPairings({ numRounds: 4, numPlayers: 8 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings/suggest`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          numRounds: 4,
+          foursomesPerRound: 2,
+          pins: [],
+          lockedRounds: [2], // round 2 has NO persisted pairings
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      grid: { rounds: unknown[] };
+      warnings: string[];
+    };
+    expect(
+      body.warnings.some((w) =>
+        w.includes('locked round 2 has no persisted pairings'),
+      ),
+    ).toBe(true);
+  });
+});
