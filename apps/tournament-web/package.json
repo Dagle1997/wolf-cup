@@ -25,7 +25,8 @@
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@tanstack/react-query-devtools": "^5.91.3",
