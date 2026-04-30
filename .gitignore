@@ -45,5 +45,11 @@ reference/videos/
 # Scratch / work-in-progress scorecards (use reference/ for canonical copies)
 _tmp_scorecards/
 
-# Claude Code local config (not source)
-.claude/
+# Claude Code local config (not source) — except orchestrator commands worth versioning.
+# Use glob form (.claude/*) not directory form (.claude/) so git descends and the
+# negations below can take effect.
+.claude/*
+!.claude/commands/
+.claude/commands/*
+!.claude/commands/tournament-director.md
+!.claude/commands/codex-review.md
