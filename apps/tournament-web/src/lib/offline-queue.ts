@@ -229,6 +229,24 @@ export async function updateEntry(
 }
 
 /**
+ * Read-only peek into the errored quarantine bucket. Returns entries
+ * scoped to `roundId` (or all if omitted). Used by T5-7's score-entry
+ * stale-queue banner: when the active scorer changes mid-round, queued
+ * mutations from the prior scorer drain → 403 → quarantine; the banner
+ * surfaces those entries with the new scorer's name (read from each
+ * entry's `lastError.body.currentScorerName`).
+ */
+export async function peekErroredEntries(
+  roundId?: string,
+): Promise<MutationEntry[]> {
+  const db = await getDB();
+  const all = (await db.getAll(ERRORED_STORE_NAME)) as MutationEntry[];
+  const filtered =
+    roundId !== undefined ? all.filter((e) => e.roundId === roundId) : all;
+  return filtered.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+}
+
+/**
  * Atomically move an entry from `mutation-queue` to `mutation-queue-errored`.
  */
 export async function quarantineEntry(id: number): Promise<void> {

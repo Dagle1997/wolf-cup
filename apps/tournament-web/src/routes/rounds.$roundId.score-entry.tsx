@@ -18,7 +18,7 @@
  */
 
 import { createFileRoute } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   useCallback,
   useEffect,
@@ -28,7 +28,9 @@ import {
 } from 'react';
 import {
   enqueueMutation,
+  peekErroredEntries,
   registerTerminalErrors,
+  type MutationEntry,
 } from '../lib/offline-queue.js';
 import { useOfflineQueue } from '../hooks/useOfflineQueue.js';
 import {
@@ -337,7 +339,7 @@ export function ScoreEntryRoute() {
   const courseChanged =
     courseChangedAt > 0 && !bannerDismissed && courseQuery.data !== undefined;
 
-  // Register terminal errors for the 'hole_score' kind once at mount.
+  // Register terminal errors for queued mutation kinds once at mount.
   useEffect(() => {
     registerTerminalErrors('hole_score', [
       'round_not_writable',
@@ -346,6 +348,21 @@ export function ScoreEntryRoute() {
       'invalid_body',
       'invalid_round_id',
       'invalid_hole_number',
+    ]);
+    // T5-7 scorer-handoff: 4xx codes from POST .../scorer-assignments/transfer
+    // that the queue MUST treat as terminal (no transient retry loop).
+    // Includes the API's 404 round_not_found path — without it, the
+    // universal-failsafe would burn 5 transient retries before purging.
+    registerTerminalErrors('scorer_handoff', [
+      'invalid_round_id',
+      'invalid_body',
+      'not_authorized_for_handoff',
+      'assignee_not_in_foursome',
+      'foursome_has_no_scorer',
+      'round_state_missing',
+      'round_finalized',
+      'round_cancelled',
+      'round_not_found',
     ]);
   }, []);
 
@@ -403,11 +420,20 @@ export function ScoreEntryRoute() {
     );
   }
   if (!data.myFoursome.isScorer) {
+    // Stale-queue banner is rendered ONLY in the read-only state. When
+    // the user IS the active scorer, errored entries scoped to this
+    // round are necessarily historical (e.g., user was demoted then
+    // re-promoted) and the banner would be misleading. The banner's
+    // intent — "the scorer changed; your queued scores were rejected"
+    // — only makes sense when the caller is currently NOT scoring.
     return (
-      <div data-testid="read-only">
-        <strong>{data.myFoursome.scorerName}</strong> is currently scoring
-        foursome {data.myFoursome.foursomeNumber}.
-      </div>
+      <>
+        <StaleQueueBanner roundId={roundId} />
+        <div data-testid="read-only">
+          <strong>{data.myFoursome.scorerName}</strong> is currently scoring
+          foursome {data.myFoursome.foursomeNumber}.
+        </div>
+      </>
     );
   }
 
@@ -429,12 +455,322 @@ export function ScoreEntryRoute() {
           </button>
         </div>
       )}
+      <HandoffControl
+        roundId={roundId}
+        foursomeNumber={data.myFoursome.foursomeNumber}
+        members={data.myFoursome.members}
+        myPlayerId={data.myFoursome.scorerPlayerId}
+        queueDrain={queue.drain}
+        queueRefreshCount={queue.refreshCount}
+      />
       <ScoreEntryForm
         data={data}
         queue={queue}
         course={courseQuery.data ?? null}
       />
     </>
+  );
+}
+
+// ---- HandoffControl (T5-7) ------------------------------------------------
+
+interface HandoffControlProps {
+  roundId: string;
+  foursomeNumber: number;
+  members: Member[];
+  /** Current scorer's playerId — excluded from the picker list. */
+  myPlayerId: string;
+  /** Drain trigger from useOfflineQueue. */
+  queueDrain: () => Promise<void>;
+  /** Pending-count refresher from useOfflineQueue. */
+  queueRefreshCount: () => Promise<void>;
+}
+
+/**
+ * "Hand off scorer" affordance shown to the active scorer.
+ *
+ * Per AC-8 + spec Section 2: the transfer goes through the offline
+ * mutation queue using kind='scorer_handoff' (already in T5-3's
+ * MutationKind enum). Online: enqueue → drain → invalidate → page
+ * transitions to read-only on next round-detail poll. Offline: enqueue
+ * + show "Queued — will sync when online"; queue's auto-drain on
+ * connectivity restore handles the eventual POST.
+ *
+ * Terminal-error codes for 'scorer_handoff' are registered at parent
+ * mount via registerTerminalErrors.
+ */
+function HandoffControl({
+  roundId,
+  foursomeNumber,
+  members,
+  myPlayerId,
+  queueDrain,
+  queueRefreshCount,
+}: HandoffControlProps) {
+  const queryClient = useQueryClient();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [queuedOffline, setQueuedOffline] = useState(false);
+
+  const candidates = useMemo(
+    () => members.filter((m) => m.playerId !== myPlayerId),
+    [members, myPlayerId],
+  );
+
+  const handleTransfer = useCallback(
+    async (toPlayerId: string) => {
+      setSubmitting(true);
+      setError(null);
+      setQueuedOffline(false);
+      try {
+        const clientEventId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        await enqueueMutation({
+          kind: 'scorer_handoff',
+          url: `/api/rounds/${roundId}/scorer-assignments/transfer`,
+          body: { foursomeNumber, toPlayerId },
+          clientEventId,
+          roundId,
+        });
+        await queueRefreshCount();
+
+        // Trigger immediate drain (online → POSTs through; offline →
+        // enqueue stays + retries on online event).
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          setQueuedOffline(true);
+          setSubmitting(false);
+          // Leave picker open so the user sees the offline-queued state;
+          // they can dismiss with Cancel.
+          return;
+        }
+
+        await queueDrain();
+        // After drain, invalidate round-detail so the next refetch shows
+        // the read-only state. The 15s poll would catch it eventually
+        // but invalidation makes the transition immediate.
+        await queryClient.invalidateQueries({
+          queryKey: ['round-detail', roundId],
+        });
+        setPickerOpen(false);
+        setSubmitting(false);
+      } catch (e) {
+        setError(`Network error: ${String(e)}`);
+        setSubmitting(false);
+      }
+    },
+    [foursomeNumber, queryClient, queueDrain, queueRefreshCount, roundId],
+  );
+
+  if (!pickerOpen) {
+    return (
+      <div data-testid="handoff-control">
+        <button
+          type="button"
+          data-testid="handoff-open"
+          onClick={() => setPickerOpen(true)}
+        >
+          Hand off scorer
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div data-testid="handoff-picker" role="dialog" aria-label="Hand off scorer">
+      <p>Pick the new scorer for foursome {foursomeNumber}:</p>
+      <ul>
+        {candidates.map((m) => (
+          <li key={m.playerId}>
+            <button
+              type="button"
+              data-testid={`handoff-pick-${m.playerId}`}
+              onClick={() => handleTransfer(m.playerId)}
+              disabled={submitting}
+            >
+              {m.name}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        data-testid="handoff-cancel"
+        onClick={() => {
+          setPickerOpen(false);
+          setError(null);
+          setQueuedOffline(false);
+        }}
+        disabled={submitting}
+      >
+        Cancel
+      </button>
+      {queuedOffline && (
+        <p role="status" data-testid="handoff-queued-offline">
+          Queued — will sync when you&apos;re back online.
+        </p>
+      )}
+      {error !== null && (
+        <p role="alert" data-testid="handoff-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---- StaleQueueBanner (T5-7) ----------------------------------------------
+
+interface StaleQueueBannerProps {
+  roundId: string;
+}
+
+/**
+ * Renders when the offline queue's errored bucket contains entries
+ * scoped to this round whose `lastError.body.code` indicates a scorer
+ * mismatch (T5-6 codes) AND `lastError.body.currentScorerName` is
+ * populated. Surfaces the new scorer's name + an explanation that the
+ * held scores require T5-9 admin correction (or re-entry by the new
+ * scorer).
+ *
+ * Banner is dismissible (sessionStorage-keyed by roundId) — dismiss
+ * persists for the session, but reappears on a fresh page load until
+ * the matching errored entries are cleared. The "View errored entries"
+ * details element surfaces the held mutation bodies so the new scorer
+ * (or the organizer) can re-enter the held scores or open admin
+ * corrections (T5-9) as needed.
+ *
+ * AC-9 gating: the parent component only mounts this banner in the
+ * `!isScorer` (read-only) branch — when the caller IS the active
+ * scorer, errored entries scoped to this round are necessarily
+ * historical (e.g., user was demoted then re-promoted), so the
+ * "scorer changed; your queued scores were rejected" framing would
+ * be misleading.
+ */
+
+const STALE_BANNER_DISMISS_KEY_PREFIX = 'tournament:stale-queue-banner-dismissed:';
+
+function StaleQueueBanner({
+  roundId,
+}: StaleQueueBannerProps) {
+  const erroredQuery = useQuery<MutationEntry[]>({
+    queryKey: ['errored-entries', roundId],
+    queryFn: () => peekErroredEntries(roundId),
+    staleTime: 0,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+
+  const dismissKey = `${STALE_BANNER_DISMISS_KEY_PREFIX}${roundId}`;
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(dismissKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  // Re-read sessionStorage when roundId changes (banner is per-round;
+  // navigating between rounds without unmount must not leak state).
+  useEffect(() => {
+    try {
+      setDismissed(sessionStorage.getItem(dismissKey) === '1');
+    } catch {
+      setDismissed(false);
+    }
+  }, [dismissKey]);
+  const [showDetails, setShowDetails] = useState(false);
+
+  const allMatches = useMemo(() => {
+    const entries = erroredQuery.data ?? [];
+    return entries.filter((entry) => {
+      const lastError = entry.lastError;
+      if (!lastError || typeof lastError.body !== 'object' || lastError.body === null) {
+        return false;
+      }
+      const body = lastError.body as { code?: string; currentScorerName?: string | null };
+      const isScorerMismatch =
+        body.code === 'player_not_in_your_foursome' ||
+        body.code === 'not_scorer_for_this_foursome';
+      return isScorerMismatch && typeof body.currentScorerName === 'string';
+    });
+  }, [erroredQuery.data]);
+
+  // The errored bucket may accumulate entries from MULTIPLE handoff
+  // incidents over the round's lifetime (e.g., scorer A → B → C). To
+  // keep banner copy honest ("{name} is now scoring — N held; ask {name}")
+  // we filter to entries whose currentScorerName matches the newest
+  // entry's — those are the ones held BY the current scorer. Older
+  // entries (held by a since-replaced scorer) are visible only via
+  // the View-errored expansion, which shows ALL matching entries.
+  const newest = allMatches[allMatches.length - 1] ?? null;
+  const currentScorerName: string | null = newest
+    ? (newest.lastError!.body as { currentScorerName: string }).currentScorerName
+    : null;
+  const matches = useMemo(() => {
+    if (currentScorerName === null) return [];
+    return allMatches.filter((entry) => {
+      const body = entry.lastError!.body as { currentScorerName: string };
+      return body.currentScorerName === currentScorerName;
+    });
+  }, [allMatches, currentScorerName]);
+
+  if (matches.length === 0 || dismissed || currentScorerName === null) {
+    return null;
+  }
+
+  const newScorerName = currentScorerName;
+
+  function handleDismiss() {
+    setDismissed(true);
+    try {
+      sessionStorage.setItem(dismissKey, '1');
+    } catch {
+      // sessionStorage unavailable (private mode); dismiss is local-only.
+    }
+  }
+
+  return (
+    <div role="alert" data-testid="stale-queue-banner">
+      <p>
+        <strong>{newScorerName}</strong> is now scoring — {matches.length}{' '}
+        queued score{matches.length === 1 ? ' was' : 's were'} held; ask{' '}
+        {newScorerName} to re-enter or request an admin correction (T5.9).
+      </p>
+      <button
+        type="button"
+        data-testid="stale-queue-banner-toggle-details"
+        onClick={() => setShowDetails((v) => !v)}
+      >
+        {showDetails ? 'Hide errored entries' : 'View errored entries'}
+      </button>
+      <button
+        type="button"
+        data-testid="stale-queue-banner-dismiss"
+        onClick={handleDismiss}
+      >
+        Dismiss
+      </button>
+      {showDetails && (
+        <ul data-testid="stale-queue-errored-list">
+          {/*
+            View-errored shows ALL matching errored entries (regardless
+            of currentScorerName) — preserves the audit trail when
+            multiple handoffs accumulated entries from different
+            now-stale scorers. Banner copy + count above are scoped to
+            the newest scorer for narrative honesty.
+          */}
+          {allMatches.map((entry, idx) => (
+            <li key={entry.id ?? idx} data-testid="stale-queue-errored-entry">
+              <code>{entry.url}</code>
+              <pre>{JSON.stringify(entry.body, null, 2)}</pre>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

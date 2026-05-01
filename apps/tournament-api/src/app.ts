@@ -13,6 +13,7 @@ import { inviteRouter } from './routes/invites.js';
 import { playersRouter } from './routes/players.js';
 import { scoresRouter, eventRoundsCourseRouter } from './routes/scores.js';
 import { eventsLeaderboardRouter } from './routes/events-leaderboard.js';
+import { scorerAssignmentsRouter } from './routes/scorer-assignments.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -99,5 +100,11 @@ app.route('/api/events', eventRoundsCourseRouter);
 // Gated by requireSession + requireEventParticipant; recomputes on read
 // per architecture D1-1 (no cache v1).
 app.route('/api/events', eventsLeaderboardRouter);
+
+// T5-7 scorer-handoff endpoint. Effective URL:
+// POST /api/rounds/:roundId/scorer-assignments/transfer.
+// Authorization: per-event organizer OR current scorer of the foursome
+// (handler-internal; auth re-check is in-tx for TOCTOU safety).
+app.route('/api/rounds', scorerAssignmentsRouter);
 
 export { app };

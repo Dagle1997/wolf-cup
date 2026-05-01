@@ -1,0 +1,394 @@
+/**
+ * T5-7 scorer-handoff endpoint.
+ *
+ * Mount: `app.route('/api/rounds', scorerAssignmentsRouter)`. Effective URL:
+ * `POST /api/rounds/:roundId/scorer-assignments/transfer`.
+ *
+ * Atomically reassigns a foursome's scorer from one player to another.
+ * Authorization model is per-event: either the CURRENT scorer of the
+ * foursome OR the EVENT organizer (`events.organizer_player_id`, NOT
+ * the global `players.is_organizer` flag) may transfer.
+ *
+ * The authoritative auth check + `fromPlayerId` capture both happen
+ * INSIDE the transaction (TOCTOU-safe). The scorer-path UPDATE is
+ * narrowed with `AND scorer_player_id = :fromPlayerId` so a stale
+ * scorer's UPDATE affects 0 rows → 403 rollback. The organizer-path
+ * drops that predicate (override semantics).
+ *
+ * State gate: handoff is rejected on `finalized` and `cancelled`
+ * rounds. State is read directly from `round_states.state` (PK invariant
+ * — single row per round). When T5-8 ships its `transitionState`
+ * service, the state read moves inside the transaction (followup
+ * T5-7f) closing the AC-2 → AC-5 race window.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { and, eq } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import {
+  events,
+  pairingMembers,
+  pairings,
+  rounds,
+  roundStates,
+  scorerAssignments,
+} from '../db/schema/index.js';
+import { logger as moduleLogger } from '../lib/log.js';
+import { requireSession } from '../middleware/require-session.js';
+import {
+  AUDIT_ENTITY_TYPES,
+  AUDIT_EVENT_TYPES,
+  writeAudit,
+} from '../lib/audit-log.js';
+import { emitActivity } from '../lib/activity.js';
+
+const TENANT_ID = 'guyan';
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const scorerTransferBodySchema = z.object({
+  foursomeNumber: z.number().int().positive(),
+  toPlayerId: z.string().uuid(),
+});
+
+export type ScorerTransferBody = z.infer<typeof scorerTransferBodySchema>;
+
+export const scorerAssignmentsRouter = new Hono();
+
+scorerAssignmentsRouter.post(
+  '/:roundId/scorer-assignments/transfer',
+  requireSession,
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const log = c.get('logger') ?? moduleLogger;
+    const player = c.get('player')!;
+    const roundId = c.req.param('roundId')!;
+
+    // ── AC-1: roundId UUID validation ────────────────────────────────
+    if (!UUID_RE.test(roundId)) {
+      return c.json(
+        { error: 'bad_request', code: 'invalid_round_id', requestId },
+        400,
+      );
+    }
+
+    // ── AC-1: body parse + Zod validation ────────────────────────────
+    let rawBody: unknown;
+    try {
+      rawBody = await c.req.json();
+    } catch {
+      return c.json(
+        {
+          error: 'bad_request',
+          code: 'invalid_body',
+          reason: 'malformed_json',
+          requestId,
+        },
+        400,
+      );
+    }
+    const parsed = scorerTransferBodySchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: 'validation_error',
+          code: 'invalid_body',
+          issues: parsed.error.issues,
+          requestId,
+        },
+        400,
+      );
+    }
+    const { foursomeNumber, toPlayerId } = parsed.data;
+
+    // ── AC-2: round existence (tenant-scoped) ────────────────────────
+    const roundRows = await db
+      .select({
+        id: rounds.id,
+        eventId: rounds.eventId,
+        eventRoundId: rounds.eventRoundId,
+      })
+      .from(rounds)
+      .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, TENANT_ID)))
+      .limit(1);
+    if (roundRows.length === 0) {
+      return c.json(
+        { error: 'not_found', code: 'round_not_found', requestId },
+        404,
+      );
+    }
+    const round = roundRows[0]!;
+    if (round.eventRoundId === null || round.eventId === null) {
+      // v1.5 standalone-round shape; v1 never writes nulls. Treat as a
+      // round without pairings (handoff target undefined) — 422 setup-error
+      // mirrors T5-6's foursome_has_no_scorer posture.
+      return c.json(
+        {
+          error: 'unprocessable',
+          code: 'foursome_has_no_scorer',
+          requestId,
+        },
+        422,
+      );
+    }
+
+    // ── AC-2: round_states gate ──────────────────────────────────────
+    const rsRows = await db
+      .select({ state: roundStates.state })
+      .from(roundStates)
+      .where(
+        and(
+          eq(roundStates.roundId, roundId),
+          eq(roundStates.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (rsRows.length === 0) {
+      return c.json(
+        { error: 'unprocessable', code: 'round_state_missing', requestId },
+        422,
+      );
+    }
+    const state = rsRows[0]!.state;
+    if (state === 'finalized') {
+      return c.json(
+        { error: 'unprocessable', code: 'round_finalized', requestId },
+        422,
+      );
+    }
+    if (state === 'cancelled') {
+      return c.json(
+        { error: 'unprocessable', code: 'round_cancelled', requestId },
+        422,
+      );
+    }
+
+    // ── Begin authoritative transaction (AC-3 → AC-5) ───────────────
+    try {
+      const result = await db.transaction(async (tx) => {
+        // AC-3 (i): in-tx SELECT current scorer → fromPlayerId.
+        const scorerRows = await tx
+          .select({
+            scorerPlayerId: scorerAssignments.scorerPlayerId,
+          })
+          .from(scorerAssignments)
+          .where(
+            and(
+              eq(scorerAssignments.roundId, roundId),
+              eq(scorerAssignments.foursomeNumber, foursomeNumber),
+              eq(scorerAssignments.tenantId, TENANT_ID),
+            ),
+          )
+          .limit(1);
+        if (scorerRows.length === 0) {
+          return {
+            kind: 'error' as const,
+            status: 422 as const,
+            body: {
+              error: 'unprocessable',
+              code: 'foursome_has_no_scorer',
+              requestId,
+            },
+          };
+        }
+        const fromPlayerId = scorerRows[0]!.scorerPlayerId;
+
+        // AC-3 (ii): in-tx SELECT event organizer.
+        const orgRows = await tx
+          .select({ organizerPlayerId: events.organizerPlayerId })
+          .from(events)
+          .where(
+            and(eq(events.id, round.eventId!), eq(events.tenantId, TENANT_ID)),
+          )
+          .limit(1);
+        if (orgRows.length === 0) {
+          // Defense: rounds.event_id is FK with onDelete cascade; reaching
+          // here implies a referential-integrity break. 500 not 404.
+          log.error({
+            msg: 'scorer-handoff: rounds.event_id has no events row',
+            requestId,
+            roundId,
+            eventId: round.eventId,
+          });
+          return {
+            kind: 'error' as const,
+            status: 500 as const,
+            body: {
+              error: 'internal',
+              code: 'event_not_resolvable',
+              requestId,
+            },
+          };
+        }
+        const organizerPlayerId = orgRows[0]!.organizerPlayerId;
+
+        // AC-3 (iii): re-check authorization at write-time.
+        const isCurrentScorer = fromPlayerId === player.id;
+        const isEventOrganizer = organizerPlayerId === player.id;
+        if (!isCurrentScorer && !isEventOrganizer) {
+          return {
+            kind: 'error' as const,
+            status: 403 as const,
+            body: {
+              error: 'forbidden',
+              code: 'not_authorized_for_handoff',
+              requestId,
+            },
+          };
+        }
+
+        // AC-4: foursome-membership validation for toPlayerId.
+        const membershipRows = await tx
+          .select({ playerId: pairingMembers.playerId })
+          .from(pairingMembers)
+          .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
+          .where(
+            and(
+              eq(pairings.eventRoundId, round.eventRoundId!),
+              eq(pairings.foursomeNumber, foursomeNumber),
+              eq(pairingMembers.playerId, toPlayerId),
+              eq(pairings.tenantId, TENANT_ID),
+              eq(pairingMembers.tenantId, TENANT_ID),
+            ),
+          )
+          .limit(1);
+        if (membershipRows.length === 0) {
+          return {
+            kind: 'error' as const,
+            status: 422 as const,
+            body: {
+              error: 'invalid_assignee',
+              code: 'assignee_not_in_foursome',
+              requestId,
+            },
+          };
+        }
+
+        // AC-5: TOCTOU-narrowed UPDATE.
+        // App-time `assignedAt` (single source of truth — used in UPDATE,
+        // audit JSON, and response per spec Risks/Followups Low #2).
+        const assignedAt = Date.now();
+
+        const updateBuilder = tx
+          .update(scorerAssignments)
+          .set({
+            scorerPlayerId: toPlayerId,
+            assignedAt,
+            assignedByPlayerId: player.id,
+          });
+
+        // **Path selection:** organizer-path takes precedence when both
+        // applies (caller is BOTH event organizer AND current scorer of
+        // the foursome — possible in small leagues where the organizer
+        // is playing). The organizer-path drops the TOCTOU narrowing
+        // predicate so a concurrent transfer can't deny the organizer
+        // their override authority. Scorer-path (narrowed) is used only
+        // when the caller's authorization comes purely from being the
+        // current scorer.
+        const useOrganizerPath = isEventOrganizer;
+        const updateResult = await (useOrganizerPath
+          ? updateBuilder
+              .where(
+                and(
+                  eq(scorerAssignments.roundId, roundId),
+                  eq(scorerAssignments.foursomeNumber, foursomeNumber),
+                  eq(scorerAssignments.tenantId, TENANT_ID),
+                ),
+              )
+              .returning({ rowId: scorerAssignments.scorerPlayerId })
+          : updateBuilder
+              .where(
+                and(
+                  eq(scorerAssignments.roundId, roundId),
+                  eq(scorerAssignments.foursomeNumber, foursomeNumber),
+                  eq(scorerAssignments.scorerPlayerId, fromPlayerId),
+                  eq(scorerAssignments.tenantId, TENANT_ID),
+                ),
+              )
+              .returning({ rowId: scorerAssignments.scorerPlayerId }));
+
+        if (updateResult.length === 0) {
+          // Scorer-path: a concurrent transfer beat us. 403 (no longer authorized).
+          // Organizer-path: defense (AC-3(i) already guarantees ≥1 row).
+          if (!useOrganizerPath) {
+            return {
+              kind: 'error' as const,
+              status: 403 as const,
+              body: {
+                error: 'forbidden',
+                code: 'not_authorized_for_handoff',
+                requestId,
+              },
+            };
+          }
+          return {
+            kind: 'error' as const,
+            status: 422 as const,
+            body: {
+              error: 'unprocessable',
+              code: 'foursome_has_no_scorer',
+              requestId,
+            },
+          };
+        }
+
+        // AC-5 (c): audit row.
+        await writeAudit(tx, {
+          eventType: AUDIT_EVENT_TYPES.SCORER_TRANSFERRED,
+          entityType: AUDIT_ENTITY_TYPES.ROUND,
+          entityId: roundId,
+          actorPlayerId: player.id,
+          payload: {
+            foursomeNumber,
+            fromPlayerId,
+            toPlayerId,
+            assignedAt,
+          },
+        });
+
+        // AC-5 (d): activity emit (v1 NO-OP; T8 will replace body).
+        await emitActivity(tx, {
+          type: 'scorer.transferred',
+          actorPlayerId: player.id,
+          payload: { foursomeNumber, fromPlayerId, toPlayerId },
+          scope: { roundId },
+        });
+
+        return {
+          kind: 'ok' as const,
+          fromPlayerId,
+          assignedAt,
+        };
+      });
+
+      if (result.kind === 'error') {
+        return c.json(result.body, result.status);
+      }
+
+      return c.json(
+        {
+          ok: true,
+          foursomeNumber,
+          fromPlayerId: result.fromPlayerId,
+          toPlayerId,
+          assignedAt: result.assignedAt,
+          requestId,
+        },
+        200,
+      );
+    } catch (err) {
+      log.error({
+        msg: 'scorer-handoff transaction threw',
+        requestId,
+        roundId,
+        err: String(err),
+      });
+      return c.json(
+        { error: 'internal', code: 'transfer_failed', requestId },
+        500,
+      );
+    }
+  },
+);
