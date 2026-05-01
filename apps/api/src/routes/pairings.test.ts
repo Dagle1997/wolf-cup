@@ -122,7 +122,7 @@ describe('GET /pairings/:roundId — sideGame', () => {
   it('returns sideGame: null when rotation does not include this round', async () => {
     await db.insert(sideGames).values({
       seasonId,
-      name: 'Most Skins',
+      name: 'Skins',
       format: 'Lowest unique net score',
       calculationType: 'auto_skins',
       scheduledRoundIds: JSON.stringify([roundId + 999]),

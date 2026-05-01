@@ -271,12 +271,33 @@ async function buildLeaderboard(round: RoundRow) {
   // Side game live leader — running in-progress leader for auto-calc games.
   // Computed for non-finalized rounds; finalized rounds show sideGameWinner
   // (below) instead, which reflects the stored result.
+  //
+  // auto_skins is the exception: it's a list-display game with no single
+  // winner, so we always compute live (live + finalized) and emit the full
+  // skin-holder list via sideGameSkinHolders. sideGameLeader/sideGameWinner
+  // stay null for skins.
   let sideGameLeader: { playerName: string; detail: string } | null = null;
+  let sideGameSkinHolders: { playerName: string; skins: number }[] | null = null;
+  // Defense-in-depth: also treat rows named 'Skins'/'Most Skins' as skins
+  // even if calculationType is NULL (legacy seeds, partial migrations).
+  // Migration 0028 promotes those rows; this is the boot-order belt.
+  const isSkinsGame = !!activeSideGame && (
+    activeSideGame.calculationType === 'auto_skins'
+    || activeSideGame.name === 'Skins'
+    || activeSideGame.name === 'Most Skins'
+  );
+  // Effective calc type: a legacy skins row with NULL calculationType still
+  // routes through the auto_skins compute path. Without this, the guard
+  // below would short-circuit on the falsy calc-type and the skins card
+  // would render empty even though we knew it was skins by name.
+  const effectiveCalcType = activeSideGame
+    ? (activeSideGame.calculationType ?? (isSkinsGame ? 'auto_skins' : null))
+    : null;
   if (
     activeSideGame &&
-    activeSideGame.calculationType &&
-    activeSideGame.calculationType !== 'manual' &&
-    round.status !== 'finalized'
+    effectiveCalcType &&
+    effectiveCalcType !== 'manual' &&
+    (round.status !== 'finalized' || isSkinsGame)
   ) {
     const scoreRows = allHoleScoreRows.map((s) => ({
       playerId: s.playerId,
@@ -285,7 +306,7 @@ async function buildLeaderboard(round: RoundRow) {
       putts: s.putts,
     }));
     let decisions: { wolfPlayerId: number; holeNumber: number; bonusesJson: string | null }[] | undefined;
-    if (activeSideGame.calculationType === 'auto_polies') {
+    if (effectiveCalcType === 'auto_polies') {
       const wdRows = await db
         .select({
           wolfPlayerId: wolfDecisions.wolfPlayerId,
@@ -301,7 +322,7 @@ async function buildLeaderboard(round: RoundRow) {
       }));
     }
     const live = computeSideGameLeaderLive({
-      calculationType: activeSideGame.calculationType,
+      calculationType: effectiveCalcType,
       scores: scoreRows,
       players: playerRows.map((p) => ({
         playerId: p.playerId,
@@ -309,9 +330,19 @@ async function buildLeaderboard(round: RoundRow) {
         isSub: Boolean(p.isSub),
       })),
       tee: (round.tee ?? 'blue') as Tee,
+      roundStatus: round.status,
       ...(decisions ? { decisions } : {}),
     });
-    if (live && live.winnerPlayerIds.length > 0) {
+    if (live && isSkinsGame && live.skinHolders) {
+      // Map IDs → names. Sort: skins desc, then name asc (calc already
+      // returns desc-by-skins; we re-stabilize the ties alphabetically).
+      const annotated = live.skinHolders.map((h) => ({
+        playerName: playerRows.find((p) => p.playerId === h.playerId)?.name ?? 'Unknown',
+        skins: h.skins,
+      }));
+      annotated.sort((a, b) => b.skins - a.skins || a.playerName.localeCompare(b.playerName));
+      sideGameSkinHolders = annotated;
+    } else if (live && !isSkinsGame && live.winnerPlayerIds.length > 0) {
       const names = live.winnerPlayerIds
         .map((id) => playerRows.find((p) => p.playerId === id)?.name ?? 'Unknown')
         .join(' & ');
@@ -319,9 +350,11 @@ async function buildLeaderboard(round: RoundRow) {
     }
   }
 
-  // Side game winner (after finalization)
+  // Side game winner (after finalization). Skipped for auto_skins — that
+  // game writes no sideGameResults rows; its display goes through
+  // sideGameSkinHolders above.
   let sideGameWinner: { playerName: string; detail: string } | null = null;
-  if (activeSideGame && round.status === 'finalized') {
+  if (activeSideGame && !isSkinsGame && round.status === 'finalized') {
     const results = await db
       .select({
         winnerPlayerId: sideGameResults.winnerPlayerId,
@@ -380,7 +413,7 @@ async function buildLeaderboard(round: RoundRow) {
     })
     .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
 
-  return { round: roundInfo, harveyLiveEnabled, sideGame, sideGameWinner, sideGameLeader, leaderboard, lastUpdated: new Date().toISOString() };
+  return { round: roundInfo, harveyLiveEnabled, sideGame, sideGameWinner, sideGameLeader, sideGameSkinHolders, leaderboard, lastUpdated: new Date().toISOString() };
 }
 
 // ---------------------------------------------------------------------------
@@ -429,6 +462,7 @@ app.get('/leaderboard/live', async (c) => {
           sideGame: null,
           sideGameWinner: null,
           sideGameLeader: null,
+          sideGameSkinHolders: null,
           leaderboard: [],
           lastUpdated: new Date().toISOString(),
         },

@@ -19,9 +19,18 @@ export interface WolfDecisionRow {
   bonusesJson: string | null;
 }
 
+export interface SkinHolder {
+  playerId: number;
+  skins: number;
+}
+
 export interface SideGameResult {
   winnerPlayerIds: number[];
   detail: string;
+  // Populated only by calcMostSkins. Skins is a list-display game now —
+  // there is no single "winner," so winnerPlayerIds is always [] for skins
+  // and the leaderboard renders this list directly.
+  skinHolders?: SkinHolder[];
 }
 
 // ---------------------------------------------------------------------------
@@ -60,17 +69,29 @@ export function calcMostNetPars(
 }
 
 /**
- * Most Skins: for each hole, compute net score per player across ALL groups.
+ * Skins: for each hole, compute net score per player across ALL groups.
  * If exactly one player has the unique lowest net, they earn a skin.
- * Subs participate in the field (their low score can block a skin), but
- * only eligible players accumulate skin counts toward winning.
- * Uses FULL course handicap.
+ *
+ * Subs participate in the field (their unique low blocks a hole's skin) but
+ * cannot earn skins themselves. Returns the full list of skin-holders for
+ * leaderboard display — there is no single "winner." Uses FULL course
+ * handicap. winnerPlayerIds is intentionally empty: skins does not feed the
+ * Side Game Champion trophy track.
+ *
+ * Per-hole completeness gate: when `fieldPlayerIds` is provided, a hole is
+ * only counted if every player in the field has a score for it. This
+ * prevents cross-group lag during live play from showing a transient
+ * "unique low" before the rest of the field has posted (e.g., group 1
+ * birdies hole 1 while groups 2-3 are still on hole 18 from a shotgun).
+ * When omitted, every hole with any scores is counted (post-finalization
+ * use, or unit tests that don't care about live partial state).
  */
 export function calcMostSkins(
   scores: ScoreRow[],
   handicaps: PlayerHandicap[],
   tee: Tee,
   eligible?: Set<number>,
+  fieldPlayerIds?: Set<number>,
 ): SideGameResult {
   const hiMap = new Map(handicaps.map((h) => [h.playerId, h.handicapIndex]));
 
@@ -91,19 +112,36 @@ export function calcMostSkins(
   // Only eligible players accumulate skin counts.
   const skinCounts = new Map<number, number>();
   for (const [, entries] of holeNets) {
+    // Per-hole completeness gate: skip holes the field hasn't fully posted.
+    if (fieldPlayerIds) {
+      const scoredIds = new Set(entries.map((e) => e.playerId));
+      let complete = true;
+      for (const pid of fieldPlayerIds) {
+        if (!scoredIds.has(pid)) { complete = false; break; }
+      }
+      if (!complete) continue;
+    }
     const minNet = Math.min(...entries.map((e) => e.net));
     const winners = entries.filter((e) => e.net === minNet);
     if (winners.length === 1) {
       const wid = winners[0]!.playerId;
-      // Only count if the winner is eligible (not a sub)
       if (!eligible || eligible.has(wid)) {
         skinCounts.set(wid, (skinCounts.get(wid) ?? 0) + 1);
       }
-      // If wid is a sub, the skin is blocked — nobody gets it
     }
   }
 
-  return pickWinners(skinCounts, 'skins', 'highest');
+  const skinHolders: SkinHolder[] = [...skinCounts.entries()]
+    .map(([playerId, skins]) => ({ playerId, skins }))
+    .sort((a, b) => b.skins - a.skins || a.playerId - b.playerId);
+
+  const totalSkins = skinHolders.reduce((acc, h) => acc + h.skins, 0);
+
+  return {
+    winnerPlayerIds: [],
+    detail: `${totalSkins} skin${totalSkins === 1 ? '' : 's'}`,
+    skinHolders,
+  };
 }
 
 /**

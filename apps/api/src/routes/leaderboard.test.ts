@@ -25,6 +25,7 @@ import {
   roundResults,
   harveyResults,
   sideGames,
+  sideGameResults,
 } from '../db/schema.js';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 
@@ -105,6 +106,7 @@ afterEach(async () => {
   await db.delete(holeScores).where(eq(holeScores.roundId, roundId));
   await db.delete(roundResults).where(eq(roundResults.roundId, roundId));
   await db.delete(harveyResults).where(eq(harveyResults.roundId, roundId));
+  await db.delete(sideGameResults).where(eq(sideGameResults.roundId, roundId));
   await db.delete(sideGames).where(eq(sideGames.seasonId, seasonId));
   // Restore round status/date in case a test changed them
   await db
@@ -353,6 +355,133 @@ describe('GET /leaderboard/live', () => {
     } finally {
       await db.delete(rounds).where(eq(rounds.id, casual!.id));
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Skins side game — list-display, computed live live + post-finalization
+  // ---------------------------------------------------------------------------
+  describe('auto_skins (Skins side game)', () => {
+    // Insert a complete hole-1 score row for all 4 players where Alice (p1)
+    // birdies and everyone else pars. With blue-tee handicap math, Alice
+    // earns the unique-low net and one skin on hole 1.
+    async function seedSkinsScenarioHole1(): Promise<void> {
+      const now = Date.now();
+      await db.insert(holeScores).values([
+        // hole 1 par 5 (Guyan #1) → Alice 4, others 5
+        { roundId, groupId, playerId: p1Id, holeNumber: 1, grossScore: 4, createdAt: now, updatedAt: now },
+        { roundId, groupId, playerId: p2Id, holeNumber: 1, grossScore: 5, createdAt: now, updatedAt: now },
+        { roundId, groupId, playerId: p3Id, holeNumber: 1, grossScore: 5, createdAt: now, updatedAt: now },
+        { roundId, groupId, playerId: p4Id, holeNumber: 1, grossScore: 5, createdAt: now, updatedAt: now },
+      ]);
+    }
+
+    it('live skins week emits sideGameSkinHolders; sideGameLeader/Winner stay null', async () => {
+      await seedSkinsScenarioHole1();
+      await db.insert(sideGames).values({
+        seasonId,
+        name: 'Skins',
+        format: 'Lowest unique net score on any hole',
+        calculationType: 'auto_skins',
+        scheduledRoundIds: JSON.stringify([roundId]),
+        createdAt: Date.now(),
+      });
+      const res = await leaderboardApp.request('/leaderboard/live');
+      const body = await res.json() as {
+        sideGame: { name: string; calculationType: string };
+        sideGameLeader: unknown;
+        sideGameWinner: unknown;
+        sideGameSkinHolders: { playerName: string; skins: number }[];
+      };
+      expect(body.sideGame.calculationType).toBe('auto_skins');
+      expect(body.sideGameLeader).toBeNull();
+      expect(body.sideGameWinner).toBeNull();
+      expect(body.sideGameSkinHolders).toEqual([{ playerName: 'Alice', skins: 1 }]);
+    });
+
+    it('finalized skins round still computes from holeScores (not persisted results)', async () => {
+      await seedSkinsScenarioHole1();
+      const [game] = await db.insert(sideGames).values({
+        seasonId,
+        name: 'Skins',
+        format: 'Lowest unique net score on any hole',
+        calculationType: 'auto_skins',
+        scheduledRoundIds: JSON.stringify([roundId]),
+        createdAt: Date.now(),
+      }).returning({ id: sideGames.id });
+      // Even if a stray side_game_results row exists for this skins game,
+      // it should be ignored — skins computes live from scores.
+      await db.insert(sideGameResults).values({
+        sideGameId: game!.id,
+        roundId,
+        winnerPlayerId: p4Id, // wrong winner — should NOT surface
+        winnerName: null,
+        notes: 'stale row',
+        source: 'manual',
+        createdAt: Date.now(),
+      });
+      await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, roundId));
+
+      // Reach the finalized round via /:roundId since /live filters to active.
+      const res = await leaderboardApp.request(`/leaderboard/${roundId}`);
+      const body = await res.json() as {
+        sideGameWinner: unknown;
+        sideGameSkinHolders: { playerName: string; skins: number }[];
+      };
+      expect(body.sideGameWinner).toBeNull();
+      expect(body.sideGameSkinHolders).toEqual([{ playerName: 'Alice', skins: 1 }]);
+    });
+
+    it('per-hole completeness gate: hole with missing field scores does not award a skin', async () => {
+      const now = Date.now();
+      // Only Alice posted hole 1 — p2/p3/p4 haven't gotten there yet.
+      await db.insert(holeScores).values([
+        { roundId, groupId, playerId: p1Id, holeNumber: 1, grossScore: 4, createdAt: now, updatedAt: now },
+      ]);
+      await db.insert(sideGames).values({
+        seasonId,
+        name: 'Skins',
+        format: 'Lowest unique net score on any hole',
+        calculationType: 'auto_skins',
+        scheduledRoundIds: JSON.stringify([roundId]),
+        createdAt: Date.now(),
+      });
+      const res = await leaderboardApp.request('/leaderboard/live');
+      const body = await res.json() as {
+        sideGameSkinHolders: { playerName: string; skins: number }[];
+      };
+      // Alice's solo birdie does NOT award a phantom skin — field hasn't fully posted hole 1.
+      expect(body.sideGameSkinHolders).toEqual([]);
+    });
+
+    it('non-skins game (auto_net_pars) keeps sideGameLeader, no sideGameSkinHolders', async () => {
+      const now = Date.now();
+      await db.insert(holeScores).values([
+        { roundId, groupId, playerId: p1Id, holeNumber: 1, grossScore: 4, createdAt: now, updatedAt: now },
+      ]);
+      await db.insert(sideGames).values({
+        seasonId,
+        name: 'Most Net Pars',
+        format: 'Most holes at net par',
+        calculationType: 'auto_net_pars',
+        scheduledRoundIds: JSON.stringify([roundId]),
+        createdAt: Date.now(),
+      });
+      const res = await leaderboardApp.request('/leaderboard/live');
+      const body = await res.json() as {
+        sideGameLeader: { playerName: string } | null;
+        sideGameSkinHolders: unknown;
+      };
+      expect(body.sideGameSkinHolders).toBeNull();
+      // sideGameLeader may be null if no one has hit net par yet — that's fine.
+      // What matters: skinHolders is null (skins-only field).
+    });
+
+    it('no-round response includes sideGameSkinHolders: null', async () => {
+      await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, roundId));
+      const res = await leaderboardApp.request('/leaderboard/live');
+      const body = await res.json() as { sideGameSkinHolders: unknown };
+      expect(body.sideGameSkinHolders).toBeNull();
+    });
   });
 
   it('falls back to active casual round when no official is active', async () => {

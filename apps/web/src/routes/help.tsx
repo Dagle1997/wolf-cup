@@ -221,14 +221,20 @@ function HelpPage() {
           leader during play, not just after finalization.
         </p>
         <p>
-          Two season-level recognition tracks come out of side games:
+          <strong>Skins</strong> is a list, not a winner — for each hole, the
+          lone player with the unique low net earns a skin. The card shows
+          everyone who's earned at least one. Skins doesn't feed the Side Game
+          Champion track.
+        </p>
+        <p>
+          Two season-level recognition tracks come out of the other side games:
         </p>
         <p>
           🏅 <strong>Side Game Champion</strong> — round-by-round leader-takes-all.
           Each finalized round is worth <strong>1 credit</strong>: the player who
           won the side game (or won the most CTPs) gets the credit. Ties split
           the credit (2-way tie = 0.5 each). Winning 1 of 4 CTPs when someone
-          else won 3 of 4 doesn't earn a credit.
+          else won 3 of 4 doesn't earn a credit. Skins weeks award no credit.
         </p>
         <p>
           ⛳ <strong>Par 3 Champion</strong> — total CTPs won across the season,

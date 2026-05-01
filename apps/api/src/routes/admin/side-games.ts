@@ -243,10 +243,15 @@ app.post('/rounds/:roundId/side-game-results', adminAuthMiddleware, async (c) =>
   }
 
   // Check side game exists and is scheduled for this round
-  let sideGame: { id: number; scheduledRoundIds: string | null } | undefined;
+  let sideGame: { id: number; name: string; scheduledRoundIds: string | null; calculationType: string | null } | undefined;
   try {
     sideGame = await db
-      .select({ id: sideGames.id, scheduledRoundIds: sideGames.scheduledRoundIds })
+      .select({
+        id: sideGames.id,
+        name: sideGames.name,
+        scheduledRoundIds: sideGames.scheduledRoundIds,
+        calculationType: sideGames.calculationType,
+      })
       .from(sideGames)
       .where(eq(sideGames.id, result.data.sideGameId))
       .get();
@@ -255,6 +260,25 @@ app.post('/rounds/:roundId/side-game-results', adminAuthMiddleware, async (c) =>
   }
   if (!sideGame) {
     return c.json({ error: 'Side game not found', code: 'NOT_FOUND' }, 404);
+  }
+
+  // Skins is a list-display game with no persisted winner — it does not feed
+  // the Side Game Champion track. Block manual results outright so an admin
+  // entering a result by habit can't reintroduce a Champion-track credit
+  // through the back door (acceptance criterion #2). Also catches legacy
+  // rows by name in case calculationType wasn't promoted by migration 0028.
+  const isSkinsGame =
+    sideGame.calculationType === 'auto_skins'
+    || sideGame.name === 'Skins'
+    || sideGame.name === 'Most Skins';
+  if (isSkinsGame) {
+    return c.json(
+      {
+        error: 'Skins is a list-display game; manual results are not supported',
+        code: 'VALIDATION_ERROR',
+      },
+      422,
+    );
   }
 
   // Validate side game is scheduled for this round
@@ -418,7 +442,7 @@ app.delete('/rounds/:roundId/side-game-results/:resultId', adminAuthMiddleware, 
 const SIDE_GAME_DEFINITIONS = [
   { name: 'Most Net Pars', format: 'Most holes at net par', calculationType: 'auto_net_pars' },
   { name: 'Closest to Pin', format: 'Closest tee shot on par 3s', calculationType: 'manual' },
-  { name: 'Most Skins', format: 'Lowest unique net score on any hole — all players, all 18 holes', calculationType: 'auto_skins' },
+  { name: 'Skins', format: 'Lowest unique net score on any hole — all players, all 18 holes', calculationType: 'auto_skins' },
   { name: 'Least Putts', format: 'Fewest total putts', calculationType: 'auto_putts' },
   { name: 'Most Net Under Par', format: 'Most holes under net par', calculationType: 'auto_net_under_par' },
   { name: 'Most Polies', format: 'Most polies in the round', calculationType: 'auto_polies' },

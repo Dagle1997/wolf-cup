@@ -8,7 +8,12 @@ import {
   calcMostNetUnderPar,
   calcMostPolies,
 } from './side-game-calc.js';
-import type { ScoreRow, PlayerHandicap, WolfDecisionRow } from './side-game-calc.js';
+import type {
+  ScoreRow,
+  PlayerHandicap,
+  WolfDecisionRow,
+  SideGameResult,
+} from './side-game-calc.js';
 import type { Tee } from '@wolf-cup/engine';
 
 /**
@@ -40,6 +45,28 @@ export async function computeSideGameWinnerForRound(
       scheduledIds = JSON.parse(game.scheduledRoundIds ?? '[]') as number[];
     } catch { continue; }
     if (!scheduledIds.includes(roundId)) continue;
+
+    // auto_skins is a list-display game: no Champion-track winner persisted.
+    // skin-holders are computed live by the leaderboard route on every fetch
+    // (including post-finalization) so corrections flow through automatically.
+    // Wipe ANY persisted rows (auto + manual) for this game+round to enforce
+    // the invariant "skins has no persisted results" regardless of upstream
+    // state — covers historical auto rows AND any manual rows that bypassed
+    // the admin-endpoint guard. Done BEFORE the completeness gate below so
+    // partial rounds still get cleaned up.
+    if (calcType === 'auto_skins') {
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(sideGameResults)
+          .where(
+            and(
+              eq(sideGameResults.sideGameId, game.id),
+              eq(sideGameResults.roundId, roundId),
+            ),
+          );
+      });
+      continue;
+    }
 
     // Fetch ALL scores for this round (subs included — their scores affect the field)
     const scores = await db
@@ -91,16 +118,12 @@ export async function computeSideGameWinnerForRound(
       if (!allPuttsComplete) continue;
     }
 
-    // Compute result — ALL scores in the field, only eligible players can win
     const scoreRows: ScoreRow[] = scores;
     let result: { winnerPlayerIds: number[]; detail: string };
 
     switch (calcType) {
       case 'auto_net_pars':
         result = calcMostNetPars(scoreRows, handicaps, tee, eligible);
-        break;
-      case 'auto_skins':
-        result = calcMostSkins(scoreRows, handicaps, tee, eligible);
         break;
       case 'auto_putts':
         result = calcLeastPutts(scoreRows, eligible);
@@ -193,11 +216,17 @@ export interface LiveLeaderInput {
   scores: ScoreRow[];
   players: Array<{ playerId: number; handicapIndex: number; isSub: boolean }>;
   tee: Tee;
+  // 'scheduled' | 'active' | 'finalized' | 'completed' | 'cancelled'.
+  // Skins applies the per-hole completeness gate ONLY for in-progress
+  // rounds. For finalized rounds we trust the stored scores and want
+  // every earned skin to surface — applying the gate could empty the
+  // list if any roster row lacks a score (late-added sub, data tweak).
+  roundStatus?: string;
   decisions?: WolfDecisionRow[]; // required only for auto_polies
 }
 
-export function computeSideGameLeaderLive(input: LiveLeaderInput): { winnerPlayerIds: number[]; detail: string } | null {
-  const { calculationType, scores, players: roster, tee, decisions } = input;
+export function computeSideGameLeaderLive(input: LiveLeaderInput): SideGameResult | null {
+  const { calculationType, scores, players: roster, tee, roundStatus, decisions } = input;
   if (!calculationType || calculationType === 'manual') return null;
 
   const handicaps: PlayerHandicap[] = roster.map((p) => ({
@@ -207,11 +236,20 @@ export function computeSideGameLeaderLive(input: LiveLeaderInput): { winnerPlaye
   const eligible = new Set(roster.filter((p) => !p.isSub).map((p) => p.playerId));
   if (eligible.size === 0) return null;
 
+  // Full field (eligible + subs) — used by skins to gate per-hole counting
+  // on completeness so cross-group lag doesn't surface phantom skins.
+  // Skipped for any non-active status (finalized/completed/cancelled): once
+  // a round is done, scores are authoritative and a missing roster row
+  // shouldn't suppress earned skins.
+  const fieldPlayerIds = roundStatus && roundStatus !== 'active' && roundStatus !== 'scheduled'
+    ? undefined
+    : new Set(roster.map((p) => p.playerId));
+
   switch (calculationType) {
     case 'auto_net_pars':
       return calcMostNetPars(scores, handicaps, tee, eligible);
     case 'auto_skins':
-      return calcMostSkins(scores, handicaps, tee, eligible);
+      return calcMostSkins(scores, handicaps, tee, eligible, fieldPlayerIds);
     case 'auto_putts': {
       const anyPutts = scores.some((s) => s.putts !== null && s.putts !== undefined);
       if (!anyPutts) return null;

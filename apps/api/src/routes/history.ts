@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, isNotNull, desc, asc, count, inArray } from 'drizzle-orm';
+import { and, eq, isNull, isNotNull, desc, asc, count, inArray, notInArray, ne, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { seasons, seasonStandings, players, sideGameResults, sideGames, sideGameCtpEntries, rounds } from '../db/schema.js';
 import { HISTORICAL_CHAMPIONS, HISTORICAL_STANDINGS, HISTORICAL_ROSTERS, HISTORICAL_CASH, HISTORICAL_IRONMAN, HISTORICAL_CASH_RECORDS } from '../db/history-data.js';
@@ -104,7 +104,13 @@ app.get('/history', async (c) => {
     }));
     championshipCounts.sort((a, b) => b.wins - a.wins);
 
-    // 7. Query side game results for Side Game Champion
+    // 7. Query side game results for Side Game Champion.
+    // Skins is a list-display game and explicitly does not feed the Champion
+    // track (acceptance criterion #2). The orchestrator + admin-endpoint
+    // guards prevent persisted rows in the first place; this filter is a
+    // belt-and-suspenders safeguard in case any sideGameResults row for an
+    // auto_skins game ever slips through (manual SQL, future migrations,
+    // pre-rename historical data, etc.).
     const sideGameResultRows = await db
       .select({
         winnerPlayerId: sideGameResults.winnerPlayerId,
@@ -120,7 +126,21 @@ app.get('/history', async (c) => {
       .innerJoin(sideGames, eq(sideGameResults.sideGameId, sideGames.id))
       .innerJoin(rounds, eq(sideGameResults.roundId, rounds.id))
       .innerJoin(seasons, eq(rounds.seasonId, seasons.id))
-      .leftJoin(players, eq(sideGameResults.winnerPlayerId, players.id));
+      .leftJoin(players, eq(sideGameResults.winnerPlayerId, players.id))
+      // calculationType is nullable (legacy/manual games); ne() doesn't match
+      // NULLs in SQL, so OR with isNull() to include them.
+      // Belt-and-suspenders: also exclude by name in case a legacy row has
+      // a NULL calc type and migration 0028 hasn't yet promoted it (defensive
+      // for boot-order races between code deploys and migration runs).
+      .where(
+        and(
+          or(
+            isNull(sideGames.calculationType),
+            ne(sideGames.calculationType, 'auto_skins'),
+          ),
+          notInArray(sideGames.name, ['Skins', 'Most Skins']),
+        ),
+      );
 
     // Aggregate wins per player per season (only roster players)
     const winCountMap = new Map<string, { playerName: string; year: number; wins: number }>();

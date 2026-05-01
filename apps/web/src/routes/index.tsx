@@ -4,6 +4,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CtpSideGameCard } from '@/components/CtpSideGameCard';
+import { SkinsSideGameCard } from '@/components/SkinsSideGameCard';
 import { apiFetch } from '@/lib/api';
 import { getSession, clearSession } from '@/lib/session-store';
 
@@ -59,6 +60,7 @@ type LeaderboardResponse = {
   sideGame: { name: string; format: string; calculationType?: string | null } | null;
   sideGameWinner: { playerName: string; detail: string } | null;
   sideGameLeader: { playerName: string; detail: string } | null;
+  sideGameSkinHolders: { playerName: string; skins: number }[] | null;
   leaderboard: LeaderboardPlayer[];
   lastUpdated: string;
 };
@@ -1132,6 +1134,12 @@ function LeaderboardPage() {
               format={currentData.sideGame.format}
               roundStatus={currentRound.status}
             />
+          ) : currentData.sideGame?.calculationType === 'auto_skins' ? (
+            <SkinsSideGameCard
+              name={currentData.sideGame.name}
+              format={currentData.sideGame.format}
+              skinHolders={currentData.sideGameSkinHolders}
+            />
           ) : (
             <>
               {currentData.sideGameWinner && (
@@ -1175,6 +1183,12 @@ function LeaderboardPage() {
               name={liveData.sideGame.name}
               format={liveData.sideGame.format}
               roundStatus={currentRound.status}
+            />
+          ) : liveData.sideGame?.calculationType === 'auto_skins' ? (
+            <SkinsSideGameCard
+              name={liveData.sideGame.name}
+              format={liveData.sideGame.format}
+              skinHolders={liveData.sideGameSkinHolders}
             />
           ) : (
             <>

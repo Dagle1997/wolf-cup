@@ -81,7 +81,7 @@ describe('calcMostNetPars', () => {
 // ---------------------------------------------------------------------------
 
 describe('calcMostSkins', () => {
-  it('awards skin only when one player has unique lowest net', () => {
+  it('returns skin holders — solo skin earner appears in the list', () => {
     const handicaps: PlayerHandicap[] = [
       { playerId: 1, handicapIndex: 0 },
       { playerId: 2, handicapIndex: 0 },
@@ -91,19 +91,23 @@ describe('calcMostSkins', () => {
     p1Scores[0] = 4; // birdie on hole 1
     const scores = makeScores({ 1: p1Scores, 2: PARS });
     const result = calcMostSkins(scores, handicaps, 'blue');
-    expect(result.winnerPlayerIds).toEqual([1]);
-    expect(result.detail).toBe('1 skins');
+    // Skins is a list-display game — no single winner.
+    expect(result.winnerPlayerIds).toEqual([]);
+    expect(result.skinHolders).toEqual([{ playerId: 1, skins: 1 }]);
+    expect(result.detail).toBe('1 skin');
   });
 
-  it('no skin when two players tie on a hole', () => {
+  it('empty list when two players tie on every hole', () => {
     const handicaps: PlayerHandicap[] = [
       { playerId: 1, handicapIndex: 0 },
       { playerId: 2, handicapIndex: 0 },
     ];
-    // Both players score same on every hole
+    // Both players score same on every hole — no unique lows
     const scores = makeScores({ 1: PARS, 2: PARS });
     const result = calcMostSkins(scores, handicaps, 'blue');
-    expect(result.winnerPlayerIds).toEqual([]); // no-contest
+    expect(result.winnerPlayerIds).toEqual([]);
+    expect(result.skinHolders).toEqual([]);
+    expect(result.detail).toBe('0 skins');
   });
 
   it('works cross-group with FULL course handicap', () => {
@@ -116,7 +120,76 @@ describe('calcMostSkins', () => {
     const scores = makeScores({ 1: PARS, 2: PARS });
     const result = calcMostSkins(scores, handicaps, 'blue');
     // Player 1 (HI 20) gets more strokes → lower net on those holes → wins skins
-    expect(result.winnerPlayerIds).toContain(1);
+    expect(result.skinHolders?.some((h) => h.playerId === 1 && h.skins > 0)).toBe(true);
+  });
+
+  it('lists every skin holder, sorted desc by skins then by playerId asc', () => {
+    const handicaps: PlayerHandicap[] = [
+      { playerId: 1, handicapIndex: 0 },
+      { playerId: 2, handicapIndex: 0 },
+      { playerId: 3, handicapIndex: 0 },
+    ];
+    // Player 2 birdies holes 1+2; player 1 birdies hole 3; player 3 just pars.
+    const p1 = [...PARS]; p1[2] = PARS[2]! - 1;
+    const p2 = [...PARS]; p2[0] = PARS[0]! - 1; p2[1] = PARS[1]! - 1;
+    const p3 = [...PARS];
+    const scores = makeScores({ 1: p1, 2: p2, 3: p3 });
+    const result = calcMostSkins(scores, handicaps, 'blue');
+    expect(result.skinHolders).toEqual([
+      { playerId: 2, skins: 2 },
+      { playerId: 1, skins: 1 },
+    ]);
+    expect(result.detail).toBe('3 skins');
+  });
+
+  it('detail string singularizes for exactly one skin', () => {
+    const handicaps: PlayerHandicap[] = [
+      { playerId: 1, handicapIndex: 0 },
+      { playerId: 2, handicapIndex: 0 },
+    ];
+    const p1 = [...PARS]; p1[0] = PARS[0]! - 1;
+    const scores = makeScores({ 1: p1, 2: PARS });
+    const result = calcMostSkins(scores, handicaps, 'blue');
+    expect(result.detail).toBe('1 skin'); // not "1 skins"
+  });
+
+  it('per-hole completeness gate skips holes the field hasn\'t fully posted', () => {
+    // Three-player field. Player 1 birdies hole 1; players 2 and 3 haven't
+    // posted hole 1 yet (cross-group lag). With fieldPlayerIds, hole 1 is
+    // skipped and no skin awarded. Without the gate, player 1 would get a
+    // phantom skin since they're the lone scorer.
+    const handicaps: PlayerHandicap[] = [
+      { playerId: 1, handicapIndex: 0 },
+      { playerId: 2, handicapIndex: 0 },
+      { playerId: 3, handicapIndex: 0 },
+    ];
+    // Only player 1 has a score for hole 1
+    const partialScores = [
+      { playerId: 1, holeNumber: 1, grossScore: PARS[0]! - 1, putts: null },
+    ];
+    const fieldPlayerIds = new Set([1, 2, 3]);
+    const gated = calcMostSkins(partialScores, handicaps, 'blue', undefined, fieldPlayerIds);
+    expect(gated.skinHolders).toEqual([]);
+    expect(gated.detail).toBe('0 skins');
+
+    // Without the gate: player 1 picks up a phantom skin.
+    const ungated = calcMostSkins(partialScores, handicaps, 'blue');
+    expect(ungated.skinHolders).toEqual([{ playerId: 1, skins: 1 }]);
+  });
+
+  it('per-hole gate awards skin once every field player posts the hole', () => {
+    const handicaps: PlayerHandicap[] = [
+      { playerId: 1, handicapIndex: 0 },
+      { playerId: 2, handicapIndex: 0 },
+    ];
+    // Both players posted hole 1 — player 1 birdied, player 2 parred.
+    const scores = [
+      { playerId: 1, holeNumber: 1, grossScore: PARS[0]! - 1, putts: null },
+      { playerId: 2, holeNumber: 1, grossScore: PARS[0]!, putts: null },
+    ];
+    const fieldPlayerIds = new Set([1, 2]);
+    const result = calcMostSkins(scores, handicaps, 'blue', undefined, fieldPlayerIds);
+    expect(result.skinHolders).toEqual([{ playerId: 1, skins: 1 }]);
   });
 });
 
@@ -248,10 +321,11 @@ describe('eligible player filtering (subs excluded)', () => {
     const eligible = new Set([2]); // only player 2 is active
     const result = calcMostSkins(scores, handicaps2, 'blue', eligible);
     // Player 1's skin is blocked because they're a sub. Player 2 has 0 skins.
-    expect(result.winnerPlayerIds).toEqual([]); // no-contest
+    expect(result.skinHolders).toEqual([]);
+    expect(result.detail).toBe('0 skins');
   });
 
-  it('active player still wins skins on holes where they have unique low', () => {
+  it('active player still earns skins on holes where they have unique low', () => {
     const handicaps: PlayerHandicap[] = [
       { playerId: 1, handicapIndex: 10 }, // sub
       { playerId: 2, handicapIndex: 10 }, // active
@@ -261,8 +335,8 @@ describe('eligible player filtering (subs excluded)', () => {
     const scores = makeScores({ 1: PARS, 2: p2 });
     const eligible = new Set([2]);
     const result = calcMostSkins(scores, handicaps, 'blue', eligible);
-    expect(result.winnerPlayerIds).toEqual([2]);
-    expect(result.detail).toBe('1 skins');
+    expect(result.skinHolders).toEqual([{ playerId: 2, skins: 1 }]);
+    expect(result.detail).toBe('1 skin');
   });
 
   it('sub excluded from least putts — active player with fewer putts wins', () => {

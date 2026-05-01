@@ -267,7 +267,7 @@ function CheatsheetPage() {
       {/* ── 7. Quick rules ─────────────────────── */}
       <Section n={7} title="Side Game &amp; Quick Rules">
         <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-2.5 text-xs text-amber-900 dark:text-amber-200 font-semibold mb-3">
-          🏆 &nbsp;Side Game Winner: <b>Josh Stoll</b> (Most Skins — 4)
+          🏆 &nbsp;Side Game Winner: <b>Josh Stoll</b> (Most Net Pars — 9)
         </div>
         <ul className="text-xs space-y-1.5 leading-snug">
           <li>• <b>Holes 1 &amp; 3</b> are skins. No wolf, no polie/sandie payout (still tracked for stats).</li>
