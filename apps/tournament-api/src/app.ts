@@ -14,6 +14,7 @@ import { playersRouter } from './routes/players.js';
 import { scoresRouter, eventRoundsCourseRouter } from './routes/scores.js';
 import { eventsLeaderboardRouter } from './routes/events-leaderboard.js';
 import { scorerAssignmentsRouter } from './routes/scorer-assignments.js';
+import { roundLifecycleRouter } from './routes/round-lifecycle.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -106,5 +107,13 @@ app.route('/api/events', eventsLeaderboardRouter);
 // Authorization: per-event organizer OR current scorer of the foursome
 // (handler-internal; auth re-check is in-tx for TOCTOU safety).
 app.route('/api/rounds', scorerAssignmentsRouter);
+
+// T5-8 round-lifecycle endpoints. Effective URLs:
+// POST /api/rounds/:roundId/complete            (organizer OR any-foursome scorer)
+// POST /api/rounds/:roundId/complete-rollback   (organizer OR any-foursome scorer)
+// POST /api/rounds/:roundId/finalize            (per-event organizer only)
+// POST /api/rounds/:roundId/cancel              (per-event organizer only)
+// All transitions go through services/round-state.ts (single FSM).
+app.route('/api/rounds', roundLifecycleRouter);
 
 export { app };

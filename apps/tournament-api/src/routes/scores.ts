@@ -49,6 +49,12 @@ import {
   writeAudit,
 } from '../lib/audit-log.js';
 import { emitActivity } from '../lib/activity.js';
+import {
+  BusinessRuleError,
+  computeExpectedCells,
+  getRoundState,
+  transitionState,
+} from '../services/round-state.js';
 
 const TENANT_ID = 'guyan';
 
@@ -453,65 +459,43 @@ scoresRouter.post(
       });
 
       // (6) First-commit transition not_started → in_progress.
-      // Use conditional UPDATE with a state predicate so that concurrent
-      // first-commits race-safely: only the first UPDATE actually changes
-      // a row; the second sees 0 rows-affected and skips the audit emit.
+      // Promoted to services/round-state.ts in T5-8. The service handles
+      // race-safe conditional UPDATE + audit row + rounds.opened_at side
+      // effect. transitionState is idempotent on already-target state.
       let postState = rs.state;
       if (rs.state === 'not_started') {
-        const updated = await tx
-          .update(roundStates)
-          .set({
-            state: 'in_progress',
-            enteredAt: now,
-            enteredByPlayerId: player.id,
-          })
-          .where(
-            and(
-              eq(roundStates.roundId, roundId),
-              eq(roundStates.tenantId, TENANT_ID),
-              eq(roundStates.state, 'not_started'),
-            ),
-          )
-          .returning({ roundId: roundStates.roundId });
-        if (updated.length === 1) {
-          await tx
-            .update(rounds)
-            .set({ openedAt: now, openedByPlayerId: player.id })
-            .where(
-              and(eq(rounds.id, roundId), eq(rounds.tenantId, TENANT_ID)),
-            );
-          await writeAudit(tx, {
-            eventType: AUDIT_EVENT_TYPES.ROUND_STATE_CHANGED,
-            entityType: AUDIT_ENTITY_TYPES.ROUND,
-            entityId: roundId,
-            actorPlayerId: player.id,
-            payload: { from: 'not_started', to: 'in_progress' },
-          });
-          postState = 'in_progress';
-        } else {
-          // Concurrent transition won; re-read to use the latest state.
-          // KEEP the tenant predicate — bypassing it would risk tenant
-          // bleed if the same id ever collides across tenants (defense in
-          // depth; round-2 codex catch).
-          const refetch = await tx
-            .select({ state: roundStates.state })
-            .from(roundStates)
-            .where(
-              and(
-                eq(roundStates.roundId, roundId),
-                eq(roundStates.tenantId, TENANT_ID),
-              ),
-            )
-            .limit(1);
-          postState = refetch[0]?.state ?? rs.state;
+        try {
+          const result = await transitionState(
+            tx,
+            roundId,
+            'in_progress',
+            player.id,
+            TENANT_ID,
+          );
+          postState = result.to;
+        } catch (err) {
+          // T5-8's transitionState throws BusinessRuleError on illegal
+          // transitions or schema-level missing rows. For score-commit's
+          // first-write context, the only realistic case is a concurrent
+          // transition winning to a non-in_progress state (rare; would
+          // need a /cancel during an in-flight first-commit). Re-read
+          // and continue if the round is now in another writable state.
+          const newState = await getRoundState(tx, roundId, TENANT_ID);
+          postState = (newState ?? rs.state) as typeof postState;
+          // If the round became finalized/cancelled mid-flight, we need
+          // to roll the entire score-commit transaction back to keep the
+          // hole_score insert from landing on a now-locked round.
+          if (postState === 'finalized' || postState === 'cancelled') {
+            throw err;
+          }
         }
       }
 
-      // (7) Auto-complete detection. Same race-safe pattern: conditional
-      // UPDATE with state='in_progress' predicate so only one transition
-      // emits its audit row.
+      // (7) Auto-complete detection. Now driven by computeExpectedCells +
+      // hole-count compare (unchanged); the transition itself goes through
+      // transitionState, which encapsulates the race-safe conditional UPDATE.
       if (postState === 'in_progress') {
-        const expected = await computeExpectedCells(tx, round);
+        const expected = await computeExpectedCells(tx, round, TENANT_ID);
         const actualResult = await tx
           .select({ count: sql<number>`count(*)` })
           .from(holeScores)
@@ -524,30 +508,28 @@ scoresRouter.post(
           );
         const actualCount = actualResult[0]?.count ?? 0;
         if (expected > 0 && actualCount >= expected) {
-          const now2 = Date.now();
-          const updated = await tx
-            .update(roundStates)
-            .set({
-              state: 'complete_editable',
-              enteredAt: now2,
-              enteredByPlayerId: player.id,
-            })
-            .where(
-              and(
-                eq(roundStates.roundId, roundId),
-                eq(roundStates.tenantId, TENANT_ID),
-                eq(roundStates.state, 'in_progress'),
-              ),
-            )
-            .returning({ roundId: roundStates.roundId });
-          if (updated.length === 1) {
-            await writeAudit(tx, {
-              eventType: AUDIT_EVENT_TYPES.ROUND_STATE_CHANGED,
-              entityType: AUDIT_ENTITY_TYPES.ROUND,
-              entityId: roundId,
-              actorPlayerId: player.id,
-              payload: { from: 'in_progress', to: 'complete_editable' },
-            });
+          // transitionState handles the race-safe conditional UPDATE +
+          // audit row write. Idempotent if a concurrent commit raced to
+          // the same target (returns {from: 'in_progress', to: same}).
+          // Wrap in try/catch in case a /cancel raced in mid-flight; we
+          // ignore illegal_state_transition to avoid blocking the score
+          // commit itself (the score insert already landed earlier in
+          // this tx).
+          try {
+            await transitionState(
+              tx,
+              roundId,
+              'complete_editable',
+              player.id,
+              TENANT_ID,
+            );
+          } catch (err) {
+            if (err instanceof BusinessRuleError && err.code === 'illegal_state_transition') {
+              // Concurrent /cancel or other transition won the race.
+              // Score insert already committed-in-tx; transition is best-effort.
+            } else {
+              throw err;
+            }
           }
         }
       }
@@ -566,32 +548,8 @@ scoresRouter.post(
   },
 );
 
-/**
- * `expected = count(distinct player_id) over pairings × round.holesToPlay`.
- * Pass the already-fetched round row so we don't re-query.
- *
- * T5-8 may promote this to `apps/tournament-api/src/services/round-state.ts`
- * when the FSM is extracted.
- */
-async function computeExpectedCells(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  round: { eventRoundId: string | null; holesToPlay: number },
-): Promise<number> {
-  if (round.eventRoundId === null) return 0; // v1.5 standalone-round shape; never auto-completes
-  const result = await tx
-    .select({ count: sql<number>`count(distinct ${pairingMembers.playerId})` })
-    .from(pairingMembers)
-    .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
-    .where(
-      and(
-        eq(pairings.eventRoundId, round.eventRoundId),
-        eq(pairings.tenantId, TENANT_ID),
-        eq(pairingMembers.tenantId, TENANT_ID),
-      ),
-    );
-  const distinctPlayerCount = result[0]?.count ?? 0;
-  return distinctPlayerCount * round.holesToPlay;
-}
+// `computeExpectedCells` was promoted to `services/round-state.ts` in T5-8.
+// Imported at the top; no local definition needed.
 
 /**
  * Detect SQLite's UNIQUE constraint failure via libsql's wrapped error

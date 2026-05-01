@@ -135,7 +135,7 @@ development_status:
   T5-5-cross-group-stroke-play-leaderboard-v1: done
   T5-6-score-post-require-scorer-for-round-middleware: done
   T5-7-scorer-handoff-endpoint: done
-  T5-8-round-lifecycle-state-machine: backlog
+  T5-8-round-lifecycle-state-machine: done
   T5-9-score-correction-endpoint-audit-log: backlog
   T5-10-airplane-mode-drill-409-collision-integration-test: backlog
   T5-11-mid-event-rule-edit-effective-hole-boundary: backlog

@@ -25,16 +25,16 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   events,
   pairingMembers,
   pairings,
   rounds,
-  roundStates,
   scorerAssignments,
 } from '../db/schema/index.js';
+import { getRoundState } from '../services/round-state.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
 import {
@@ -134,40 +134,50 @@ scorerAssignmentsRouter.post(
       );
     }
 
-    // ── AC-2: round_states gate ──────────────────────────────────────
-    const rsRows = await db
-      .select({ state: roundStates.state })
-      .from(roundStates)
-      .where(
-        and(
-          eq(roundStates.roundId, roundId),
-          eq(roundStates.tenantId, TENANT_ID),
-        ),
-      )
-      .limit(1);
-    if (rsRows.length === 0) {
-      return c.json(
-        { error: 'unprocessable', code: 'round_state_missing', requestId },
-        422,
-      );
-    }
-    const state = rsRows[0]!.state;
-    if (state === 'finalized') {
-      return c.json(
-        { error: 'unprocessable', code: 'round_finalized', requestId },
-        422,
-      );
-    }
-    if (state === 'cancelled') {
-      return c.json(
-        { error: 'unprocessable', code: 'round_cancelled', requestId },
-        422,
-      );
-    }
+    // ── State gate is now read INSIDE the transaction (T5-8 refactor).
+    // Closes T5-7d (state-machine integration) + partially closes T5-7f
+    // (race window). Full closure requires BEGIN IMMEDIATE; documented
+    // as v1 residual + tracked in T5-8b. ────────────────────────────
 
-    // ── Begin authoritative transaction (AC-3 → AC-5) ───────────────
+    // ── Begin authoritative transaction (AC-2 → AC-5) ───────────────
     try {
       const result = await db.transaction(async (tx) => {
+        // AC-2: in-tx state read via T5-8 service.
+        const state = await getRoundState(tx, roundId, TENANT_ID);
+        if (state === null) {
+          return {
+            kind: 'error' as const,
+            status: 422 as const,
+            body: {
+              error: 'unprocessable',
+              code: 'round_state_missing',
+              requestId,
+            },
+          };
+        }
+        if (state === 'finalized') {
+          return {
+            kind: 'error' as const,
+            status: 422 as const,
+            body: {
+              error: 'unprocessable',
+              code: 'round_finalized',
+              requestId,
+            },
+          };
+        }
+        if (state === 'cancelled') {
+          return {
+            kind: 'error' as const,
+            status: 422 as const,
+            body: {
+              error: 'unprocessable',
+              code: 'round_cancelled',
+              requestId,
+            },
+          };
+        }
+
         // AC-3 (i): in-tx SELECT current scorer → fromPlayerId.
         const scorerRows = await tx
           .select({
@@ -287,6 +297,18 @@ scorerAssignmentsRouter.post(
         // their override authority. Scorer-path (narrowed) is used only
         // when the caller's authorization comes purely from being the
         // current scorer.
+        // T5-8 state-gating: add an EXISTS predicate so the WRITE itself
+        // re-checks state at commit-time. If a concurrent /finalize or
+        // /cancel committed before this transaction's BEGIN, the EXISTS
+        // sees the new state and the UPDATE returns 0 rows. (Within-snapshot
+        // race window remains; followup T5-8b tracks BEGIN IMMEDIATE for
+        // full closure.)
+        const writableStateExists = sql`EXISTS (
+          SELECT 1 FROM round_states
+          WHERE round_states.round_id = ${scorerAssignments.roundId}
+            AND round_states.tenant_id = ${TENANT_ID}
+            AND round_states.state NOT IN ('finalized', 'cancelled')
+        )`;
         const useOrganizerPath = isEventOrganizer;
         const updateResult = await (useOrganizerPath
           ? updateBuilder
@@ -295,6 +317,7 @@ scorerAssignmentsRouter.post(
                   eq(scorerAssignments.roundId, roundId),
                   eq(scorerAssignments.foursomeNumber, foursomeNumber),
                   eq(scorerAssignments.tenantId, TENANT_ID),
+                  writableStateExists,
                 ),
               )
               .returning({ rowId: scorerAssignments.scorerPlayerId })
@@ -305,13 +328,39 @@ scorerAssignmentsRouter.post(
                   eq(scorerAssignments.foursomeNumber, foursomeNumber),
                   eq(scorerAssignments.scorerPlayerId, fromPlayerId),
                   eq(scorerAssignments.tenantId, TENANT_ID),
+                  writableStateExists,
                 ),
               )
               .returning({ rowId: scorerAssignments.scorerPlayerId }));
 
         if (updateResult.length === 0) {
-          // Scorer-path: a concurrent transfer beat us. 403 (no longer authorized).
-          // Organizer-path: defense (AC-3(i) already guarantees ≥1 row).
+          // 0 rows → either: (a) state flipped to finalized/cancelled, or
+          // (b) scorer-path: concurrent transfer changed scorer_player_id.
+          // Re-read state to disambiguate.
+          const nowState = await getRoundState(tx, roundId, TENANT_ID);
+          if (nowState === 'finalized') {
+            return {
+              kind: 'error' as const,
+              status: 422 as const,
+              body: {
+                error: 'unprocessable',
+                code: 'round_finalized',
+                requestId,
+              },
+            };
+          }
+          if (nowState === 'cancelled') {
+            return {
+              kind: 'error' as const,
+              status: 422 as const,
+              body: {
+                error: 'unprocessable',
+                code: 'round_cancelled',
+                requestId,
+              },
+            };
+          }
+          // State is still writable — must be the scorer-path TOCTOU case.
           if (!useOrganizerPath) {
             return {
               kind: 'error' as const,
