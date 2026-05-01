@@ -132,7 +132,7 @@ development_status:
   T5-2-scorer-entry-ui-ios-keyboard-fix: done
   T5-3-offline-queue-indexeddb-client-event-id-idempotency: done
   T5-4-offline-course-scorecard-shell-cache: done
-  T5-5-cross-group-stroke-play-leaderboard-v1: backlog
+  T5-5-cross-group-stroke-play-leaderboard-v1: done
   T5-6-score-post-require-scorer-for-round-middleware: done
   T5-7-scorer-handoff-endpoint: backlog
   T5-8-round-lifecycle-state-machine: backlog

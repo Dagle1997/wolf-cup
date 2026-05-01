@@ -12,6 +12,7 @@ import { coursesRouter } from './routes/courses.js';
 import { inviteRouter } from './routes/invites.js';
 import { playersRouter } from './routes/players.js';
 import { scoresRouter, eventRoundsCourseRouter } from './routes/scores.js';
+import { eventsLeaderboardRouter } from './routes/events-leaderboard.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -92,5 +93,11 @@ app.route('/api/rounds', scoresRouter);
 // requireEventParticipant can read it). Effective URL:
 // GET /api/events/:eventId/rounds/:roundId/course.
 app.route('/api/events', eventRoundsCourseRouter);
+
+// T5-5 cross-group stroke-play leaderboard. Effective URL:
+// GET /api/events/:eventId/leaderboard?round=<roundId | 'current' | omitted>.
+// Gated by requireSession + requireEventParticipant; recomputes on read
+// per architecture D1-1 (no cache v1).
+app.route('/api/events', eventsLeaderboardRouter);
 
 export { app };

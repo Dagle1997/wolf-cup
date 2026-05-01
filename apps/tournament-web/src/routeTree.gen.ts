@@ -16,6 +16,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AuthDeclinedRouteImport } from './routes/auth.declined'
 import { Route as AuthConflictRouteImport } from './routes/auth.conflict'
 import { Route as RoundsRoundIdScoreEntryRouteImport } from './routes/rounds.$roundId.score-entry'
+import { Route as EventsEventIdLeaderboardRouteImport } from './routes/events.$eventId.leaderboard'
 import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
@@ -59,6 +60,12 @@ const RoundsRoundIdScoreEntryRoute = RoundsRoundIdScoreEntryRouteImport.update({
   path: '/rounds/$roundId/score-entry',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsEventIdLeaderboardRoute =
+  EventsEventIdLeaderboardRouteImport.update({
+    id: '/events/$eventId/leaderboard',
+    path: '/events/$eventId/leaderboard',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminEventsNewRoute = AdminEventsNewRouteImport.update({
   id: '/admin/events/new',
   path: '/admin/events/new',
@@ -107,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
@@ -123,6 +131,7 @@ export interface FileRoutesByTo {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
@@ -140,6 +149,7 @@ export interface FileRoutesById {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/events/$eventId/leaderboard'
     | '/rounds/$roundId/score-entry'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/pairings'
@@ -174,6 +185,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/events/$eventId/leaderboard'
     | '/rounds/$roundId/score-entry'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/pairings'
@@ -190,6 +202,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/events/$eventId/leaderboard'
     | '/rounds/$roundId/score-entry'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/pairings'
@@ -207,6 +220,7 @@ export interface RootRouteChildren {
   AdminCoursesNewRoute: typeof AdminCoursesNewRoute
   AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
   AdminEventsNewRoute: typeof AdminEventsNewRoute
+  EventsEventIdLeaderboardRoute: typeof EventsEventIdLeaderboardRoute
   RoundsRoundIdScoreEntryRoute: typeof RoundsRoundIdScoreEntryRoute
   AdminEventRoundsEventRoundIdSubGamesRoute: typeof AdminEventRoundsEventRoundIdSubGamesRoute
   AdminEventsEventIdPairingsRoute: typeof AdminEventsEventIdPairingsRoute
@@ -263,6 +277,13 @@ declare module '@tanstack/react-router' {
       path: '/rounds/$roundId/score-entry'
       fullPath: '/rounds/$roundId/score-entry'
       preLoaderRoute: typeof RoundsRoundIdScoreEntryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events/$eventId/leaderboard': {
+      id: '/events/$eventId/leaderboard'
+      path: '/events/$eventId/leaderboard'
+      fullPath: '/events/$eventId/leaderboard'
+      preLoaderRoute: typeof EventsEventIdLeaderboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/events/new': {
@@ -327,6 +348,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminCoursesNewRoute: AdminCoursesNewRoute,
   AdminCoursesUploadRoute: AdminCoursesUploadRoute,
   AdminEventsNewRoute: AdminEventsNewRoute,
+  EventsEventIdLeaderboardRoute: EventsEventIdLeaderboardRoute,
   RoundsRoundIdScoreEntryRoute: RoundsRoundIdScoreEntryRoute,
   AdminEventRoundsEventRoundIdSubGamesRoute:
     AdminEventRoundsEventRoundIdSubGamesRoute,
