@@ -137,7 +137,7 @@ development_status:
   T5-7-scorer-handoff-endpoint: done
   T5-8-round-lifecycle-state-machine: done
   T5-9-score-correction-endpoint-audit-log: done
-  T5-10-airplane-mode-drill-409-collision-integration-test: backlog
+  T5-10-airplane-mode-drill-409-collision-integration-test: done
   T5-11-mid-event-rule-edit-effective-hole-boundary: backlog
 
   epic-T5-retrospective: optional

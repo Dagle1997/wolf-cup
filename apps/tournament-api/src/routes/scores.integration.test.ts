@@ -363,6 +363,50 @@ describe('POST /api/rounds/:roundId/holes/:holeNumber/scores', () => {
     expect(body.code).toBe('hole_already_scored');
     expect(body.conflictingEntry).not.toBeNull();
     expect(body.conflictingEntry!.client_event_id).toBe('evt-A');
+
+    // T5-10 AC-1: first-writer-wins (D3-3). The cell holds exactly the
+    // ORIGINAL row — same gross AND same clientEventId — proving the
+    // 409 path didn't silently overwrite (a hypothetical UPDATE that
+    // coincidentally set grossStrokes=4 again would still pass the
+    // first two assertions; clientEventId='evt-A' proves identity).
+    const rows = await db
+      .select()
+      .from(holeScores)
+      .where(
+        and(
+          eq(holeScores.roundId, seed.roundId),
+          eq(holeScores.playerId, seed.player1Id),
+          eq(holeScores.holeNumber, 7),
+        ),
+      );
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.grossStrokes).toBe(4);
+    expect(rows[0]!.clientEventId).toBe('evt-A');
+
+    // T5-10 AC-2: the 409 path MUST NOT emit a score.committed audit row.
+    // Two complementary assertions for defense in depth:
+    //   (a) entity-scoped: surviving hole_score's id has exactly 1 audit
+    //       row (the original insert's). Catches "duplicate audit under
+    //       the same entityId".
+    //   (b) round-total: the entire suite has exactly 1 score.committed
+    //       audit row (beforeEach truncates auditLog). Catches "audit
+    //       erroneously emitted under any other entityId on the 409 path".
+    const surviving = rows[0]!;
+    const entityScopedAudits = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.eventType, 'score.committed'),
+          eq(auditLog.entityId, surviving.id),
+        ),
+      );
+    expect(entityScopedAudits.length).toBe(1);
+    const allCommittedAudits = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.eventType, 'score.committed'));
+    expect(allCommittedAudits.length).toBe(1);
   });
 
   test('422 round_not_writable: state = finalized rejects writes', async () => {
