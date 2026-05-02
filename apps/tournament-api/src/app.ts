@@ -15,6 +15,7 @@ import { scoresRouter, eventRoundsCourseRouter } from './routes/scores.js';
 import { eventsLeaderboardRouter } from './routes/events-leaderboard.js';
 import { scorerAssignmentsRouter } from './routes/scorer-assignments.js';
 import { roundLifecycleRouter } from './routes/round-lifecycle.js';
+import { scoreCorrectionsRouter } from './routes/score-corrections.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -115,5 +116,14 @@ app.route('/api/rounds', scorerAssignmentsRouter);
 // POST /api/rounds/:roundId/cancel              (per-event organizer only)
 // All transitions go through services/round-state.ts (single FSM).
 app.route('/api/rounds', roundLifecycleRouter);
+
+// T5-9 score-corrections endpoints. Effective URLs:
+// POST /api/rounds/:roundId/scores/:playerId/:holeNumber/correct
+//      (per-event organizer OR scorer of target player's foursome)
+// GET  /api/rounds/:roundId/score-corrections
+//      (per-event organizer OR scorer of any foursome of this round)
+// Allowed states: in_progress, complete_editable, finalized.
+// T6 money recompute deferred to followup T5-9a (post-commit breadcrumb only).
+app.route('/api/rounds', scoreCorrectionsRouter);
 
 export { app };
