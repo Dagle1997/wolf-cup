@@ -1,5 +1,12 @@
 /**
- * Slope-aware course handicap math (T5-5).
+ * Slope-aware course handicap math (T5-5; T6-1 layering tidy-up).
+ *
+ * **As of T6-1 (Section 2b layering):** the `calcCourseHandicap` body
+ * now lives in `apps/tournament-api/src/engine/handicap-strokes.ts`.
+ * This module is a THIN WRAPPER that preserves T5-5's public API
+ * (`CourseHandicapInput` type + same call signature) so leaderboard.ts
+ * and other existing callers compile unchanged. `allocateNetThroughHole`
+ * stays here — it's a partial-round leaderboard helper, not engine math.
  *
  * Formula source: `packages/engine/src/course.ts:14` (USGA standard).
  * Tournament owns its own copy because Wolf Cup's engine hardcodes Guyan
@@ -17,6 +24,8 @@
  *     dividing by 10 before applying the formula.
  */
 
+import { calcCourseHandicap as engineCalcCourseHandicap } from '../engine/handicap-strokes.js';
+
 export type CourseHandicapInput = {
   /** Player's USGA handicap index (e.g. 12.4). Throws if null/undefined. */
   handicapIndex: number;
@@ -24,7 +33,7 @@ export type CourseHandicapInput = {
   slope: number;
   /**
    * USGA course rating × 10 from `course_tees.rating` (e.g. 723 = 72.3).
-   * This module divides by 10 internally.
+   * The engine implementation divides by 10 internally.
    */
   ratingTimes10: number;
   /** Course par from `course_revisions.courseTotal` (typically 70–72). */
@@ -36,27 +45,12 @@ export type CourseHandicapInput = {
  * Throws on missing/invalid inputs — caller's responsibility to handle null
  * handicap index BEFORE calling this (see leaderboard.ts which sets
  * `netThroughHole = null` for players with no handicap on file).
+ *
+ * Implementation lives in `engine/handicap-strokes.ts`; this is the
+ * services-layer wrapper that preserves T5-5's existing call contract.
  */
 export function calcCourseHandicap(input: CourseHandicapInput): number {
-  const { handicapIndex, slope, ratingTimes10, coursePar } = input;
-  if (typeof handicapIndex !== 'number' || Number.isNaN(handicapIndex)) {
-    throw new Error('calcCourseHandicap: handicapIndex must be a finite number');
-  }
-  if (typeof slope !== 'number' || slope <= 0) {
-    throw new Error('calcCourseHandicap: slope must be a positive number');
-  }
-  if (typeof ratingTimes10 !== 'number' || ratingTimes10 <= 0) {
-    throw new Error('calcCourseHandicap: ratingTimes10 must be a positive number');
-  }
-  if (typeof coursePar !== 'number' || coursePar <= 0) {
-    throw new Error('calcCourseHandicap: coursePar must be a positive number');
-  }
-  const rating = ratingTimes10 / 10;
-  const result = Math.round(handicapIndex * (slope / 113) + (rating - coursePar));
-  // Normalize JS's signed zero (Math.round(-0.5) returns -0) — a course
-  // handicap of zero is conceptually unsigned and downstream `Object.is`
-  // comparisons in tests + caches treat -0 and +0 as distinct.
-  return result === 0 ? 0 : result;
+  return engineCalcCourseHandicap(input);
 }
 
 export type NetAllocationInput = {

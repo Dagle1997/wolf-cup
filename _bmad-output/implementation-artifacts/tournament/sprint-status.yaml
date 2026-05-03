@@ -151,9 +151,9 @@ development_status:
   # framework, skins leaderboard + settle-up integration.
   # Integer-cents discipline locked across this epic.
   # ---------------------------------------------------------------------------
-  epic-T6: backlog
+  epic-T6: in-progress
 
-  T6-1-engine-2v2-best-ball-hole-round-scoring: backlog
+  T6-1-engine-2v2-best-ball-hole-round-scoring: done
   T6-2-engine-press-auto-press-trigger-evaluation: backlog
   T6-3-engine-schema-cross-foursome-individual-bets: backlog
   T6-4-score-commit-hook-hole-complete-press-evaluation: backlog

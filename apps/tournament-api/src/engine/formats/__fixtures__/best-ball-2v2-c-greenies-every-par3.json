@@ -1,0 +1,63 @@
+{
+  "name": "(c) Greenies on every par 3 — 4 par-3 holes, A wins all, valid CTP + 2-putt on each",
+  "input": {
+    "holeScores": [
+      { "playerId": "A1", "holeNumber": 1, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+
+      { "playerId": "A1", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 2, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+
+      { "playerId": "A1", "holeNumber": 3, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 3, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 3, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 3, "grossStrokes": 4, "putts": 2 },
+
+      { "playerId": "A1", "holeNumber": 4, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 4, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 4, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 4, "grossStrokes": 4, "putts": 2 }
+    ],
+    "holeMeta": [
+      { "holeNumber": 1, "closestToPinPlayerId": "A1" },
+      { "holeNumber": 2, "closestToPinPlayerId": "A2" },
+      { "holeNumber": 3, "closestToPinPlayerId": "A1" },
+      { "holeNumber": 4, "closestToPinPlayerId": "A2" }
+    ],
+    "pairings": { "teamA": ["A1", "A2"], "teamB": ["B1", "B2"] },
+    "config": {
+      "basePerHoleCents": 100,
+      "sandies": false,
+      "sandiesBonusPerHoleCents": 0,
+      "greenieCarryover": true,
+      "greenieValidation": "2-putt",
+      "greenieBaseCents": 25
+    },
+    "course": {
+      "tee": { "slope": 113, "ratingTimes10": 720, "coursePar": 72 },
+      "holes": [
+        { "holeNumber": 1, "par": 3, "strokeIndex": 17 },
+        { "holeNumber": 2, "par": 3, "strokeIndex": 15 },
+        { "holeNumber": 3, "par": 3, "strokeIndex": 18 },
+        { "holeNumber": 4, "par": 3, "strokeIndex": 16 }
+      ]
+    },
+    "handicapIndexByPlayer": { "A1": 0, "A2": 0, "B1": 0, "B2": 0 }
+  },
+  "expectedRound": {
+    "teamTotalCents": 2000,
+    "holesPlayed": 4,
+    "sandiesAwardedCount": 0,
+    "greeniesAwardedCount": 4
+  },
+  "expectedHoleSummary": [
+    { "holeNumber": 1, "winner": "teamA", "teamDeltaCents": 500, "greenieAwardedNonNull": true, "greeniePlayerId": "A1" },
+    { "holeNumber": 2, "winner": "teamA", "teamDeltaCents": 500, "greenieAwardedNonNull": true, "greeniePlayerId": "A2" },
+    { "holeNumber": 3, "winner": "teamA", "teamDeltaCents": 500, "greenieAwardedNonNull": true, "greeniePlayerId": "A1" },
+    { "holeNumber": 4, "winner": "teamA", "teamDeltaCents": 500, "greenieAwardedNonNull": true, "greeniePlayerId": "A2" }
+  ]
+}
