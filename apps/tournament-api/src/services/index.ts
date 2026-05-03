@@ -37,6 +37,7 @@ export {
   transitionState,
   getRoundState,
   isEventOrganizer,
+  isEventOrganizerByEventId,
   computeExpectedCells,
   computeMissingCells,
   getRoundContext,

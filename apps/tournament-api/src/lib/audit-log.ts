@@ -26,6 +26,7 @@ export const AUDIT_EVENT_TYPES = {
   ROUND_STATE_CHANGED: 'round.state_changed',
   SCORER_TRANSFERRED: 'scorer.transferred',
   ROUND_FINALIZED: 'round.finalized',
+  RULE_SET_REVISED: 'rule_set.revised',
 } as const;
 
 export type AuditEventType =
@@ -35,6 +36,7 @@ export const AUDIT_ENTITY_TYPES = {
   HOLE_SCORE: 'hole_score',
   ROUND: 'round',
   SESSION: 'session',
+  RULE_SET: 'rule_set',
 } as const;
 
 export type AuditEntityType =

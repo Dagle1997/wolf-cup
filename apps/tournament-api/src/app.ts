@@ -16,6 +16,7 @@ import { eventsLeaderboardRouter } from './routes/events-leaderboard.js';
 import { scorerAssignmentsRouter } from './routes/scorer-assignments.js';
 import { roundLifecycleRouter } from './routes/round-lifecycle.js';
 import { scoreCorrectionsRouter } from './routes/score-corrections.js';
+import { eventRuleEditsRouter } from './routes/event-rule-edits.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -125,5 +126,14 @@ app.route('/api/rounds', roundLifecycleRouter);
 // Allowed states: in_progress, complete_editable, finalized.
 // T6 money recompute deferred to followup T5-9a (post-commit breadcrumb only).
 app.route('/api/rounds', scoreCorrectionsRouter);
+
+// T5-11 event-scoped rule-set revision endpoint. Effective URL:
+// POST /api/events/:eventId/rule-sets/:ruleSetId/revisions
+// Authorization: per-event organizer ONLY (events.organizer_player_id).
+// Effective-hole-aware boundary (1..18 = mid-round; 19 = next-round-onward).
+// Frozen-round freeze guard rejects edits whose window includes any
+// finalized round (422 rule_edit_would_recompute_finalized_round).
+// T6 money recompute deferred to followup T5-11a (post-commit breadcrumb only).
+app.route('/api/events', eventRuleEditsRouter);
 
 export { app };

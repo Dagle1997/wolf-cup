@@ -157,6 +157,34 @@ export async function isEventOrganizer(
   return rows.length > 0;
 }
 
+/**
+ * Sibling helper for callers that have eventId in scope (T5-11). The
+ * existing isEventOrganizer takes roundId because T5-7/T5-8 endpoints
+ * are mounted under /api/rounds; T5-11 mounts under /api/events. Same
+ * underlying check (events.organizer_player_id == :playerId), tenant-
+ * scoped. Nonexistent event → returns false (the no-existence-leak
+ * invariant is enforced at the route layer by mapping false → 403).
+ */
+export async function isEventOrganizerByEventId(
+  txOrDb: Tx | Db,
+  eventId: string,
+  playerId: string,
+  tenantId: string,
+): Promise<boolean> {
+  const rows = await txOrDb
+    .select({ id: events.id })
+    .from(events)
+    .where(
+      and(
+        eq(events.id, eventId),
+        eq(events.organizerPlayerId, playerId),
+        eq(events.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 // ---------------------------------------------------------------------------
 // Cell-counting helpers (promoted from T5-6 scores.ts:576-594)
 // ---------------------------------------------------------------------------
