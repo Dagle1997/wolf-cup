@@ -151,7 +151,7 @@ development_status:
   # framework, skins leaderboard + settle-up integration.
   # Integer-cents discipline locked across this epic.
   # ---------------------------------------------------------------------------
-  epic-T6: in-progress
+  epic-T6: done
 
   T6-1-engine-2v2-best-ball-hole-round-scoring: done
   T6-2-engine-press-auto-press-trigger-evaluation: done
@@ -168,14 +168,14 @@ development_status:
   T6-13-sub-game-framework-schema-dispatcher-compute-route: done
   T6-14-skins-leaderboard-column-settle-up-integration: done
 
-  epic-T6-retrospective: optional
+  epic-T6-retrospective: done
 
   # ---------------------------------------------------------------------------
   # Epic T7: Player Experience
   # Event home, schedule view, course preview, photo gallery (R2 reuse),
   # raw-state JSON export, install prompt, read-only browser-tab fallback.
   # ---------------------------------------------------------------------------
-  epic-T7: backlog
+  epic-T7: in-progress
 
   T7-1-event-home-page-countdown-schedule-entry: backlog
   T7-2-schedule-view: backlog
