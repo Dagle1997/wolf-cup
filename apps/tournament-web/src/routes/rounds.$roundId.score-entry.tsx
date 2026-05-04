@@ -463,6 +463,7 @@ export function ScoreEntryRoute() {
         queueDrain={queue.drain}
         queueRefreshCount={queue.refreshCount}
       />
+      <PressControl roundId={roundId} />
       <ScoreEntryForm
         data={data}
         queue={queue}
@@ -614,6 +615,140 @@ function HandoffControl({
       )}
       {error !== null && (
         <p role="alert" data-testid="handoff-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---- PressControl (T6-7a) -------------------------------------------------
+
+interface PressControlProps {
+  roundId: string;
+}
+
+interface PressFireResponse {
+  ok: boolean;
+  pressId: string;
+  fromHole: number;
+  canUndoUntilHoleComplete: number;
+}
+
+/**
+ * T6-7a — minimal manual press UI. Two buttons (Press teamA / Press teamB);
+ * on click, POSTs to /api/rounds/:roundId/presses. Server derives fromHole.
+ *
+ * After firing, shows the fromHole + an Undo button. Undo calls DELETE
+ * /api/rounds/:roundId/presses/:pressId. The undo window closes when the
+ * pressed hole completes (4/4 scores); the API returns 422 in that case
+ * and we surface the error inline.
+ *
+ * v1 deferrals: confirmation dialog (none — one-tap fire); animations;
+ * mobile-responsive layout polish; auto-press visibility (auto presses
+ * fire silently per FR-D5; this UI shows MANUAL fires only).
+ */
+function PressControl({ roundId }: PressControlProps) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fired, setFired] = useState<{
+    pressId: string;
+    team: 'teamA' | 'teamB';
+    fromHole: number;
+  } | null>(null);
+
+  const handleFire = useCallback(
+    async (team: 'teamA' | 'teamB') => {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/rounds/${roundId}/presses`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ team }),
+          credentials: 'same-origin',
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { code?: string };
+          setError(`Press failed: ${body.code ?? `HTTP ${res.status}`}`);
+          setSubmitting(false);
+          return;
+        }
+        const body = (await res.json()) as PressFireResponse;
+        setFired({ pressId: body.pressId, team, fromHole: body.fromHole });
+        setSubmitting(false);
+      } catch (e) {
+        setError(`Network error: ${String(e)}`);
+        setSubmitting(false);
+      }
+    },
+    [roundId],
+  );
+
+  const handleUndo = useCallback(async () => {
+    if (fired === null) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/rounds/${roundId}/presses/${fired.pressId}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { code?: string };
+        setError(`Undo failed: ${body.code ?? `HTTP ${res.status}`}`);
+        setSubmitting(false);
+        return;
+      }
+      setFired(null);
+      setSubmitting(false);
+    } catch (e) {
+      setError(`Network error: ${String(e)}`);
+      setSubmitting(false);
+    }
+  }, [fired, roundId]);
+
+  return (
+    <div data-testid="press-control">
+      {fired === null ? (
+        <div>
+          <span style={{ marginRight: '0.5rem' }}>Press:</span>
+          <button
+            type="button"
+            data-testid="press-teamA"
+            onClick={() => handleFire('teamA')}
+            disabled={submitting}
+          >
+            Team A
+          </button>
+          <button
+            type="button"
+            data-testid="press-teamB"
+            onClick={() => handleFire('teamB')}
+            disabled={submitting}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Team B
+          </button>
+        </div>
+      ) : (
+        <div data-testid="press-fired">
+          <span>
+            Press fired: {fired.team} from hole {fired.fromHole}.
+          </span>
+          <button
+            type="button"
+            data-testid="press-undo"
+            onClick={handleUndo}
+            disabled={submitting}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Undo
+          </button>
+        </div>
+      )}
+      {error !== null && (
+        <p role="alert" data-testid="press-error">
           {error}
         </p>
       )}
