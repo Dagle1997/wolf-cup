@@ -34,6 +34,8 @@ type LeaderboardRow = {
   throughHole: number;
   rank: number;
   tiedWith: number;
+  /** T6-14: skins pot share across finalized rounds. Null until any finalize. */
+  skinsCents: number | null;
 };
 
 type RoundSummary = {
@@ -124,6 +126,21 @@ function formatHandicap(hi: number | null): string {
 function formatScore(value: number | null): string {
   if (value === null) return '—';
   return String(value);
+}
+
+/**
+ * T6-14: format skinsCents for display. Null → `—` (with tooltip semantics
+ * via the parent <td title="…">). Integer cents → formatCents.
+ */
+function formatSkins(cents: number | null): string {
+  if (cents === null) return '—';
+  // Use a small inline formatter to avoid cross-package import; mirrors
+  // tournament-web/lib/format-cents.ts. Positive only (skins is winnings,
+  // not signed money).
+  if (!Number.isFinite(cents)) return '—';
+  const dollars = Math.floor(cents / 100);
+  const remainder = cents % 100;
+  return `$${dollars}.${remainder.toString().padStart(2, '0')}`;
 }
 
 // ---- Component ------------------------------------------------------------
@@ -223,6 +240,7 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
               <th scope="col">Thru</th>
               <th scope="col">Gross</th>
               <th scope="col">Net</th>
+              <th scope="col" title="Skins compute on round finalize">Skins</th>
             </tr>
           </thead>
           <tbody>
@@ -234,6 +252,15 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
                 <td>{row.throughHole}</td>
                 <td>{formatScore(row.grossThroughHole)}</td>
                 <td>{formatScore(row.netThroughHole)}</td>
+                <td
+                  title={
+                    row.skinsCents === null
+                      ? 'Skins compute on round finalize'
+                      : undefined
+                  }
+                >
+                  {formatSkins(row.skinsCents)}
+                </td>
               </tr>
             ))}
           </tbody>

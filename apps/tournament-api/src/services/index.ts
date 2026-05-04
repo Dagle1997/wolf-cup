@@ -58,4 +58,5 @@ export {
 export {
   computeSubGame,
   computeSubGamesForRound,
+  aggregateSkinsForEvent,
 } from './sub-games.js';

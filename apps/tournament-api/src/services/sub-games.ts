@@ -23,7 +23,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { db as DbType } from '../db/index.js';
 import {
   courseHoles,
@@ -33,6 +33,7 @@ import {
   holeScores,
   players,
   rounds,
+  roundStates,
   subGames,
   subGameParticipants,
   subGameResults,
@@ -358,4 +359,112 @@ export async function computeSubGamesForRound(
     }
   }
   return { computed, skipped };
+}
+
+/**
+ * T6-14: aggregate skins pot shares per player across all FINALIZED rounds'
+ * skins sub-games for an event. Returns Map<playerId, totalCents>.
+ *
+ * For each skins sub-game attached to a finalized round, reads the LATEST
+ * sub_game_results row (per FD-10/11 append-only convention; latest wins).
+ * Parses resultsJson.potShares and sums dollarsCents per player.
+ *
+ * Pre-finalize rounds are EXCLUDED — leaderboard renders `null` for skinsCents
+ * on rows where no finalized skins sub-game has contributed (per epic AC line
+ * 2218: "for rounds that haven't yet finalized, displays — not $0.00").
+ */
+export async function aggregateSkinsForEvent(
+  txOrDb: Tx | Db,
+  eventId: string,
+  tenantId: string,
+): Promise<Map<string, number>> {
+  // Find all FINALIZED runtime rounds in this event.
+  const finalizedRoundRows = await txOrDb
+    .select({
+      eventRoundId: rounds.eventRoundId,
+    })
+    .from(rounds)
+    .innerJoin(roundStates, eq(roundStates.roundId, rounds.id))
+    .where(
+      and(
+        eq(rounds.eventId, eventId),
+        eq(rounds.tenantId, tenantId),
+        eq(roundStates.state, 'finalized'),
+        eq(roundStates.tenantId, tenantId),
+      ),
+    );
+  const finalizedEventRoundIds = finalizedRoundRows
+    .map((r) => r.eventRoundId)
+    .filter((id): id is string => id !== null);
+  if (finalizedEventRoundIds.length === 0) return new Map();
+
+  // Find skins sub-games attached to those event_rounds.
+  const skinsSubGameRows = await txOrDb
+    .select({ id: subGames.id })
+    .from(subGames)
+    .where(
+      and(
+        eq(subGames.type, 'skins'),
+        eq(subGames.tenantId, tenantId),
+        // event_round_id IN (...)
+        ...(finalizedEventRoundIds.length === 1
+          ? [eq(subGames.eventRoundId, finalizedEventRoundIds[0]!)]
+          : []),
+      ),
+    );
+  // For multi-id IN, fall back to inArray (single-ID was an optimization).
+  const skinsIds: string[] = [];
+  if (finalizedEventRoundIds.length > 1) {
+    const allRows = await txOrDb
+      .select({ id: subGames.id, eventRoundId: subGames.eventRoundId })
+      .from(subGames)
+      .where(
+        and(
+          eq(subGames.type, 'skins'),
+          eq(subGames.tenantId, tenantId),
+        ),
+      );
+    for (const r of allRows) {
+      if (finalizedEventRoundIds.includes(r.eventRoundId)) {
+        skinsIds.push(r.id);
+      }
+    }
+  } else {
+    for (const r of skinsSubGameRows) skinsIds.push(r.id);
+  }
+  if (skinsIds.length === 0) return new Map();
+
+  // For each skins sub-game, fetch the LATEST sub_game_results row.
+  const totals = new Map<string, number>();
+  for (const sgId of skinsIds) {
+    const latestRows = await txOrDb
+      .select({ resultsJson: subGameResults.resultsJson })
+      .from(subGameResults)
+      .where(
+        and(
+          eq(subGameResults.subGameId, sgId),
+          eq(subGameResults.tenantId, tenantId),
+        ),
+      )
+      .orderBy(desc(subGameResults.computedAt))
+      .limit(1);
+    if (latestRows.length === 0) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(latestRows[0]!.resultsJson);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object') continue;
+    const potShares = (parsed as { potShares?: unknown }).potShares;
+    if (!Array.isArray(potShares)) continue;
+    for (const ps of potShares) {
+      if (!ps || typeof ps !== 'object') continue;
+      const psObj = ps as { playerId?: unknown; dollarsCents?: unknown };
+      if (typeof psObj.playerId !== 'string') continue;  // skip null sentinel (carried to next round)
+      if (typeof psObj.dollarsCents !== 'number' || !Number.isInteger(psObj.dollarsCents)) continue;
+      totals.set(psObj.playerId, (totals.get(psObj.playerId) ?? 0) + psObj.dollarsCents);
+    }
+  }
+  return totals;
 }

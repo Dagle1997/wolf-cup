@@ -30,6 +30,7 @@ import {
   rounds,
 } from '../db/schema/index.js';
 import { allocateNetThroughHole, calcCourseHandicap } from './handicap.js';
+import { aggregateSkinsForEvent } from './sub-games.js';
 
 export type LeaderboardRow = {
   playerId: string;
@@ -52,6 +53,13 @@ export type LeaderboardRow = {
   rank: number;
   /** Count of players sharing this rank (>=1; >1 means tie). */
   tiedWith: number;
+  /**
+   * T6-14: running sum of skins pot shares for this player across all
+   * FINALIZED rounds' skins sub-games. `null` when no finalized skins
+   * sub-game has contributed for this player (UI shows `—` not `$0.00`
+   * per Josh's safety call against pre-finalize projections).
+   */
+  skinsCents: number | null;
 };
 
 export type LeaderboardCtx = {
@@ -238,7 +246,10 @@ export async function computeLeaderboard(
     accum.perRound.set(h.roundId, perRound);
   }
 
-  return assignRanksAndBuildRows(participantMap, roundCtxMap);
+  // T6-14: aggregate skins pot shares from finalized rounds.
+  const skinsByPlayer = await aggregateSkinsForEvent(ctx.db, eventId, tenantId);
+
+  return assignRanksAndBuildRows(participantMap, roundCtxMap, skinsByPlayer);
 }
 
 /**
@@ -248,6 +259,7 @@ export async function computeLeaderboard(
 function assignRanksAndBuildRows(
   participants: Map<string, PlayerAccum>,
   roundCtxMap?: Map<string, RoundContextRow>,
+  skinsByPlayer?: Map<string, number>,
 ): LeaderboardRow[] {
   // Compute net per accumulator (sum of per-round (gross − allocated handicap)).
   const partial: Array<{
@@ -319,6 +331,7 @@ function assignRanksAndBuildRows(
     const groupRank = i + 1;
     for (let k = i; k < j; k++) {
       const p = partial[k]!;
+      const skinsCents = skinsByPlayer?.get(p.accum.playerId) ?? null;
       rows.push({
         playerId: p.accum.playerId,
         playerName: p.accum.playerName,
@@ -328,6 +341,7 @@ function assignRanksAndBuildRows(
         throughHole: p.accum.totalThroughHole,
         rank: groupRank,
         tiedWith,
+        skinsCents,
       });
     }
     i = j;
@@ -335,6 +349,7 @@ function assignRanksAndBuildRows(
   // Append all unscored players sharing rank.
   for (let k = scoredCount; k < partial.length; k++) {
     const p = partial[k]!;
+    const skinsCents = skinsByPlayer?.get(p.accum.playerId) ?? null;
     rows.push({
       playerId: p.accum.playerId,
       playerName: p.accum.playerName,
@@ -344,6 +359,7 @@ function assignRanksAndBuildRows(
       throughHole: 0,
       rank: unscoredRank,
       tiedWith: unscoredCount,
+      skinsCents,
     });
   }
 
