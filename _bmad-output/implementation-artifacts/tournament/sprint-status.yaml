@@ -177,7 +177,7 @@ development_status:
   # ---------------------------------------------------------------------------
   epic-T7: in-progress
 
-  T7-1-event-home-page-countdown-schedule-entry: backlog
+  T7-1-event-home-page-countdown-schedule-entry: done
   T7-2-schedule-view: backlog
   T7-3-course-preview-per-hole-detail-hero-image: backlog
   T7-4-per-event-photo-gallery-r2-storage-reuse: backlog

@@ -19,6 +19,7 @@ import { scoreCorrectionsRouter } from './routes/score-corrections.js';
 import { eventRuleEditsRouter } from './routes/event-rule-edits.js';
 import { betsRouter } from './routes/bets.js';
 import { moneyRouter } from './routes/money.js';
+import { eventsRouter } from './routes/events.js';
 import { pressesRouter } from './routes/presses.js';
 import { subGamesComputeRouter } from './routes/sub-games.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
@@ -155,6 +156,12 @@ app.route('/api/events', betsRouter);
 // Press multipliers + skins deferred (Followup T6-5f / T6-5a). Read-only;
 // no audit, no activity, no cache. cache-control: no-store.
 app.route('/api/events', moneyRouter);
+
+// T7-1 event-detail endpoint for the Event home page.
+// GET /api/events/:eventId → { event: {...}, rounds: [...] }.
+// Read-only; cache-control: no-store. Auth: requireSession +
+// requireEventParticipant (no-existence-leak via 403 from middleware).
+app.route('/api/events', eventsRouter);
 
 // T6-7 manual press routes. Effective URLs:
 // POST   /api/rounds/:roundId/presses        (file a manual press)
