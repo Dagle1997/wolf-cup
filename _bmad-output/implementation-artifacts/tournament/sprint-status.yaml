@@ -163,7 +163,7 @@ development_status:
   T6-8-bets-page-per-pair-live-standings: backlog
   T6-9-hand-calc-money-fixture-http-roundtrip-test: backlog
   T6-10-leaderboard-tie-break-pure-function: done
-  T6-11-engine-skins-3-modes: backlog
+  T6-11-engine-skins-3-modes: done
   T6-12-engine-carry-over-greenies: backlog
   T6-13-sub-game-framework-schema-dispatcher-compute-route: backlog
   T6-14-skins-leaderboard-column-settle-up-integration: backlog
