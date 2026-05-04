@@ -19,6 +19,7 @@ import { scoreCorrectionsRouter } from './routes/score-corrections.js';
 import { eventRuleEditsRouter } from './routes/event-rule-edits.js';
 import { betsRouter } from './routes/bets.js';
 import { moneyRouter } from './routes/money.js';
+import { pressesRouter } from './routes/presses.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -153,5 +154,13 @@ app.route('/api/events', betsRouter);
 // Press multipliers + skins deferred (Followup T6-5f / T6-5a). Read-only;
 // no audit, no activity, no cache. cache-control: no-store.
 app.route('/api/events', moneyRouter);
+
+// T6-7 manual press routes. Effective URLs:
+// POST   /api/rounds/:roundId/presses        (file a manual press)
+// DELETE /api/rounds/:roundId/presses/:pressId (undo within window)
+// Authorization: requireSession + scorer-of-this-round (handler-internal).
+// Server-derived fromHole = max-complete-hole + 1; UNIQUE on
+// (round_id, team, fired_at_hole, trigger_type) prevents duplicate fires.
+app.route('/api/rounds', pressesRouter);
 
 export { app };
