@@ -45,12 +45,17 @@ const {
   players,
   courses,
   courseRevisions,
+  courseTees,
+  courseHoles,
   events,
   eventRounds,
   groups,
   groupMembers,
+  rounds,
+  holeScores,
   individualBets,
   individualBetRounds,
+  individualBetPresses,
   auditLog,
 } = await import('../db/schema/index.js');
 const { betsRouter } = await import('./bets.js');
@@ -65,12 +70,17 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(auditLog);
+  await db.delete(individualBetPresses);
   await db.delete(individualBetRounds);
   await db.delete(individualBets);
+  await db.delete(holeScores);
+  await db.delete(rounds);
   await db.delete(groupMembers);
   await db.delete(groups);
   await db.delete(eventRounds);
   await db.delete(events);
+  await db.delete(courseHoles);
+  await db.delete(courseTees);
   await db.delete(courseRevisions);
   await db.delete(courses);
   await db.delete(players);
@@ -129,6 +139,19 @@ async function seed(): Promise<SeedResult> {
     outTotal: 36, inTotal: 36, courseTotal: 72,
     createdAt: now, tenantId: TENANT_ID, contextId: CTX_BASE,
   });
+  await db.insert(courseTees).values({
+    id: randomUUID(), courseRevisionId: ids.courseRevId, teeColor: 'blue',
+    rating: 720, slope: 113,
+    tenantId: TENANT_ID, contextId: CTX_BASE,
+  });
+  for (let h = 1; h <= 18; h++) {
+    await db.insert(courseHoles).values({
+      id: randomUUID(), courseRevisionId: ids.courseRevId,
+      holeNumber: h, par: 4, si: ((h * 7) % 18) + 1,
+      yardagePerTeeJson: '{}',
+      tenantId: TENANT_ID, contextId: CTX_BASE,
+    });
+  }
 
   // Primary event with 2 rounds.
   await db.insert(events).values({
@@ -145,6 +168,18 @@ async function seed(): Promise<SeedResult> {
     id: ids.eventRound2Id, eventId: ids.eventId, roundNumber: 2, roundDate: now + 86400000,
     courseRevisionId: ids.courseRevId, teeColor: 'blue', holesToPlay: 18,
     createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+  });
+  // Runtime rounds rows (one per event_round) — engine assembly looks
+  // these up via eventRoundId → rounds.id.
+  await db.insert(rounds).values({
+    id: randomUUID(), eventId: ids.eventId, eventRoundId: ids.eventRound1Id,
+    holesToPlay: 18, createdAt: now,
+    tenantId: TENANT_ID, contextId: ctx,
+  });
+  await db.insert(rounds).values({
+    id: randomUUID(), eventId: ids.eventId, eventRoundId: ids.eventRound2Id,
+    holesToPlay: 18, createdAt: now,
+    tenantId: TENANT_ID, contextId: ctx,
   });
   await db.insert(groups).values({
     id: ids.groupId, eventId: ids.eventId, name: 'G',
@@ -431,6 +466,287 @@ describe('POST /api/events/:eventId/bets', () => {
       applicableRoundIds: [s.eventRoundIds[0]],
       config: {},
     });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('not_event_participant');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T6-8 GET tests
+// ---------------------------------------------------------------------------
+
+async function getMine(app: Hono, eventId: string): Promise<Response> {
+  return await app.request(`/api/events/${eventId}/bets/mine`);
+}
+
+async function getBet(app: Hono, eventId: string, betId: string): Promise<Response> {
+  return await app.request(`/api/events/${eventId}/bets/${betId}`);
+}
+
+async function createBetDirect(
+  eventId: string,
+  playerAId: string,
+  playerBId: string,
+  applicableRoundIds: string[],
+  ctx: string,
+  stakePerHoleCents = 500,
+): Promise<string> {
+  const sorted = [playerAId, playerBId].sort();
+  const betId = randomUUID();
+  const now = Date.now();
+  await db.insert(individualBets).values({
+    id: betId, eventId, playerAId: sorted[0]!, playerBId: sorted[1]!,
+    betType: 'match_play_per_hole', stakePerHoleCents,
+    configJson: '{}',
+    createdByPlayerId: sorted[0]!, createdAt: now,
+    tenantId: TENANT_ID, contextId: ctx,
+  });
+  for (const erid of applicableRoundIds) {
+    await db.insert(individualBetRounds).values({
+      betId, eventRoundId: erid,
+      tenantId: TENANT_ID, contextId: ctx,
+    });
+  }
+  return betId;
+}
+
+describe('GET /api/events/:eventId/bets/mine', () => {
+  test('(a) happy path — viewer party to 1 bet, returns it with sign positive to viewer when viewer === playerA', async () => {
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    const sortedAB = [s.participantAId, s.participantBId].sort();
+    const betId = await createBetDirect(
+      s.eventId, s.participantAId, s.participantBId, s.eventRoundIds, ctx,
+    );
+
+    const app = buildApp(sortedAB[0]!);          // viewer is playerA (canonical)
+    const res = await getMine(app, s.eventId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      bets: Array<{
+        betId: string;
+        playerAId: string; playerBId: string;
+        opponentPlayerId: string;
+        stakePerHoleCents: number;
+        applicableRoundIds: string[];
+        perRoundStanding: Array<{ eventRoundId: string; roundNumber: number; netToViewerCents: number }>;
+        totalNetToViewerCents: number;
+      }>;
+    };
+    expect(body.bets.length).toBe(1);
+    expect(body.bets[0]!.betId).toBe(betId);
+    expect(body.bets[0]!.opponentPlayerId).toBe(sortedAB[1]!);
+    expect(body.bets[0]!.applicableRoundIds.sort()).toEqual([...s.eventRoundIds].sort());
+    expect(body.bets[0]!.perRoundStanding.length).toBe(2);
+    expect(Number.isInteger(body.bets[0]!.totalNetToViewerCents)).toBe(true);
+    // No scores → all rounds are 0-net.
+    expect(body.bets[0]!.totalNetToViewerCents).toBe(0);
+  });
+
+  test('(b) sign-flip — same bet, viewed by playerB, opponent is playerA', async () => {
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    const sortedAB = [s.participantAId, s.participantBId].sort();
+    await createBetDirect(
+      s.eventId, s.participantAId, s.participantBId, s.eventRoundIds, ctx,
+    );
+
+    const app = buildApp(sortedAB[1]!);          // viewer is playerB
+    const res = await getMine(app, s.eventId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      bets: Array<{ opponentPlayerId: string; totalNetToViewerCents: number }>;
+    };
+    expect(body.bets.length).toBe(1);
+    expect(body.bets[0]!.opponentPlayerId).toBe(sortedAB[0]!);
+    expect(body.bets[0]!.totalNetToViewerCents).toBe(0);   // sign-flipped 0 is still 0
+  });
+
+  test('(c) empty — viewer party to 0 bets returns { bets: [] }', async () => {
+    const s = await seed();
+    // No bets created.
+    const app = buildApp(s.participantAId);
+    const res = await getMine(app, s.eventId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { bets: unknown[] };
+    expect(body.bets).toEqual([]);
+  });
+
+  test('(d) non-participant 403', async () => {
+    const s = await seed();
+    const app = buildApp(s.outsiderId);
+    const res = await getMine(app, s.eventId);
+    expect(res.status).toBe(403);
+  });
+
+  test('(e0) holesPlayed counts only holes where BOTH parties scored (and ≤ holesToPlay)', async () => {
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    const sortedAB = [s.participantAId, s.participantBId].sort();
+    await createBetDirect(
+      s.eventId, s.participantAId, s.participantBId, [s.eventRoundIds[0]], ctx,
+    );
+    const r1Rows = await db.select().from(rounds).where(eq(rounds.eventRoundId, s.eventRoundIds[0]));
+    const round1Id = r1Rows[0]!.id;
+    const now = Date.now();
+
+    // playerA scored holes 1, 2, 3. playerB scored only holes 1, 2.
+    // Expected: holesPlayed = 2 (holes where BOTH scored).
+    for (const h of [1, 2, 3]) {
+      await db.insert(holeScores).values({
+        id: randomUUID(), roundId: round1Id, playerId: sortedAB[0]!,
+        holeNumber: h, grossStrokes: 4, putts: 2,
+        scorerPlayerId: sortedAB[0]!, clientEventId: `evt-a-${h}`,
+        createdAt: now, updatedAt: now,
+        tenantId: TENANT_ID, contextId: ctx,
+      });
+    }
+    for (const h of [1, 2]) {
+      await db.insert(holeScores).values({
+        id: randomUUID(), roundId: round1Id, playerId: sortedAB[1]!,
+        holeNumber: h, grossStrokes: 5, putts: 2,
+        scorerPlayerId: sortedAB[0]!, clientEventId: `evt-b-${h}`,
+        createdAt: now, updatedAt: now,
+        tenantId: TENANT_ID, contextId: ctx,
+      });
+    }
+
+    const app = buildApp(sortedAB[0]!);
+    const res = await getMine(app, s.eventId);
+    const body = (await res.json()) as {
+      bets: Array<{ perRoundStanding: Array<{ holesPlayed: number; holesRemaining: number }> }>;
+    };
+    expect(body.bets[0]!.perRoundStanding[0]!.holesPlayed).toBe(2);
+    expect(body.bets[0]!.perRoundStanding[0]!.holesRemaining).toBe(16);
+  });
+
+  test('(e) sign-flip with real scores — playerA wins hole 1 by 1; netToViewerCents flips between viewers', async () => {
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    const sortedAB = [s.participantAId, s.participantBId].sort();
+    await createBetDirect(
+      s.eventId, s.participantAId, s.participantBId, [s.eventRoundIds[0]], ctx,
+    );
+
+    // Look up the runtime round for eventRound1.
+    const r1Rows = await db.select().from(rounds).where(eq(rounds.eventRoundId, s.eventRoundIds[0]));
+    const round1Id = r1Rows[0]!.id;
+
+    // playerA gross 4, playerB gross 5 on hole 1; both 0 HI → playerA wins by 1 stroke.
+    const now = Date.now();
+    await db.insert(holeScores).values({
+      id: randomUUID(), roundId: round1Id, playerId: sortedAB[0]!,
+      holeNumber: 1, grossStrokes: 4, putts: 2,
+      scorerPlayerId: sortedAB[0]!, clientEventId: 'evt-a-1',
+      createdAt: now, updatedAt: now,
+      tenantId: TENANT_ID, contextId: ctx,
+    });
+    await db.insert(holeScores).values({
+      id: randomUUID(), roundId: round1Id, playerId: sortedAB[1]!,
+      holeNumber: 1, grossStrokes: 5, putts: 2,
+      scorerPlayerId: sortedAB[0]!, clientEventId: 'evt-b-1',
+      createdAt: now, updatedAt: now,
+      tenantId: TENANT_ID, contextId: ctx,
+    });
+
+    const aApp = buildApp(sortedAB[0]!);
+    const aRes = await getMine(aApp, s.eventId);
+    const aBody = (await aRes.json()) as { bets: Array<{ totalNetToViewerCents: number }> };
+    const bApp = buildApp(sortedAB[1]!);
+    const bRes = await getMine(bApp, s.eventId);
+    const bBody = (await bRes.json()) as { bets: Array<{ totalNetToViewerCents: number }> };
+
+    // playerA up 1 hole × 500c stake = 500c.
+    expect(aBody.bets[0]!.totalNetToViewerCents).toBe(500);
+    // Sign-flipped for playerB.
+    expect(bBody.bets[0]!.totalNetToViewerCents).toBe(-500);
+    // Anti-symmetry across viewers.
+    expect(aBody.bets[0]!.totalNetToViewerCents).toBe(-bBody.bets[0]!.totalNetToViewerCents);
+    // perRoundStanding[0].netToViewerCents must also flip sign (codex L #6).
+    const aRoundCast = aBody as unknown as { bets: Array<{ perRoundStanding: Array<{ netToViewerCents: number }> }> };
+    const bRoundCast = bBody as unknown as { bets: Array<{ perRoundStanding: Array<{ netToViewerCents: number }> }> };
+    expect(aRoundCast.bets[0]!.perRoundStanding[0]!.netToViewerCents).toBe(500);
+    expect(bRoundCast.bets[0]!.perRoundStanding[0]!.netToViewerCents).toBe(-500);
+  });
+});
+
+describe('GET /api/events/:eventId/bets/:betId', () => {
+  test('(f) 200 as party', async () => {
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    const sortedAB = [s.participantAId, s.participantBId].sort();
+    const betId = await createBetDirect(
+      s.eventId, s.participantAId, s.participantBId, s.eventRoundIds, ctx,
+    );
+    const app = buildApp(sortedAB[0]!);
+    const res = await getBet(app, s.eventId, betId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { betId: string; opponentPlayerId: string };
+    expect(body.betId).toBe(betId);
+    expect(body.opponentPlayerId).toBe(sortedAB[1]!);
+  });
+
+  test('(g) 403 not_party_to_bet — event participant who is NOT a bet party', async () => {
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    // Bet between participantA and participantB; organizer is in event but not party.
+    const betId = await createBetDirect(
+      s.eventId, s.participantAId, s.participantBId, s.eventRoundIds, ctx,
+    );
+    const app = buildApp(s.organizerId);
+    const res = await getBet(app, s.eventId, betId);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('not_party_to_bet');
+  });
+
+  test('(h) 403 unknown betId (no-existence-leak)', async () => {
+    const s = await seed();
+    const app = buildApp(s.participantAId);
+    const res = await getBet(app, s.eventId, randomUUID());
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('not_party_to_bet');
+  });
+
+  test('(i) 403 betId from a different event (no-existence-leak)', async () => {
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    // Create the bet under the OTHER event but lookup via primary eventId.
+    const sortedAB = [s.participantAId, s.participantBId].sort();
+    const otherCtx = `event:${s.otherEventId}`;
+    const betId = randomUUID();
+    const now = Date.now();
+    await db.insert(individualBets).values({
+      id: betId, eventId: s.otherEventId, playerAId: sortedAB[0]!, playerBId: sortedAB[1]!,
+      betType: 'match_play_per_hole', stakePerHoleCents: 500,
+      configJson: '{}',
+      createdByPlayerId: s.outsiderId, createdAt: now,
+      tenantId: TENANT_ID, contextId: otherCtx,
+    });
+    void ctx;
+
+    // Viewer is participantA (party to the bet) but querying via primary eventId.
+    const app = buildApp(s.participantAId);
+    const res = await getBet(app, s.eventId, betId);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('not_party_to_bet');
+  });
+
+  test('(j) 400 invalid_bet_id_format for malformed UUID', async () => {
+    const s = await seed();
+    const app = buildApp(s.participantAId);
+    const res = await getBet(app, s.eventId, 'not-a-uuid');
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('invalid_bet_id_format');
+  });
+
+  test('(k) 403 non-event-participant (outsider tries to fetch bet in primary event)', async () => {
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    const betId = await createBetDirect(
+      s.eventId, s.participantAId, s.participantBId, s.eventRoundIds, ctx,
+    );
+    const app = buildApp(s.outsiderId);
+    const res = await getBet(app, s.eventId, betId);
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code: string }).code).toBe('not_event_participant');
   });
