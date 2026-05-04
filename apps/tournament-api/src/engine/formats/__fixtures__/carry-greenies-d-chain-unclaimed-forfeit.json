@@ -1,0 +1,51 @@
+{
+  "name": "(carry-d) chain unclaimed through final par 3 — accumulated value FORFEITED; surfaces in unclaimedGreenieValueCents",
+  "input": {
+    "holeScores": [
+      { "playerId": "A1", "holeNumber": 1, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A1", "holeNumber": 2, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A1", "holeNumber": 3, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 3, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 3, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 3, "grossStrokes": 4, "putts": 2 }
+    ],
+    "holeMeta": [],
+    "pairings": { "teamA": ["A1", "A2"], "teamB": ["B1", "B2"] },
+    "config": {
+      "basePerHoleCents": 100,
+      "sandies": false,
+      "sandiesBonusPerHoleCents": 0,
+      "greenieCarryover": true,
+      "greenieValidation": "2-putt",
+      "greenieBaseCents": 200
+    },
+    "course": {
+      "tee": { "slope": 113, "ratingTimes10": 720, "coursePar": 72 },
+      "holes": [
+        { "holeNumber": 1, "par": 3, "strokeIndex": 17 },
+        { "holeNumber": 2, "par": 3, "strokeIndex": 15 },
+        { "holeNumber": 3, "par": 3, "strokeIndex": 18 }
+      ]
+    },
+    "handicapIndexByPlayer": { "A1": 0, "A2": 0, "B1": 0, "B2": 0 }
+  },
+  "expectedRound": {
+    "teamTotalCents": 1200,
+    "holesPlayed": 3,
+    "sandiesAwardedCount": 0,
+    "greeniesAwardedCount": 0,
+    "unclaimedGreenieValueCents": 600
+  },
+  "expectedHoleSummary": [
+    { "holeNumber": 1, "winner": "teamA", "teamDeltaCents": 400, "greenieAwardedNonNull": false },
+    { "holeNumber": 2, "winner": "teamA", "teamDeltaCents": 400, "greenieAwardedNonNull": false },
+    { "holeNumber": 3, "winner": "teamA", "teamDeltaCents": 400, "greenieAwardedNonNull": false }
+  ],
+  "_note": "All 3 par-3s unclaimed (no holeMeta). Carryover=true. Final par 3 also unclaimed → accumulated value forfeited. unclaimedGreenieValueCents = baseValue × min(3,4) = 200×3 = 600. Money totals: 3 holes × base 400 = 1200."
+}

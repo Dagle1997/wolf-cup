@@ -2,15 +2,48 @@
   "name": "(f) Tie hole — 1 hole, both teams' best net == 4; teamDeltaCents = 0; no pair cells mutate; sandiesApplied false even with bunker flag",
   "input": {
     "holeScores": [
-      { "playerId": "A1", "holeNumber": 1, "grossStrokes": 4, "putts": 2, "sandyFromBunker": true },
-      { "playerId": "A2", "holeNumber": 1, "grossStrokes": 5, "putts": 2 },
-      { "playerId": "B1", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
-      { "playerId": "B2", "holeNumber": 1, "grossStrokes": 5, "putts": 2 }
+      {
+        "playerId": "A1",
+        "holeNumber": 1,
+        "grossStrokes": 4,
+        "putts": 2,
+        "sandyFromBunker": true
+      },
+      {
+        "playerId": "A2",
+        "holeNumber": 1,
+        "grossStrokes": 5,
+        "putts": 2
+      },
+      {
+        "playerId": "B1",
+        "holeNumber": 1,
+        "grossStrokes": 4,
+        "putts": 2
+      },
+      {
+        "playerId": "B2",
+        "holeNumber": 1,
+        "grossStrokes": 5,
+        "putts": 2
+      }
     ],
     "holeMeta": [
-      { "holeNumber": 1, "closestToPinPlayerId": "A1" }
+      {
+        "holeNumber": 1,
+        "closestToPinPlayerId": "A1"
+      }
     ],
-    "pairings": { "teamA": ["A1", "A2"], "teamB": ["B1", "B2"] },
+    "pairings": {
+      "teamA": [
+        "A1",
+        "A2"
+      ],
+      "teamB": [
+        "B1",
+        "B2"
+      ]
+    },
     "config": {
       "basePerHoleCents": 100,
       "sandies": true,
@@ -20,20 +53,40 @@
       "greenieBaseCents": 25
     },
     "course": {
-      "tee": { "slope": 113, "ratingTimes10": 720, "coursePar": 72 },
+      "tee": {
+        "slope": 113,
+        "ratingTimes10": 720,
+        "coursePar": 72
+      },
       "holes": [
-        { "holeNumber": 1, "par": 4, "strokeIndex": 5 }
+        {
+          "holeNumber": 1,
+          "par": 4,
+          "strokeIndex": 5
+        }
       ]
     },
-    "handicapIndexByPlayer": { "A1": 0, "A2": 0, "B1": 0, "B2": 0 }
+    "handicapIndexByPlayer": {
+      "A1": 0,
+      "A2": 0,
+      "B1": 0,
+      "B2": 0
+    }
   },
   "expectedRound": {
     "teamTotalCents": 0,
     "holesPlayed": 1,
     "sandiesAwardedCount": 0,
-    "greeniesAwardedCount": 0
+    "greeniesAwardedCount": 0,
+    "unclaimedGreenieValueCents": 0
   },
   "expectedHoleSummary": [
-    { "holeNumber": 1, "winner": "tie", "teamDeltaCents": 0, "sandiesApplied": false, "greenieAwardedNonNull": false }
+    {
+      "holeNumber": 1,
+      "winner": "tie",
+      "teamDeltaCents": 0,
+      "sandiesApplied": false,
+      "greenieAwardedNonNull": false
+    }
   ]
 }

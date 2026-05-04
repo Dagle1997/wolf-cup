@@ -1,0 +1,65 @@
+{
+  "name": "(carry-c) full chain — 5 par 3s, holes 1-4 unclaimed; hole 5 claimed → multiplier capped at 4 (not 5)",
+  "input": {
+    "holeScores": [
+      { "playerId": "A1", "holeNumber": 1, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A1", "holeNumber": 2, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A1", "holeNumber": 3, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 3, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 3, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 3, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A1", "holeNumber": 4, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 4, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 4, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 4, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A1", "holeNumber": 5, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 5, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 5, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 5, "grossStrokes": 4, "putts": 2 }
+    ],
+    "holeMeta": [
+      { "holeNumber": 5, "closestToPinPlayerId": "A1" }
+    ],
+    "pairings": { "teamA": ["A1", "A2"], "teamB": ["B1", "B2"] },
+    "config": {
+      "basePerHoleCents": 100,
+      "sandies": false,
+      "sandiesBonusPerHoleCents": 0,
+      "greenieCarryover": true,
+      "greenieValidation": "2-putt",
+      "greenieBaseCents": 200
+    },
+    "course": {
+      "tee": { "slope": 113, "ratingTimes10": 720, "coursePar": 72 },
+      "holes": [
+        { "holeNumber": 1, "par": 3, "strokeIndex": 17 },
+        { "holeNumber": 2, "par": 3, "strokeIndex": 15 },
+        { "holeNumber": 3, "par": 3, "strokeIndex": 18 },
+        { "holeNumber": 4, "par": 3, "strokeIndex": 16 },
+        { "holeNumber": 5, "par": 3, "strokeIndex": 14 }
+      ]
+    },
+    "handicapIndexByPlayer": { "A1": 0, "A2": 0, "B1": 0, "B2": 0 }
+  },
+  "expectedRound": {
+    "teamTotalCents": 5200,
+    "holesPlayed": 5,
+    "sandiesAwardedCount": 0,
+    "greeniesAwardedCount": 1,
+    "unclaimedGreenieValueCents": 0
+  },
+  "expectedHoleSummary": [
+    { "holeNumber": 1, "winner": "teamA", "teamDeltaCents": 400, "greenieAwardedNonNull": false },
+    { "holeNumber": 2, "winner": "teamA", "teamDeltaCents": 400, "greenieAwardedNonNull": false },
+    { "holeNumber": 3, "winner": "teamA", "teamDeltaCents": 400, "greenieAwardedNonNull": false },
+    { "holeNumber": 4, "winner": "teamA", "teamDeltaCents": 400, "greenieAwardedNonNull": false },
+    { "holeNumber": 5, "winner": "teamA", "teamDeltaCents": 3600, "greenieAwardedNonNull": true, "greeniePlayerId": "A1" }
+  ],
+  "_note": "Holes 1-4 par-3 unclaimed → 4 holes carry. Hole 5 claimed: carriedFromHoles=[1,2,3,4], multiplier=min(1+4,4)=4, valueCents=200×4=800 per pair, total greenie 4×800=3200. Hole 5 base=400 + greenie=3200=3600. Holes 1-4 each base=400. Total=5×400 + 3200 = 5200."
+}

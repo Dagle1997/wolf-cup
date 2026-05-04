@@ -108,6 +108,11 @@ const fixtures: Array<{ file: string; label: string }> = [
   { file: 'best-ball-2v2-d-no-valid-greenies.json',    label: '(d) no valid greenies'      },
   { file: 'best-ball-2v2-e-handicap-shifts.json',      label: '(e) handicap shifts'        },
   { file: 'best-ball-2v2-f-tie-hole.json',             label: '(f) tie hole'               },
+  // T6-12 carry-over greenie fixtures.
+  { file: 'carry-greenies-a-no-carryover.json',        label: '(carry-a) no carryover'     },
+  { file: 'carry-greenies-b-single-carry.json',        label: '(carry-b) single carry'     },
+  { file: 'carry-greenies-c-full-chain-cap-at-4.json', label: '(carry-c) full chain cap=4' },
+  { file: 'carry-greenies-d-chain-unclaimed-forfeit.json', label: '(carry-d) chain forfeit' },
 ];
 
 describe('compute2v2BestBall — golden fixtures', () => {

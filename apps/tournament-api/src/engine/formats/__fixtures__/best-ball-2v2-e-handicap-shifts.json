@@ -2,18 +2,66 @@
   "name": "(e) Handicap strokes shift net — 2 holes, A1 has HI 15 so gets a stroke on SI 3 (flips to win) but not SI 16 (tie)",
   "input": {
     "holeScores": [
-      { "playerId": "A1", "holeNumber": 1, "grossStrokes": 5, "putts": 2 },
-      { "playerId": "A2", "holeNumber": 1, "grossStrokes": 5, "putts": 2 },
-      { "playerId": "B1", "holeNumber": 1, "grossStrokes": 5, "putts": 2 },
-      { "playerId": "B2", "holeNumber": 1, "grossStrokes": 5, "putts": 2 },
-
-      { "playerId": "A1", "holeNumber": 2, "grossStrokes": 5, "putts": 2 },
-      { "playerId": "A2", "holeNumber": 2, "grossStrokes": 5, "putts": 2 },
-      { "playerId": "B1", "holeNumber": 2, "grossStrokes": 5, "putts": 2 },
-      { "playerId": "B2", "holeNumber": 2, "grossStrokes": 5, "putts": 2 }
+      {
+        "playerId": "A1",
+        "holeNumber": 1,
+        "grossStrokes": 5,
+        "putts": 2
+      },
+      {
+        "playerId": "A2",
+        "holeNumber": 1,
+        "grossStrokes": 5,
+        "putts": 2
+      },
+      {
+        "playerId": "B1",
+        "holeNumber": 1,
+        "grossStrokes": 5,
+        "putts": 2
+      },
+      {
+        "playerId": "B2",
+        "holeNumber": 1,
+        "grossStrokes": 5,
+        "putts": 2
+      },
+      {
+        "playerId": "A1",
+        "holeNumber": 2,
+        "grossStrokes": 5,
+        "putts": 2
+      },
+      {
+        "playerId": "A2",
+        "holeNumber": 2,
+        "grossStrokes": 5,
+        "putts": 2
+      },
+      {
+        "playerId": "B1",
+        "holeNumber": 2,
+        "grossStrokes": 5,
+        "putts": 2
+      },
+      {
+        "playerId": "B2",
+        "holeNumber": 2,
+        "grossStrokes": 5,
+        "putts": 2
+      }
     ],
     "holeMeta": [],
-    "pairings": { "teamA": ["A1", "A2"], "teamB": ["B1", "B2"] },
+    "pairings": {
+      "teamA": [
+        "A1",
+        "A2"
+      ],
+      "teamB": [
+        "B1",
+        "B2"
+      ]
+    },
     "config": {
       "basePerHoleCents": 100,
       "sandies": false,
@@ -23,22 +71,52 @@
       "greenieBaseCents": 0
     },
     "course": {
-      "tee": { "slope": 113, "ratingTimes10": 720, "coursePar": 72 },
+      "tee": {
+        "slope": 113,
+        "ratingTimes10": 720,
+        "coursePar": 72
+      },
       "holes": [
-        { "holeNumber": 1, "par": 4, "strokeIndex": 3 },
-        { "holeNumber": 2, "par": 4, "strokeIndex": 16 }
+        {
+          "holeNumber": 1,
+          "par": 4,
+          "strokeIndex": 3
+        },
+        {
+          "holeNumber": 2,
+          "par": 4,
+          "strokeIndex": 16
+        }
       ]
     },
-    "handicapIndexByPlayer": { "A1": 15, "A2": 0, "B1": 0, "B2": 0 }
+    "handicapIndexByPlayer": {
+      "A1": 15,
+      "A2": 0,
+      "B1": 0,
+      "B2": 0
+    }
   },
   "expectedRound": {
     "teamTotalCents": 400,
     "holesPlayed": 2,
     "sandiesAwardedCount": 0,
-    "greeniesAwardedCount": 0
+    "greeniesAwardedCount": 0,
+    "unclaimedGreenieValueCents": 0
   },
   "expectedHoleSummary": [
-    { "holeNumber": 1, "winner": "teamA", "teamDeltaCents": 400, "teamABestNet": 4, "teamBBestNet": 5 },
-    { "holeNumber": 2, "winner": "tie", "teamDeltaCents": 0, "teamABestNet": 5, "teamBBestNet": 5 }
+    {
+      "holeNumber": 1,
+      "winner": "teamA",
+      "teamDeltaCents": 400,
+      "teamABestNet": 4,
+      "teamBBestNet": 5
+    },
+    {
+      "holeNumber": 2,
+      "winner": "tie",
+      "teamDeltaCents": 0,
+      "teamABestNet": 5,
+      "teamBBestNet": 5
+    }
   ]
 }

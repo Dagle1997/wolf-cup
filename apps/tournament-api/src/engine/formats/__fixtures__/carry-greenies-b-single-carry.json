@@ -1,0 +1,47 @@
+{
+  "name": "(carry-b) single carry — hole 1 par 3 unclaimed (no CTP), hole 2 par 3 claimed → multiplier=2, carriedFromHoles=[1]",
+  "input": {
+    "holeScores": [
+      { "playerId": "A1", "holeNumber": 1, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 1, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "A1", "holeNumber": 2, "grossStrokes": 3, "putts": 2 },
+      { "playerId": "A2", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B1", "holeNumber": 2, "grossStrokes": 4, "putts": 2 },
+      { "playerId": "B2", "holeNumber": 2, "grossStrokes": 4, "putts": 2 }
+    ],
+    "holeMeta": [
+      { "holeNumber": 2, "closestToPinPlayerId": "A1" }
+    ],
+    "pairings": { "teamA": ["A1", "A2"], "teamB": ["B1", "B2"] },
+    "config": {
+      "basePerHoleCents": 100,
+      "sandies": false,
+      "sandiesBonusPerHoleCents": 0,
+      "greenieCarryover": true,
+      "greenieValidation": "2-putt",
+      "greenieBaseCents": 200
+    },
+    "course": {
+      "tee": { "slope": 113, "ratingTimes10": 720, "coursePar": 72 },
+      "holes": [
+        { "holeNumber": 1, "par": 3, "strokeIndex": 17 },
+        { "holeNumber": 2, "par": 3, "strokeIndex": 15 }
+      ]
+    },
+    "handicapIndexByPlayer": { "A1": 0, "A2": 0, "B1": 0, "B2": 0 }
+  },
+  "expectedRound": {
+    "teamTotalCents": 2400,
+    "holesPlayed": 2,
+    "sandiesAwardedCount": 0,
+    "greeniesAwardedCount": 1,
+    "unclaimedGreenieValueCents": 0
+  },
+  "expectedHoleSummary": [
+    { "holeNumber": 1, "winner": "teamA", "teamDeltaCents": 400, "greenieAwardedNonNull": false },
+    { "holeNumber": 2, "winner": "teamA", "teamDeltaCents": 2000, "greenieAwardedNonNull": true, "greeniePlayerId": "A1" }
+  ],
+  "_note": "hole 1 unclaimed (no holeMeta) → carry. hole 2 claimed by A1 with multiplier=2, valueCents=200×2=400 per pair, total greenie=4×400=1600. Hole 2 base=400 + greenie=1600 = 2000. Total = 400 + 2000 = 2400."
+}

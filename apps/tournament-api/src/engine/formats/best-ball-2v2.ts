@@ -72,8 +72,17 @@ export type Compute2v2BestBallInput = {
 export type GreenieAward = {
   team: 'teamA' | 'teamB';
   playerId: string;
+  /**
+   * Final awarded value in cents = baseValueCents × multiplier.
+   * When carryover is disabled (config.greenieCarryover === false),
+   * multiplier is always 1 so valueCents === baseValueCents.
+   */
   valueCents: number;
+  /** Per-greenie base value from config (independent of carryover). */
+  baseValueCents: number;
+  /** Hole numbers whose unclaimed greenies were carried into this award. */
   carriedFromHoles: number[];
+  /** 1..4. multiplier = min(1 + carriedFromHoles.length, 4); cap at 4 (T6-12). */
   multiplier: 1 | 2 | 3 | 4;
 };
 
@@ -95,6 +104,14 @@ export type RoundResult = {
   holesPlayed: number;
   sandiesAwardedCount: number;
   greeniesAwardedCount: number;
+  /**
+   * T6-12: when greenieCarryover=true and the chain of par 3s ends with
+   * an unclaimed greenie (final par 3 unclaimed too), the accumulated
+   * value is FORFEITED — it does not contribute to team or pair money.
+   * This field is informational, surfaced for UI display.
+   * Always 0 when greenieCarryover=false.
+   */
+  unclaimedGreenieValueCents: number;
 };
 
 export type Compute2v2BestBallOutput = {
@@ -217,6 +234,11 @@ export function compute2v2BestBall(
   let teamTotalCents = 0;
   let sandiesAwardedCount = 0;
   let greeniesAwardedCount = 0;
+  // T6-12 carry-over greenies state (only meaningful when config.greenieCarryover=true).
+  // pendingCarryHoles accumulates par-3 hole numbers whose greenies were unclaimed
+  // (no CTP / validation fail / CTP on losing team / tied hole). When the next
+  // par 3 IS claimed, the multiplier = min(1 + pendingCarryHoles.length, 4).
+  const pendingCarryHoles: number[] = [];
 
   for (const hole of course.holes) {
     const n = hole.holeNumber;
@@ -284,32 +306,51 @@ export function compute2v2BestBall(
     }
 
     // (vi) Greenie award (par 3 + won hole + valid CTP).
+    // T6-12: when config.greenieCarryover=true, unclaimed par-3 greenies
+    // accumulate into pendingCarryHoles. When a par 3 IS awarded, the
+    // multiplier = min(1 + pendingCarryHoles.length, 4); pendingCarryHoles
+    // resets. carriedFromHoles is the snapshot at award time.
     let greenieAwarded: GreenieAward | null = null;
     let greenieDeltaCents = 0;
-    if (hole.par === 3 && winner !== 'tie' && winningTeam && losingTeam) {
-      const meta = metaByHole.get(n);
-      const ctpId = meta?.closestToPinPlayerId ?? null;
-      if (ctpId) {
-        const ctpOnWinningTeam = winningTeam.includes(ctpId);
-        if (ctpOnWinningTeam) {
-          const ctpCell = scoresByCell.get(`${ctpId}|${n}`)!;
-          let validates = true;
-          if (config.greenieValidation === '2-putt') {
-            validates = ctpCell.putts !== null && ctpCell.putts <= 2;
-          }
-          if (validates) {
-            greenieAwarded = {
-              team: winner,
-              playerId: ctpId,
-              valueCents: config.greenieBaseCents,
-              carriedFromHoles: [],
-              multiplier: 1,
-            };
-            greenieDeltaCents = 4 * config.greenieBaseCents;
-            distributePairWise(perPair, winningTeam, losingTeam, config.greenieBaseCents);
-            greeniesAwardedCount += 1;
+    if (hole.par === 3) {
+      let claimed = false;
+      if (winner !== 'tie' && winningTeam && losingTeam) {
+        const meta = metaByHole.get(n);
+        const ctpId = meta?.closestToPinPlayerId ?? null;
+        if (ctpId) {
+          const ctpOnWinningTeam = winningTeam.includes(ctpId);
+          if (ctpOnWinningTeam) {
+            const ctpCell = scoresByCell.get(`${ctpId}|${n}`)!;
+            let validates = true;
+            if (config.greenieValidation === '2-putt') {
+              validates = ctpCell.putts !== null && ctpCell.putts <= 2;
+            }
+            if (validates) {
+              claimed = true;
+              const carriedSnapshot = config.greenieCarryover ? [...pendingCarryHoles] : [];
+              const multiplierRaw = 1 + carriedSnapshot.length;
+              const multiplier = Math.min(multiplierRaw, 4) as 1 | 2 | 3 | 4;
+              const valueCents = config.greenieBaseCents * multiplier;
+              greenieAwarded = {
+                team: winner,
+                playerId: ctpId,
+                valueCents,
+                baseValueCents: config.greenieBaseCents,
+                carriedFromHoles: carriedSnapshot,
+                multiplier,
+              };
+              greenieDeltaCents = 4 * valueCents;
+              distributePairWise(perPair, winningTeam, losingTeam, valueCents);
+              greeniesAwardedCount += 1;
+              // Reset carry queue.
+              pendingCarryHoles.length = 0;
+            }
           }
         }
+      }
+      if (!claimed && config.greenieCarryover) {
+        // Unclaimed par 3 + carryover enabled → accumulate.
+        pendingCarryHoles.push(n);
       }
     }
 
@@ -331,6 +372,15 @@ export function compute2v2BestBall(
     teamTotalCents += signedDelta;
   }
 
+  // T6-12: any pending unclaimed greenie value at end of round is FORFEITED
+  // when greenieCarryover=true. Surface as informational field on perRound.
+  // baseValue × number of unclaimed pending par 3s — capped at 4 base values
+  // (matching the multiplier-cap-at-4 rule for award equivalence).
+  const unclaimedGreenieValueCents =
+    config.greenieCarryover && pendingCarryHoles.length > 0
+      ? config.greenieBaseCents * Math.min(pendingCarryHoles.length, 4)
+      : 0;
+
   return {
     perHole,
     perRound: {
@@ -338,6 +388,7 @@ export function compute2v2BestBall(
       holesPlayed: perHole.length,
       sandiesAwardedCount,
       greeniesAwardedCount,
+      unclaimedGreenieValueCents,
     },
     perPair,
   };
