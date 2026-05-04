@@ -18,6 +18,7 @@ import { roundLifecycleRouter } from './routes/round-lifecycle.js';
 import { scoreCorrectionsRouter } from './routes/score-corrections.js';
 import { eventRuleEditsRouter } from './routes/event-rule-edits.js';
 import { betsRouter } from './routes/bets.js';
+import { moneyRouter } from './routes/money.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -144,5 +145,13 @@ app.route('/api/events', eventRuleEditsRouter);
 // rounds belong to event, config shape per betType, UNIQUE on (event, A, B,
 // type) for canonical alphabetical ordering. Audit + activity emit in-tx.
 app.route('/api/events', betsRouter);
+
+// T6-5 head-to-head money matrix endpoint. Effective URL:
+// GET /api/events/:eventId/money
+// Authorization: requireSession + requireEventParticipant.
+// Aggregates 2v2 best ball + active individual bets across all rounds.
+// Press multipliers + skins deferred (Followup T6-5f / T6-5a). Read-only;
+// no audit, no activity, no cache. cache-control: no-store.
+app.route('/api/events', moneyRouter);
 
 export { app };

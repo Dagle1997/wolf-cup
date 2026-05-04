@@ -1,0 +1,395 @@
+/**
+ * T6-5 GET /api/events/:eventId/money integration tests.
+ *
+ * Cases per AC-6: empty event, single round with team-A win, anti-symmetry,
+ * diagonal=0, non-participant 403, nonexistent eventId 403.
+ */
+import { randomUUID } from 'node:crypto';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createClient } from '@libsql/client';
+import { drizzle } from 'drizzle-orm/libsql';
+import { migrate } from 'drizzle-orm/libsql/migrator';
+import { Hono } from 'hono';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const migrationsFolder = resolve(__dirname, '../db/migrations');
+
+vi.mock('../db/index.js', async () => {
+  const client = createClient({ url: 'file::memory:?cache=shared' });
+  const db = drizzle(client);
+  await client.execute('PRAGMA foreign_keys = ON');
+  return { client, db };
+});
+
+let __testPlayer: { id: string; isOrganizer: boolean } | null = null;
+vi.mock('../middleware/require-session.js', () => ({
+  requireSession: async (
+    c: import('hono').Context,
+    next: () => Promise<void>,
+  ) => {
+    if (!__testPlayer) {
+      return c.json({ error: 'unauthorized', code: 'no_test_player' }, 401);
+    }
+    c.set('player', __testPlayer);
+    c.set('session', { sessionId: 'test', playerId: __testPlayer.id });
+    await next();
+  },
+}));
+
+const { db } = await import('../db/index.js');
+const {
+  players,
+  courses,
+  courseRevisions,
+  courseTees,
+  courseHoles,
+  events,
+  eventRounds,
+  groups,
+  groupMembers,
+  pairings,
+  pairingMembers,
+  rounds,
+  holeScores,
+  ruleSets,
+  ruleSetRevisions,
+  individualBets,
+  individualBetRounds,
+  individualBetPresses,
+  teamPressLog,
+} = await import('../db/schema/index.js');
+const { moneyRouter } = await import('./money.js');
+const { requestIdMiddleware } = await import('../middleware/request-id.js');
+
+const TENANT_ID = 'guyan';
+const CTX_BASE = 'league:guyan-wolf-cup-friday';
+
+beforeAll(async () => {
+  await migrate(db, { migrationsFolder });
+});
+
+beforeEach(async () => {
+  await db.delete(teamPressLog);
+  await db.delete(individualBetPresses);
+  await db.delete(individualBetRounds);
+  await db.delete(individualBets);
+  await db.delete(holeScores);
+  await db.delete(pairingMembers);
+  await db.delete(pairings);
+  await db.delete(ruleSetRevisions);
+  await db.delete(ruleSets);
+  await db.delete(rounds);
+  await db.delete(eventRounds);
+  await db.delete(groupMembers);
+  await db.delete(groups);
+  await db.delete(events);
+  await db.delete(courseHoles);
+  await db.delete(courseTees);
+  await db.delete(courseRevisions);
+  await db.delete(courses);
+  await db.delete(players);
+});
+
+interface SeedResult {
+  organizerId: string;
+  /** Sorted alphabetical for deterministic team assignment. */
+  playerIds: [string, string, string, string];
+  outsiderId: string;
+  eventId: string;
+  eventRoundId: string;
+  roundId: string;
+}
+
+async function seed(opts: { withScores?: boolean } = {}): Promise<SeedResult> {
+  const now = Date.now();
+  const ids = {
+    organizerId: randomUUID(),
+    p1: randomUUID(),
+    p2: randomUUID(),
+    p3: randomUUID(),
+    p4: randomUUID(),
+    outsiderId: randomUUID(),
+    eventId: randomUUID(),
+    courseId: randomUUID(),
+    courseRevId: randomUUID(),
+    eventRoundId: randomUUID(),
+    pairingId: randomUUID(),
+    roundId: randomUUID(),
+    groupId: randomUUID(),
+    ruleSetId: randomUUID(),
+    revisionId: randomUUID(),
+  };
+  const sortedPlayers: [string, string, string, string] = [ids.p1, ids.p2, ids.p3, ids.p4].sort() as [string, string, string, string];
+  const ctx = `event:${ids.eventId}`;
+
+  for (const [id, name] of [
+    [ids.organizerId, 'Organizer'],
+    [ids.p1, 'P1'],
+    [ids.p2, 'P2'],
+    [ids.p3, 'P3'],
+    [ids.p4, 'P4'],
+    [ids.outsiderId, 'Outsider'],
+  ] as Array<[string, string]>) {
+    await db.insert(players).values({
+      id, isOrganizer: false, createdAt: now, name, manualHandicapIndex: 0,
+      tenantId: TENANT_ID, contextId: CTX_BASE,
+    });
+  }
+
+  await db.insert(courses).values({
+    id: ids.courseId, name: 'C', clubName: 'CC',
+    createdAt: now, tenantId: TENANT_ID, contextId: CTX_BASE,
+  });
+  await db.insert(courseRevisions).values({
+    id: ids.courseRevId, courseId: ids.courseId, revisionNumber: 1,
+    sourceUrl: null, extractionDate: null, verified: false,
+    outTotal: 36, inTotal: 36, courseTotal: 72,
+    createdAt: now, tenantId: TENANT_ID, contextId: CTX_BASE,
+  });
+  await db.insert(courseTees).values({
+    id: randomUUID(), courseRevisionId: ids.courseRevId, teeColor: 'blue',
+    rating: 720, slope: 113,
+    tenantId: TENANT_ID, contextId: CTX_BASE,
+  });
+  for (let h = 1; h <= 18; h++) {
+    await db.insert(courseHoles).values({
+      id: randomUUID(), courseRevisionId: ids.courseRevId,
+      holeNumber: h, par: 4, si: ((h * 7) % 18) + 1,
+      yardagePerTeeJson: '{}',
+      tenantId: TENANT_ID, contextId: CTX_BASE,
+    });
+  }
+
+  await db.insert(events).values({
+    id: ids.eventId, name: 'Test', startDate: now, endDate: now + 86400000,
+    timezone: 'America/New_York', organizerPlayerId: ids.organizerId,
+    createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+  });
+  await db.insert(eventRounds).values({
+    id: ids.eventRoundId, eventId: ids.eventId, roundNumber: 1, roundDate: now,
+    courseRevisionId: ids.courseRevId, teeColor: 'blue', holesToPlay: 18,
+    createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+  });
+  await db.insert(rounds).values({
+    id: ids.roundId, eventId: ids.eventId, eventRoundId: ids.eventRoundId,
+    holesToPlay: 18, createdAt: now,
+    tenantId: TENANT_ID, contextId: ctx,
+  });
+  await db.insert(groups).values({
+    id: ids.groupId, eventId: ids.eventId, name: 'G',
+    moneyVisibilityMode: 'open', createdAt: now,
+    tenantId: TENANT_ID, contextId: ctx,
+  });
+  for (const pid of sortedPlayers) {
+    await db.insert(groupMembers).values({
+      groupId: ids.groupId, playerId: pid,
+      tenantId: TENANT_ID, contextId: ctx,
+    });
+  }
+  await db.insert(pairings).values({
+    id: ids.pairingId, eventRoundId: ids.eventRoundId, foursomeNumber: 1,
+    createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+  });
+  for (let i = 0; i < 4; i++) {
+    await db.insert(pairingMembers).values({
+      pairingId: ids.pairingId, playerId: sortedPlayers[i]!, slotNumber: i + 1,
+      tenantId: TENANT_ID, contextId: ctx,
+    });
+  }
+  await db.insert(ruleSets).values({
+    id: ids.ruleSetId, name: 'Test', createdAt: now,
+    tenantId: TENANT_ID, contextId: `library:${TENANT_ID}`,
+  });
+  await db.insert(ruleSetRevisions).values({
+    id: ids.revisionId, ruleSetId: ids.ruleSetId, revisionNumber: 1,
+    configJson: JSON.stringify({
+      basePerHoleCents: 100,
+      sandies: false,
+      sandiesBonusPerHoleCents: 0,
+      greenieCarryover: false,
+      greenieValidation: 'none',
+      greenieBaseCents: 0,
+      autoPressTriggerAtNDown: null,
+      pressMultiplier: 2,
+    }),
+    effectiveFromRoundId: null, effectiveFromHole: 1,
+    createdByPlayerId: ids.organizerId, reason: null, createdAt: now,
+    tenantId: TENANT_ID, contextId: `library:${TENANT_ID}`,
+  });
+
+  if (opts.withScores) {
+    // teamA = sortedPlayers[0,1]; teamB = sortedPlayers[2,3].
+    // 18 holes: A wins 12, B wins 6. Net to teamA = +6 holes. Per-pair @ 100c = +600 per pair × 4 pairs = +2400 total team delta.
+    for (let h = 1; h <= 18; h++) {
+      const aWins = h <= 12;
+      const aGross = aWins ? 4 : 5;
+      const bGross = aWins ? 5 : 4;
+      for (const pid of [sortedPlayers[0]!, sortedPlayers[1]!]) {
+        await db.insert(holeScores).values({
+          id: randomUUID(),
+          roundId: ids.roundId,
+          playerId: pid,
+          holeNumber: h,
+          grossStrokes: aGross,
+          putts: 2,
+          scorerPlayerId: sortedPlayers[0]!,
+          clientEventId: `evt-${pid}-${h}`,
+          createdAt: now, updatedAt: now,
+          tenantId: TENANT_ID, contextId: ctx,
+        });
+      }
+      for (const pid of [sortedPlayers[2]!, sortedPlayers[3]!]) {
+        await db.insert(holeScores).values({
+          id: randomUUID(),
+          roundId: ids.roundId,
+          playerId: pid,
+          holeNumber: h,
+          grossStrokes: bGross,
+          putts: 2,
+          scorerPlayerId: sortedPlayers[0]!,
+          clientEventId: `evt-${pid}-${h}`,
+          createdAt: now, updatedAt: now,
+          tenantId: TENANT_ID, contextId: ctx,
+        });
+      }
+    }
+  }
+
+  return {
+    organizerId: ids.organizerId,
+    playerIds: sortedPlayers,
+    outsiderId: ids.outsiderId,
+    eventId: ids.eventId,
+    eventRoundId: ids.eventRoundId,
+    roundId: ids.roundId,
+  };
+}
+
+function buildApp(viewerPlayerId: string): Hono {
+  __testPlayer = { id: viewerPlayerId, isOrganizer: false };
+  const app = new Hono();
+  app.use('*', requestIdMiddleware);
+  app.route('/api/events', moneyRouter);
+  return app;
+}
+
+async function getMoney(app: Hono, eventId: string): Promise<Response> {
+  return await app.request(`/api/events/${eventId}/money`);
+}
+
+describe('GET /api/events/:eventId/money', () => {
+  test('(a) empty event (no scores) → matrix zeros, anti-symmetric, diagonal 0', async () => {
+    const s = await seed();
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getMoney(app, s.eventId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      players: Array<{ id: string; name: string }>;
+      matrix: Record<string, Record<string, number>>;
+      totals: Record<string, number>;
+    };
+    expect(body.players.length).toBe(4);
+    for (const a of s.playerIds) {
+      for (const b of s.playerIds) {
+        expect(Number.isInteger(body.matrix[a]![b]!)).toBe(true);
+        expect(body.matrix[a]![b]).toBe(0);
+      }
+      expect(body.totals[a]).toBe(0);
+    }
+  });
+
+  test('(b) single round with teamA winning → matrix reflects A→B positive, B→A negative', async () => {
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getMoney(app, s.eventId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      matrix: Record<string, Record<string, number>>;
+      totals: Record<string, number>;
+    };
+    // teamA (sortedPlayers[0,1]) is up on teamB (sortedPlayers[2,3]).
+    // 18 holes, A wins 12, B wins 6 → net +6 holes for teamA.
+    // Per-pair contribution = (12 - 6) × 100 = +600 cents from each A-side pair.
+    const a1 = s.playerIds[0]!;
+    const a2 = s.playerIds[1]!;
+    const b1 = s.playerIds[2]!;
+    const b2 = s.playerIds[3]!;
+    expect(body.matrix[a1]![b1]).toBe(600);
+    expect(body.matrix[a1]![b2]).toBe(600);
+    expect(body.matrix[a2]![b1]).toBe(600);
+    expect(body.matrix[a2]![b2]).toBe(600);
+    // Anti-symmetric.
+    expect(body.matrix[b1]![a1]).toBe(-600);
+    expect(body.matrix[b2]![a1]).toBe(-600);
+    // Intra-team cells: 0 (no money flows within a team).
+    expect(body.matrix[a1]![a2]).toBe(0);
+    expect(body.matrix[b1]![b2]).toBe(0);
+    // Totals: each A player +1200; each B player -1200.
+    expect(body.totals[a1]).toBe(1200);
+    expect(body.totals[a2]).toBe(1200);
+    expect(body.totals[b1]).toBe(-1200);
+    expect(body.totals[b2]).toBe(-1200);
+  });
+
+  test('(c) anti-symmetry across all pairs', async () => {
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getMoney(app, s.eventId);
+    const body = (await res.json()) as {
+      matrix: Record<string, Record<string, number>>;
+    };
+    for (const a of s.playerIds) {
+      for (const b of s.playerIds) {
+        if (a === b) continue;
+        expect(body.matrix[a]![b]! + body.matrix[b]![a]!).toBe(0);
+      }
+    }
+  });
+
+  test('(d) diagonal cells are 0', async () => {
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getMoney(app, s.eventId);
+    const body = (await res.json()) as {
+      matrix: Record<string, Record<string, number>>;
+    };
+    for (const a of s.playerIds) {
+      expect(body.matrix[a]![a]).toBe(0);
+    }
+  });
+
+  test('(e) non-participant requester → 403 not_event_participant', async () => {
+    const s = await seed();
+    const app = buildApp(s.outsiderId);
+    const res = await getMoney(app, s.eventId);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('not_event_participant');
+  });
+
+  test('(f) nonexistent eventId → 403 (no-existence-leak)', async () => {
+    const s = await seed();
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getMoney(app, randomUUID());
+    expect(res.status).toBe(403);
+  });
+
+  test('(g) integer-only on every cell + cache-control: no-store', async () => {
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getMoney(app, s.eventId);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = (await res.json()) as {
+      matrix: Record<string, Record<string, number>>;
+      totals: Record<string, number>;
+    };
+    for (const a of s.playerIds) {
+      for (const b of s.playerIds) {
+        expect(Number.isInteger(body.matrix[a]![b]!)).toBe(true);
+      }
+      expect(Number.isInteger(body.totals[a]!)).toBe(true);
+    }
+  });
+});

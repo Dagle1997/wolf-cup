@@ -157,7 +157,7 @@ development_status:
   T6-2-engine-press-auto-press-trigger-evaluation: done
   T6-3-engine-schema-cross-foursome-individual-bets: done
   T6-4-score-commit-hook-hole-complete-press-evaluation: done
-  T6-5-head-to-head-money-matrix-api-ui: backlog
+  T6-5-head-to-head-money-matrix-api-ui: done
   T6-6-settle-up-view-pairwise-attribution-zero-sum: backlog
   T6-7-manual-press-ui: backlog
   T6-8-bets-page-per-pair-live-standings: backlog

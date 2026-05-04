@@ -49,3 +49,8 @@ export {
   runPressOrchestrator,
   type RunPressOrchestratorInput,
 } from './press-orchestrator.js';
+
+export {
+  computeMoneyMatrix,
+  type MoneyMatrix,
+} from './money.js';
