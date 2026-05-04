@@ -468,3 +468,117 @@ export async function aggregateSkinsForEvent(
   }
   return totals;
 }
+
+/**
+ * T6-5a: per-skins-sub-game pairwise breakdown for the money matrix.
+ *
+ * For each FINALIZED skins sub-game, returns the participants list +
+ * potShares + buyIn so the caller can attribute pairwise.
+ *
+ * Pairwise attribution model (per-sub-game):
+ *   matrix[a][b] += floor((potShares[a] - potShares[b]) / N)  for a !== b
+ *   matrix[b][a] -= same value
+ *
+ * This preserves anti-symmetry. Sum-to-zero is guaranteed (each row sums
+ * to potShares[a] - buyIn — the player's net), with potential ≤N-cents
+ * drift due to integer division. Tracked under Followup T6-5h; trip-day
+ * buy-ins are small enough that drift is invisible (≤ ~$0.04 across the
+ * event).
+ *
+ * The carry-to-next-round sentinel (playerId === null) is excluded from
+ * pairwise attribution — only player-bearing pot shares contribute.
+ */
+export type SkinsSubGameSnapshot = {
+  subGameId: string;
+  participants: string[];
+  potShares: Map<string, number>;  // playerId → dollarsCents (excluding null sentinel)
+};
+
+export async function loadSkinsSnapshotsForEvent(
+  txOrDb: Tx | Db,
+  eventId: string,
+  tenantId: string,
+): Promise<SkinsSubGameSnapshot[]> {
+  // Find FINALIZED rounds in this event.
+  const finalizedRoundRows = await txOrDb
+    .select({ eventRoundId: rounds.eventRoundId })
+    .from(rounds)
+    .innerJoin(roundStates, eq(roundStates.roundId, rounds.id))
+    .where(
+      and(
+        eq(rounds.eventId, eventId),
+        eq(rounds.tenantId, tenantId),
+        eq(roundStates.state, 'finalized'),
+        eq(roundStates.tenantId, tenantId),
+      ),
+    );
+  const finalizedEventRoundIds = finalizedRoundRows
+    .map((r) => r.eventRoundId)
+    .filter((id): id is string => id !== null);
+  if (finalizedEventRoundIds.length === 0) return [];
+
+  // Find skins sub-games attached to those event_rounds.
+  const allRows = await txOrDb
+    .select({ id: subGames.id, eventRoundId: subGames.eventRoundId })
+    .from(subGames)
+    .where(
+      and(
+        eq(subGames.type, 'skins'),
+        eq(subGames.tenantId, tenantId),
+      ),
+    );
+  const skinsIds = allRows
+    .filter((r) => finalizedEventRoundIds.includes(r.eventRoundId))
+    .map((r) => r.id);
+  if (skinsIds.length === 0) return [];
+
+  const snapshots: SkinsSubGameSnapshot[] = [];
+  for (const sgId of skinsIds) {
+    // Latest results row.
+    const latestRows = await txOrDb
+      .select({ resultsJson: subGameResults.resultsJson })
+      .from(subGameResults)
+      .where(
+        and(
+          eq(subGameResults.subGameId, sgId),
+          eq(subGameResults.tenantId, tenantId),
+        ),
+      )
+      .orderBy(desc(subGameResults.computedAt))
+      .limit(1);
+    if (latestRows.length === 0) continue;
+
+    // Participants list.
+    const partRows = await txOrDb
+      .select({ playerId: subGameParticipants.playerId })
+      .from(subGameParticipants)
+      .where(
+        and(
+          eq(subGameParticipants.subGameId, sgId),
+          eq(subGameParticipants.tenantId, tenantId),
+        ),
+      );
+    const participants = partRows.map((r) => r.playerId);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(latestRows[0]!.resultsJson);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== 'object') continue;
+    const potShares = (parsed as { potShares?: unknown }).potShares;
+    if (!Array.isArray(potShares)) continue;
+
+    const potSharesMap = new Map<string, number>();
+    for (const ps of potShares) {
+      if (!ps || typeof ps !== 'object') continue;
+      const psObj = ps as { playerId?: unknown; dollarsCents?: unknown };
+      if (typeof psObj.playerId !== 'string') continue;
+      if (typeof psObj.dollarsCents !== 'number' || !Number.isInteger(psObj.dollarsCents)) continue;
+      potSharesMap.set(psObj.playerId, psObj.dollarsCents);
+    }
+    snapshots.push({ subGameId: sgId, participants, potShares: potSharesMap });
+  }
+  return snapshots;
+}

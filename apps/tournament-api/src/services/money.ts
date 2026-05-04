@@ -62,6 +62,7 @@ import {
   type HoleScoreShape,
   type IndividualBetType,
 } from '../engine/rules/individual-bets.js';
+import { loadSkinsSnapshotsForEvent } from './sub-games.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -538,7 +539,34 @@ export async function computeMoneyMatrix(
     matrix[b]![a] = (matrix[b]![a] ?? 0) - betResult.netToPlayerACents;
   }
 
-  // ── (5) Skins: NOT IMPLEMENTED v1 (Followup T6-5a / T6-14). ──
+  // ── (5) Skins (T6-5a closes T6-5's deferred scope). ──
+  // For each FINALIZED skins sub-game, attribute pot shares pairwise:
+  //   matrix[a][b] += floor((potShares[a] - potShares[b]) / N)  for a !== b
+  // This preserves anti-symmetry; sum-to-zero has ≤ N-cents drift due to
+  // integer division (Followup T6-5h tracks remainder distribution if
+  // observed at scale; trip-day buy-ins make the drift invisible).
+  const skinsSnapshots = await loadSkinsSnapshotsForEvent(txOrDb, eventId, tenantId);
+  for (const snap of skinsSnapshots) {
+    const N = snap.participants.length;
+    if (N < 2) continue;
+    for (let i = 0; i < snap.participants.length; i++) {
+      for (let j = i + 1; j < snap.participants.length; j++) {
+        const a = snap.participants[i]!;
+        const b = snap.participants[j]!;
+        if (!matrix[a] || !matrix[b]) continue;  // skip if either not in matrix scope
+        const shareA = snap.potShares.get(a) ?? 0;
+        const shareB = snap.potShares.get(b) ?? 0;
+        const delta = shareA - shareB;
+        // floor toward -infinity for negative deltas keeps anti-symmetry
+        // exact: floor((a-b)/N) === -floor((b-a)/N) only when (a-b) is
+        // a multiple of N. For non-multiples, use Math.trunc-toward-zero
+        // to keep matrix[a][b] === -matrix[b][a].
+        const share = Math.trunc(delta / N);
+        matrix[a]![b] = (matrix[a]![b] ?? 0) + share;
+        matrix[b]![a] = (matrix[b]![a] ?? 0) - share;
+      }
+    }
+  }
 
   // ── (6) Compute totals. ──
   const totals: Record<string, number> = {};
