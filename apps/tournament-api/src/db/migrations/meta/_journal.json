@@ -50,6 +50,13 @@
       "when": 1777905078906,
       "tag": "0006_team_press_log",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1777918372221,
+      "tag": "0007_sub_game_results",
+      "breakpoints": true
     }
   ]
 }

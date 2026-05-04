@@ -54,3 +54,8 @@ export {
   computeMoneyMatrix,
   type MoneyMatrix,
 } from './money.js';
+
+export {
+  computeSubGame,
+  computeSubGamesForRound,
+} from './sub-games.js';

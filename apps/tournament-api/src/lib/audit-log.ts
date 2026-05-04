@@ -28,6 +28,7 @@ export const AUDIT_EVENT_TYPES = {
   ROUND_FINALIZED: 'round.finalized',
   RULE_SET_REVISED: 'rule_set.revised',
   BET_CREATED: 'bet.created',
+  SUBGAME_COMPUTED: 'subgame.computed',
 } as const;
 
 export type AuditEventType =
@@ -39,6 +40,7 @@ export const AUDIT_ENTITY_TYPES = {
   SESSION: 'session',
   RULE_SET: 'rule_set',
   BET: 'bet',
+  SUBGAME: 'sub_game',
 } as const;
 
 export type AuditEntityType =

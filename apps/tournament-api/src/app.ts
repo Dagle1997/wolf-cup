@@ -20,6 +20,7 @@ import { eventRuleEditsRouter } from './routes/event-rule-edits.js';
 import { betsRouter } from './routes/bets.js';
 import { moneyRouter } from './routes/money.js';
 import { pressesRouter } from './routes/presses.js';
+import { subGamesComputeRouter } from './routes/sub-games.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -162,5 +163,13 @@ app.route('/api/events', moneyRouter);
 // Server-derived fromHole = max-complete-hole + 1; UNIQUE on
 // (round_id, team, fired_at_hole, trigger_type) prevents duplicate fires.
 app.route('/api/rounds', pressesRouter);
+
+// T6-13 sub-game compute route. Effective URL:
+// POST /api/rounds/:roundId/sub-games/:subGameId/compute
+// Authorization: requireSession + handler-internal event-participant check.
+// Dispatches by sub_games.type: 'skins' → calcSkins (T6-11) + persist;
+// 'ctp' | 'sandies' | 'putting_contest' → 501 stub. Append-only writes
+// to sub_game_results — score-correction recomputes preserve history.
+app.route('/api/rounds', subGamesComputeRouter);
 
 export { app };

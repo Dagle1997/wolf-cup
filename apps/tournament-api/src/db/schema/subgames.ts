@@ -76,3 +76,57 @@ export const subGameParticipants = sqliteTable(
 );
 
 export type SubGameParticipant = typeof subGameParticipants.$inferSelect;
+
+/**
+ * T6-13 sub_game_results — append-only history of computed sub-game results.
+ *
+ * Multiple rows per sub_game_id are allowed; latest-by-`computed_at` is the
+ * current truth. No UPDATE / DELETE paths in v1 — score-correction-triggered
+ * recomputes INSERT a new row (history preserved per FD-10/11).
+ *
+ * **`config_snapshot_json`** — captures the rule-set/config in effect at
+ * compute time so historical rows remain reproducible even if the rule-set
+ * changes via T5-11 mid-event-edit.
+ *
+ * **`results_json`** — the full output of the sub-game-specific compute
+ * function (e.g., calcSkins output). Schema-less per type to keep new
+ * sub-game types additive.
+ *
+ * **`created_by_player_id` NULLABLE** — null for system-computed (auto-
+ * compute on T5-8 finalize); populated for user-triggered POST .../compute.
+ *
+ * FK delete posture:
+ *   - sub_game_id → sub_games.id: CASCADE.
+ *   - created_by_player_id → players.id: RESTRICT (preserve audit attribution).
+ */
+export const subGameResults = sqliteTable(
+  'sub_game_results',
+  {
+    id: text('id').primaryKey(),
+    subGameId: text('sub_game_id')
+      .notNull()
+      .references(() => subGames.id, { onDelete: 'cascade' }),
+    computedAt: integer('computed_at').notNull(),
+    configSnapshotJson: text('config_snapshot_json').notNull(),
+    resultsJson: text('results_json').notNull(),
+    totalPotCents: integer('total_pot_cents').notNull(),
+    createdByPlayerId: text('created_by_player_id').references(() => players.id, {
+      onDelete: 'restrict',
+    }),
+    ...ecosystemColumns(),
+  },
+  (t) => ({
+    subGameIdx: index('idx_sub_game_results_sub_game_id').on(t.subGameId),
+    // For "latest-by-sub-game" queries: sub_game_id + computed_at desc.
+    subGameComputedAtIdx: index('idx_sub_game_results_sub_game_id_computed_at').on(
+      t.subGameId,
+      t.computedAt,
+    ),
+    totalPotCheck: check(
+      'check_sub_game_results_total_pot_non_negative',
+      sql`${t.totalPotCents} >= 0`,
+    ),
+  }),
+);
+
+export type SubGameResult = typeof subGameResults.$inferSelect;

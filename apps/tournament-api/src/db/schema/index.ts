@@ -17,6 +17,7 @@ export { ruleSets, type RuleSet } from './rules.js';
 export { ruleSetRevisions, type RuleSetRevision } from './rules.js';
 export { subGames, type SubGame } from './subgames.js';
 export { subGameParticipants, type SubGameParticipant } from './subgames.js';
+export { subGameResults, type SubGameResult } from './subgames.js';
 // T4-2 pairings schema
 export { pairings, type Pairing } from './pairings.js';
 export { pairingMembers, type PairingMember } from './pairings.js';
