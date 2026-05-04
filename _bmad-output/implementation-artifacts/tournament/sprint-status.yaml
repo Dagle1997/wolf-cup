@@ -154,7 +154,7 @@ development_status:
   epic-T6: in-progress
 
   T6-1-engine-2v2-best-ball-hole-round-scoring: done
-  T6-2-engine-press-auto-press-trigger-evaluation: backlog
+  T6-2-engine-press-auto-press-trigger-evaluation: done
   T6-3-engine-schema-cross-foursome-individual-bets: backlog
   T6-4-score-commit-hook-hole-complete-press-evaluation: backlog
   T6-5-head-to-head-money-matrix-api-ui: backlog

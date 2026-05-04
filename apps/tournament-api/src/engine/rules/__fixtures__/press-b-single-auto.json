@@ -1,0 +1,21 @@
+{
+  "name": "(b) Single auto-press fires at 2-down — A wins 1, B wins 2..4 → A is 2-down through hole 4",
+  "input": {
+    "perHoleResults": [
+      { "holeNumber": 1, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 2, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 3, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 4, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null }
+    ],
+    "manualPresses": [],
+    "existingPressLog": [],
+    "config": { "autoPressTriggerAtNDown": 2, "pressMultiplier": 2 },
+    "throughHole": 4
+  },
+  "expectedNewlyFired": [
+    { "type": "auto", "team": "teamA", "startHole": 5, "multiplier": 2, "trigger": "2-down", "canUndo": false }
+  ],
+  "expectedActivePresses": [
+    { "type": "auto", "team": "teamA", "startHole": 5, "multiplier": 2, "trigger": "2-down", "canUndo": false }
+  ]
+}

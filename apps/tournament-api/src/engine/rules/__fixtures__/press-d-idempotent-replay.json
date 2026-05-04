@@ -1,0 +1,22 @@
+{
+  "name": "(d) Idempotency — same state as (b) plus existingPressLog containing the auto press → newlyFired empty, multiplier preserved from log (not config)",
+  "input": {
+    "perHoleResults": [
+      { "holeNumber": 1, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 2, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 3, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 4, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null }
+    ],
+    "manualPresses": [],
+    "existingPressLog": [
+      { "type": "auto", "team": "teamA", "startHole": 5, "multiplier": 2, "trigger": "2-down" }
+    ],
+    "config": { "autoPressTriggerAtNDown": 2, "pressMultiplier": 3 },
+    "throughHole": 4
+  },
+  "expectedNewlyFired": [],
+  "expectedActivePresses": [
+    { "type": "auto", "team": "teamA", "startHole": 5, "multiplier": 2, "trigger": "2-down", "canUndo": false }
+  ],
+  "_note": "config.pressMultiplier is 3 (current rule-set), but the carried-forward press preserves its fire-time multiplier of 2 from the existingPressLog row. T5-11 mid-event rule edits do NOT retroactively rewrite historical money math."
+}

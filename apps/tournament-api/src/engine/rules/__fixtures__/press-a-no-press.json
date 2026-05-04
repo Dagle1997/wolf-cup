@@ -1,0 +1,17 @@
+{
+  "name": "(a) No press fires in a close match — alternating wins, never 2-down",
+  "input": {
+    "perHoleResults": [
+      { "holeNumber": 1, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 2, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 3, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 4, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null }
+    ],
+    "manualPresses": [],
+    "existingPressLog": [],
+    "config": { "autoPressTriggerAtNDown": 2, "pressMultiplier": 2 },
+    "throughHole": 4
+  },
+  "expectedNewlyFired": [],
+  "expectedActivePresses": []
+}

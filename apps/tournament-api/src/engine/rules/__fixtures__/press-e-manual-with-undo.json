@@ -1,0 +1,27 @@
+{
+  "name": "(e) Manual press with undo inside window — filedAtHole=7, throughHole=7 → canUndo true",
+  "input": {
+    "perHoleResults": [
+      { "holeNumber": 1, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 2, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 3, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 4, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 5, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 6, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 7, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null }
+    ],
+    "manualPresses": [
+      { "team": "teamB", "filedAtHole": 7 }
+    ],
+    "existingPressLog": [],
+    "config": { "autoPressTriggerAtNDown": null, "pressMultiplier": 2 },
+    "throughHole": 7
+  },
+  "expectedNewlyFired": [
+    { "type": "manual", "team": "teamB", "startHole": 7, "multiplier": 2, "canUndo": true }
+  ],
+  "expectedActivePresses": [
+    { "type": "manual", "team": "teamB", "startHole": 7, "multiplier": 2, "canUndo": true }
+  ],
+  "_note": "Team B is way down (7 holes lost), files a charity press at hole 7. autoPressTriggerAtNDown is null so no auto-press fires despite team B being 7-down. canUndo=true because throughHole (7) <= startHole (7)."
+}

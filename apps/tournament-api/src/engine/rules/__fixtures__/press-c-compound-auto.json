@@ -1,0 +1,28 @@
+{
+  "name": "(c) Compound auto-press — AC-6 scenario: base fires press_1 at hole 5; press_1's nested match fires press_2 at hole 9; throughHole=8",
+  "input": {
+    "perHoleResults": [
+      { "holeNumber": 1, "par": 4, "teamABestNet": 4, "teamBBestNet": 5, "winner": "teamA", "teamDeltaCents": 400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 2, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 3, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 4, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 5, "par": 4, "teamABestNet": 4, "teamBBestNet": 4, "winner": "tie",   "teamDeltaCents": 0,    "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 6, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 7, "par": 4, "teamABestNet": 4, "teamBBestNet": 4, "winner": "tie",   "teamDeltaCents": 0,    "sandiesApplied": false, "greenieAwarded": null },
+      { "holeNumber": 8, "par": 4, "teamABestNet": 5, "teamBBestNet": 4, "winner": "teamB", "teamDeltaCents": -400, "sandiesApplied": false, "greenieAwarded": null }
+    ],
+    "manualPresses": [],
+    "existingPressLog": [],
+    "config": { "autoPressTriggerAtNDown": 2, "pressMultiplier": 2 },
+    "throughHole": 8
+  },
+  "expectedNewlyFired": [
+    { "type": "auto", "team": "teamA", "startHole": 5, "multiplier": 2, "trigger": "2-down", "canUndo": false },
+    { "type": "auto", "team": "teamA", "startHole": 9, "multiplier": 2, "trigger": "2-down", "canUndo": false }
+  ],
+  "expectedActivePresses": [
+    { "type": "auto", "team": "teamA", "startHole": 5, "multiplier": 2, "trigger": "2-down", "canUndo": false },
+    { "type": "auto", "team": "teamA", "startHole": 9, "multiplier": 2, "trigger": "2-down", "canUndo": false }
+  ],
+  "_note": "Base match (1..8): A,B,B,B,tie,B,tie,B → signed delta walks +1, 0, -1, -2 (fires at h=4 → press_1 at startHole=5), -3, -4, -4, -5. Press_1 nested match (5..8): tie, B, tie, B → signed delta 0, -1, -1, -2 (fires at h=8 → press_2 at startHole=9). Press_2's segment is empty (startHole=9 > throughHole=8), so no further compound fires."
+}
