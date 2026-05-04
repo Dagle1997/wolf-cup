@@ -43,6 +43,7 @@ import {
   isEventOrganizer,
   transitionState,
 } from '../services/round-state.js';
+import { computeSubGamesForRound } from '../services/sub-games.js';
 
 const TENANT_ID = 'guyan';
 const UUID_RE =
@@ -399,7 +400,27 @@ roundLifecycleRouter.post(
           payload: {},
         });
 
-        // (viii) NO money recompute call in v1 (T6 not shipped; T5-8a tracks).
+        // (viii) T6-13a: auto-compute attached sub-games (skins, etc.).
+        // Stub-typed sub-games are SKIPPED (logged) — they don't fail
+        // finalization. computeSubGamesForRound is idempotent in the sense
+        // that re-finalize would just append more sub_game_results rows
+        // (FD-10/11 append-only history), but finalize itself is gated on
+        // complete_editable → finalized so re-finalize won't happen unless
+        // a future story adds an unfinalize path.
+        try {
+          await computeSubGamesForRound(tx, roundId!, TENANT_ID, log);
+        } catch (err) {
+          // Non-fatal: log + continue. Sub-game compute failures should not
+          // block finalization (per epic AC line 2192 — stub types skip
+          // with a logged note; same posture for other compute errors v1).
+          // Followup T6-13b tracks if observed at scale that we need a
+          // stricter posture.
+          log.warn({
+            msg: 'finalize_subgame_compute_failed_non_fatal',
+            roundId: roundId!,
+            err: String(err),
+          });
+        }
 
         return { kind: 'transitioned' as const, finalizedAt };
       });
