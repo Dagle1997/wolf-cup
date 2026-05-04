@@ -156,7 +156,7 @@ development_status:
   T6-1-engine-2v2-best-ball-hole-round-scoring: done
   T6-2-engine-press-auto-press-trigger-evaluation: done
   T6-3-engine-schema-cross-foursome-individual-bets: done
-  T6-4-score-commit-hook-hole-complete-press-evaluation: backlog
+  T6-4-score-commit-hook-hole-complete-press-evaluation: done
   T6-5-head-to-head-money-matrix-api-ui: backlog
   T6-6-settle-up-view-pairwise-attribution-zero-sum: backlog
   T6-7-manual-press-ui: backlog

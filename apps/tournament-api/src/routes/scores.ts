@@ -55,6 +55,7 @@ import {
   getRoundState,
   transitionState,
 } from '../services/round-state.js';
+import { runPressOrchestrator } from '../services/press-orchestrator.js';
 
 const TENANT_ID = 'guyan';
 
@@ -284,7 +285,10 @@ scoresRouter.post(
       );
     }
 
-    return await db.transaction(async (tx) => {
+    // T6-4: outer try/catch maps press-engine errors to 422.
+    // Other errors propagate to hono's default 500 handler.
+    try {
+      return await db.transaction(async (tx) => {
       // (1) Fetch round (defense-in-depth; middleware already returned 404)
       const roundRows = await tx
         .select()
@@ -458,6 +462,21 @@ scoresRouter.post(
         scope: activityScope,
       });
 
+      // (5b) T6-4 press orchestrator. Runs hole-complete detection internally;
+      // skips press eval when hole isn't complete. Engine errors throw
+      // BusinessRuleError('press_engine_error', ..., 422) — caught by the
+      // outer try/catch added below and mapped to a 422 response.
+      await runPressOrchestrator(
+        tx,
+        {
+          roundId,
+          holeNumber,
+          scoredPlayerId: body.playerId,
+          scorerPlayerId: player.id,
+        },
+        TENANT_ID,
+      );
+
       // (6) First-commit transition not_started → in_progress.
       // Promoted to services/round-state.ts in T5-8. The service handles
       // race-safe conditional UPDATE + audit row + rounds.opened_at side
@@ -545,6 +564,15 @@ scoresRouter.post(
         201,
       );
     });
+    } catch (err) {
+      if (err instanceof BusinessRuleError && err.code === 'press_engine_error') {
+        return c.json(
+          { error: 'unprocessable', code: 'press_engine_error', requestId },
+          422,
+        );
+      }
+      throw err;
+    }
   },
 );
 

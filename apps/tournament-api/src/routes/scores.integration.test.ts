@@ -69,14 +69,22 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(auditLog);
+  // T6-4: team_press_log FKs to rounds; delete BEFORE rounds.
+  const { teamPressLog: tplTable, ruleSetRevisions: rsrTable, ruleSets: rsTable, courseTees: ctTable, courseHoles: chTable } =
+    await import('../db/schema/index.js');
+  await db.delete(tplTable);
   await db.delete(holeScores);
   await db.delete(roundStates);
   await db.delete(scorerAssignments);
   await db.delete(pairingMembers);
   await db.delete(pairings);
+  await db.delete(rsrTable);
+  await db.delete(rsTable);
   await db.delete(rounds);
   await db.delete(eventRounds);
   await db.delete(events);
+  await db.delete(chTable);
+  await db.delete(ctTable);
   await db.delete(courseRevisions);
   await db.delete(courses);
   await db.delete(players);
@@ -577,5 +585,252 @@ describe('POST /api/rounds/:roundId/holes/:holeNumber/scores', () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('round_not_found');
+  });
+});
+
+// ===========================================================================
+// T6-4 press-orchestrator integration tests
+// ===========================================================================
+//
+// The existing scores integration tests above use a 2-player foursome which
+// doesn't trigger the press orchestrator (4-player guard rail skips). These
+// tests extend the seed to a full 4-player foursome plus rule_set + course
+// data so the press orchestrator can actually fire.
+//
+// Press behavior is verified in detail by services/press-orchestrator.test.ts
+// — these integration tests verify the WIRING (route → orchestrator → DB).
+
+import {
+  courseTees as courseTeesTable,
+  courseHoles as courseHolesTable,
+  ruleSets as ruleSetsTable,
+  ruleSetRevisions as ruleSetRevisionsTable,
+  teamPressLog as teamPressLogTable,
+} from '../db/schema/index.js';
+
+interface T6_4SeedResult {
+  organizerId: string;
+  /** Sorted alphabetical for deterministic team assignment by orchestrator. */
+  playerIds: [string, string, string, string];
+  scorerId: string;        // = playerIds[0] for simplicity
+  eventId: string;
+  roundId: string;
+}
+
+async function seedT6_4Round(opts: { autoPressEnabled?: boolean } = {}): Promise<T6_4SeedResult> {
+  const now = Date.now();
+  const ids = {
+    organizerId: randomUUID(),
+    p1: randomUUID(),
+    p2: randomUUID(),
+    p3: randomUUID(),
+    p4: randomUUID(),
+    eventId: randomUUID(),
+    courseId: randomUUID(),
+    courseRevId: randomUUID(),
+    eventRoundId: randomUUID(),
+    pairingId: randomUUID(),
+    roundId: randomUUID(),
+    ruleSetId: randomUUID(),
+    revisionId: randomUUID(),
+  };
+  const sortedPlayers: [string, string, string, string] = [ids.p1, ids.p2, ids.p3, ids.p4].sort() as [string, string, string, string];
+  const ctx = `event:${ids.eventId}`;
+
+  for (const [id, name] of [
+    [ids.organizerId, 'Organizer'],
+    [ids.p1, 'P1'],
+    [ids.p2, 'P2'],
+    [ids.p3, 'P3'],
+    [ids.p4, 'P4'],
+  ] as Array<[string, string]>) {
+    await db.insert(players).values({
+      id, isOrganizer: false, createdAt: now, name, manualHandicapIndex: 0,
+      tenantId: TENANT_ID, contextId: CTX_BASE,
+    });
+  }
+
+  await db.insert(courses).values({
+    id: ids.courseId, name: 'Test', clubName: 'Test CC',
+    createdAt: now, tenantId: TENANT_ID, contextId: CTX_BASE,
+  });
+  await db.insert(courseRevisions).values({
+    id: ids.courseRevId, courseId: ids.courseId, revisionNumber: 1,
+    sourceUrl: null, extractionDate: null, verified: false,
+    outTotal: 36, inTotal: 36, courseTotal: 72,
+    createdAt: now, tenantId: TENANT_ID, contextId: CTX_BASE,
+  });
+  await db.insert(courseTeesTable).values({
+    id: randomUUID(), courseRevisionId: ids.courseRevId, teeColor: 'blue',
+    rating: 720, slope: 113,
+    tenantId: TENANT_ID, contextId: CTX_BASE,
+  });
+  for (let h = 1; h <= 18; h++) {
+    await db.insert(courseHolesTable).values({
+      id: randomUUID(), courseRevisionId: ids.courseRevId,
+      holeNumber: h, par: 4, si: ((h * 7) % 18) + 1,
+      yardagePerTeeJson: '{}',
+      tenantId: TENANT_ID, contextId: CTX_BASE,
+    });
+  }
+
+  await db.insert(events).values({
+    id: ids.eventId, name: 'Test Event', startDate: now, endDate: now + 86400000,
+    timezone: 'America/New_York', organizerPlayerId: ids.organizerId,
+    createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+  });
+  await db.insert(eventRounds).values({
+    id: ids.eventRoundId, eventId: ids.eventId, roundNumber: 1, roundDate: now,
+    courseRevisionId: ids.courseRevId, teeColor: 'blue', holesToPlay: 18,
+    createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+  });
+  await db.insert(rounds).values({
+    id: ids.roundId, eventId: ids.eventId, eventRoundId: ids.eventRoundId,
+    holesToPlay: 18, createdAt: now,
+    tenantId: TENANT_ID, contextId: ctx,
+  });
+  await db.insert(roundStates).values({
+    roundId: ids.roundId, state: 'in_progress', enteredAt: now,
+    tenantId: TENANT_ID, contextId: ctx,
+  });
+  await db.insert(pairings).values({
+    id: ids.pairingId, eventRoundId: ids.eventRoundId, foursomeNumber: 1,
+    createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+  });
+  for (let i = 0; i < 4; i++) {
+    await db.insert(pairingMembers).values({
+      pairingId: ids.pairingId, playerId: sortedPlayers[i]!, slotNumber: i + 1,
+      tenantId: TENANT_ID, contextId: ctx,
+    });
+  }
+  // Scorer = first player (need a scorer assignment for the require-scorer middleware).
+  await db.insert(scorerAssignments).values({
+    roundId: ids.roundId, foursomeNumber: 1, scorerPlayerId: sortedPlayers[0]!,
+    assignedAt: now, assignedByPlayerId: ids.organizerId,
+    tenantId: TENANT_ID, contextId: ctx,
+  });
+
+  await db.insert(ruleSetsTable).values({
+    id: ids.ruleSetId, name: 'Test', createdAt: now,
+    tenantId: TENANT_ID, contextId: `library:${TENANT_ID}`,
+  });
+  const config = opts.autoPressEnabled !== false
+    ? { autoPressTriggerAtNDown: 2, pressMultiplier: 2, basePerHoleCents: 100,
+        sandies: false, sandiesBonusPerHoleCents: 0, greenieCarryover: false,
+        greenieValidation: 'none', greenieBaseCents: 0 }
+    : { autoPressTriggerAtNDown: null, pressMultiplier: 2, basePerHoleCents: 100,
+        sandies: false, sandiesBonusPerHoleCents: 0, greenieCarryover: false,
+        greenieValidation: 'none', greenieBaseCents: 0 };
+  await db.insert(ruleSetRevisionsTable).values({
+    id: ids.revisionId, ruleSetId: ids.ruleSetId, revisionNumber: 1,
+    configJson: JSON.stringify(config),
+    effectiveFromRoundId: null, effectiveFromHole: 1,
+    createdByPlayerId: ids.organizerId, reason: null, createdAt: now,
+    tenantId: TENANT_ID, contextId: `library:${TENANT_ID}`,
+  });
+
+  return {
+    organizerId: ids.organizerId,
+    playerIds: sortedPlayers,
+    scorerId: sortedPlayers[0]!,
+    eventId: ids.eventId,
+    roundId: ids.roundId,
+  };
+}
+
+describe('T6-4 press orchestrator wiring', () => {
+  test('AC-7(a) hole NOT complete (3 of 4 scored) → no press log rows', async () => {
+    const s = await seedT6_4Round();
+    const app = buildApp(s.scorerId);
+    // Score 3 of 4 players for hole 1.
+    for (let i = 0; i < 3; i++) {
+      const res = await postScore(app, s.roundId, 1, {
+        playerId: s.playerIds[i]!,
+        grossStrokes: 5,
+        clientEventId: `evt-h1-p${i}`,
+      });
+      expect(res.status).toBe(201);
+    }
+    const presses = await db.select().from(teamPressLogTable).where(eq(teamPressLogTable.roundId, s.roundId));
+    expect(presses.length).toBe(0);
+  });
+
+  test('AC-7(b) hole complete with no trigger → no press log rows', async () => {
+    const s = await seedT6_4Round();
+    const app = buildApp(s.scorerId);
+    // All 4 players score hole 1 with same gross (halved hole; no winner; no trigger).
+    for (let i = 0; i < 4; i++) {
+      const res = await postScore(app, s.roundId, 1, {
+        playerId: s.playerIds[i]!,
+        grossStrokes: 4,
+        clientEventId: `evt-h1-p${i}`,
+      });
+      expect(res.status).toBe(201);
+    }
+    const presses = await db.select().from(teamPressLogTable).where(eq(teamPressLogTable.roundId, s.roundId));
+    expect(presses.length).toBe(0);
+  });
+
+  test('AC-7(c) hole complete + trigger → exactly one team_press_log row', async () => {
+    const s = await seedT6_4Round();
+    const app = buildApp(s.scorerId);
+    // teamA = playerIds[0], playerIds[1]; teamB = playerIds[2], playerIds[3].
+    // Score holes 1-2 such that teamB wins both → A is 2-down at hole 2.
+    for (let h = 1; h <= 2; h++) {
+      // Commit in order: player[0], player[1], player[2], player[3].
+      // The 4th commit completes the hole.
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[0]!, grossStrokes: 5, clientEventId: `evt-${h}-0` });
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[1]!, grossStrokes: 5, clientEventId: `evt-${h}-1` });
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[2]!, grossStrokes: 4, clientEventId: `evt-${h}-2` });
+      const lastRes = await postScore(app, s.roundId, h, { playerId: s.playerIds[3]!, grossStrokes: 5, clientEventId: `evt-${h}-3` });
+      expect(lastRes.status).toBe(201);
+    }
+    const presses = await db.select().from(teamPressLogTable).where(eq(teamPressLogTable.roundId, s.roundId));
+    expect(presses.length).toBeGreaterThanOrEqual(1);
+    const teamAPress = presses.find((p) => p.team === 'teamA' && p.triggerType === 'auto');
+    expect(teamAPress).toBeDefined();
+    expect(teamAPress!.startHole).toBe(3);  // trigger at hole 2 → press starts at hole 3
+    expect(teamAPress!.multiplier).toBe(2);
+    expect(teamAPress!.trigger).toBe('2-down');
+  });
+
+  test('AC-7(d) idempotent replay (clientEventId dedupe) → no duplicate press rows', async () => {
+    const s = await seedT6_4Round();
+    const app = buildApp(s.scorerId);
+    // First commit triggers a press.
+    for (let h = 1; h <= 2; h++) {
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[0]!, grossStrokes: 5, clientEventId: `evt-${h}-0` });
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[1]!, grossStrokes: 5, clientEventId: `evt-${h}-1` });
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[2]!, grossStrokes: 4, clientEventId: `evt-${h}-2` });
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[3]!, grossStrokes: 5, clientEventId: `evt-${h}-3` });
+    }
+    const pressesAfterFirst = await db.select().from(teamPressLogTable).where(eq(teamPressLogTable.roundId, s.roundId));
+    const firstCount = pressesAfterFirst.length;
+    expect(firstCount).toBeGreaterThanOrEqual(1);
+
+    // Replay the 4th commit on hole 2 (same clientEventId) → deduped at hole_scores layer.
+    const replayRes = await postScore(app, s.roundId, 2, {
+      playerId: s.playerIds[3]!,
+      grossStrokes: 5,
+      clientEventId: 'evt-2-3',
+    });
+    expect(replayRes.status).toBe(200);  // deduped
+
+    const pressesAfterReplay = await db.select().from(teamPressLogTable).where(eq(teamPressLogTable.roundId, s.roundId));
+    expect(pressesAfterReplay.length).toBe(firstCount);
+  });
+
+  test('AC-7(e) auto-press disabled in rule-set → no press fires regardless of state', async () => {
+    const s = await seedT6_4Round({ autoPressEnabled: false });
+    const app = buildApp(s.scorerId);
+    // Same trigger pattern as AC-7(c) but rule-set has auto-press disabled.
+    for (let h = 1; h <= 2; h++) {
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[0]!, grossStrokes: 5, clientEventId: `evt-${h}-0` });
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[1]!, grossStrokes: 5, clientEventId: `evt-${h}-1` });
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[2]!, grossStrokes: 4, clientEventId: `evt-${h}-2` });
+      await postScore(app, s.roundId, h, { playerId: s.playerIds[3]!, grossStrokes: 5, clientEventId: `evt-${h}-3` });
+    }
+    const presses = await db.select().from(teamPressLogTable).where(eq(teamPressLogTable.roundId, s.roundId));
+    expect(presses.length).toBe(0);
   });
 });

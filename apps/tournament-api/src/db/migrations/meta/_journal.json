@@ -43,6 +43,13 @@
       "when": 1777901489134,
       "tag": "0005_individual_bets",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1777905078906,
+      "tag": "0006_team_press_log",
+      "breakpoints": true
     }
   ]
 }
