@@ -1,0 +1,58 @@
+{
+  "name": "(d) Tie round — A wins 4 holes, B wins 4 holes, 1 halved → netToA = 0",
+  "input": {
+    "bet": {
+      "id": "bet-d",
+      "playerAId": "playerA",
+      "playerBId": "playerB",
+      "betType": "match_play_per_hole",
+      "stakePerHoleCents": 500,
+      "config": {}
+    },
+    "applicableRounds": [
+      {
+        "roundId": "r1",
+        "eventRoundId": "er1",
+        "course": {
+          "tee": { "slope": 113, "ratingTimes10": 720, "coursePar": 72 },
+          "holes": [
+            { "holeNumber": 1, "par": 4, "strokeIndex": 5 },
+            { "holeNumber": 2, "par": 4, "strokeIndex": 11 },
+            { "holeNumber": 3, "par": 4, "strokeIndex": 1 },
+            { "holeNumber": 4, "par": 4, "strokeIndex": 9 },
+            { "holeNumber": 5, "par": 4, "strokeIndex": 13 },
+            { "holeNumber": 6, "par": 4, "strokeIndex": 17 },
+            { "holeNumber": 7, "par": 4, "strokeIndex": 3 },
+            { "holeNumber": 8, "par": 4, "strokeIndex": 15 },
+            { "holeNumber": 9, "par": 4, "strokeIndex": 7 }
+          ]
+        }
+      }
+    ],
+    "_holeScoresByCellEntries": [
+      ["r1|playerA|1", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|1", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerA|2", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|2", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerA|3", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|3", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerA|4", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|4", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerA|5", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerB|5", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerA|6", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerB|6", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerA|7", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerB|7", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerA|8", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerB|8", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerA|9", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|9", { "grossStrokes": 4, "putts": 2 }]
+    ],
+    "pressesByRound": {},
+    "handicapIndexByPlayer": { "playerA": 0, "playerB": 0 }
+  },
+  "expectedNetToPlayerACents": 0,
+  "expectedTriggeredPressesCount": 0,
+  "_note": "A wins holes 1-4 (gross 4 vs 5), B wins holes 5-8 (gross 4 vs 5), hole 9 halved (4 vs 4). Net to A = 500×(4-4) + 0 = 0."
+}

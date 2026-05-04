@@ -1,0 +1,55 @@
+{
+  "name": "(c) Auto-press chain within one round — A goes 2-down at hole 4 → press fires at hole 5",
+  "input": {
+    "bet": {
+      "id": "bet-c",
+      "playerAId": "playerA",
+      "playerBId": "playerB",
+      "betType": "match_play_with_auto_press",
+      "stakePerHoleCents": 500,
+      "config": { "autoPressTriggerAtNDown": 2, "pressMultiplier": 2 }
+    },
+    "applicableRounds": [
+      {
+        "roundId": "r1",
+        "eventRoundId": "er1",
+        "course": {
+          "tee": { "slope": 113, "ratingTimes10": 720, "coursePar": 72 },
+          "holes": [
+            { "holeNumber": 1, "par": 4, "strokeIndex": 5 },
+            { "holeNumber": 2, "par": 4, "strokeIndex": 11 },
+            { "holeNumber": 3, "par": 4, "strokeIndex": 1 },
+            { "holeNumber": 4, "par": 4, "strokeIndex": 9 },
+            { "holeNumber": 5, "par": 4, "strokeIndex": 13 },
+            { "holeNumber": 6, "par": 4, "strokeIndex": 17 },
+            { "holeNumber": 7, "par": 4, "strokeIndex": 3 }
+          ]
+        }
+      }
+    ],
+    "_holeScoresByCellEntries": [
+      ["r1|playerA|1", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|1", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerA|2", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerB|2", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerA|3", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerB|3", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerA|4", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerB|4", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerA|5", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|5", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerA|6", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|6", { "grossStrokes": 5, "putts": 2 }],
+      ["r1|playerA|7", { "grossStrokes": 4, "putts": 2 }],
+      ["r1|playerB|7", { "grossStrokes": 5, "putts": 2 }]
+    ],
+    "pressesByRound": {},
+    "handicapIndexByPlayer": { "playerA": 0, "playerB": 0 }
+  },
+  "expectedNetToPlayerACents": 4500,
+  "expectedTriggeredPresses": [
+    { "firedAtRoundId": "er1", "firedAtHole": 5, "multiplier": 2, "triggerType": "auto", "trigger": "2-down" },
+    { "firedAtRoundId": "er1", "firedAtHole": 7, "multiplier": 2, "triggerType": "auto", "trigger": "2-down" }
+  ],
+  "_note": "Base match (1..7): A,B,B,B,A,A,A → signed delta walks +1, 0, -1, -2 (A 2-down at hole 4 → press_1 at startHole=5). Within press_1 segment (holes 5-7), A wins all 3 → segment delta walks +1, +2 (A 2-UP within press_1 → comeback-press_2 fires for B at startHole=7). Within press_2 segment (hole 7), A wins → segment delta +1, no further compound. Money: base = 500 × (4 wins - 3 wins) = +500. press_1 (multiplier 2) covers holes 5-7 (3 A wins) = 500 × 2 × 3 = +3000. press_2 (multiplier 2) covers hole 7 (A wins) = 500 × 2 × 1 = +1000. Total = 500 + 3000 + 1000 = 4500. Expected triggeredPresses: 2 entries (press_1 + press_2)."
+}

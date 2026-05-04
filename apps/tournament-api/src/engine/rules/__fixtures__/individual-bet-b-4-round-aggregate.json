@@ -1,0 +1,1445 @@
+{
+  "name": "(b) 4-round aggregate — A wins 40 holes, B wins 30, 2 halved → netToA = 5000",
+  "input": {
+    "bet": {
+      "id": "bet-b",
+      "playerAId": "playerA",
+      "playerBId": "playerB",
+      "betType": "match_play_per_hole",
+      "stakePerHoleCents": 500,
+      "config": {}
+    },
+    "applicableRounds": [
+      {
+        "roundId": "r1",
+        "eventRoundId": "er1",
+        "course": {
+          "tee": {
+            "slope": 113,
+            "ratingTimes10": 720,
+            "coursePar": 72
+          },
+          "holes": [
+            {
+              "holeNumber": 1,
+              "par": 4,
+              "strokeIndex": 1
+            },
+            {
+              "holeNumber": 2,
+              "par": 4,
+              "strokeIndex": 8
+            },
+            {
+              "holeNumber": 3,
+              "par": 4,
+              "strokeIndex": 15
+            },
+            {
+              "holeNumber": 4,
+              "par": 4,
+              "strokeIndex": 4
+            },
+            {
+              "holeNumber": 5,
+              "par": 4,
+              "strokeIndex": 11
+            },
+            {
+              "holeNumber": 6,
+              "par": 4,
+              "strokeIndex": 18
+            },
+            {
+              "holeNumber": 7,
+              "par": 4,
+              "strokeIndex": 7
+            },
+            {
+              "holeNumber": 8,
+              "par": 4,
+              "strokeIndex": 14
+            },
+            {
+              "holeNumber": 9,
+              "par": 4,
+              "strokeIndex": 3
+            },
+            {
+              "holeNumber": 10,
+              "par": 4,
+              "strokeIndex": 10
+            },
+            {
+              "holeNumber": 11,
+              "par": 4,
+              "strokeIndex": 17
+            },
+            {
+              "holeNumber": 12,
+              "par": 4,
+              "strokeIndex": 6
+            },
+            {
+              "holeNumber": 13,
+              "par": 4,
+              "strokeIndex": 13
+            },
+            {
+              "holeNumber": 14,
+              "par": 4,
+              "strokeIndex": 2
+            },
+            {
+              "holeNumber": 15,
+              "par": 4,
+              "strokeIndex": 9
+            },
+            {
+              "holeNumber": 16,
+              "par": 4,
+              "strokeIndex": 16
+            },
+            {
+              "holeNumber": 17,
+              "par": 4,
+              "strokeIndex": 5
+            },
+            {
+              "holeNumber": 18,
+              "par": 4,
+              "strokeIndex": 12
+            }
+          ]
+        }
+      },
+      {
+        "roundId": "r2",
+        "eventRoundId": "er2",
+        "course": {
+          "tee": {
+            "slope": 113,
+            "ratingTimes10": 720,
+            "coursePar": 72
+          },
+          "holes": [
+            {
+              "holeNumber": 1,
+              "par": 4,
+              "strokeIndex": 1
+            },
+            {
+              "holeNumber": 2,
+              "par": 4,
+              "strokeIndex": 8
+            },
+            {
+              "holeNumber": 3,
+              "par": 4,
+              "strokeIndex": 15
+            },
+            {
+              "holeNumber": 4,
+              "par": 4,
+              "strokeIndex": 4
+            },
+            {
+              "holeNumber": 5,
+              "par": 4,
+              "strokeIndex": 11
+            },
+            {
+              "holeNumber": 6,
+              "par": 4,
+              "strokeIndex": 18
+            },
+            {
+              "holeNumber": 7,
+              "par": 4,
+              "strokeIndex": 7
+            },
+            {
+              "holeNumber": 8,
+              "par": 4,
+              "strokeIndex": 14
+            },
+            {
+              "holeNumber": 9,
+              "par": 4,
+              "strokeIndex": 3
+            },
+            {
+              "holeNumber": 10,
+              "par": 4,
+              "strokeIndex": 10
+            },
+            {
+              "holeNumber": 11,
+              "par": 4,
+              "strokeIndex": 17
+            },
+            {
+              "holeNumber": 12,
+              "par": 4,
+              "strokeIndex": 6
+            },
+            {
+              "holeNumber": 13,
+              "par": 4,
+              "strokeIndex": 13
+            },
+            {
+              "holeNumber": 14,
+              "par": 4,
+              "strokeIndex": 2
+            },
+            {
+              "holeNumber": 15,
+              "par": 4,
+              "strokeIndex": 9
+            },
+            {
+              "holeNumber": 16,
+              "par": 4,
+              "strokeIndex": 16
+            },
+            {
+              "holeNumber": 17,
+              "par": 4,
+              "strokeIndex": 5
+            },
+            {
+              "holeNumber": 18,
+              "par": 4,
+              "strokeIndex": 12
+            }
+          ]
+        }
+      },
+      {
+        "roundId": "r3",
+        "eventRoundId": "er3",
+        "course": {
+          "tee": {
+            "slope": 113,
+            "ratingTimes10": 720,
+            "coursePar": 72
+          },
+          "holes": [
+            {
+              "holeNumber": 1,
+              "par": 4,
+              "strokeIndex": 1
+            },
+            {
+              "holeNumber": 2,
+              "par": 4,
+              "strokeIndex": 8
+            },
+            {
+              "holeNumber": 3,
+              "par": 4,
+              "strokeIndex": 15
+            },
+            {
+              "holeNumber": 4,
+              "par": 4,
+              "strokeIndex": 4
+            },
+            {
+              "holeNumber": 5,
+              "par": 4,
+              "strokeIndex": 11
+            },
+            {
+              "holeNumber": 6,
+              "par": 4,
+              "strokeIndex": 18
+            },
+            {
+              "holeNumber": 7,
+              "par": 4,
+              "strokeIndex": 7
+            },
+            {
+              "holeNumber": 8,
+              "par": 4,
+              "strokeIndex": 14
+            },
+            {
+              "holeNumber": 9,
+              "par": 4,
+              "strokeIndex": 3
+            },
+            {
+              "holeNumber": 10,
+              "par": 4,
+              "strokeIndex": 10
+            },
+            {
+              "holeNumber": 11,
+              "par": 4,
+              "strokeIndex": 17
+            },
+            {
+              "holeNumber": 12,
+              "par": 4,
+              "strokeIndex": 6
+            },
+            {
+              "holeNumber": 13,
+              "par": 4,
+              "strokeIndex": 13
+            },
+            {
+              "holeNumber": 14,
+              "par": 4,
+              "strokeIndex": 2
+            },
+            {
+              "holeNumber": 15,
+              "par": 4,
+              "strokeIndex": 9
+            },
+            {
+              "holeNumber": 16,
+              "par": 4,
+              "strokeIndex": 16
+            },
+            {
+              "holeNumber": 17,
+              "par": 4,
+              "strokeIndex": 5
+            },
+            {
+              "holeNumber": 18,
+              "par": 4,
+              "strokeIndex": 12
+            }
+          ]
+        }
+      },
+      {
+        "roundId": "r4",
+        "eventRoundId": "er4",
+        "course": {
+          "tee": {
+            "slope": 113,
+            "ratingTimes10": 720,
+            "coursePar": 72
+          },
+          "holes": [
+            {
+              "holeNumber": 1,
+              "par": 4,
+              "strokeIndex": 1
+            },
+            {
+              "holeNumber": 2,
+              "par": 4,
+              "strokeIndex": 8
+            },
+            {
+              "holeNumber": 3,
+              "par": 4,
+              "strokeIndex": 15
+            },
+            {
+              "holeNumber": 4,
+              "par": 4,
+              "strokeIndex": 4
+            },
+            {
+              "holeNumber": 5,
+              "par": 4,
+              "strokeIndex": 11
+            },
+            {
+              "holeNumber": 6,
+              "par": 4,
+              "strokeIndex": 18
+            },
+            {
+              "holeNumber": 7,
+              "par": 4,
+              "strokeIndex": 7
+            },
+            {
+              "holeNumber": 8,
+              "par": 4,
+              "strokeIndex": 14
+            },
+            {
+              "holeNumber": 9,
+              "par": 4,
+              "strokeIndex": 3
+            },
+            {
+              "holeNumber": 10,
+              "par": 4,
+              "strokeIndex": 10
+            },
+            {
+              "holeNumber": 11,
+              "par": 4,
+              "strokeIndex": 17
+            },
+            {
+              "holeNumber": 12,
+              "par": 4,
+              "strokeIndex": 6
+            },
+            {
+              "holeNumber": 13,
+              "par": 4,
+              "strokeIndex": 13
+            },
+            {
+              "holeNumber": 14,
+              "par": 4,
+              "strokeIndex": 2
+            },
+            {
+              "holeNumber": 15,
+              "par": 4,
+              "strokeIndex": 9
+            },
+            {
+              "holeNumber": 16,
+              "par": 4,
+              "strokeIndex": 16
+            },
+            {
+              "holeNumber": 17,
+              "par": 4,
+              "strokeIndex": 5
+            },
+            {
+              "holeNumber": 18,
+              "par": 4,
+              "strokeIndex": 12
+            }
+          ]
+        }
+      }
+    ],
+    "_holeScoresByCellEntries": [
+      [
+        "r1|playerA|1",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|1",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|2",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|2",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|3",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|3",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|4",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|4",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|5",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|5",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|6",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|6",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|7",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|7",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|8",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|8",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|9",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|9",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|10",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|10",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|11",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|11",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|12",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|12",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|13",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|13",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|14",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|14",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|15",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|15",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|16",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|16",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|17",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|17",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerA|18",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r1|playerB|18",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|1",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|1",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|2",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|2",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|3",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|3",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|4",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|4",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|5",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|5",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|6",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|6",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|7",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|7",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|8",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|8",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|9",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|9",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|10",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|10",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|11",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|11",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|12",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|12",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|13",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|13",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|14",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|14",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|15",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|15",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|16",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|16",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|17",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|17",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerA|18",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r2|playerB|18",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|1",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|1",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|2",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|2",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|3",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|3",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|4",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|4",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|5",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|5",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|6",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|6",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|7",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|7",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|8",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|8",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|9",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|9",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|10",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|10",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|11",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|11",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|12",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|12",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|13",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|13",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|14",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|14",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|15",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|15",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|16",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|16",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|17",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|17",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerA|18",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r3|playerB|18",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|1",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|1",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|2",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|2",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|3",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|3",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|4",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|4",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|5",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|5",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|6",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|6",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|7",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|7",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|8",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|8",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|9",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|9",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|10",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|10",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|11",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|11",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|12",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|12",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|13",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|13",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|14",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|14",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|15",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|15",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|16",
+        {
+          "grossStrokes": 5,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|16",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|17",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|17",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerA|18",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ],
+      [
+        "r4|playerB|18",
+        {
+          "grossStrokes": 4,
+          "putts": 2
+        }
+      ]
+    ],
+    "pressesByRound": {},
+    "handicapIndexByPlayer": {
+      "playerA": 0,
+      "playerB": 0
+    }
+  },
+  "expectedNetToPlayerACents": 5000,
+  "expectedTriggeredPressesCount": 0,
+  "_note": "Rounds 1-3: A wins holes 1-10, B wins holes 11-18 (10A/8B/0H per round). Round 4: A wins 1-10, B wins 11-16, halved 17-18 (10A/6B/2H). Aggregate: A=40, B=30, halved=2. netToA = 500 × (40-30) = 5000."
+}

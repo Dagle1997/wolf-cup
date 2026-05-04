@@ -27,6 +27,7 @@ export const AUDIT_EVENT_TYPES = {
   SCORER_TRANSFERRED: 'scorer.transferred',
   ROUND_FINALIZED: 'round.finalized',
   RULE_SET_REVISED: 'rule_set.revised',
+  BET_CREATED: 'bet.created',
 } as const;
 
 export type AuditEventType =
@@ -37,6 +38,7 @@ export const AUDIT_ENTITY_TYPES = {
   ROUND: 'round',
   SESSION: 'session',
   RULE_SET: 'rule_set',
+  BET: 'bet',
 } as const;
 
 export type AuditEntityType =

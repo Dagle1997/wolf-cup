@@ -36,6 +36,13 @@
       "when": 1777380474146,
       "tag": "0004_supreme_gambit",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1777901489134,
+      "tag": "0005_individual_bets",
+      "breakpoints": true
     }
   ]
 }

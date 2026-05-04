@@ -17,6 +17,7 @@ import { scorerAssignmentsRouter } from './routes/scorer-assignments.js';
 import { roundLifecycleRouter } from './routes/round-lifecycle.js';
 import { scoreCorrectionsRouter } from './routes/score-corrections.js';
 import { eventRuleEditsRouter } from './routes/event-rule-edits.js';
+import { betsRouter } from './routes/bets.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -135,5 +136,13 @@ app.route('/api/rounds', scoreCorrectionsRouter);
 // finalized round (422 rule_edit_would_recompute_finalized_round).
 // T6 money recompute deferred to followup T5-11a (post-commit breadcrumb only).
 app.route('/api/events', eventRuleEditsRouter);
+
+// T6-3 cross-foursome individual bets endpoint. Effective URL:
+// POST /api/events/:eventId/bets
+// Authorization: requireSession + requireEventParticipant (any event member).
+// Validates self-bet, duplicate roundIds, both players in event, applicable
+// rounds belong to event, config shape per betType, UNIQUE on (event, A, B,
+// type) for canonical alphabetical ordering. Audit + activity emit in-tx.
+app.route('/api/events', betsRouter);
 
 export { app };

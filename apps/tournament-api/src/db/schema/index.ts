@@ -27,3 +27,7 @@ export { scoreCorrections, type ScoreCorrection } from './scoring.js';
 export { roundStates, type RoundState } from './scoring.js';
 export { scorerAssignments, type ScorerAssignment } from './scoring.js';
 export { auditLog, type AuditLog } from './audit.js';
+// T6-3 cross-foursome individual bets schema
+export { individualBets, type IndividualBet } from './bets.js';
+export { individualBetRounds, type IndividualBetRound } from './bets.js';
+export { individualBetPresses, type IndividualBetPress } from './bets.js';
