@@ -21,6 +21,7 @@ import { betsRouter } from './routes/bets.js';
 import { moneyRouter } from './routes/money.js';
 import { eventsRouter } from './routes/events.js';
 import { scheduleRouter } from './routes/schedule.js';
+import { coursePreviewRouter } from './routes/course-preview.js';
 import { pressesRouter } from './routes/presses.js';
 import { subGamesComputeRouter } from './routes/sub-games.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
@@ -169,6 +170,14 @@ app.route('/api/events', eventsRouter);
 // Returns rounds + course + viewer's-foursome pairing (3-state). Read-only;
 // cache-control: no-store. Auth: requireSession + requireEventParticipant.
 app.route('/api/events', scheduleRouter);
+
+// T7-3 course preview endpoint.
+//   GET /api/events/:eventId/courses/:courseId
+// Returns course + pinned revision + tees + holes + defaultTeeColor.
+// Read-only; cache-control: no-store. Auth: requireSession +
+// requireEventParticipant + course-must-be-referenced-by-event-rounds
+// (uniform 403 for course-not-in-event / unknown / malformed).
+app.route('/api/events', coursePreviewRouter);
 
 // T6-7 manual press routes. Effective URLs:
 // POST   /api/rounds/:roundId/presses        (file a manual press)
