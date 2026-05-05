@@ -29,6 +29,8 @@ export const AUDIT_EVENT_TYPES = {
   RULE_SET_REVISED: 'rule_set.revised',
   BET_CREATED: 'bet.created',
   SUBGAME_COMPUTED: 'subgame.computed',
+  GALLERY_UPLOADED: 'gallery.uploaded',
+  GALLERY_DELETED: 'gallery.deleted',
 } as const;
 
 export type AuditEventType =
@@ -41,6 +43,7 @@ export const AUDIT_ENTITY_TYPES = {
   RULE_SET: 'rule_set',
   BET: 'bet',
   SUBGAME: 'sub_game',
+  GALLERY_PHOTO: 'gallery_photo',
 } as const;
 
 export type AuditEntityType =

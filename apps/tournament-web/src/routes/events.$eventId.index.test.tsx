@@ -62,6 +62,7 @@ function renderWithRouter(props: { eventId: string; viewerName?: string; nowMs?:
     '/events/$eventId/money',
     '/events/$eventId/bets',
     '/events/$eventId/settle-up',
+    '/events/$eventId/gallery',
   ] as const;
   const stubs = childPaths.map((p) =>
     createRoute({
@@ -91,7 +92,7 @@ afterEach(() => {
 });
 
 describe('EventHomePage', () => {
-  it('renders event name + greeting + 4 entry cards', async () => {
+  it('renders event name + greeting + 5 entry cards (including Photo Gallery)', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify(EVENT_FIXTURE), {
         status: 200,
@@ -107,6 +108,10 @@ describe('EventHomePage', () => {
     expect(screen.getByText('Money')).toBeInTheDocument();
     expect(screen.getByText('Bets')).toBeInTheDocument();
     expect(screen.getByText('Settle Up')).toBeInTheDocument();
+    // T7-4 entry card.
+    const galleryLink = screen.getByText('Photo Gallery').closest('a');
+    expect(galleryLink).toBeInTheDocument();
+    expect(galleryLink?.getAttribute('href')).toBe('/events/evt-1/gallery');
   });
 
   it('renders forbidden state on 403', async () => {

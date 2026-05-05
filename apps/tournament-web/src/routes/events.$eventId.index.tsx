@@ -163,10 +163,11 @@ export type EventHomePageProps = {
 };
 
 const ENTRY_CARDS = [
-  { to: '/events/$eventId/leaderboard' as const, title: 'Leaderboard', desc: 'See live standings' },
-  { to: '/events/$eventId/money' as const,       title: 'Money',       desc: 'Head-to-head money matrix' },
-  { to: '/events/$eventId/bets' as const,        title: 'Bets',        desc: 'Your bets' },
-  { to: '/events/$eventId/settle-up' as const,   title: 'Settle Up',   desc: 'End-of-trip settle' },
+  { to: '/events/$eventId/leaderboard' as const, title: 'Leaderboard',    desc: 'See live standings' },
+  { to: '/events/$eventId/money' as const,       title: 'Money',          desc: 'Head-to-head money matrix' },
+  { to: '/events/$eventId/bets' as const,        title: 'Bets',           desc: 'Your bets' },
+  { to: '/events/$eventId/settle-up' as const,   title: 'Settle Up',      desc: 'End-of-trip settle' },
+  { to: '/events/$eventId/gallery' as const,     title: 'Photo Gallery',  desc: 'Trip photos' },
 ] as const;
 
 export function EventHomePage({ eventId, viewerName, nowMs }: EventHomePageProps) {

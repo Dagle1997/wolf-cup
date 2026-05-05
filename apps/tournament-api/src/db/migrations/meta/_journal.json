@@ -57,6 +57,13 @@
       "when": 1777918372221,
       "tag": "0007_sub_game_results",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1777985792364,
+      "tag": "0008_gallery_photos",
+      "breakpoints": true
     }
   ]
 }

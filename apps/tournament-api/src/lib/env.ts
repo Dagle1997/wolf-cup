@@ -118,6 +118,19 @@ const envSchema = z.object({
   // app's core flow — the player can fall back to manual handicap entry.
   GHIN_USERNAME: z.string().optional(),
   GHIN_PASSWORD: z.string().optional(),
+  // Cloudflare R2 credentials (T7-4 photo gallery). OPTIONAL — non-essential
+  // integration, mirrors the GHIN pattern. When any of the four is missing
+  // or empty, `lib/r2-client.ts` evaluates `r2Configured === false` and the
+  // upload route returns 503 storage_not_configured; the list route returns
+  // a graceful empty `{ groups: [] }`. Production reads these from
+  // `/opt/wolf-cup/.env` (already present for Wolf Cup gallery use); the
+  // tournament-api service block in docker-compose.yml passes them through.
+  // Architecture D5-10 dictates the SAME bucket as Wolf Cup with a
+  // 'tournament/events/{eventId}/' key prefix.
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET_NAME: z.string().optional(),
 });
 
 // Post-parse transform resolves LOG_DIR based on NODE_ENV. The result has

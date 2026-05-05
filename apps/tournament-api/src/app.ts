@@ -24,6 +24,7 @@ import { scheduleRouter } from './routes/schedule.js';
 import { coursePreviewRouter } from './routes/course-preview.js';
 import { pressesRouter } from './routes/presses.js';
 import { subGamesComputeRouter } from './routes/sub-games.js';
+import { galleryRouter } from './routes/gallery.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -194,5 +195,14 @@ app.route('/api/rounds', pressesRouter);
 // 'ctp' | 'sandies' | 'putting_contest' → 501 stub. Append-only writes
 // to sub_game_results — score-correction recomputes preserve history.
 app.route('/api/rounds', subGamesComputeRouter);
+
+// T7-4 photo gallery routes. Effective URLs:
+//   POST   /api/events/:eventId/gallery
+//   GET    /api/events/:eventId/gallery
+//   DELETE /api/events/:eventId/gallery/:photoId
+// Auth: requireSession + requireEventParticipant (+ requireOrganizer on DELETE).
+// Bucket strategy per arch D5-10 — same R2 bucket as Wolf Cup, key prefix
+// `tournament/events/{eventId}/`. Reads return presigned GETs (1h TTL).
+app.route('/api/events', galleryRouter);
 
 export { app };
