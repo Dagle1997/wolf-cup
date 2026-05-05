@@ -141,14 +141,14 @@ describe('auth router (T1-6b: Google OAuth)', () => {
   // `{ player: null }` (anonymous/invalid) or `{ player: { id, isOrganizer } }`
   // (valid). The 4 cases below pin the new contract.
 
-  test('GET /status anonymous (no cookie) → 200 { player: null }', async () => {
+  test('GET /status anonymous (no cookie) → 200 { player: null, device: null }', async () => {
     const res = await testApp.request('/status');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { player: unknown };
-    expect(body).toEqual({ player: null });
+    const body = (await res.json()) as { player: unknown; device: unknown };
+    expect(body).toEqual({ player: null, device: null });
   });
 
-  test('GET /status with invalid session_id (cookie sent but no DB row) → 200 { player: null }', async () => {
+  test('GET /status with invalid session_id (cookie sent but no DB row) → 200 { player: null, device: null }', async () => {
     // Defense-in-depth: a stale cookie from a deleted session must be
     // treated as anonymous, not 5xx or 401.
     const res = await testApp.request('/status', {
@@ -157,8 +157,8 @@ describe('auth router (T1-6b: Google OAuth)', () => {
       },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { player: unknown };
-    expect(body).toEqual({ player: null });
+    const body = (await res.json()) as { player: unknown; device: unknown };
+    expect(body).toEqual({ player: null, device: null });
   });
 
   test('GET /status authenticated organizer → 200 { player: { id, isOrganizer: true } }', async () => {
@@ -192,9 +192,11 @@ describe('auth router (T1-6b: Google OAuth)', () => {
         ghin: string | null;
         manualHandicapIndex: number | null;
       };
+      device: unknown;
     };
     expect(body).toEqual({
       player: { id: playerId, isOrganizer: true, ghin: null, manualHandicapIndex: null },
+      device: null,
     });
   });
 
@@ -270,10 +272,141 @@ describe('auth router (T1-6b: Google OAuth)', () => {
         ghin: string | null;
         manualHandicapIndex: number | null;
       };
+      device: unknown;
     };
     expect(body).toEqual({
       player: { id: playerId, isOrganizer: false, ghin: null, manualHandicapIndex: null },
+      device: null,
     });
+  });
+
+  // T7-6 — auth status extension: device info appears when the device cookie
+  // matches a row owned by the current session player.
+  test('GET /status authenticated + matching device cookie → device { id, installPromptShownAt } populated', async () => {
+    const playerId = 'device-player-1';
+    const sessionId = 'device-session-id-1234567890absent';
+    const deviceId = 'device-binding-id-1234567890absent';
+    const now = Date.now();
+    await db.insert(players).values({
+      id: playerId,
+      isOrganizer: false,
+      createdAt: now - 1000,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(sessions).values({
+      sessionId,
+      playerId,
+      createdAt: now - 1000,
+      lastSeenAt: now - 1000,
+      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      deviceInfo: null,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(deviceBindings).values({
+      id: deviceId,
+      playerId,
+      sessionId: null,
+      deviceInfo: 'iPhone',
+      createdAt: now,
+      tenantId: 'guyan',
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+
+    const res = await testApp.request('/status', {
+      headers: {
+        cookie: cookieHeader(
+          ['tournament_session', sessionId],
+          ['tournament_device_id', deviceId],
+        ),
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      player: { id: string };
+      device: { id: string; installPromptShownAt: number | null } | null;
+    };
+    expect(body.player.id).toBe(playerId);
+    expect(body.device).toEqual({ id: deviceId, installPromptShownAt: null });
+  });
+
+  test('GET /status authenticated + cross-player device cookie → device: null', async () => {
+    const playerA = 'cross-player-a';
+    const playerB = 'cross-player-b';
+    const sessionA = 'cross-session-a-1234567890absent';
+    const deviceB = 'cross-device-b-1234567890absent';
+    const now = Date.now();
+    for (const id of [playerA, playerB]) {
+      await db.insert(players).values({
+        id,
+        isOrganizer: false,
+        createdAt: now - 1000,
+        contextId: 'league:guyan-wolf-cup-friday',
+      });
+    }
+    await db.insert(sessions).values({
+      sessionId: sessionA,
+      playerId: playerA,
+      createdAt: now - 1000,
+      lastSeenAt: now - 1000,
+      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      deviceInfo: null,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    // device owned by player B
+    await db.insert(deviceBindings).values({
+      id: deviceB,
+      playerId: playerB,
+      sessionId: null,
+      deviceInfo: 'Pixel',
+      createdAt: now,
+      tenantId: 'guyan',
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+
+    // Player A's session sends player B's device cookie.
+    const res = await testApp.request('/status', {
+      headers: {
+        cookie: cookieHeader(
+          ['tournament_session', sessionA],
+          ['tournament_device_id', deviceB],
+        ),
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { device: unknown };
+    expect(body.device).toBeNull();
+  });
+
+  test('GET /status authenticated + malformed device cookie → device: null', async () => {
+    const playerId = 'malformed-cookie-player';
+    const sessionId = 'malformed-session-id-1234567890ab';
+    const now = Date.now();
+    await db.insert(players).values({
+      id: playerId,
+      isOrganizer: false,
+      createdAt: now - 1000,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(sessions).values({
+      sessionId,
+      playerId,
+      createdAt: now - 1000,
+      lastSeenAt: now - 1000,
+      expiresAt: now + 7 * 24 * 60 * 60 * 1000,
+      deviceInfo: null,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    const res = await testApp.request('/status', {
+      headers: {
+        cookie: cookieHeader(
+          ['tournament_session', sessionId],
+          ['tournament_device_id', '<script>alert(1)</script>'],
+        ),
+      },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { device: unknown };
+    expect(body.device).toBeNull();
   });
 
   // ---- /google sign-in entry -----------------------------------------

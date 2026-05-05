@@ -64,6 +64,13 @@
       "when": 1777985792364,
       "tag": "0008_gallery_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1778005794192,
+      "tag": "0009_install_prompt_shown_at",
+      "breakpoints": true
     }
   ]
 }

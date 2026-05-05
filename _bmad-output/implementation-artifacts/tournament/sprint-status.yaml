@@ -182,7 +182,7 @@ development_status:
   T7-3-course-preview-per-hole-detail-hero-image: done
   T7-4-per-event-photo-gallery-r2-storage-reuse: done
   T7-5-raw-state-json-export-organizer-only: done
-  T7-6-in-app-install-prompt-per-device-one-shot: backlog
+  T7-6-in-app-install-prompt-per-device-one-shot: done
   T7-7-browser-tab-read-only-fallback: backlog
 
   epic-T7-retrospective: optional

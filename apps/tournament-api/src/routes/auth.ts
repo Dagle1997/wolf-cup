@@ -105,18 +105,18 @@ authRouter.get('/status', async (c) => {
   const sessionId = extractCookieValue(cookieHeader, SESSION_COOKIE_NAME);
 
   if (!sessionId) {
-    return c.json({ player: null });
+    return c.json({ player: null, device: null });
   }
 
   // Cheap shape guard before hitting the DB — same idiom as
   // require-session middleware. base64url session IDs are 16-128 chars.
   if (sessionId.length < 16 || sessionId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {
-    return c.json({ player: null });
+    return c.json({ player: null, device: null });
   }
 
   const validated = await validateSession(sessionId);
   if (!validated) {
-    return c.json({ player: null });
+    return c.json({ player: null, device: null });
   }
 
   // T3-10 — additive shape: read the player row to surface ghin +
@@ -139,6 +139,44 @@ authRouter.get('/status', async (c) => {
     );
   const profile = playerRows[0];
 
+  // T7-6 — read the device cookie + look up the matching device_bindings
+  // row scoped to (id, player_id, tenant_id). Returns null on any miss
+  // (no cookie, malformed cookie, cross-player row, missing row). Never
+  // throws — the auth-status loader is non-strict per existing T2-3b /
+  // T3-10 contract.
+  let deviceInfo: {
+    id: string;
+    installPromptShownAt: number | null;
+  } | null = null;
+  const deviceCookieValue = extractCookieValue(cookieHeader, DEVICE_COOKIE_NAME);
+  if (
+    deviceCookieValue !== null &&
+    deviceCookieValue.length >= 16 &&
+    deviceCookieValue.length <= 128 &&
+    /^[A-Za-z0-9_-]+$/.test(deviceCookieValue)
+  ) {
+    const deviceRows = await db
+      .select({
+        id: deviceBindings.id,
+        installPromptShownAt: deviceBindings.installPromptShownAt,
+      })
+      .from(deviceBindings)
+      .where(
+        and(
+          eq(deviceBindings.id, deviceCookieValue),
+          eq(deviceBindings.playerId, validated.playerId),
+          eq(deviceBindings.tenantId, DEVICE_TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (deviceRows.length === 1) {
+      deviceInfo = {
+        id: deviceRows[0]!.id,
+        installPromptShownAt: deviceRows[0]!.installPromptShownAt,
+      };
+    }
+  }
+
   return c.json({
     player: {
       id: validated.playerId,
@@ -146,6 +184,7 @@ authRouter.get('/status', async (c) => {
       ghin: profile?.ghin ?? null,
       manualHandicapIndex: profile?.manualHandicapIndex ?? null,
     },
+    device: deviceInfo,
   });
 });
 

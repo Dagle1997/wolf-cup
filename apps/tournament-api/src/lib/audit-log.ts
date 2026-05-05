@@ -31,6 +31,7 @@ export const AUDIT_EVENT_TYPES = {
   SUBGAME_COMPUTED: 'subgame.computed',
   GALLERY_UPLOADED: 'gallery.uploaded',
   GALLERY_DELETED: 'gallery.deleted',
+  INSTALL_PROMPT_SHOWN: 'install_prompt.shown',
 } as const;
 
 export type AuditEventType =
@@ -44,6 +45,7 @@ export const AUDIT_ENTITY_TYPES = {
   BET: 'bet',
   SUBGAME: 'sub_game',
   GALLERY_PHOTO: 'gallery_photo',
+  DEVICE_BINDING: 'device_binding',
 } as const;
 
 export type AuditEntityType =

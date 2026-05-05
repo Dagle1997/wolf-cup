@@ -39,6 +39,11 @@ export const deviceBindings = sqliteTable(
     sessionId: text('session_id').references(() => sessions.sessionId, { onDelete: 'set null' }),
     deviceInfo: text('device_info').notNull(),
     createdAt: integer('created_at').notNull(),
+    // T7-6 PWA install-prompt one-shot. NULL until the client first
+    // displays the install prompt on this device; ms-since-epoch UTC
+    // when stamped. Stays non-null forever after — the per-device
+    // suppression invariant.
+    installPromptShownAt: integer('install_prompt_shown_at'),
     ...ecosystemColumns(),
   },
   (t) => ({

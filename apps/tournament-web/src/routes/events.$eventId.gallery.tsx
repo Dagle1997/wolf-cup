@@ -19,6 +19,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { queryClient as appQueryClient } from '../lib/query-client';
+import { useMarkMutation } from '../hooks/use-first-mutation';
 
 // ---- Auth-status loader (mirror T7-1) ------------------------------------
 
@@ -111,6 +112,7 @@ export type GalleryPageProps = {
 
 export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
   const qc = useQueryClient();
+  const markMutation = useMarkMutation();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [uploadErrors, setUploadErrors] = useState<
@@ -159,6 +161,8 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
       if (body?.error) reason = body.error;
       throw new Error(reason);
     }
+    // T7-6 — first successful upload in this session counts as a mutation.
+    markMutation();
   }
 
   async function handleFilesSelected(files: FileList | null) {

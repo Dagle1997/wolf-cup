@@ -1,0 +1,1 @@
+ALTER TABLE `device_bindings` ADD `install_prompt_shown_at` integer;

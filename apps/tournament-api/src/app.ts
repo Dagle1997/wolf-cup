@@ -26,6 +26,7 @@ import { pressesRouter } from './routes/presses.js';
 import { subGamesComputeRouter } from './routes/sub-games.js';
 import { galleryRouter } from './routes/gallery.js';
 import { exportRouter } from './routes/export.js';
+import { installPromptRouter } from './routes/install-prompt.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -213,5 +214,12 @@ app.route('/api/events', galleryRouter);
 // Returns Content-Type: application/json + Content-Disposition: attachment.
 // Single-shot JSON.stringify; streaming deferred to followup T7-5c.
 app.route('/api/events', exportRouter);
+
+// T7-6 PWA install-prompt one-shot. Effective URL:
+//   POST /api/events/:eventId/devices/me/install-prompt-shown
+// Auth: requireSession only (NOT requireEventParticipant — :eventId is
+// audit-payload-only). Atomic conditional UPDATE inside a tx so concurrent
+// POSTs cannot produce duplicate audit rows. Returns 204 / 404 / 401 / 400.
+app.route('/api/events', installPromptRouter);
 
 export { app };

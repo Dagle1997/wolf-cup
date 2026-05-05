@@ -33,6 +33,7 @@ import {
   type MutationEntry,
 } from '../lib/offline-queue.js';
 import { useOfflineQueue } from '../hooks/useOfflineQueue.js';
+import { useMarkMutation } from '../hooks/use-first-mutation';
 import {
   readCachedRoundCourse,
   readCachedRoundDetail,
@@ -922,6 +923,7 @@ function ScoreEntryForm({
 }) {
   const { roundId, holesToPlay } = data;
   const members = data.myFoursome.members;
+  const markMutation = useMarkMutation();
 
   // Skip-hole state, persisted to sessionStorage.
   const [skippedHoles, setSkippedHoles] = useState<Set<number>>(() =>
@@ -1234,10 +1236,15 @@ function ScoreEntryForm({
       return;
     }
 
+    // T7-6 — flag the first successful score commit in this session as a
+    // "first mutation" event for the install-prompt host. Idempotent —
+    // the provider's setState short-circuits on subsequent calls.
+    markMutation();
+
     // Trigger drain immediately if online; queue's setTimeout heartbeat
     // handles offline gracefully.
     void queue.drain();
-  }, [allValid, currentHole, currentInputs, currentPutts, isSaving, members, persistClientEventIdCache, roundId, queue]);
+  }, [allValid, currentHole, currentInputs, currentPutts, isSaving, markMutation, members, persistClientEventIdCache, roundId, queue]);
 
   const handleSkipHole = useCallback(() => {
     if (currentHole === null) return;
