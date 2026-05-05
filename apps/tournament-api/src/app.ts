@@ -20,6 +20,7 @@ import { eventRuleEditsRouter } from './routes/event-rule-edits.js';
 import { betsRouter } from './routes/bets.js';
 import { moneyRouter } from './routes/money.js';
 import { eventsRouter } from './routes/events.js';
+import { scheduleRouter } from './routes/schedule.js';
 import { pressesRouter } from './routes/presses.js';
 import { subGamesComputeRouter } from './routes/sub-games.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
@@ -162,6 +163,12 @@ app.route('/api/events', moneyRouter);
 // Read-only; cache-control: no-store. Auth: requireSession +
 // requireEventParticipant (no-existence-leak via 403 from middleware).
 app.route('/api/events', eventsRouter);
+
+// T7-2 schedule view endpoint. Effective URL:
+//   GET /api/events/:eventId/schedule
+// Returns rounds + course + viewer's-foursome pairing (3-state). Read-only;
+// cache-control: no-store. Auth: requireSession + requireEventParticipant.
+app.route('/api/events', scheduleRouter);
 
 // T6-7 manual press routes. Effective URLs:
 // POST   /api/rounds/:roundId/presses        (file a manual press)
