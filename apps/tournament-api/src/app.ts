@@ -25,6 +25,7 @@ import { coursePreviewRouter } from './routes/course-preview.js';
 import { pressesRouter } from './routes/presses.js';
 import { subGamesComputeRouter } from './routes/sub-games.js';
 import { galleryRouter } from './routes/gallery.js';
+import { exportRouter } from './routes/export.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -204,5 +205,13 @@ app.route('/api/rounds', subGamesComputeRouter);
 // Bucket strategy per arch D5-10 — same R2 bucket as Wolf Cup, key prefix
 // `tournament/events/{eventId}/`. Reads return presigned GETs (1h TTL).
 app.route('/api/events', galleryRouter);
+
+// T7-5 raw-state JSON export (organizer-only). Effective URL:
+//   GET /api/events/:eventId/export/raw
+// Auth: requireSession + requireOrganizer (NO requireEventParticipant — an
+// organizer running an event they're not playing in still gets the export).
+// Returns Content-Type: application/json + Content-Disposition: attachment.
+// Single-shot JSON.stringify; streaming deferred to followup T7-5c.
+app.route('/api/events', exportRouter);
 
 export { app };
