@@ -40,6 +40,8 @@ import {
   writeCachedRoundCourse,
   writeCachedRoundDetail,
 } from '../lib/round-cache.js';
+import { useIsInstalledPWA } from '../lib/display-mode';
+import { InstallPrompt } from '../components/install-prompt';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -281,6 +283,29 @@ function persistSkippedHoles(roundId: string, set: Set<number>): void {
 export function ScoreEntryRoute() {
   const { roundId } = Route.useParams();
   const queue = useOfflineQueue(roundId);
+  const isInstalled = useIsInstalledPWA();
+
+  // Capture beforeinstallprompt for the T7-7 install-required card —
+  // mirrors __root.tsx:100-114. Reading the same `__deferredInstallPrompt`
+  // global is safe (the host stores it, this route reads it); a duplicate
+  // listener is harmless because both consumers store the same event.
+  const [beforeInstallEvent, setBeforeInstallEvent] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.__deferredInstallPrompt) {
+      setBeforeInstallEvent(window.__deferredInstallPrompt);
+    }
+    const handler = (e: BeforeInstallPromptEvent) => {
+      e.preventDefault();
+      window.__deferredInstallPrompt = e;
+      setBeforeInstallEvent(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+    };
+  }, []);
 
   // Cache-source signal flows via ref (NOT __source field; NOT useState
   // inside queryFn — both have R19 mid-fetch issues).
@@ -427,6 +452,13 @@ export function ScoreEntryRoute() {
     // re-promoted) and the banner would be misleading. The banner's
     // intent — "the scorer changed; your queued scores were rejected"
     // — only makes sense when the caller is currently NOT scoring.
+    //
+    // T7-7: this branch ALSO covers "non-installed + non-scorer" — the
+    // Codex-gated path where non-scorers in browser tabs see the standard
+    // read-only placeholder, NOT an install-required card. Ordering is
+    // load-bearing: this `!isScorer` short-circuit MUST run before the
+    // `!isInstalled` check below so non-scorers never see the install
+    // prompt (which was misleading for users who couldn't score anyway).
     return (
       <>
         <StaleQueueBanner roundId={roundId} />
@@ -435,6 +467,42 @@ export function ScoreEntryRoute() {
           foursome {data.myFoursome.foursomeNumber}.
         </div>
       </>
+    );
+  }
+  if (!isInstalled) {
+    // T7-7: scorer in a non-installed browser tab gets an "Install to
+    // score" surface (FR-E9). Score-entry needs the offline queue +
+    // IndexedDB persistence, both of which require the installed PWA on
+    // iOS Safari and become unreliable in a tab. The route-level surface
+    // is intentionally NOT audited (audit-emit is reserved for T7-6's
+    // first-mutation prompt) — see T7-7 spec followups.
+    return (
+      <div data-testid="install-required" role="main">
+        <h1>Install to score</h1>
+        <p>
+          Score entry requires the installed app for offline reliability. On
+          iOS: Share → Add to Home Screen. On Android: tap Install below.
+        </p>
+        <InstallPrompt
+          installPromptShownAt={null}
+          hasMutatedThisSession={true}
+          isStandalone={false}
+          beforeInstallEvent={beforeInstallEvent}
+          userAgent={typeof navigator !== 'undefined' ? navigator.userAgent : ''}
+          onShown={() => {
+            // No-op: route-level surface, not first-mutation hook.
+            // See T7-7 spec "audit-semantics" rationale.
+          }}
+        />
+        {data.eventId !== null && (
+          <a
+            data-testid="view-leaderboard-link"
+            href={`/events/${data.eventId}/leaderboard`}
+          >
+            View leaderboard instead
+          </a>
+        )}
+      </div>
     );
   }
 

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FirstMutationProvider, useFirstMutationFlag } from '../hooks/use-first-mutation';
 import { InstallPrompt } from '../components/install-prompt';
+import { useIsInstalledPWA } from '../lib/display-mode';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -77,7 +78,7 @@ function InstallPromptHost() {
   const flag = useFirstMutationFlag();
   const [beforeInstallEvent, setBeforeInstallEvent] =
     useState<BeforeInstallPromptEvent | null>(null);
-  const [isStandalone, setIsStandalone] = useState(false);
+  const isStandalone = useIsInstalledPWA();
 
   // Codex impl-codex round-1 High #1 — host-level stamp guard. The child
   // `<InstallPrompt>` may unmount/remount under React 18 StrictMode in
@@ -110,17 +111,6 @@ function InstallPromptHost() {
     window.addEventListener('beforeinstallprompt', handler);
     return () => {
       window.removeEventListener('beforeinstallprompt', handler);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const mql = window.matchMedia('(display-mode: standalone)');
-    setIsStandalone(mql.matches);
-    const onChange = (e: MediaQueryListEvent) => setIsStandalone(e.matches);
-    mql.addEventListener?.('change', onChange);
-    return () => {
-      mql.removeEventListener?.('change', onChange);
     };
   }, []);
 

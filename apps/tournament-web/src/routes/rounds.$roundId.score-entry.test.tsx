@@ -186,8 +186,26 @@ vi.mock('@tanstack/react-router', () => ({
   }),
 }));
 
+function stubMatchMedia(matches: boolean): void {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockReturnValue({
+      matches,
+      media: '(display-mode: standalone)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }),
+  });
+}
+
 beforeEach(async () => {
   vi.stubGlobal('fetch', vi.fn());
+  // T7-7: default to installed=true so existing tests that expect the
+  // score-entry form (or read-only placeholder for non-scorers) keep
+  // passing. The new install-matrix tests below explicitly opt in to
+  // installed=false to exercise the install-required gate.
+  stubMatchMedia(true);
   enqueueSpy.mockReset();
   enqueueSpy.mockResolvedValue(undefined);
   peekErroredSpy.mockReset();
@@ -916,5 +934,111 @@ describe('ScoreEntryRoute', () => {
     expect(codes).toContain('foursome_has_no_scorer');
     expect(codes).toContain('assignee_not_in_foursome');
     expect(codes).toContain('round_not_found');
+  });
+});
+
+// ---- T7-7 install × scorer matrix (FR-E9) ---------------------------------
+
+const CHROME_DESKTOP_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+function makeMockBeforeInstallEvent(): BeforeInstallPromptEvent {
+  return {
+    platforms: ['web'],
+    userChoice: Promise.resolve({ outcome: 'accepted' as const, platform: 'web' }),
+    prompt: vi.fn(async () => ({ outcome: 'accepted' as const, platform: 'web' })),
+    preventDefault() {},
+  } as unknown as BeforeInstallPromptEvent;
+}
+
+describe('ScoreEntryRoute — T7-7 install × scorer matrix', () => {
+  // Capture the ORIGINAL userAgent at suite-load time. Tests that mutate
+  // navigator.userAgent are restored from this captured value in
+  // afterEach so a failed deletion never leaks a mutated UA across tests
+  // (codex impl-codex round-2 Med #3). Object.defineProperty with
+  // writable+configurable lets subsequent tests override and the
+  // teardown restore consistently.
+  const ORIGINAL_USER_AGENT = navigator.userAgent;
+
+  afterEach(() => {
+    Object.defineProperty(navigator, 'userAgent', {
+      writable: true,
+      configurable: true,
+      value: ORIGINAL_USER_AGENT,
+    });
+    delete window.__deferredInstallPrompt;
+  });
+
+  test('(a) installed + scorer → score-entry-form', async () => {
+    stubMatchMedia(true);
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail()),
+      course: () => jsonOkCourse(buildCourse()),
+    });
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('install-required')).toBeNull();
+    expect(screen.queryByTestId('read-only')).toBeNull();
+  });
+
+  test('(b) installed + non-scorer → read-only placeholder, NOT install-required', async () => {
+    stubMatchMedia(true);
+    vi.mocked(fetch).mockResolvedValue(
+      jsonOk(buildHappyPathDetail({ isScorer: false })),
+    );
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('read-only')).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId('install-required')).toBeNull();
+    expect(screen.queryByTestId('score-entry-form')).toBeNull();
+  });
+
+  test('(c) non-installed + scorer → install-required card with role=dialog + view-leaderboard link', async () => {
+    stubMatchMedia(false);
+    Object.defineProperty(navigator, 'userAgent', {
+      writable: true,
+      configurable: true,
+      value: CHROME_DESKTOP_UA,
+    });
+    window.__deferredInstallPrompt = makeMockBeforeInstallEvent();
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail()),
+      course: () => jsonOkCourse(buildCourse()),
+    });
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('install-required')).toBeInTheDocument(),
+    );
+    // Inner <InstallPrompt> renders role="dialog" with aria-label="Install app"
+    // — the Chromium-with-deferred-event branch (install-prompt.tsx:84-97)
+    // selects on `!isIos && beforeInstallEvent !== null`. Non-iOS UA + the
+    // mocked event makes that branch render reliably.
+    expect(
+      screen.getByRole('dialog', { name: 'Install app' }),
+    ).toBeInTheDocument();
+    const link = screen.getByTestId('view-leaderboard-link') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/events/event-id/leaderboard');
+    expect(screen.queryByTestId('score-entry-form')).toBeNull();
+    expect(screen.queryByTestId('read-only')).toBeNull();
+    delete window.__deferredInstallPrompt;
+  });
+
+  test('(d) non-installed + non-scorer → read-only placeholder, NOT install-required (Codex-gated)', async () => {
+    stubMatchMedia(false);
+    vi.mocked(fetch).mockResolvedValue(
+      jsonOk(buildHappyPathDetail({ isScorer: false })),
+    );
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('read-only')).toBeInTheDocument(),
+    );
+    // The Codex-gated rule: non-scorers in browser tabs MUST NOT see the
+    // install-required surface (they couldn't score anyway, so the prompt
+    // would be misleading).
+    expect(screen.queryByTestId('install-required')).toBeNull();
+    expect(screen.queryByTestId('score-entry-form')).toBeNull();
   });
 });

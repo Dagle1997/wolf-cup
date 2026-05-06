@@ -1,13 +1,13 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { RouterProvider, createRouter } from '@tanstack/react-router';
+import { RouterProvider } from '@tanstack/react-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { routeTree } from './routeTree.gen';
 import { queryClient } from './lib/query-client';
+import { createAppRouter } from './router';
 import './index.css';
 
-const router = createRouter({ routeTree });
+const router = createAppRouter();
 
 // Type registration — required for TanStack Router type safety
 declare module '@tanstack/react-router' {
