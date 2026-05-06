@@ -25,6 +25,22 @@ import {
 
 import { EventHomePage, computeCountdown } from './events.$eventId.index';
 
+// T8-3: EventHomePage embeds <ActivityFeed/> which reads useActivityFeed.
+// In production __root.tsx wraps with ActivityFeedProvider; here we
+// don't mount __root, so we mock the hook to return an empty stream.
+// The empty rows produce the feed's empty-state card — sufficient to
+// verify the feed surface is wired without testing its internals.
+vi.mock('../hooks/use-activity-feed', () => ({
+  useActivityFeed: () => ({
+    rows: [],
+    cursorBefore: null,
+    loadMore: vi.fn(),
+    isPolling: false,
+    error: null,
+  }),
+  useActivityStream: () => undefined,
+}));
+
 // Same-year fixture: 2026-05-08 to 2026-05-10 in America/New_York.
 const MAY_8_NY_MIDNIGHT = Date.UTC(2026, 4, 8, 4);   // 2026-05-08 00:00 NY = 04:00 UTC
 const MAY_9_NY_MIDNIGHT = Date.UTC(2026, 4, 9, 4);
@@ -112,6 +128,9 @@ describe('EventHomePage', () => {
     const galleryLink = screen.getByText('Photo Gallery').closest('a');
     expect(galleryLink).toBeInTheDocument();
     expect(galleryLink?.getAttribute('href')).toBe('/events/evt-1/gallery');
+    // T8-3: ActivityFeed mounts below the entry cards. Mocked hook
+    // returns empty rows → the feed renders its empty-state card.
+    expect(screen.getByTestId('activity-feed-empty')).toBeInTheDocument();
   });
 
   it('renders forbidden state on 403', async () => {

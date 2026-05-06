@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useActivityStream } from '../hooks/use-activity-feed';
 import type { ActivityRow } from '../providers/activity-feed-provider';
+import { buildActivityHeadline } from '../lib/activity-headline';
 
 const TOAST_TTL_MS = 6_000;
 
@@ -34,47 +35,8 @@ function isQualifyingType(row: ActivityRow): boolean {
   return false;
 }
 
-function nameForUnderPar(toPar: number): string {
-  if (toPar <= -4) return 'condor';
-  if (toPar === -3) return 'albatross';
-  if (toPar === -2) return 'eagle';
-  if (toPar === -1) return 'birdie';
-  return 'under par';
-}
-
-function buildHeadline(row: ActivityRow): string {
-  const ev = row.event;
-  switch (ev.type) {
-    case 'score.committed': {
-      const playerId = String(ev['playerId']);
-      const grossStrokes = Number(ev['grossStrokes']);
-      const holeNumber = Number(ev['holeNumber']);
-      const toPar = Number(ev['toPar']);
-      return `🐦 ${playerId} scored ${grossStrokes} on hole ${holeNumber} — ${nameForUnderPar(toPar)}!`;
-    }
-    case 'press.auto_fired': {
-      const triggerHole = Number(ev['triggerHole']);
-      const team = String(ev['team'] ?? 'team');
-      const multiplier = Number(ev['multiplier']);
-      return `⚡ Auto-press fired on hole ${triggerHole}: ${team} (${multiplier}x)`;
-    }
-    case 'press.manual_fired': {
-      const fromHole = Number(ev['fromHole']);
-      const team = String(ev['team']);
-      const multiplier = Number(ev['multiplier']);
-      return `🎯 ${team} pressed from hole ${fromHole} (${multiplier}x)`;
-    }
-    case 'award.triggered': {
-      const awardType = String(ev['awardType']);
-      const ctx = ev['context'] as { holeNumber?: number } | undefined;
-      const holeNumber = ctx?.holeNumber ?? '?';
-      const label = awardType === 'first_eagle_of_event' ? 'eagle' : 'birdie';
-      return `🦅 First ${label} of the trip — hole ${holeNumber}!`;
-    }
-    default:
-      return `Activity: ${ev.type}`;
-  }
-}
+// T8-3: headline string-building consolidated into the shared helper at
+// `lib/activity-headline.ts` (Toast/Banner/Feed all consume it).
 
 export function TournamentToast() {
   const [entries, setEntries] = useState<ToastEntry[]>([]);
@@ -84,7 +46,7 @@ export function TournamentToast() {
       .filter(isQualifyingType)
       .map((row) => ({
         rowId: row.id,
-        headline: buildHeadline(row),
+        headline: buildActivityHeadline(row, 'toast'),
         arrivedAt: Date.now(),
       }));
     if (qualifying.length === 0) return;

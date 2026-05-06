@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useActivityStream } from '../hooks/use-activity-feed';
 import type { ActivityRow } from '../providers/activity-feed-provider';
+import { buildActivityHeadline } from '../lib/activity-headline';
 
 const STORM_WINDOW_MS = 5_000;
 const STORM_THRESHOLD = 3;
@@ -38,21 +39,8 @@ type BannerEntry = {
   arrivedAt: number;
 };
 
-function buildBannerHeadline(row: ActivityRow): string {
-  const ev = row.event;
-  switch (ev.type) {
-    case 'press.auto_fired':
-      return `Auto-press fired (hole ${ev['triggerHole']}, ${String(ev['team'])} ${ev['multiplier']}x)`;
-    case 'press.manual_fired':
-      return `${String(ev['team'])} pressed from hole ${ev['fromHole']} (${ev['multiplier']}x)`;
-    case 'rule_set.revised':
-      return 'Rule set revised';
-    case 'round.finalized':
-      return 'Round finalized';
-    default:
-      return `Activity: ${ev.type}`;
-  }
-}
+// T8-3: headline string-building consolidated into the shared helper at
+// `lib/activity-headline.ts` (Toast/Banner/Feed all consume it).
 
 function dismissedKey(eventId: string): string {
   return `tournament:banner-dismissed:${eventId}`;
@@ -123,7 +111,7 @@ export function TournamentBanner() {
         .map((r) => ({
           rowId: r.id,
           type: r.event.type,
-          headline: buildBannerHeadline(r),
+          headline: buildActivityHeadline(r, 'banner'),
           arrivedAt: Date.now(),
         }))
         .filter((e) => !dismissed.has(e.rowId));

@@ -22,6 +22,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { queryClient } from '../lib/query-client';
+import { ActivityFeed } from '../components/activity-feed';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -243,6 +244,13 @@ export function EventHomePage({ eventId, viewerName, nowMs }: EventHomePageProps
           ))}
         </ul>
       </nav>
+
+      {/* T8-3: "What's Happening" feed reads from the root-mounted T8-2
+          ActivityFeedProvider context. eventId is detected from URL by
+          the provider; no props needed here. */}
+      <div style={{ marginTop: 24 }}>
+        <ActivityFeed />
+      </div>
     </div>
   );
 }
