@@ -196,7 +196,7 @@ development_status:
   epic-T8: backlog
 
   T8-1-activity-spine-schema-emitter-zod-validated-payloads: done
-  T8-2-activity-api-singleton-feed-provider-toast-banner-components: backlog
+  T8-2-activity-api-singleton-feed-provider-toast-banner-components: done
   T8-3-player-home-activity-feed: backlog
   T8-4-award-trigger-surfaces-first-birdie-first-eagle: backlog
 

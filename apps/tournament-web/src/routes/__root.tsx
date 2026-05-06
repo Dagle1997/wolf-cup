@@ -4,6 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FirstMutationProvider, useFirstMutationFlag } from '../hooks/use-first-mutation';
 import { InstallPrompt } from '../components/install-prompt';
 import { useIsInstalledPWA } from '../lib/display-mode';
+import { ActivityFeedProvider } from '../providers/activity-feed-provider';
+import { TournamentToast } from '../components/tournament-toast';
+import { TournamentBanner } from '../components/tournament-banner';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -12,10 +15,14 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <FirstMutationProvider>
-      <div>
-        <Outlet />
-        <InstallPromptHost />
-      </div>
+      <ActivityFeedProvider>
+        <div>
+          <Outlet />
+          <InstallPromptHost />
+          <TournamentToast />
+          <TournamentBanner />
+        </div>
+      </ActivityFeedProvider>
     </FirstMutationProvider>
   );
 }

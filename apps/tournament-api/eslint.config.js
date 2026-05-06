@@ -84,16 +84,46 @@ export default tseslint.config(
     },
   },
   {
-    // T8-1: emitter file + its tests are the only legitimate places
-    // that import + write to the `activity` schema directly. Disable
-    // the import block + write-shape rules for these paths. The
-    // fixture file at __fixtures__/activity-direct-write-violation.ts
-    // is INTENTIONALLY NOT in this allowlist — it must lint-fail to
-    // prove the gate works end-to-end (asserted by activity.eslint-rule.test.ts).
+    // T8-2 codex impl-codex round-1 Critical #1 + round-2 Med #1: the
+    // read-side service needs the `activity` schema import permitted
+    // BUT must keep the engine-import restriction armed AND keep the
+    // write-gate armed. Re-declare `no-restricted-imports` here with
+    // ONLY the engine block (omitting the activity-import block); do
+    // NOT touch `no-restricted-syntax` so the write-gate selectors
+    // continue to fire if anyone adds tx.insert(activity) to this
+    // file by mistake.
+    files: [
+      'src/services/activity-feed.ts',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: '@wolf-cup/engine',
+          message: 'Tournament may only import from @wolf-cup/engine/stableford (FD-11/12). Use the subpath import.',
+        }],
+        patterns: [{
+          group: ['@wolf-cup/engine/*', '!@wolf-cup/engine/stableford'],
+          message: 'Tournament may only import @wolf-cup/engine/stableford (FD-11/12).',
+        }],
+      }],
+    },
+  },
+  {
+    // T8-1 + T8-2: emitter + tests that legitimately do tx.insert/update/delete
+    // on the activity table. Both the import block AND the write-gate
+    // are off for these paths. The fixture file at
+    // __fixtures__/activity-direct-write-violation.ts is INTENTIONALLY
+    // NOT in this allowlist — it must lint-fail to prove the gate works
+    // end-to-end (asserted by activity.eslint-rule.test.ts).
     files: [
       'src/lib/activity.ts',
       'src/lib/activity.test.ts',
       'src/lib/activity.eslint-rule.test.ts',
+      // T8-2: integration test seeds raw activity rows to set up the
+      // 250-row burst-drop fixtures + corrupt-row scenarios. Tests are
+      // the natural place for direct schema access; the gate's purpose
+      // is preventing production-code drift, not test-fixture setup.
+      'src/routes/activity.integration.test.ts',
     ],
     rules: {
       'no-restricted-imports': 'off',

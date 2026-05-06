@@ -27,6 +27,7 @@ import { subGamesComputeRouter } from './routes/sub-games.js';
 import { galleryRouter } from './routes/gallery.js';
 import { exportRouter } from './routes/export.js';
 import { installPromptRouter } from './routes/install-prompt.js';
+import { activityRouter } from './routes/activity.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 
 const STARTUP_TIME = Date.now();
@@ -221,5 +222,10 @@ app.route('/api/events', exportRouter);
 // audit-payload-only). Atomic conditional UPDATE inside a tx so concurrent
 // POSTs cannot produce duplicate audit rows. Returns 204 / 404 / 401 / 400.
 app.route('/api/events', installPromptRouter);
+
+// T8-2 activity feed: GET /api/events/:eventId/activity with cursor
+// pagination (?after / ?before / neither). Auth: requireSession +
+// requireEventParticipant. Read-side companion to T8-1's emitter.
+app.route('/api/events', activityRouter);
 
 export { app };
