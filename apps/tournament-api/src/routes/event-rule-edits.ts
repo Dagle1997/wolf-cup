@@ -340,15 +340,16 @@ eventRuleEditsRouter.post(
         // banner-render time. The audit row already carries both configs.
         await emitActivity(tx, {
           type: 'rule_set.revised',
+          eventId,
           actorPlayerId: player.id,
-          scope: { eventId },
-          payload: {
-            ruleSetId,
-            revisionId,
-            effectiveFromRoundId: body.effectiveFromRoundId,
-            effectiveFromHole: body.effectiveFromHole,
-            configDiffSummary: null,
-          },
+          ruleSetId,
+          revisionId,
+          ...(body.effectiveFromRoundId !== undefined
+            ? { effectiveFromRoundId: body.effectiveFromRoundId }
+            : {}),
+          ...(body.effectiveFromHole !== undefined
+            ? { effectiveFromHole: body.effectiveFromHole }
+            : {}),
         });
 
         return {

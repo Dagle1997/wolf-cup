@@ -296,15 +296,13 @@ betsRouter.post(
         // (ix) Activity emit (NO-OP per T8).
         await emitActivity(tx, {
           type: 'bet.created',
+          eventId,
           actorPlayerId: player.id,
-          scope: { eventId },
-          payload: {
-            betId: newBetId,
-            playerAId: a,
-            playerBId: b,
-            betType: body.betType,
-            stakePerHoleCents: body.stakePerHoleCents,
-          },
+          betId: newBetId,
+          playerAId: a,
+          playerBId: b,
+          betType: body.betType,
+          stakePerHoleCents: body.stakePerHoleCents,
         });
 
         return newBetId;

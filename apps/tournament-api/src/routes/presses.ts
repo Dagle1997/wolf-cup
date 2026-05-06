@@ -300,14 +300,18 @@ pressesRouter.post('/:roundId/presses', requireSession, async (c) => {
       }
 
       // (7) Activity emit.
-      const scope: { roundId: string; eventId?: string } = { roundId };
-      if (round.eventId !== null) scope.eventId = round.eventId;
-      await emitActivity(tx, {
-        type: 'press.manual_fired',
-        actorPlayerId: player.id,
-        scope,
-        payload: { roundId, fromHole, team: body.team, multiplier },
-      });
+      if (round.eventId !== null) {
+        await emitActivity(tx, {
+          type: 'press.manual_fired',
+          eventId: round.eventId,
+          roundId,
+          actorPlayerId: player.id,
+          fromHole,
+          team: body.team,
+          multiplier,
+          filedByPlayerId: player.id,
+        });
+      }
 
       return { pressId, fromHole };
     });
@@ -455,16 +459,17 @@ pressesRouter.delete('/:roundId/presses/:pressId', requireSession, async (c) => 
         .from(rounds)
         .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, TENANT_ID)))
         .limit(1);
-      const scope: { roundId: string; eventId?: string } = { roundId };
-      if (roundRows[0]?.eventId !== null && roundRows[0]?.eventId !== undefined) {
-        scope.eventId = roundRows[0].eventId;
+      const roundEventId = roundRows[0]?.eventId ?? null;
+      if (roundEventId !== null) {
+        await emitActivity(tx, {
+          type: 'press.manual_undone',
+          eventId: roundEventId,
+          roundId,
+          actorPlayerId: player.id,
+          pressId,
+          undoneByPlayerId: player.id,
+        });
       }
-      await emitActivity(tx, {
-        type: 'press.manual_undone',
-        actorPlayerId: player.id,
-        scope,
-        payload: { roundId, pressId, startHole: press.startHole },
-      });
     });
 
     return c.json({ ok: true, requestId }, 200);

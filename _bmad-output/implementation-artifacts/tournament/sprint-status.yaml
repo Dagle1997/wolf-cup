@@ -51,7 +51,7 @@ development_status:
   # Separate workspaces, subdomain, auth realm, log sink — all trip-critical.
   # FRs covered: FR-G1, FR-G2, NFR-C3, NFR-D1, NFR-O1, NFR-S2 (auth realm)
   # ---------------------------------------------------------------------------
-  epic-T1: in-progress
+  epic-T1: done
 
   T1-1-claude-md-disambiguation-note: done
   T1-2-scaffold-tournament-api: done
@@ -73,7 +73,7 @@ development_status:
   # Courses + revisions schema, Pinehurst seed, PDF vision parser, validator,
   # admin UI for manual + PDF-upload review.
   # ---------------------------------------------------------------------------
-  epic-T2: in-progress
+  epic-T2: done
 
   T2-1-courses-revisions-schema: done
   T2-2-pinehurst-seed-importer-course-list-api: done
@@ -126,7 +126,7 @@ development_status:
   # machine, score correction audit log, airplane-mode drill, mid-event rule
   # edits with effective-hole boundary.
   # ---------------------------------------------------------------------------
-  epic-T5: in-progress
+  epic-T5: done
 
   T5-1-scoring-schema: done
   T5-2-scorer-entry-ui-ios-keyboard-fix: done
@@ -175,7 +175,7 @@ development_status:
   # Event home, schedule view, course preview, photo gallery (R2 reuse),
   # raw-state JSON export, install prompt, read-only browser-tab fallback.
   # ---------------------------------------------------------------------------
-  epic-T7: in-progress
+  epic-T7: done
 
   T7-1-event-home-page-countdown-schedule-entry: done
   T7-2-schedule-view: done
@@ -195,7 +195,7 @@ development_status:
   # ---------------------------------------------------------------------------
   epic-T8: backlog
 
-  T8-1-activity-spine-schema-emitter-zod-validated-payloads: backlog
+  T8-1-activity-spine-schema-emitter-zod-validated-payloads: done
   T8-2-activity-api-singleton-feed-provider-toast-banner-components: backlog
   T8-3-player-home-activity-feed: backlog
   T8-4-award-trigger-surfaces-first-birdie-first-eagle: backlog

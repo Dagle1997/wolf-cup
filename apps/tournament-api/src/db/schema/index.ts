@@ -36,3 +36,5 @@ export { individualBetPresses, type IndividualBetPress } from './bets.js';
 export { teamPressLog, type TeamPressLog } from './press.js';
 // T7-4 gallery_photos schema
 export { galleryPhotos, type GalleryPhoto } from './gallery.js';
+// T8-1 activity spine
+export { activity, type Activity } from './activity.js';

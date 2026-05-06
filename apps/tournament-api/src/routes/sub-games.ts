@@ -150,16 +150,17 @@ subGamesComputeRouter.post(
         });
 
         // Activity.
-        await emitActivity(tx, {
-          type: 'subgame.computed',
-          actorPlayerId: player.id,
-          scope: { roundId, eventId: round.eventId! },
-          payload: {
+        if (round.eventId !== null) {
+          await emitActivity(tx, {
+            type: 'subgame.computed',
+            eventId: round.eventId,
+            roundId,
+            actorPlayerId: player.id,
             subGameId,
             subGameResultId: computeResult.subGameResultId,
             totalPotCents: computeResult.totalPotCents,
-          },
-        });
+          });
+        }
 
         return computeResult;
       });

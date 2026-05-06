@@ -234,11 +234,10 @@ galleryRouter.post(
         });
         await emitActivity(tx, {
           type: 'gallery.uploaded',
+          eventId,
           actorPlayerId: player.id,
-          payload: { photoId },
-          scope: resolvedRoundId !== null
-            ? { eventId, roundId: resolvedRoundId }
-            : { eventId },
+          photoId,
+          ...(resolvedRoundId !== null ? { roundId: resolvedRoundId } : {}),
         });
       });
     } catch (err) {

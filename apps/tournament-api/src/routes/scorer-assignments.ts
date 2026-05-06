@@ -397,12 +397,17 @@ scorerAssignmentsRouter.post(
           },
         });
 
-        // AC-5 (d): activity emit (v1 NO-OP; T8 will replace body).
+        // AC-5 (d): activity emit (T8-1 typed). round.eventId is
+        // guaranteed non-null at this point — line 123 returns 422 if
+        // eventId is null before the transaction.
         await emitActivity(tx, {
           type: 'scorer.transferred',
+          eventId: round.eventId!,
+          roundId,
           actorPlayerId: player.id,
-          payload: { foursomeNumber, fromPlayerId, toPlayerId },
-          scope: { roundId },
+          foursomeNumber,
+          fromPlayerId,
+          toPlayerId,
         });
 
         return {

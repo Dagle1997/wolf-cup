@@ -159,13 +159,9 @@ roundLifecycleRouter.post('/:roundId/complete', requireSession, async (c) => {
       // (vi) Transition.
       await transitionState(tx, roundId!, 'complete_editable', player.id, TENANT_ID);
 
-      // (vii) Activity.
-      await emitActivity(tx, {
-        type: 'round.completed',
-        actorPlayerId: player.id,
-        scope: { roundId: roundId! },
-        payload: {},
-      });
+      // (vii) T8-1: round.completed dropped from the v1 activity-type
+      // enum (audit_log + round_states already record this transition).
+      // Re-add via a v1.5 spec amendment if a UI surface ever needs it.
 
       return { kind: 'transitioned' as const, state: 'complete_editable' as const };
     });
@@ -248,12 +244,8 @@ roundLifecycleRouter.post(
           );
         }
         await transitionState(tx, roundId!, 'in_progress', player.id, TENANT_ID);
-        await emitActivity(tx, {
-          type: 'round.complete_rolled_back',
-          actorPlayerId: player.id,
-          scope: { roundId: roundId! },
-          payload: {},
-        });
+        // T8-1: round.complete_rolled_back dropped from the v1 activity-
+        // type enum (audit_log + round_states already record this).
       });
       return c.json(
         { ok: true, state: 'in_progress', requestId },
@@ -393,12 +385,14 @@ roundLifecycleRouter.post(
         });
 
         // (vii) Activity.
-        await emitActivity(tx, {
-          type: 'round.finalized',
-          actorPlayerId: player.id,
-          scope: { roundId: roundId! },
-          payload: {},
-        });
+        if (round.eventId !== null) {
+          await emitActivity(tx, {
+            type: 'round.finalized',
+            eventId: round.eventId,
+            roundId: roundId!,
+            actorPlayerId: player.id,
+          });
+        }
 
         // (viii) T6-13a: auto-compute attached sub-games (skins, etc.).
         // Stub-typed sub-games are SKIPPED (logged) — they don't fail
@@ -502,12 +496,17 @@ roundLifecycleRouter.post('/:roundId/cancel', requireSession, async (c) => {
       }
 
       await transitionState(tx, roundId!, 'cancelled', player.id, TENANT_ID);
-      await emitActivity(tx, {
-        type: 'round.cancelled',
-        actorPlayerId: player.id,
-        scope: { roundId: roundId! },
-        payload: {},
-      });
+
+      // T8-1 activity emit needs eventId — look up round context.
+      const round = await getRoundContext(tx, roundId!, TENANT_ID);
+      if (round !== null && round.eventId !== null) {
+        await emitActivity(tx, {
+          type: 'round.cancelled',
+          eventId: round.eventId,
+          roundId: roundId!,
+          actorPlayerId: player.id,
+        });
+      }
 
       return { kind: 'transitioned' as const };
     });

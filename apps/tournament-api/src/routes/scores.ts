@@ -448,19 +448,55 @@ scoresRouter.post(
           putts: body.putts ?? null,
         },
       });
-      const activityScope: { eventId?: string; roundId?: string } = { roundId };
-      if (round.eventId !== null) activityScope.eventId = round.eventId;
-      await emitActivity(tx, {
-        type: 'score.committed',
-        actorPlayerId: player.id,
-        payload: {
-          roundId,
-          playerId: body.playerId,
-          holeNumber,
-          grossStrokes: body.grossStrokes,
-        },
-        scope: activityScope,
-      });
+      // T8-1 typed activity emit. Skip when round.eventId is null
+      // (legacy non-event rounds); the chk_rounds_event_pairing CHECK
+      // guarantees eventRoundId is also null in that case, so the par
+      // lookup wouldn't have a course_revision to resolve against.
+      if (round.eventId !== null && round.eventRoundId !== null) {
+        // Course-revision par lookup. O(1) via the
+        // uniq_course_holes_revision_hole_number UNIQUE index.
+        // Defense-in-depth: filter both tables by tenant_id AND verify
+        // event_rounds.event_id matches round.eventId so a cross-tenant
+        // or cross-event corrupt FK can't accidentally pull the wrong
+        // par into a score-committed activity.
+        const parRows = await tx
+          .select({ par: courseHoles.par })
+          .from(courseHoles)
+          .innerJoin(
+            eventRounds,
+            eq(eventRounds.courseRevisionId, courseHoles.courseRevisionId),
+          )
+          .where(
+            and(
+              eq(eventRounds.id, round.eventRoundId),
+              eq(eventRounds.eventId, round.eventId),
+              eq(eventRounds.tenantId, TENANT_ID),
+              eq(courseHoles.holeNumber, holeNumber),
+              eq(courseHoles.tenantId, TENANT_ID),
+            ),
+          )
+          .limit(1);
+        const par = parRows[0]?.par;
+        if (par !== undefined) {
+          const toPar = body.grossStrokes - par;
+          await emitActivity(tx, {
+            type: 'score.committed',
+            eventId: round.eventId,
+            roundId,
+            actorPlayerId: player.id,
+            playerId: body.playerId,
+            holeNumber,
+            grossStrokes: body.grossStrokes,
+            par,
+            toPar,
+            isBirdieOrBetter: toPar < 0,
+            scorerPlayerId: player.id,
+          });
+        }
+        // par-not-found is a course-data integrity gap; skip emit
+        // silently rather than fail the score-post. The audit_log row
+        // (above) records the score regardless.
+      }
 
       // (5b) T6-4 press orchestrator. Runs hole-complete detection internally;
       // skips press eval when hole isn't complete. Engine errors throw

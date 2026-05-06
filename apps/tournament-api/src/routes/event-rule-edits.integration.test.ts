@@ -406,21 +406,20 @@ describe('POST /api/events/:eventId/rule-sets/:ruleSetId/revisions', () => {
     expect(auditPayload.priorConfig.sandies).toBe(false);
     expect(auditPayload.newConfig.sandies).toBe(true);
 
-    // Activity emit asserted (NO-OP body per T8; spy verifies the call shape).
+    // T8-1: typed activity emit. Spy verifies the new typed call shape.
     expect(emitSpy).toHaveBeenCalledTimes(1);
-    const emitArgs = emitSpy.mock.calls[0]![1];
-    expect(emitArgs.type).toBe('rule_set.revised');
-    expect(emitArgs.scope).toEqual({ eventId: s.eventId });
-    const emitPayload = emitArgs.payload as {
+    const emitArgs = emitSpy.mock.calls[0]![1] as {
+      type: 'rule_set.revised';
+      eventId: string;
       ruleSetId: string;
       revisionId: string;
-      effectiveFromRoundId: string;
-      effectiveFromHole: number;
-      configDiffSummary: unknown;
+      effectiveFromRoundId?: string;
+      effectiveFromHole?: number;
     };
-    expect(emitPayload.ruleSetId).toBe(s.ruleSetId);
-    expect(emitPayload.effectiveFromHole).toBe(12);
-    expect(emitPayload.configDiffSummary).toBeNull();
+    expect(emitArgs.type).toBe('rule_set.revised');
+    expect(emitArgs.eventId).toBe(s.eventId);
+    expect(emitArgs.ruleSetId).toBe(s.ruleSetId);
+    expect(emitArgs.effectiveFromHole).toBe(12);
     emitSpy.mockRestore();
   });
 

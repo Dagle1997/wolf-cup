@@ -526,21 +526,31 @@ export async function runPressOrchestrator(
     }
 
     // Emit activity for each successfully-inserted press.
-    const activityScope: { eventId?: string; roundId?: string } = { roundId };
-    if (round.eventId !== null) activityScope.eventId = round.eventId;
-    await emitActivity(tx, {
-      type: press.type === 'auto' ? 'press.auto_fired' : 'press.manual_fired',
-      actorPlayerId: scorerPlayerId,
-      scope: activityScope,
-      payload: {
-        roundId,
-        holeNumber,
-        team: press.team,
-        startHole: press.startHole,
-        multiplier: press.multiplier,
-        ...(press.trigger ? { trigger: press.trigger } : {}),
-      },
-    });
+    if (round.eventId !== null) {
+      if (press.type === 'auto') {
+        await emitActivity(tx, {
+          type: 'press.auto_fired',
+          eventId: round.eventId,
+          roundId,
+          actorPlayerId: scorerPlayerId,
+          triggerHole: holeNumber,
+          team: press.team,
+          trigger: press.trigger ?? 'auto',
+          multiplier: press.multiplier,
+        });
+      } else {
+        await emitActivity(tx, {
+          type: 'press.manual_fired',
+          eventId: round.eventId,
+          roundId,
+          actorPlayerId: scorerPlayerId,
+          fromHole: press.startHole,
+          team: press.team,
+          multiplier: press.multiplier,
+          filedByPlayerId: scorerPlayerId,
+        });
+      }
+    }
   }
 }
 

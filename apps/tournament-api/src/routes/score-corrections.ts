@@ -347,18 +347,26 @@ scoreCorrectionsRouter.post(
           },
         });
 
-        // (vii) Activity emit (v1 NO-OP per lib/activity.ts).
-        await emitActivity(tx, {
-          type: 'score.corrected',
-          actorPlayerId: player.id,
-          scope: { roundId },
-          payload: {
+        // (vii) Activity emit (T8-1 typed). Look up round.eventId; skip
+        // emit when null (legacy non-event rounds).
+        const roundEventRows = await tx
+          .select({ eventId: rounds.eventId })
+          .from(rounds)
+          .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, TENANT_ID)))
+          .limit(1);
+        const roundEventId = roundEventRows[0]?.eventId ?? null;
+        if (roundEventId !== null) {
+          await emitActivity(tx, {
+            type: 'score.corrected',
+            eventId: roundEventId,
+            roundId,
+            actorPlayerId: player.id,
             playerId: playerIdParam,
             holeNumber,
-            prior: priorValue,
-            new: newValue,
-          },
-        });
+            priorGross: priorValue.grossStrokes,
+            newGross: newValue.grossStrokes,
+          });
+        }
 
         return {
           correctionId,

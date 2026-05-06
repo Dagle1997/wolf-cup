@@ -16,11 +16,63 @@ export default tseslint.config(
           name: '@wolf-cup/engine',
           message: 'Tournament may only import from @wolf-cup/engine/stableford (FD-11/12). Use the subpath import.',
         }],
-        patterns: [{
-          group: ['@wolf-cup/engine/*', '!@wolf-cup/engine/stableford'],
-          message: 'Tournament may only import @wolf-cup/engine/stableford (FD-11/12).',
-        }],
+        patterns: [
+          {
+            group: ['@wolf-cup/engine/*', '!@wolf-cup/engine/stableford'],
+            message: 'Tournament may only import @wolf-cup/engine/stableford (FD-11/12).',
+          },
+          // T8-1: block direct imports of the `activity` schema export
+          // outside the emitter. Defense-in-depth against the rename-
+          // bypass of the `no-restricted-syntax` rule below: if a file
+          // can't import `activity`, it can't write to it under any
+          // call shape. Allowlisted files override below.
+          {
+            group: ['*db/schema*'],
+            importNames: ['activity'],
+            message: 'Direct `activity` schema imports are forbidden. Use emitActivity() from src/lib/activity.ts (T8-1).',
+          },
+          // Also block direct path imports of the activity schema file
+          // (so `import { activity } from '../db/schema/activity.js'`
+          // outside the emitter is also rejected). Glob covers no-ext,
+          // .js, .ts, .mjs to defend against any module-resolution
+          // variant that might land in a future TS config change.
+          {
+            group: ['**/db/schema/activity', '**/db/schema/activity.*'],
+            message: 'Direct path imports of the activity schema are forbidden. Use emitActivity() from src/lib/activity.ts (T8-1).',
+          },
+        ],
       }],
+      // T8-1: block direct writes to the activity table by AST shape.
+      // Multiple selectors catch the realistic call shapes:
+      //   1. tx.insert(activity)          — member-call + Identifier arg
+      //   2. tx.insert(schema.activity)   — member-call + namespace-imported MemberExpression arg
+      //   3. insert(activity)             — destructured-call + Identifier arg
+      //   4. insert(schema.activity)      — destructured-call + namespace-imported MemberExpression arg
+      //   5. tx['insert'](activity)       — computed-property bracket access (matches selector #1's parent CallExpression but not callee.property.name; covered by selector below)
+      // Together with the no-restricted-imports block above, this gates
+      // the table behind emitActivity.
+      'no-restricted-syntax': ['error',
+        {
+          selector: "CallExpression[callee.type='MemberExpression'][callee.computed=false][callee.property.name=/^(insert|update|delete)$/] > Identifier[name='activity']",
+          message: 'Direct writes to the activity table are forbidden. Use emitActivity() from src/lib/activity.ts (T8-1).',
+        },
+        {
+          selector: "CallExpression[callee.type='MemberExpression'][callee.computed=false][callee.property.name=/^(insert|update|delete)$/] > MemberExpression[property.name='activity'][computed=false]",
+          message: 'Direct writes to the activity table via namespace import are forbidden. Use emitActivity() from src/lib/activity.ts (T8-1).',
+        },
+        {
+          selector: "CallExpression[callee.type='Identifier'][callee.name=/^(insert|update|delete)$/] > Identifier[name='activity']",
+          message: 'Direct destructured writes to the activity table are forbidden. Use emitActivity() from src/lib/activity.ts (T8-1).',
+        },
+        {
+          selector: "CallExpression[callee.type='Identifier'][callee.name=/^(insert|update|delete)$/] > MemberExpression[property.name='activity'][computed=false]",
+          message: 'Direct destructured writes to the activity table via namespace import are forbidden. Use emitActivity() from src/lib/activity.ts (T8-1).',
+        },
+        {
+          selector: "CallExpression[callee.type='MemberExpression'][callee.computed=true][callee.property.value=/^(insert|update|delete)$/] > Identifier[name='activity']",
+          message: 'Direct writes to the activity table via computed-property access are forbidden. Use emitActivity() from src/lib/activity.ts (T8-1).',
+        },
+      ],
       // T1-7: prevent regression back to console.* for structured logging.
       // Production callsites use `c.get('logger')` (request-scoped) or the
       // module-level singleton from `src/lib/log.ts`. File overrides below
@@ -29,6 +81,23 @@ export default tseslint.config(
       // `{ allow: [] }` would fail ESLint's JSON-schema check (allow must
       // be non-empty when present).
       'no-console': 'error',
+    },
+  },
+  {
+    // T8-1: emitter file + its tests are the only legitimate places
+    // that import + write to the `activity` schema directly. Disable
+    // the import block + write-shape rules for these paths. The
+    // fixture file at __fixtures__/activity-direct-write-violation.ts
+    // is INTENTIONALLY NOT in this allowlist — it must lint-fail to
+    // prove the gate works end-to-end (asserted by activity.eslint-rule.test.ts).
+    files: [
+      'src/lib/activity.ts',
+      'src/lib/activity.test.ts',
+      'src/lib/activity.eslint-rule.test.ts',
+    ],
+    rules: {
+      'no-restricted-imports': 'off',
+      'no-restricted-syntax': 'off',
     },
   },
   {
