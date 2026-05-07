@@ -1,3 +1,88 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
+
+/*
+ * Default form-control + button appearance. Tailwind v4's preflight
+ * strips browser-default styling on <input>, <select>, <textarea>, and
+ * <button> — combined with our utility-light routes (most admin pages
+ * are plain HTML with no className styling), the result is invisible
+ * inputs on phone (no borders, no padding, no background). This base
+ * layer restores a minimal, accessible appearance for every form
+ * element that does NOT carry explicit styling. Pages that want a
+ * different look apply utility classes which override these via the
+ * `:where()` zero-specificity selector.
+ *
+ * Discovered 2026-05-07 trip-day mid-event-creation: organizer's phone
+ * showed `<label>Name</label>` with no visible text input next to it.
+ * Without this base, the form was uncompletable.
+ */
+@layer base {
+  :where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='button']):not([type='submit']):not([type='reset']):not([type='hidden']):not([type='file'])) {
+    appearance: auto;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #fff;
+    color: #0f172a;
+    font: inherit;
+    margin: 4px 8px 12px 0;
+    min-height: 40px;
+    box-sizing: border-box;
+  }
+  :where(input:not([type='checkbox']):not([type='radio']):not([type='range'])):focus-visible {
+    outline: 2px solid #1d4ed8;
+    outline-offset: 1px;
+    border-color: #1d4ed8;
+  }
+  :where(textarea) {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #fff;
+    color: #0f172a;
+    font: inherit;
+    margin: 4px 8px 12px 0;
+    min-height: 80px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 480px;
+  }
+  :where(select) {
+    appearance: auto;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px 28px 8px 10px;
+    background: #fff;
+    color: #0f172a;
+    font: inherit;
+    margin: 4px 8px 12px 0;
+    min-height: 40px;
+    box-sizing: border-box;
+  }
+  :where(button:not([data-skip-base-style])) {
+    appearance: auto;
+    border: 1px solid #1d4ed8;
+    border-radius: 6px;
+    padding: 8px 14px;
+    background: #1d4ed8;
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 4px 8px 8px 0;
+    min-height: 40px;
+    box-sizing: border-box;
+  }
+  :where(button:not([data-skip-base-style])):disabled {
+    background: #cbd5e1;
+    border-color: #cbd5e1;
+    color: #475569;
+    cursor: not-allowed;
+  }
+  :where(label) {
+    display: inline-block;
+    margin-right: 8px;
+    color: #334155;
+  }
+}
