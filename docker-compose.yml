@@ -89,6 +89,13 @@ services:
       - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
       - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
       - R2_BUCKET_NAME=${R2_BUCKET_NAME:-}
+      # Trip-1 press kill switch (commit 52567df). Set in /opt/wolf-cup/.env
+      # to disable both auto-press orchestrator AND manual press routes
+      # (POST/DELETE /api/rounds/:roundId/presses). Empty default → presses
+      # behave normally (which has the foursome-blind bug — see
+      # _bmad-output/reviews/T1-T8-final-exit-review-codex.md). v1.5 adds
+      # foursome_number to team_press_log; flip to empty/false then.
+      - TOURNAMENT_PRESSES_DISABLED=${TOURNAMENT_PRESSES_DISABLED:-}
     volumes:
       - tournament_sqlite_data:/app/data
     networks:
