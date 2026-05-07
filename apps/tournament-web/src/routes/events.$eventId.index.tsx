@@ -50,6 +50,12 @@ type FetchOutcome =
 
 type AuthStatus = { player: null | { id: string; isOrganizer: boolean; name?: string } };
 
+const SCHEDULE_CARD = {
+  to: '/events/$eventId/schedule' as const,
+  title: 'Schedule',
+  desc: 'Rounds, courses, your foursome, your tee',
+};
+
 function validateAuthStatus(body: unknown): AuthStatus {
   if (body === null || typeof body !== 'object') return { player: null };
   const p = (body as { player?: unknown }).player;
@@ -161,9 +167,12 @@ export type EventHomePageProps = {
   viewerName?: string;
   /** Test seam — pin "now" for deterministic countdown rendering. */
   nowMs?: number;
+  /** When true, render the organizer-only "Admin tools" link at the bottom. */
+  isOrganizer?: boolean;
 };
 
 const ENTRY_CARDS = [
+  SCHEDULE_CARD,
   { to: '/events/$eventId/leaderboard' as const, title: 'Leaderboard',    desc: 'See live standings' },
   { to: '/events/$eventId/money' as const,       title: 'Money',          desc: 'Head-to-head money matrix' },
   { to: '/events/$eventId/bets' as const,        title: 'Bets',           desc: 'Your bets' },
@@ -171,7 +180,7 @@ const ENTRY_CARDS = [
   { to: '/events/$eventId/gallery' as const,     title: 'Photo Gallery',  desc: 'Trip photos' },
 ] as const;
 
-export function EventHomePage({ eventId, viewerName, nowMs }: EventHomePageProps) {
+export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: EventHomePageProps) {
   const query = useQuery<FetchOutcome>({
     queryKey: ['eventDetail', eventId],
     queryFn: () => fetchEvent(eventId),
@@ -245,6 +254,27 @@ export function EventHomePage({ eventId, viewerName, nowMs }: EventHomePageProps
         </ul>
       </nav>
 
+      {isOrganizer === true ? (
+        <div
+          style={{
+            marginTop: 16,
+            padding: 12,
+            border: '1px dashed #c7d2fe',
+            borderRadius: 8,
+            background: '#f5f3ff',
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: 4 }}>Admin tools</strong>
+          <Link
+            to="/admin/events/$eventId"
+            params={{ eventId }}
+            data-testid="event-home-admin-link"
+          >
+            Manage event → pairings, roster, sub-games, courses
+          </Link>
+        </div>
+      ) : null}
+
       {/* T8-3: "What's Happening" feed reads from the root-mounted T8-2
           ActivityFeedProvider context. eventId is detected from URL by
           the provider; no props needed here. */}
@@ -279,7 +309,7 @@ function RouteComponent() {
   const ctx = Route.useRouteContext();
   const props: EventHomePageProps =
     ctx.player.name !== undefined
-      ? { eventId, viewerName: ctx.player.name }
-      : { eventId };
+      ? { eventId, viewerName: ctx.player.name, isOrganizer: ctx.player.isOrganizer }
+      : { eventId, isOrganizer: ctx.player.isOrganizer };
   return <EventHomePage {...props} />;
 }

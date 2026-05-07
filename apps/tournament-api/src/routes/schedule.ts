@@ -29,6 +29,7 @@ import {
   pairingMembers,
   pairings,
   players,
+  rounds,
 } from '../db/schema/index.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
@@ -104,6 +105,7 @@ scheduleRouter.get(
       // Per-round: course + viewer's pairing (3-state discriminated).
       const roundsOut: Array<{
         id: string;
+        runtimeRoundId: string | null;
         roundNumber: number;
         roundDate: number;
         holesToPlay: 9 | 18;
@@ -113,6 +115,21 @@ scheduleRouter.get(
       }> = [];
 
       for (const r of roundRows) {
+        // Runtime rounds row id (separate from event_round_id). Score-entry
+        // and other live-round pages use rounds.id, not event_rounds.id.
+        // null until /api/admin/event-rounds/:eventRoundId/start has run.
+        const runtimeRoundRows = await db
+          .select({ id: rounds.id })
+          .from(rounds)
+          .where(
+            and(
+              eq(rounds.eventRoundId, r.id),
+              eq(rounds.tenantId, TENANT_ID),
+            ),
+          )
+          .limit(1);
+        const runtimeRoundId = runtimeRoundRows[0]?.id ?? null;
+
         // Course via revision.
         const revRows = await db
           .select({ courseId: courseRevisions.courseId })
@@ -254,6 +271,7 @@ scheduleRouter.get(
         }
         roundsOut.push({
           id: r.id,
+          runtimeRoundId,
           roundNumber: r.roundNumber,
           roundDate: r.roundDate,
           holesToPlay: r.holesToPlay as 9 | 18,

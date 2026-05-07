@@ -323,13 +323,43 @@ export function NewEventWizard() {
   if (saveState.kind === 'success') {
     const inviteUrl = `${window.location.origin}/invite/${saveState.inviteToken}`;
     return (
-      <div>
+      <div style={{ padding: 16 }}>
         <h1>Event created!</h1>
         <p>Share this invite link with the players:</p>
         <p>
           <code>{inviteUrl}</code>
         </p>
-        <p>Event id: {saveState.eventId}</p>
+        <ul style={{ listStyle: 'none', padding: 0, marginTop: 16, display: 'grid', gap: 8 }}>
+          <li>
+            <a
+              href={`/admin/events/${saveState.eventId}`}
+              style={{
+                display: 'inline-block',
+                padding: '10px 18px',
+                background: '#1d4ed8',
+                color: '#fff',
+                borderRadius: 6,
+                textDecoration: 'none',
+                fontWeight: 600,
+              }}
+              data-testid="new-event-admin-link"
+            >
+              Set up event → pairings, roster, rule set
+            </a>
+          </li>
+          <li>
+            <a
+              href={`/events/${saveState.eventId}`}
+              style={{ display: 'inline-block', padding: '8px 0' }}
+              data-testid="new-event-view-link"
+            >
+              View event home →
+            </a>
+          </li>
+        </ul>
+        <p style={{ fontSize: '0.8em', color: '#888', marginTop: 16 }}>
+          Event id: {saveState.eventId}
+        </p>
       </div>
     );
   }

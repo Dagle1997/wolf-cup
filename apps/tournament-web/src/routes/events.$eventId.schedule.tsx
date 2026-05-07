@@ -41,6 +41,8 @@ type ScheduleResponse = {
   event: { id: string; name: string; timezone: string };
   rounds: Array<{
     id: string;
+    /** Runtime rounds.id (null until /admin/event-rounds/:id/start has run). */
+    runtimeRoundId: string | null;
     roundNumber: number;
     roundDate: number;
     holesToPlay: 9 | 18;
@@ -230,6 +232,26 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
               <div style={{ marginTop: 8 }}>
                 <PairingBlock pairing={r.pairing} roundTeeColor={r.teeColor} />
               </div>
+
+              {r.runtimeRoundId !== null && r.pairing.kind === 'foursome' ? (
+                <div style={{ marginTop: 8 }}>
+                  <a
+                    href={`/rounds/${r.runtimeRoundId}/score-entry`}
+                    style={{
+                      display: 'inline-block',
+                      padding: '8px 14px',
+                      background: '#16a34a',
+                      color: '#fff',
+                      borderRadius: 6,
+                      textDecoration: 'none',
+                      fontWeight: 600,
+                    }}
+                    data-testid={`schedule-score-link-${r.id}`}
+                  >
+                    Score this round →
+                  </a>
+                </div>
+              ) : null}
             </article>
           ))}
         </section>

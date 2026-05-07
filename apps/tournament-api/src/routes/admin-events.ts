@@ -39,8 +39,10 @@ import {
   pairings,
   pairingMembers,
   players,
+  courses,
   courseRevisions,
   courseTees,
+  ruleSets,
 } from '../db/schema/index.js';
 import { suggestPairings } from '../engine/pairings/suggest.js';
 
@@ -354,6 +356,80 @@ const SuggestRequestSchema = z.object({
  * GET /api/admin/events/:eventId/pairings — fetch all pairings + members
  * for the event, grouped by event_round, with the event's roster.
  */
+/**
+ * GET /api/admin/events/:eventId/admin-context — discover the IDs an
+ * organizer needs to navigate admin sub-pages WITHOUT typing UUIDs into
+ * the address bar. Returns event + groups + rule-set + event-rounds (with
+ * course names) so the admin landing page can render direct links to:
+ *   /admin/groups/{groupId}/edit
+ *   /admin/rule-sets/{ruleSetId}/edit
+ *   /admin/event-rounds/{eventRoundId}/sub-games
+ *   /admin/events/{eventId}/pairings   (no UUID lookup needed; eventId is in URL)
+ *
+ * Rule-set is tenant-scoped in v1 (single rule_set per tenant per the
+ * trip-day reality memory); we return the first match for the tenant.
+ */
+adminEventsRouter.get(
+  '/events/:eventId/admin-context',
+  requireSession,
+  requireOrganizer,
+  async (c) => {
+    const requestId = c.get('requestId');
+    const eventId = c.req.param('eventId');
+
+    const eventRows = await db
+      .select({ id: events.id, name: events.name })
+      .from(events)
+      .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)));
+    if (eventRows.length === 0) {
+      return c.json(
+        { error: 'not_found', code: 'event_not_found', requestId },
+        404,
+      );
+    }
+
+    // Groups for this event.
+    const groupRows = await db
+      .select({ id: groups.id, name: groups.name })
+      .from(groups)
+      .where(and(eq(groups.eventId, eventId), eq(groups.tenantId, TENANT_ID)))
+      .orderBy(asc(groups.name));
+
+    // Tenant rule-set (v1 single rule_set per tenant).
+    const ruleSetRows = await db
+      .select({ id: ruleSets.id, name: ruleSets.name })
+      .from(ruleSets)
+      .where(eq(ruleSets.tenantId, TENANT_ID))
+      .limit(1);
+
+    // Event rounds + course name (for the sub-games-per-round links).
+    const erRows = await db
+      .select({
+        id: eventRounds.id,
+        roundNumber: eventRounds.roundNumber,
+        courseName: courses.name,
+      })
+      .from(eventRounds)
+      .innerJoin(courseRevisions, eq(courseRevisions.id, eventRounds.courseRevisionId))
+      .innerJoin(courses, eq(courses.id, courseRevisions.courseId))
+      .where(
+        and(
+          eq(eventRounds.eventId, eventId),
+          eq(eventRounds.tenantId, TENANT_ID),
+        ),
+      )
+      .orderBy(asc(eventRounds.roundNumber));
+
+    return c.json({
+      event: { id: eventRows[0]!.id, name: eventRows[0]!.name },
+      groups: groupRows,
+      ruleSet: ruleSetRows[0] ?? null,
+      eventRounds: erRows,
+      requestId,
+    });
+  },
+);
+
 adminEventsRouter.get(
   '/events/:eventId/pairings',
   requireSession,

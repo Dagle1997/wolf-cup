@@ -26,6 +26,7 @@ import { Route as EventsEventIdBetsRouteImport } from './routes/events.$eventId.
 import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
+import { Route as AdminEventsEventIdIndexRouteImport } from './routes/admin.events.$eventId.index'
 import { Route as EventsEventIdCoursesCourseIdRouteImport } from './routes/events.$eventId.courses.$courseId'
 import { Route as AdminRuleSetsIdEditRouteImport } from './routes/admin.rule-sets.$id.edit'
 import { Route as AdminGroupsGroupIdEditRouteImport } from './routes/admin.groups.$groupId.edit'
@@ -118,6 +119,11 @@ const AdminCoursesNewRoute = AdminCoursesNewRouteImport.update({
   path: '/admin/courses/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminEventsEventIdIndexRoute = AdminEventsEventIdIndexRouteImport.update({
+  id: '/admin/events/$eventId/',
+  path: '/admin/events/$eventId/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EventsEventIdCoursesCourseIdRoute =
   EventsEventIdCoursesCourseIdRouteImport.update({
     id: '/events/$eventId/courses/$courseId',
@@ -170,6 +176,7 @@ export interface FileRoutesByFullPath {
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
   '/events/$eventId/courses/$courseId': typeof EventsEventIdCoursesCourseIdRoute
+  '/admin/events/$eventId/': typeof AdminEventsEventIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -194,6 +201,7 @@ export interface FileRoutesByTo {
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
   '/events/$eventId/courses/$courseId': typeof EventsEventIdCoursesCourseIdRoute
+  '/admin/events/$eventId': typeof AdminEventsEventIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -219,6 +227,7 @@ export interface FileRoutesById {
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
   '/events/$eventId/courses/$courseId': typeof EventsEventIdCoursesCourseIdRoute
+  '/admin/events/$eventId/': typeof AdminEventsEventIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -245,6 +254,7 @@ export interface FileRouteTypes {
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
     | '/events/$eventId/courses/$courseId'
+    | '/admin/events/$eventId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -269,6 +279,7 @@ export interface FileRouteTypes {
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
     | '/events/$eventId/courses/$courseId'
+    | '/admin/events/$eventId'
   id:
     | '__root__'
     | '/'
@@ -293,6 +304,7 @@ export interface FileRouteTypes {
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
     | '/events/$eventId/courses/$courseId'
+    | '/admin/events/$eventId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -318,6 +330,7 @@ export interface RootRouteChildren {
   AdminGroupsGroupIdEditRoute: typeof AdminGroupsGroupIdEditRoute
   AdminRuleSetsIdEditRoute: typeof AdminRuleSetsIdEditRoute
   EventsEventIdCoursesCourseIdRoute: typeof EventsEventIdCoursesCourseIdRoute
+  AdminEventsEventIdIndexRoute: typeof AdminEventsEventIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -441,6 +454,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCoursesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/events/$eventId/': {
+      id: '/admin/events/$eventId/'
+      path: '/admin/events/$eventId'
+      fullPath: '/admin/events/$eventId/'
+      preLoaderRoute: typeof AdminEventsEventIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/events/$eventId/courses/$courseId': {
       id: '/events/$eventId/courses/$courseId'
       path: '/events/$eventId/courses/$courseId'
@@ -503,6 +523,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminGroupsGroupIdEditRoute: AdminGroupsGroupIdEditRoute,
   AdminRuleSetsIdEditRoute: AdminRuleSetsIdEditRoute,
   EventsEventIdCoursesCourseIdRoute: EventsEventIdCoursesCourseIdRoute,
+  AdminEventsEventIdIndexRoute: AdminEventsEventIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
