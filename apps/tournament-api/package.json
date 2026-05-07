@@ -28,6 +28,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/estree": "^1.0.8",
     "@types/node": "^22.0.0",
     "@types/pdfkit": "^0.17.6",
     "drizzle-kit": "^0.30.5",
