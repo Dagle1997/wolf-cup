@@ -77,6 +77,16 @@ export const pairingMembers = sqliteTable(
       .notNull()
       .references(() => players.id, { onDelete: 'restrict' }),
     slotNumber: integer('slot_number').notNull(),
+    /**
+     * Per-player tee override. NULL → use the round's `event_rounds.tee_color`
+     * as the effective tee. Non-null → this member plays a different tee
+     * than the round default for this round (e.g., Judd plays forward while
+     * the rest of the foursome plays white). Used by the engine's per-player
+     * `getHandicapStrokes` calls so course handicap is computed against the
+     * actual tee each player is hitting from. Validated in the pairings API
+     * against the course's available `course_tees.tee_color` set.
+     */
+    teeColor: text('tee_color'),
     ...ecosystemColumns(),
   },
   (t) => ({

@@ -40,6 +40,7 @@ import {
   pairingMembers,
   players,
   courseRevisions,
+  courseTees,
 } from '../db/schema/index.js';
 import { suggestPairings } from '../engine/pairings/suggest.js';
 
@@ -284,7 +285,38 @@ adminEventsRouter.post(
 const PAIRINGS_BODY_LIMIT_BYTES = 16 * 1024;
 const FOURSOME_SIZE = 4;
 
-const SaveMemberSchema = z.array(z.string().min(1)).min(1).max(FOURSOME_SIZE);
+// Per-player tee override (optional). When omitted on a member entry, that
+// player uses the round's `event_rounds.tee_color` as their effective tee.
+// Validated against the course's available tee colors below at the
+// resolution step (after we know which event_round we're inserting into).
+//
+// Two accepted shapes for backwards compatibility:
+//   - `string` (just the playerId, no tee override) — pre-T10 callers
+//   - `{ playerId, teeColor? }` — opt-in per-player tee
+const SaveMemberSchema = z
+  .array(
+    z.union([
+      z.string().min(1),
+      z.object({
+        playerId: z.string().min(1),
+        teeColor: z.string().min(1).optional(),
+      }),
+    ]),
+  )
+  .min(1)
+  .max(FOURSOME_SIZE);
+
+type NormalizedMember = { playerId: string; teeColor: string | null };
+
+function normalizeMembers(
+  raw: z.infer<typeof SaveMemberSchema>,
+): NormalizedMember[] {
+  return raw.map((m) =>
+    typeof m === 'string'
+      ? { playerId: m, teeColor: null }
+      : { playerId: m.playerId, teeColor: m.teeColor ?? null },
+  );
+}
 
 const SavePairingSchema = z.object({
   foursomeNumber: z.number().int().min(1),
@@ -342,12 +374,16 @@ adminEventsRouter.get(
     }
     const event = eventRows[0]!;
 
-    // Event rounds (in round_number ASC).
+    // Event rounds (in round_number ASC). Include teeColor + courseRevisionId
+    // so the response can surface (a) the round's default tee and (b) the
+    // full set of tees available for that round's course (from course_tees).
     const erRows = await db
       .select({
         id: eventRounds.id,
         roundNumber: eventRounds.roundNumber,
         roundDate: eventRounds.roundDate,
+        teeColor: eventRounds.teeColor,
+        courseRevisionId: eventRounds.courseRevisionId,
       })
       .from(eventRounds)
       .where(
@@ -357,6 +393,33 @@ adminEventsRouter.get(
         ),
       )
       .orderBy(asc(eventRounds.roundNumber));
+
+    // Available tees per course revision (for the per-player tee picker UI).
+    // Single query → in-memory grouping.
+    const courseRevIds = [...new Set(erRows.map((r) => r.courseRevisionId))];
+    const teesByRevision = new Map<string, string[]>();
+    if (courseRevIds.length > 0) {
+      const teeRows = await db
+        .select({
+          courseRevisionId: courseTees.courseRevisionId,
+          teeColor: courseTees.teeColor,
+        })
+        .from(courseTees)
+        .where(
+          and(
+            inArray(courseTees.courseRevisionId, courseRevIds),
+            eq(courseTees.tenantId, TENANT_ID),
+          ),
+        );
+      for (const t of teeRows) {
+        let list = teesByRevision.get(t.courseRevisionId);
+        if (!list) {
+          list = [];
+          teesByRevision.set(t.courseRevisionId, list);
+        }
+        list.push(t.teeColor);
+      }
+    }
 
     // Roster: dedupe across groups under this event.
     const groupRows = await db
@@ -392,6 +455,8 @@ adminEventsRouter.get(
       eventRoundId: string;
       roundNumber: number;
       roundDate: number;
+      defaultTeeColor: string;
+      availableTees: string[];
       pairings: Array<{
         id: string;
         foursomeNumber: number;
@@ -419,13 +484,19 @@ adminEventsRouter.get(
         id: string;
         foursomeNumber: number;
         locked: boolean;
-        members: Array<{ playerId: string; name: string; slotNumber: number }>;
+        members: Array<{
+          playerId: string;
+          name: string;
+          slotNumber: number;
+          teeColor: string | null;
+        }>;
       }> = [];
       for (const p of pRows) {
         const memberRows = await db
           .select({
             playerId: pairingMembers.playerId,
             slotNumber: pairingMembers.slotNumber,
+            teeColor: pairingMembers.teeColor,
             name: players.name,
           })
           .from(pairingMembers)
@@ -450,6 +521,8 @@ adminEventsRouter.get(
         eventRoundId: er.id,
         roundNumber: er.roundNumber,
         roundDate: er.roundDate,
+        defaultTeeColor: er.teeColor,
+        availableTees: teesByRevision.get(er.courseRevisionId) ?? [],
         pairings: pairingsOut,
       });
     }
@@ -565,9 +638,15 @@ adminEventsRouter.post(
       }
     }
 
-    // Step 4b: validate eventRoundIds belong to this event.
+    // Step 4b: validate eventRoundIds belong to this event. Also fetch
+    // each round's course_revision_id so we can validate tee_color overrides
+    // (step 4c) without an extra round-trip.
     const erRows = await db
-      .select({ id: eventRounds.id, roundNumber: eventRounds.roundNumber })
+      .select({
+        id: eventRounds.id,
+        roundNumber: eventRounds.roundNumber,
+        courseRevisionId: eventRounds.courseRevisionId,
+      })
       .from(eventRounds)
       .where(
         and(
@@ -577,6 +656,7 @@ adminEventsRouter.post(
       );
     const validRoundIds = new Set(erRows.map((r) => r.id));
     const roundIdToNumber = new Map(erRows.map((r) => [r.id, r.roundNumber]));
+    const roundIdToCourseRev = new Map(erRows.map((r) => [r.id, r.courseRevisionId]));
     for (const round of body.rounds) {
       if (!validRoundIds.has(round.eventRoundId)) {
         return c.json(
@@ -591,12 +671,75 @@ adminEventsRouter.post(
       }
     }
 
+    // Step 4c: validate per-member tee_color overrides against the course's
+    // available tees. Built lazily — only query course_tees if at least one
+    // member specified a tee_color (the common no-override path stays a
+    // single SELECT cheaper).
+    const requestedTees = new Set<string>();
+    for (const round of body.rounds) {
+      for (const p of round.pairings) {
+        for (const m of normalizeMembers(p.memberPlayerIds)) {
+          if (m.teeColor !== null) requestedTees.add(m.teeColor);
+        }
+      }
+    }
+    const teesByRevisionId = new Map<string, Set<string>>();
+    if (requestedTees.size > 0) {
+      const courseRevIds = [...new Set(erRows.map((r) => r.courseRevisionId))];
+      const teeRows =
+        courseRevIds.length === 0
+          ? []
+          : await db
+              .select({
+                courseRevisionId: courseTees.courseRevisionId,
+                teeColor: courseTees.teeColor,
+              })
+              .from(courseTees)
+              .where(
+                and(
+                  inArray(courseTees.courseRevisionId, courseRevIds),
+                  eq(courseTees.tenantId, TENANT_ID),
+                ),
+              );
+      for (const t of teeRows) {
+        let set = teesByRevisionId.get(t.courseRevisionId);
+        if (!set) {
+          set = new Set();
+          teesByRevisionId.set(t.courseRevisionId, set);
+        }
+        set.add(t.teeColor);
+      }
+      for (const round of body.rounds) {
+        const courseRevId = roundIdToCourseRev.get(round.eventRoundId);
+        const validTees = courseRevId ? teesByRevisionId.get(courseRevId) : undefined;
+        for (const p of round.pairings) {
+          for (const m of normalizeMembers(p.memberPlayerIds)) {
+            if (m.teeColor === null) continue;
+            if (!validTees || !validTees.has(m.teeColor)) {
+              return c.json(
+                {
+                  error: 'bad_request',
+                  code: 'unknown_tee_color',
+                  requestId,
+                  eventRoundId: round.eventRoundId,
+                  foursomeNumber: p.foursomeNumber,
+                  playerId: m.playerId,
+                  teeColor: m.teeColor,
+                },
+                400,
+              );
+            }
+          }
+        }
+      }
+    }
+
     // Step 5: duplicate_player_in_foursome — within a single memberPlayerIds.
     for (const round of body.rounds) {
       for (const p of round.pairings) {
         const seen = new Set<string>();
-        for (const playerId of p.memberPlayerIds) {
-          if (seen.has(playerId)) {
+        for (const m of normalizeMembers(p.memberPlayerIds)) {
+          if (seen.has(m.playerId)) {
             return c.json(
               {
                 error: 'bad_request',
@@ -606,14 +749,14 @@ adminEventsRouter.post(
                   {
                     eventRoundId: round.eventRoundId,
                     foursomeNumber: p.foursomeNumber,
-                    playerId,
+                    playerId: m.playerId,
                   },
                 ],
               },
               400,
             );
           }
-          seen.add(playerId);
+          seen.add(m.playerId);
         }
       }
     }
@@ -623,8 +766,8 @@ adminEventsRouter.post(
     const allPlayers = new Set<string>();
     for (const round of body.rounds) {
       for (const p of round.pairings) {
-        for (const playerId of p.memberPlayerIds) {
-          allPlayers.add(playerId);
+        for (const m of normalizeMembers(p.memberPlayerIds)) {
+          allPlayers.add(m.playerId);
         }
       }
     }
@@ -676,11 +819,11 @@ adminEventsRouter.post(
     for (const round of body.rounds) {
       const playerToFoursomes = new Map<string, Set<number>>();
       for (const p of round.pairings) {
-        for (const playerId of p.memberPlayerIds) {
-          let set = playerToFoursomes.get(playerId);
+        for (const m of normalizeMembers(p.memberPlayerIds)) {
+          let set = playerToFoursomes.get(m.playerId);
           if (!set) {
             set = new Set<number>();
-            playerToFoursomes.set(playerId, set);
+            playerToFoursomes.set(m.playerId, set);
           }
           set.add(p.foursomeNumber);
         }
@@ -753,12 +896,14 @@ adminEventsRouter.post(
               contextId: expectedContextId,
             });
             pairingCount += 1;
-            for (let i = 0; i < p.memberPlayerIds.length; i++) {
-              const playerId = p.memberPlayerIds[i]!;
+            const normalizedMembers = normalizeMembers(p.memberPlayerIds);
+            for (let i = 0; i < normalizedMembers.length; i++) {
+              const m = normalizedMembers[i]!;
               await tx.insert(pairingMembers).values({
                 pairingId,
-                playerId,
+                playerId: m.playerId,
                 slotNumber: i + 1,
+                ...(m.teeColor !== null ? { teeColor: m.teeColor } : {}),
                 tenantId: TENANT_ID,
                 contextId: expectedContextId,
               });

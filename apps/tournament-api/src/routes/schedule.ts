@@ -43,6 +43,8 @@ interface PairingMember {
   name: string;
   handicapIndex: number;
   isViewer: boolean;
+  /** Per-player tee override (T10). null → uses round.teeColor as default. */
+  teeColor: string | null;
 }
 
 type PairingState =
@@ -194,6 +196,7 @@ scheduleRouter.get(
             .select({
               playerId: pairingMembers.playerId,
               slotNumber: pairingMembers.slotNumber,
+              teeColor: pairingMembers.teeColor,
               name: players.name,
               manualHandicapIndex: players.manualHandicapIndex,
             })
@@ -215,6 +218,7 @@ scheduleRouter.get(
               name: m.name,
               handicapIndex: m.manualHandicapIndex ?? 0,
               isViewer: m.playerId === player.id,
+              teeColor: m.teeColor,
             })),
           };
         } else {

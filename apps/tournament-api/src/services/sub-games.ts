@@ -46,6 +46,7 @@ import {
   type SkinsMode,
   type LastHoleUnclaimedResolution,
 } from '../engine/formats/skins.js';
+import { buildTeeByPlayer } from './per-player-tee.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -257,6 +258,11 @@ export async function computeSubGame(
       ? 'carry-to-next-round'
       : 'split-among-winners';
 
+  // Per-player tee overrides (T10). Only consulted in net / gross_beats_net
+  // modes; gross-mode skins ignores `teeByPlayer` entirely so this query
+  // is wasted work in that case but trivially cheap (single roundId scope).
+  const teeByPlayer = await buildTeeByPlayer(tx, runtimeRound.id, tenantId);
+
   const calcInput: CalcSkinsInput = {
     holeScores: holeScoresByPlayer,
     mode,
@@ -265,6 +271,7 @@ export async function computeSubGame(
     lastHoleUnclaimedResolution,
     course: { tee, holes: courseHolesEngine },
     handicapsByPlayer,
+    teeByPlayer,
   };
 
   let result;

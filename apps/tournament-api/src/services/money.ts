@@ -63,6 +63,7 @@ import {
   type IndividualBetType,
 } from '../engine/rules/individual-bets.js';
 import { loadSkinsSnapshotsForEvent } from './sub-games.js';
+import { buildTeeByPlayer } from './per-player-tee.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -328,6 +329,11 @@ export async function computeMoneyMatrix(
         // Skip foursome if any member is missing handicap.
         if (sortedMembers.some((id) => handicapIndexByPlayer[id] === undefined)) continue;
 
+        // Per-player tee overrides (T10 — Judd-on-forward-tee feature).
+        // Empty map when no member sets `pairing_members.tee_color`; engine
+        // falls back to `course.tee` for every player in that case.
+        const teeByPlayer = await buildTeeByPlayer(txOrDb, roundId, tenantId);
+
         const bbInput: Compute2v2BestBallInput = {
           holeScores: holeScoresEngine,
           holeMeta: [],
@@ -342,6 +348,7 @@ export async function computeMoneyMatrix(
           },
           course: { tee, holes: courseHolesEngine },
           handicapIndexByPlayer,
+          teeByPlayer,
         };
         let bbResult: ReturnType<typeof compute2v2BestBall>;
         try {

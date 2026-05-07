@@ -67,6 +67,19 @@ export type Compute2v2BestBallInput = {
   config: BestBall2v2Config;
   course: { tee: TeeShape; holes: HoleShape[] };
   handicapIndexByPlayer: Record<string, number>;
+  /**
+   * Per-player tee override. When a key for a given playerId is present,
+   * that player's handicap-stroke allocation uses this tee's slope/rating
+   * instead of `course.tee`. Missing keys (or undefined map) fall back to
+   * `course.tee` — keeps the engine backwards compatible with all existing
+   * callers/tests that pass the round's single tee for everyone.
+   *
+   * Trip-day case: Judd plays forward at Talamore while the rest of the
+   * foursome plays white. `course.tee` stays "white"; `teeByPlayer[Judd]`
+   * is the forward TeeShape. Each player's net is then computed against
+   * the tee they actually played.
+   */
+  teeByPlayer?: Record<string, TeeShape>;
 };
 
 export type GreenieAward = {
@@ -182,7 +195,7 @@ function distributePairWise(
 export function compute2v2BestBall(
   input: Compute2v2BestBallInput,
 ): Compute2v2BestBallOutput {
-  const { config, course, pairings, handicapIndexByPlayer, holeScores, holeMeta } = input;
+  const { config, course, pairings, handicapIndexByPlayer, holeScores, holeMeta, teeByPlayer } = input;
 
   // Fast-fail integer-cents + non-negativity validation at the boundary.
   assertNonNegativeInteger('config.basePerHoleCents', config.basePerHoleCents);
@@ -257,10 +270,12 @@ export function compute2v2BestBall(
     const hiA2 = getRequiredHandicapIndex(handicapIndexByPlayer, teamA[1]);
     const hiB1 = getRequiredHandicapIndex(handicapIndexByPlayer, teamB[0]);
     const hiB2 = getRequiredHandicapIndex(handicapIndexByPlayer, teamB[1]);
-    const netA1 = a1.grossStrokes - getHandicapStrokes(hiA1, hole.strokeIndex, course.tee);
-    const netA2 = a2.grossStrokes - getHandicapStrokes(hiA2, hole.strokeIndex, course.tee);
-    const netB1 = b1.grossStrokes - getHandicapStrokes(hiB1, hole.strokeIndex, course.tee);
-    const netB2 = b2.grossStrokes - getHandicapStrokes(hiB2, hole.strokeIndex, course.tee);
+    const teeFor = (playerId: string): TeeShape =>
+      teeByPlayer?.[playerId] ?? course.tee;
+    const netA1 = a1.grossStrokes - getHandicapStrokes(hiA1, hole.strokeIndex, teeFor(teamA[0]));
+    const netA2 = a2.grossStrokes - getHandicapStrokes(hiA2, hole.strokeIndex, teeFor(teamA[1]));
+    const netB1 = b1.grossStrokes - getHandicapStrokes(hiB1, hole.strokeIndex, teeFor(teamB[0]));
+    const netB2 = b2.grossStrokes - getHandicapStrokes(hiB2, hole.strokeIndex, teeFor(teamB[1]));
 
     const teamABestNet = Math.min(netA1, netA2);
     const teamBBestNet = Math.min(netB1, netB2);

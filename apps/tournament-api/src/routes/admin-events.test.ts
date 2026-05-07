@@ -29,6 +29,7 @@ const {
   eventRounds,
   invites,
   groups,
+  courseTees,
 } = await import('../db/schema/index.js');
 const { adminEventsRouter } = await import('./admin-events.js');
 const { requestIdMiddleware } = await import('../middleware/request-id.js');
@@ -93,6 +94,28 @@ async function seedCourseRevision(
     tenantId: TENANT_ID,
     contextId: 'library:guyan',
   });
+  // Seed two tees so per-player-tee tests have valid colors to choose
+  // from + an obviously-invalid color to use as the negative case.
+  await db.insert(courseTees).values([
+    {
+      id: `${revisionId}-blue`,
+      courseRevisionId: revisionId,
+      teeColor: 'blue',
+      slope: 130,
+      rating: 720,
+      tenantId: TENANT_ID,
+      contextId: 'library:guyan',
+    },
+    {
+      id: `${revisionId}-forward`,
+      courseRevisionId: revisionId,
+      teeColor: 'forward',
+      slope: 110,
+      rating: 640,
+      tenantId: TENANT_ID,
+      contextId: 'library:guyan',
+    },
+  ]);
   return revisionId;
 }
 
@@ -129,6 +152,7 @@ beforeEach(async () => {
   await db.delete(eventRounds);
   await db.delete(groups);
   await db.delete(events);
+  await db.delete(courseTees);
   await db.delete(courseRevisions);
   await db.delete(courses);
   await db.delete(sessions);
@@ -1084,6 +1108,100 @@ describe('POST /api/admin/events/:eventId/pairings', () => {
       },
     );
     expect(res.status).toBe(403);
+  });
+
+  it('per-player tee: object form persists tee_color, GET round-trips it', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  // First member has a forward-tee override; the rest are
+                  // string-form (no override → falls back to round default).
+                  memberPlayerIds: [
+                    { playerId: s.playerIds[0], teeColor: 'forward' },
+                    s.playerIds[1],
+                    s.playerIds[2],
+                    s.playerIds[3],
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(200);
+
+    // GET round-trip: tee_color should appear on the first member, null
+    // on the rest.
+    const getRes = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      { headers: { cookie: cookie(s.organizerSessionId) } },
+    );
+    expect(getRes.status).toBe(200);
+    const body = (await getRes.json()) as {
+      rounds: Array<{
+        pairings: Array<{
+          members: Array<{ playerId: string; teeColor: string | null }>;
+        }>;
+      }>;
+    };
+    const members = body.rounds[0]!.pairings[0]!.members;
+    const byId = new Map(members.map((m) => [m.playerId, m.teeColor]));
+    expect(byId.get(s.playerIds[0]!)).toBe('forward');
+    expect(byId.get(s.playerIds[1]!)).toBeNull();
+    expect(byId.get(s.playerIds[2]!)).toBeNull();
+    expect(byId.get(s.playerIds[3]!)).toBeNull();
+  });
+
+  it('per-player tee: invalid tee_color rejected with 400 unknown_tee_color', async () => {
+    const s = await seedEventForPairings({ numRounds: 1, numPlayers: 4 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings`,
+      {
+        method: 'POST',
+        headers: {
+          cookie: cookie(s.organizerSessionId),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          rounds: [
+            {
+              eventRoundId: s.eventRoundIds[0],
+              pairings: [
+                {
+                  foursomeNumber: 1,
+                  locked: false,
+                  memberPlayerIds: [
+                    { playerId: s.playerIds[0], teeColor: 'platinum' },
+                    s.playerIds[1],
+                    s.playerIds[2],
+                    s.playerIds[3],
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; teeColor: string };
+    expect(body.code).toBe('unknown_tee_color');
+    expect(body.teeColor).toBe('platinum');
   });
 });
 

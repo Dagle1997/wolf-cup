@@ -78,6 +78,13 @@
       "when": 1778030294222,
       "tag": "0010_activity_spine",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1778166528330,
+      "tag": "0011_pairing_member_tee_color",
+      "breakpoints": true
     }
   ]
 }

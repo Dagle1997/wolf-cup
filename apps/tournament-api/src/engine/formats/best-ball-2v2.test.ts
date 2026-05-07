@@ -193,3 +193,61 @@ describe('compute2v2BestBall — AC-2 missing-cell skip', () => {
     expect(Object.keys(out.perPair).length).toBe(0);
   });
 });
+
+describe('compute2v2BestBall — per-player tee override (teeByPlayer)', () => {
+  test('overriding one player to a much-lower-rated tee changes their net (and hence the winner) on a stroke-allocated hole', () => {
+    // Use fixture (a) as the baseline. We'll pick a hole where teamA wins by
+    // a hair under a uniform tee, then override teamA's better player to a
+    // forward tee that GIVES them MORE strokes. Confirm net moves and the
+    // hole still resolves cleanly with no NaN/undefined.
+    const fx = loadFixture('best-ball-2v2-a-straight-win.json');
+
+    // Forward tee: lower slope (e.g., 110) + lower rating (e.g., 64.0 → 640).
+    // Under USGA, lower slope reduces course handicap; lower rating offsets
+    // by (rating - par). For this test we only need to demonstrate the
+    // override propagates — exact numeric value comes from the engine.
+    const a1Id = fx.input.pairings.teamA[0];
+    const forwardTee = { slope: 110, ratingTimes10: 640, coursePar: 71 };
+
+    // Bump A1's HI to make the stroke difference observable.
+    const inputWithOverride: Compute2v2BestBallInput = {
+      ...fx.input,
+      handicapIndexByPlayer: {
+        ...fx.input.handicapIndexByPlayer,
+        [a1Id]: 25, // higher HI → more strokes
+      },
+      teeByPlayer: { [a1Id]: forwardTee },
+    };
+
+    const baselineHi = {
+      ...fx.input,
+      handicapIndexByPlayer: {
+        ...fx.input.handicapIndexByPlayer,
+        [a1Id]: 25,
+      },
+    };
+
+    const baselineOut = compute2v2BestBall(baselineHi);
+    const overrideOut = compute2v2BestBall(inputWithOverride);
+
+    // The override produces a different result somewhere — either at the
+    // perHole level (winner / delta) or perPair level. If it didn't, the
+    // tee map wasn't being consulted by the engine.
+    expect(JSON.stringify(overrideOut)).not.toBe(JSON.stringify(baselineOut));
+
+    // Sanity: structural invariants still hold under the override.
+    assertResultStructure(overrideOut, fx.input.pairings);
+  });
+
+  test('teeByPlayer with no entry for a player falls back to course.tee (parity with baseline)', () => {
+    const fx = loadFixture('best-ball-2v2-a-straight-win.json');
+    // Empty map → every player should fall back to course.tee.
+    const withEmptyMap: Compute2v2BestBallInput = {
+      ...fx.input,
+      teeByPlayer: {},
+    };
+    const baseline = compute2v2BestBall(fx.input);
+    const empty = compute2v2BestBall(withEmptyMap);
+    expect(empty).toEqual(baseline);
+  });
+});

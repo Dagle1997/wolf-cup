@@ -1,0 +1,1 @@
+ALTER TABLE `pairing_members` ADD `tee_color` text;

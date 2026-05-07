@@ -54,6 +54,14 @@ export type CalcSkinsInput = {
   lastHoleUnclaimedResolution: LastHoleUnclaimedResolution;
   course: CourseShape;
   handicapsByPlayer: Record<string, number>;
+  /**
+   * Per-player tee override (mirrors compute2v2BestBall). Only consulted
+   * for `net` and `gross_beats_net` modes — `gross` mode never calls
+   * getHandicapStrokes. Missing keys (or undefined map) fall back to
+   * `course.tee`. Backwards compatible with existing callers that don't
+   * pass this field.
+   */
+  teeByPlayer?: Record<string, TeeShape>;
 };
 
 export type HoleWinnerResult = {
@@ -160,6 +168,7 @@ export function calcSkins(input: CalcSkinsInput): CalcSkinsOutput {
     lastHoleUnclaimedResolution,
     course,
     handicapsByPlayer,
+    teeByPlayer,
   } = input;
 
   // Boundary validation.
@@ -208,7 +217,7 @@ export function calcSkins(input: CalcSkinsInput): CalcSkinsOutput {
       const strokes = getHandicapStrokes(
         handicapsByPlayer[pid] ?? 0,
         hole.strokeIndex,
-        course.tee,
+        teeByPlayer?.[pid] ?? course.tee,
       );
       const net = gross - strokes;
       scoredEntries.push({ playerId: pid, gross, net });

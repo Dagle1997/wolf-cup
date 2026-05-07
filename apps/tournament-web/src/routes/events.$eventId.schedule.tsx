@@ -28,6 +28,8 @@ type PairingMember = {
   name: string;
   handicapIndex: number;
   isViewer: boolean;
+  /** Per-player tee override; null → uses round.teeColor as default. */
+  teeColor: string | null;
 };
 
 type PairingState =
@@ -226,7 +228,7 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
               </header>
 
               <div style={{ marginTop: 8 }}>
-                <PairingBlock pairing={r.pairing} />
+                <PairingBlock pairing={r.pairing} roundTeeColor={r.teeColor} />
               </div>
             </article>
           ))}
@@ -236,7 +238,13 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
   );
 }
 
-function PairingBlock({ pairing }: { pairing: PairingState }) {
+function PairingBlock({
+  pairing,
+  roundTeeColor,
+}: {
+  pairing: PairingState;
+  roundTeeColor: string;
+}) {
   // Exhaustive discriminated-union switch (codex impl finding M #3).
   switch (pairing.kind) {
     case 'no_pairings_set':
@@ -253,22 +261,53 @@ function PairingBlock({ pairing }: { pairing: PairingState }) {
           aria-label={`Foursome ${pairing.foursomeNumber} roster`}
           style={{ listStyle: 'none', padding: 0, margin: 0 }}
         >
-          {pairing.members.map((m) => (
-            <li
-              key={m.playerId}
-              style={{
-                padding: '4px 8px',
-                backgroundColor: m.isViewer ? '#eff6ff' : 'transparent',
-                fontWeight: m.isViewer ? 'bold' : 'normal',
-                borderRadius: 4,
-              }}
-            >
-              {m.name}{' '}
-              <span style={{ color: '#555', fontWeight: 'normal' }}>
-                ({m.handicapIndex.toFixed(1)})
-              </span>
-            </li>
-          ))}
+          {pairing.members.map((m) => {
+            // Effective tee = per-player override OR round default. Render
+            // an override chip in a distinct color so non-default tees jump
+            // out (Judd-on-forward case is the trip-day reason this exists).
+            const effectiveTee = m.teeColor ?? roundTeeColor;
+            const isOverride = m.teeColor !== null && m.teeColor !== roundTeeColor;
+            return (
+              <li
+                key={m.playerId}
+                style={{
+                  padding: '4px 8px',
+                  backgroundColor: m.isViewer ? '#eff6ff' : 'transparent',
+                  fontWeight: m.isViewer ? 'bold' : 'normal',
+                  borderRadius: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span>
+                  {m.name}{' '}
+                  <span style={{ color: '#555', fontWeight: 'normal' }}>
+                    ({m.handicapIndex.toFixed(1)})
+                  </span>
+                </span>
+                <span
+                  data-testid={`schedule-tee-${m.playerId}`}
+                  style={{
+                    fontSize: '0.75em',
+                    padding: '1px 6px',
+                    borderRadius: 8,
+                    backgroundColor: isOverride ? '#fef3c7' : '#f1f5f9',
+                    color: isOverride ? '#92400e' : '#475569',
+                    fontWeight: 'normal',
+                  }}
+                  title={
+                    isOverride
+                      ? `Playing ${effectiveTee} (round default: ${roundTeeColor})`
+                      : `Round default tee: ${effectiveTee}`
+                  }
+                >
+                  {effectiveTee}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       );
     default: {

@@ -60,22 +60,33 @@ type GetPairingsResponse = {
     eventRoundId: string;
     roundNumber: number;
     roundDate: number;
+    defaultTeeColor: string;
+    availableTees: string[];
     pairings: Array<{
       id: string;
       foursomeNumber: number;
       locked: boolean;
-      members: Array<{ playerId: string; name: string; slotNumber: number }>;
+      members: Array<{
+        playerId: string;
+        name: string;
+        slotNumber: number;
+        teeColor: string | null;
+      }>;
     }>;
   }>;
   roster: RosterEntry[];
 };
 
+type Cell = { playerId: string; teeColor: string | null };
+
 type GridRound = {
   eventRoundId: string;
   roundNumber: number;
   locked: boolean;
-  // foursomes[foursomeIdx][slotIdx] = playerId | EMPTY
-  foursomes: string[][];
+  defaultTeeColor: string;
+  availableTees: string[];
+  // foursomes[foursomeIdx][slotIdx] = { playerId | EMPTY, teeColor }
+  foursomes: Cell[][];
 };
 
 // ---- Component ------------------------------------------------------------
@@ -129,15 +140,17 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
   useEffect(() => {
     if (!data) return;
     const next: GridRound[] = data.rounds.map((r) => {
-      const foursomes: string[][] = [];
+      const foursomes: Cell[][] = [];
       for (let f = 0; f < foursomesPerRound; f++) {
         const persisted = r.pairings.find((p) => p.foursomeNumber === f + 1);
-        const slots: string[] = new Array(FOURSOME_SIZE).fill(EMPTY);
+        const slots: Cell[] = new Array(FOURSOME_SIZE)
+          .fill(null)
+          .map(() => ({ playerId: EMPTY, teeColor: null }));
         if (persisted) {
           for (const m of persisted.members) {
             const slotIdx = m.slotNumber - 1;
             if (slotIdx >= 0 && slotIdx < FOURSOME_SIZE) {
-              slots[slotIdx] = m.playerId;
+              slots[slotIdx] = { playerId: m.playerId, teeColor: m.teeColor };
             }
           }
         }
@@ -148,6 +161,12 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
         eventRoundId: r.eventRoundId,
         roundNumber: r.roundNumber,
         locked: anyLocked,
+        // Defensive defaults: if a deployed server hasn't yet shipped the
+        // tee-picker fields (rolling deploy or stale cache), the page
+        // degrades to "no per-player tee picker available" rather than
+        // throwing on undefined.filter / undefined display.
+        defaultTeeColor: r.defaultTeeColor ?? 'blue',
+        availableTees: r.availableTees ?? [],
         foursomes,
       };
     });
@@ -163,13 +182,22 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
     mutationFn: async () => {
       const ac = track();
       try {
+        // Build memberPlayerIds in the API's hybrid format: bare-string when
+        // the player has no per-player tee override (compact, matches v1
+        // wire format); object form when teeColor is set so the server
+        // persists the override on `pairing_members.tee_color`.
         const body = {
           rounds: grid.map((r) => ({
             eventRoundId: r.eventRoundId,
             pairings: r.foursomes
               .map((slots, fIdx) => {
-                const memberPlayerIds = slots.filter((s) => s !== EMPTY);
-                if (memberPlayerIds.length === 0) return null;
+                const filled = slots.filter((s) => s.playerId !== EMPTY);
+                if (filled.length === 0) return null;
+                const memberPlayerIds = filled.map((c) =>
+                  c.teeColor !== null
+                    ? { playerId: c.playerId, teeColor: c.teeColor }
+                    : c.playerId,
+                );
                 return {
                   foursomeNumber: fIdx + 1,
                   locked: r.locked,
@@ -271,12 +299,12 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
           for (let fIdx = 0; fIdx < r.foursomes.length; fIdx++) {
             for (let sIdx = 0; sIdx < r.foursomes[fIdx]!.length; sIdx++) {
               const cellKey = `${rIdx}-${fIdx}-${sIdx}`;
-              const playerId = r.foursomes[fIdx]![sIdx]!;
-              if (pins.has(cellKey) && playerId !== EMPTY) {
+              const cell = r.foursomes[fIdx]![sIdx]!;
+              if (pins.has(cellKey) && cell.playerId !== EMPTY) {
                 enginePins.push({
                   round: r.roundNumber,
                   foursome: fIdx + 1,
-                  playerId,
+                  playerId: cell.playerId,
                 });
               }
             }
@@ -314,7 +342,9 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
       }
     },
     onSuccess: (resp) => {
-      // Merge engine output into grid: replace unlocked rounds.
+      // Merge engine output into grid: replace unlocked rounds. Newly-suggested
+      // cells get teeColor=null (round default); existing cells whose player
+      // didn't change keep their teeColor.
       setGrid((prev) =>
         prev.map((r) => {
           if (r.locked) return r;
@@ -322,15 +352,24 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
             (er) => er.round === r.roundNumber,
           );
           if (!engineRound) return r;
-          const next: string[][] = [];
+          const next: Cell[][] = [];
           for (let f = 0; f < foursomesPerRound; f++) {
             const engineFs = engineRound.foursomes.find(
               (ef) => ef.foursome === f + 1,
             );
-            const slots = new Array<string>(FOURSOME_SIZE).fill(EMPTY);
+            const slots: Cell[] = new Array(FOURSOME_SIZE)
+              .fill(null)
+              .map(() => ({ playerId: EMPTY, teeColor: null }));
             if (engineFs) {
               for (let i = 0; i < Math.min(engineFs.playerIds.length, FOURSOME_SIZE); i++) {
-                slots[i] = engineFs.playerIds[i]!;
+                const newPlayerId = engineFs.playerIds[i]!;
+                // Preserve teeColor if the same player is still in this cell.
+                const prevCell = r.foursomes[f]?.[i];
+                const teeColor =
+                  prevCell !== undefined && prevCell.playerId === newPlayerId
+                    ? prevCell.teeColor
+                    : null;
+                slots[i] = { playerId: newPlayerId, teeColor };
               }
             }
             next.push(slots);
@@ -354,18 +393,23 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
         const persisted = dataRound.pairings.find(
           (p) => p.foursomeNumber === fIdx + 1,
         );
-        const persistedSlots = new Array<string>(FOURSOME_SIZE).fill(EMPTY);
+        const persistedSlots: Cell[] = new Array(FOURSOME_SIZE)
+          .fill(null)
+          .map(() => ({ playerId: EMPTY, teeColor: null }));
         if (persisted) {
           for (const m of persisted.members) {
             const slotIdx = m.slotNumber - 1;
             if (slotIdx >= 0 && slotIdx < FOURSOME_SIZE) {
-              persistedSlots[slotIdx] = m.playerId;
+              persistedSlots[slotIdx] = { playerId: m.playerId, teeColor: m.teeColor };
             }
           }
         }
         const draftSlots = r.foursomes[fIdx]!;
         for (let s = 0; s < FOURSOME_SIZE; s++) {
-          if (draftSlots[s] !== persistedSlots[s]) return true;
+          const a = draftSlots[s]!;
+          const b = persistedSlots[s]!;
+          if (a.playerId !== b.playerId) return true;
+          if (a.teeColor !== b.teeColor) return true;
         }
         const draftLocked = r.locked;
         const persistedLocked = persisted?.locked ?? false;
@@ -385,7 +429,29 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
         if (ri !== rIdx) return r;
         const next = r.foursomes.map((fs, fi) =>
           fi === fIdx
-            ? fs.map((cur, si) => (si === sIdx ? value : cur))
+            ? fs.map((cur, si) =>
+                si === sIdx ? { playerId: value, teeColor: cur.teeColor } : cur,
+              )
+            : fs,
+        );
+        return { ...r, foursomes: next };
+      }),
+    );
+  }
+
+  // Set per-player tee override. value === '' means "use round default"
+  // (sends null to the server). Persists as `pairing_members.tee_color`.
+  function setCellTee(rIdx: number, fIdx: number, sIdx: number, value: string) {
+    setGrid((prev) =>
+      prev.map((r, ri) => {
+        if (ri !== rIdx) return r;
+        const next = r.foursomes.map((fs, fi) =>
+          fi === fIdx
+            ? fs.map((cur, si) =>
+                si === sIdx
+                  ? { playerId: cur.playerId, teeColor: value === '' ? null : value }
+                  : cur,
+              )
             : fs,
         );
         return { ...r, foursomes: next };
@@ -495,33 +561,55 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
                 </button>
               </td>
               {r.foursomes.map((slots, fIdx) =>
-                slots.map((cellValue, sIdx) => {
+                slots.map((cell, sIdx) => {
                   const cellKey = `${rIdx}-${fIdx}-${sIdx}`;
                   const pinned = pins.has(cellKey);
+                  const teeSelectValue = cell.teeColor ?? '';
                   return (
                     <td key={cellKey} data-testid={`cell-${rIdx}-${fIdx}-${sIdx}`}>
-                      <select
-                        value={cellValue}
-                        onChange={(e) => setCell(rIdx, fIdx, sIdx, e.target.value)}
-                        disabled={r.locked}
-                        data-testid={`select-${rIdx}-${fIdx}-${sIdx}`}
-                      >
-                        <option value={EMPTY}>(empty)</option>
-                        {data.roster.map((p) => (
-                          <option key={p.playerId} value={p.playerId}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => togglePin(rIdx, fIdx, sIdx)}
-                        disabled={r.locked}
-                        data-testid={`pin-${rIdx}-${fIdx}-${sIdx}`}
-                        title={pinned ? 'Pinned' : 'Pin'}
-                      >
-                        {pinned ? '📌' : '📍'}
-                      </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <select
+                          value={cell.playerId}
+                          onChange={(e) => setCell(rIdx, fIdx, sIdx, e.target.value)}
+                          disabled={r.locked}
+                          data-testid={`select-${rIdx}-${fIdx}-${sIdx}`}
+                        >
+                          <option value={EMPTY}>(empty)</option>
+                          {data.roster.map((p) => (
+                            <option key={p.playerId} value={p.playerId}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          value={teeSelectValue}
+                          onChange={(e) =>
+                            setCellTee(rIdx, fIdx, sIdx, e.target.value)
+                          }
+                          disabled={r.locked || cell.playerId === EMPTY}
+                          data-testid={`tee-${rIdx}-${fIdx}-${sIdx}`}
+                          title={`Round default: ${r.defaultTeeColor}`}
+                          style={{ fontSize: '0.85em' }}
+                        >
+                          <option value="">{`tee: ${r.defaultTeeColor} (default)`}</option>
+                          {r.availableTees
+                            .filter((t) => t !== r.defaultTeeColor)
+                            .map((t) => (
+                              <option key={t} value={t}>
+                                tee: {t}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => togglePin(rIdx, fIdx, sIdx)}
+                          disabled={r.locked}
+                          data-testid={`pin-${rIdx}-${fIdx}-${sIdx}`}
+                          title={pinned ? 'Pinned' : 'Pin'}
+                        >
+                          {pinned ? '📌' : '📍'}
+                        </button>
+                      </div>
                     </td>
                   );
                 }),

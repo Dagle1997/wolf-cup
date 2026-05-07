@@ -54,6 +54,7 @@ import {
 } from '../db/schema/index.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { pressesDisabled } from '../lib/env.js';
+import { buildTeeByPlayer } from './per-player-tee.js';
 import { emitActivity } from '../lib/activity.js';
 import { BusinessRuleError } from './round-state.js';
 import {
@@ -441,6 +442,11 @@ export async function runPressOrchestrator(
   const teamB: [string, string] = [sortedMembers[2]!, sortedMembers[3]!];
 
   // ── (11) Run engines under try/catch — any throw maps to press_engine_error 422. ──
+  // Per-player tee overrides (T10): same helper used by money.ts + sub-games.ts.
+  // Empty map → engine falls back to courseShape.tee. Note: the kill switch
+  // at step (0) means this orchestrator is gated off in trip-1 prod, but
+  // wiring teeByPlayer here keeps the v1.5 re-enable path correct.
+  const teeByPlayer = await buildTeeByPlayer(tx, roundId, tenantId);
   let perHoleResults: ReturnType<typeof compute2v2BestBall>['perHole'];
   try {
     const bbInput: Compute2v2BestBallInput = {
@@ -457,6 +463,7 @@ export async function runPressOrchestrator(
       },
       course: courseShape,
       handicapIndexByPlayer,
+      teeByPlayer,
     };
     const bbResult = compute2v2BestBall(bbInput);
     perHoleResults = bbResult.perHole;

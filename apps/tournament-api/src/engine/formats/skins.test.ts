@@ -302,3 +302,64 @@ describe('calcSkins — integer-cents discipline', () => {
     expect(sum).toBe(515);
   });
 });
+
+describe('calcSkins — per-player tee override (teeByPlayer)', () => {
+  test('net mode: high-slope override flips ties → outright wins on stroke-index holes', () => {
+    // Setup: A (HI 18) shoots 4 every hole; B (HI 0) shoots 3 every hole.
+    // Course par 72, neutral tee slope 113 → A's CH = 18 → exactly 1 stroke
+    // per hole. Net: A=3, B=3 → all 18 holes tie (carry chain → split pot).
+    const baseHoleScores = buildScores({
+      A: Array(18).fill(4),
+      B: Array(18).fill(3),
+    });
+    const baseline = calcSkins(
+      defaultInput({
+        mode: 'net',
+        participants: ['A', 'B'],
+        buyInPerParticipantCents: 100,
+        handicapsByPlayer: { A: 18, B: 0 },
+        holeScores: baseHoleScores,
+      }),
+    );
+    // All baseline winners are null (ties).
+    expect(baseline.holeWinners.every((hw) => hw.winnerId === null)).toBe(true);
+
+    // Override: A plays a much higher-slope tee → CH = round(18 × 155/113) = 25.
+    // 25 strokes across 18 holes = 2 strokes on stroke-index 1–7, 1 stroke
+    // on 8–18. On the 7 double-stroke holes A's net=2 < B's net=3 → A wins.
+    // On the other 11 single-stroke holes nets stay 3 vs 3 → still tied.
+    const override = calcSkins(
+      defaultInput({
+        mode: 'net',
+        participants: ['A', 'B'],
+        buyInPerParticipantCents: 100,
+        handicapsByPlayer: { A: 18, B: 0 },
+        holeScores: baseHoleScores,
+        teeByPlayer: { A: { slope: 155, ratingTimes10: 720, coursePar: 72 } },
+      }),
+    );
+    const aWins = override.holeWinners.filter((hw) => hw.winnerId === 'A');
+    expect(aWins.length).toBe(7);
+    // Sanity: same scores in baseline but no outright winners.
+    expect(baseline.holeWinners.filter((hw) => hw.winnerId === 'A').length).toBe(0);
+  });
+
+  test('gross mode: teeByPlayer is ignored (no calcCourseHandicap call), result identical', () => {
+    const grossInput = defaultInput({
+      mode: 'gross',
+      handicapsByPlayer: { A: 18, B: 0, C: 0, D: 0 },
+      holeScores: buildScores({
+        A: Array(18).fill(3),
+        B: Array(18).fill(4),
+        C: Array(18).fill(4),
+        D: Array(18).fill(4),
+      }),
+    });
+    const baseline = calcSkins(grossInput);
+    const withOverride = calcSkins({
+      ...grossInput,
+      teeByPlayer: { A: { slope: 155, ratingTimes10: 720, coursePar: 72 } },
+    });
+    expect(withOverride).toEqual(baseline);
+  });
+});
