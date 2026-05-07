@@ -18,7 +18,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { eq } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { Hono } from 'hono';
-import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -372,5 +372,35 @@ describe('DELETE /api/rounds/:roundId/presses/:pressId', () => {
     const app = buildApp(s.scorerId);
     const res = await deletePress(app, s.roundId, randomUUID());
     expect(res.status).toBe(404);
+  });
+});
+
+describe('TOURNAMENT_PRESSES_DISABLED kill switch', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('POST returns 422 presses_disabled and writes no team_press_log row', async () => {
+    vi.stubEnv('TOURNAMENT_PRESSES_DISABLED', 'true');
+    const s = await seed();
+    const app = buildApp(s.scorerId);
+    const res = await postPress(app, s.roundId, { team: 'teamA' });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('presses_disabled');
+
+    const rows = await db
+      .select()
+      .from(teamPressLog)
+      .where(eq(teamPressLog.roundId, s.roundId));
+    expect(rows.length).toBe(0);
+  });
+
+  test('DELETE returns 422 presses_disabled (kill-switch beats round_id format check)', async () => {
+    vi.stubEnv('TOURNAMENT_PRESSES_DISABLED', 'true');
+    const s = await seed();
+    const app = buildApp(s.scorerId);
+    const res = await deletePress(app, s.roundId, randomUUID());
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('presses_disabled');
   });
 });

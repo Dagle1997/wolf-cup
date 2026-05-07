@@ -13,7 +13,7 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { and, eq } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -445,5 +445,65 @@ describe('runPressOrchestrator — guard rails', () => {
     });
     const presses = await db.select().from(teamPressLog);
     expect(presses.length).toBe(0);
+  });
+});
+
+describe('runPressOrchestrator — TOURNAMENT_PRESSES_DISABLED kill switch', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('flag=true → returns early with no team_press_log rows even when 2-down trigger met', async () => {
+    vi.stubEnv('TOURNAMENT_PRESSES_DISABLED', 'true');
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    const [p1, p2, p3, p4] = s.playerIds;
+    // Same setup as the "hole complete + 2-down trigger" baseline: B wins
+    // every hole 1-4 → engine would normally fire teamA auto-press.
+    for (let h = 1; h <= 4; h++) {
+      await commitHole(s.roundId, p1, h, 5, ctx);
+      await commitHole(s.roundId, p2, h, 5, ctx);
+      await commitHole(s.roundId, p3, h, 4, ctx);
+      await commitHole(s.roundId, p4, h, 5, ctx);
+    }
+
+    await db.transaction(async (tx) => {
+      await runPressOrchestrator(
+        tx,
+        { roundId: s.roundId, holeNumber: 4, scoredPlayerId: p4, scorerPlayerId: p4 },
+        TENANT_ID,
+      );
+    });
+    const presses = await db
+      .select()
+      .from(teamPressLog)
+      .where(eq(teamPressLog.roundId, s.roundId));
+    expect(presses.length).toBe(0);
+  });
+
+  test('flag=false (default) → orchestrator still fires the 2-down auto-press', async () => {
+    // No vi.stubEnv → process.env.TOURNAMENT_PRESSES_DISABLED is unset.
+    const s = await seed();
+    const ctx = `event:${s.eventId}`;
+    const [p1, p2, p3, p4] = s.playerIds;
+    for (let h = 1; h <= 4; h++) {
+      await commitHole(s.roundId, p1, h, 5, ctx);
+      await commitHole(s.roundId, p2, h, 5, ctx);
+      await commitHole(s.roundId, p3, h, 4, ctx);
+      await commitHole(s.roundId, p4, h, 5, ctx);
+    }
+
+    await db.transaction(async (tx) => {
+      await runPressOrchestrator(
+        tx,
+        { roundId: s.roundId, holeNumber: 4, scoredPlayerId: p4, scorerPlayerId: p4 },
+        TENANT_ID,
+      );
+    });
+    const presses = await db
+      .select()
+      .from(teamPressLog)
+      .where(eq(teamPressLog.roundId, s.roundId));
+    expect(presses.length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -53,6 +53,7 @@ import {
   teamPressLog,
 } from '../db/schema/index.js';
 import { logger as moduleLogger } from '../lib/log.js';
+import { pressesDisabled } from '../lib/env.js';
 import { emitActivity } from '../lib/activity.js';
 import { BusinessRuleError } from './round-state.js';
 import {
@@ -179,6 +180,23 @@ export async function runPressOrchestrator(
   logger = moduleLogger,
 ): Promise<void> {
   const { roundId, holeNumber, scoredPlayerId, scorerPlayerId } = input;
+
+  // ── (0) Trip-1 kill switch. ───────────────────────────────────────────────
+  // team_press_log is foursome-blind in v1 (UNIQUE is `(round_id, team,
+  // start_hole, trigger_type)` with no foursome dimension), so an auto-press
+  // fired in foursome 2 collides with foursome 1's press at the same
+  // hole/team or cross-suppresses via the engine's existingPressLog dedupe.
+  // Until v1.5 adds `foursome_number` to the schema + migrates the UNIQUE,
+  // disable the feature globally via env. The flag is read at call time
+  // (see `pressesDisabled()` in lib/env.ts) so tests can stub it.
+  if (pressesDisabled()) {
+    logger.info({
+      msg: 'press_orchestrator: skipped (TOURNAMENT_PRESSES_DISABLED=true)',
+      roundId,
+      holeNumber,
+    });
+    return;
+  }
 
   // ── (1) Find the foursome the scored player belongs to in this round. ──
   // The pairing_members → pairings → event_rounds chain is event_round_id-scoped

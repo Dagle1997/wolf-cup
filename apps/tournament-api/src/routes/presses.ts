@@ -39,6 +39,7 @@ import {
   teamPressLog,
 } from '../db/schema/index.js';
 import { logger as moduleLogger } from '../lib/log.js';
+import { pressesDisabled } from '../lib/env.js';
 import { requireSession } from '../middleware/require-session.js';
 import { emitActivity } from '../lib/activity.js';
 import {
@@ -210,6 +211,16 @@ pressesRouter.post('/:roundId/presses', requireSession, async (c) => {
   const player = c.get('player')!;
   const roundId = c.req.param('roundId');
 
+  // Trip-1 kill switch (see lib/env.ts:pressesDisabled). Same gate is on
+  // the auto-press orchestrator; both must short-circuit BEFORE any DB
+  // write so the foursome-blind UNIQUE on team_press_log can't be hit.
+  if (pressesDisabled()) {
+    return c.json(
+      { error: 'feature_disabled', code: 'presses_disabled', requestId },
+      422,
+    );
+  }
+
   if (!roundId || !UUID_RE.test(roundId)) {
     return c.json({ error: 'bad_request', code: 'invalid_round_id', requestId }, 400);
   }
@@ -346,6 +357,14 @@ pressesRouter.delete('/:roundId/presses/:pressId', requireSession, async (c) => 
   const player = c.get('player')!;
   const roundId = c.req.param('roundId');
   const pressId = c.req.param('pressId');
+
+  // Trip-1 kill switch (see lib/env.ts:pressesDisabled). Same gate as POST.
+  if (pressesDisabled()) {
+    return c.json(
+      { error: 'feature_disabled', code: 'presses_disabled', requestId },
+      422,
+    );
+  }
 
   if (!roundId || !UUID_RE.test(roundId)) {
     return c.json({ error: 'bad_request', code: 'invalid_round_id', requestId }, 400);

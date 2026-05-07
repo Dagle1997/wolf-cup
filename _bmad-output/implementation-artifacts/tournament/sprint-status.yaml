@@ -206,12 +206,30 @@ development_status:
   # Epic T9: Pre-Event Validation
   # 9-hole live foursome drill at Guyan, final pre-event checklist walkthrough,
   # ship/defer decision artifact, per-scorer-device PWA install verification.
+  #
+  # ============================================================================
+  # T9 DEFERRED FROM BMAD CYCLE — Josh decision 2026-05-07.
+  # ============================================================================
+  # T9 stories are checklist + drill artifacts (manual procedural docs Josh
+  # fills out before/during/after the May 7 Pinehurst trip), NOT code. The
+  # BMAD director cycle (spec → codex → impl → tests → party → commit)
+  # doesn't map cleanly to operational-prep documents. T1-T8 closed the
+  # CODE-side scope of the program.
+  #
+  # T9 work happens outside this tracking system as ad-hoc prep:
+  #   - The 9-hole drill at Guyan is run from existing app docs, not a
+  #     formal checklist artifact in this repo.
+  #   - Pre-event checklist + ship/defer + install-verification are
+  #     operational decisions Josh makes against the running app.
+  #
+  # If the trip surfaces gaps that require code, those return as new
+  # stories (T10+ or v1.5 followups), not as resurrections of T9-1..4.
   # ---------------------------------------------------------------------------
-  epic-T9: backlog
+  epic-T9: deferred
 
-  T9-1-9-hole-live-foursome-drill-at-guyan: backlog
-  T9-2-final-pre-event-checklist-walkthrough: backlog
-  T9-3-ship-defer-decision-artifact: backlog
-  T9-4-per-scorer-device-pwa-install-verification: backlog
+  T9-1-9-hole-live-foursome-drill-at-guyan: deferred
+  T9-2-final-pre-event-checklist-walkthrough: deferred
+  T9-3-ship-defer-decision-artifact: deferred
+  T9-4-per-scorer-device-pwa-install-verification: deferred
 
   epic-T9-retrospective: optional

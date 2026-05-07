@@ -146,3 +146,29 @@ export type Env = z.infer<typeof envWithDefaults>;
 
 // Parse at module load. Throws on invalid config — fail-fast at boot.
 export const env: Env = envWithDefaults.parse(process.env);
+
+/**
+ * Trip-1 kill switch for the press feature. Read at call time (not cached at
+ * module load) so tests can flip it via `vi.stubEnv`. Set
+ * `TOURNAMENT_PRESSES_DISABLED=true` in the VPS `.env` to disable both
+ * auto-press (server-side, runs inside the score-commit transaction) AND
+ * manual press routes (`POST/DELETE /api/rounds/:roundId/presses`).
+ *
+ * Why a runtime helper instead of a parsed-config field: the rest of `env`
+ * is parsed once at boot and cached. Tests stub via `vi.stubEnv` AFTER
+ * `env.ts` has already parsed, so a cached field would be unreachable from
+ * tests without re-importing the module. This helper keeps `process.env`
+ * reads centralized in env.ts (per the module's stated policy) while
+ * staying test-friendly.
+ *
+ * Trip-day reason: team_press_log is foursome-blind in v1 — UNIQUE is
+ * `(round_id, team, start_hole, trigger_type)` with no foursome dimension,
+ * so a press fired in foursome 2 collides with foursome 1's press at the
+ * same hole/team and gets silently dropped (or cross-suppresses). v1.5
+ * adds `foursome_number` to the schema + migrates the UNIQUE; until then
+ * the safe trip-day posture is to disable the feature globally.
+ */
+export function pressesDisabled(): boolean {
+  const v = process.env['TOURNAMENT_PRESSES_DISABLED'];
+  return v === 'true' || v === '1';
+}
