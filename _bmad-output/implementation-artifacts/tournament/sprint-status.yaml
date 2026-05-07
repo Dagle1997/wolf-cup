@@ -193,12 +193,12 @@ development_status:
   # activity API + singleton feed provider + toast/banner components,
   # player-home activity feed, award trigger surfaces.
   # ---------------------------------------------------------------------------
-  epic-T8: backlog
+  epic-T8: done
 
   T8-1-activity-spine-schema-emitter-zod-validated-payloads: done
   T8-2-activity-api-singleton-feed-provider-toast-banner-components: done
   T8-3-player-home-activity-feed: done
-  T8-4-award-trigger-surfaces-first-birdie-first-eagle: backlog
+  T8-4-award-trigger-surfaces-first-birdie-first-eagle: done
 
   epic-T8-retrospective: optional
 

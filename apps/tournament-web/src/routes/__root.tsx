@@ -1,12 +1,14 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { FirstMutationProvider, useFirstMutationFlag } from '../hooks/use-first-mutation';
 import { InstallPrompt } from '../components/install-prompt';
 import { useIsInstalledPWA } from '../lib/display-mode';
 import { ActivityFeedProvider } from '../providers/activity-feed-provider';
 import { TournamentToast } from '../components/tournament-toast';
 import { TournamentBanner } from '../components/tournament-banner';
+import { AwardCelebration } from '../components/award-celebration';
+import { useAuthSession } from '../hooks/use-auth-session';
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -21,6 +23,7 @@ function RootComponent() {
           <InstallPromptHost />
           <TournamentToast />
           <TournamentBanner />
+          <AwardCelebration />
         </div>
       </ActivityFeedProvider>
     </FirstMutationProvider>
@@ -28,57 +31,9 @@ function RootComponent() {
 }
 
 // ---- T7-6 install prompt host -------------------------------------------
-
-type AuthDevice = {
-  id: string;
-  installPromptShownAt: number | null;
-};
-
-type AuthStatusResponse = {
-  player: { id: string; isOrganizer: boolean } | null;
-  device: AuthDevice | null;
-};
-
-async function fetchAuthStatus(): Promise<AuthStatusResponse> {
-  try {
-    const res = await fetch('/api/auth/status', { credentials: 'same-origin' });
-    if (!res.ok) return { player: null, device: null };
-    const body = (await res.json()) as unknown;
-    const player =
-      body !== null &&
-      typeof body === 'object' &&
-      typeof (body as { player?: unknown }).player === 'object' &&
-      (body as { player?: { id?: unknown; isOrganizer?: unknown } }).player !== null &&
-      typeof (body as { player: { id: unknown } }).player.id === 'string' &&
-      typeof (body as { player: { isOrganizer: unknown } }).player.isOrganizer === 'boolean'
-        ? {
-            id: (body as { player: { id: string } }).player.id,
-            isOrganizer: (body as { player: { isOrganizer: boolean } }).player.isOrganizer,
-          }
-        : null;
-    const deviceRaw =
-      body !== null &&
-      typeof body === 'object' &&
-      typeof (body as { device?: unknown }).device === 'object'
-        ? ((body as { device: unknown }).device as
-            | { id?: unknown; installPromptShownAt?: unknown }
-            | null)
-        : null;
-    const device =
-      deviceRaw !== null &&
-      typeof deviceRaw.id === 'string' &&
-      (deviceRaw.installPromptShownAt === null ||
-        typeof deviceRaw.installPromptShownAt === 'number')
-        ? {
-            id: deviceRaw.id,
-            installPromptShownAt: deviceRaw.installPromptShownAt as number | null,
-          }
-        : null;
-    return { player, device };
-  } catch {
-    return { player: null, device: null };
-  }
-}
+// AuthStatusResponse + fetchAuthStatus moved to `hooks/use-auth-session.ts`
+// in T8-4 so AwardCelebration can read the same TanStack Query
+// subscription via `useAuthSession()`.
 
 function InstallPromptHost() {
   const qc = useQueryClient();
@@ -95,12 +50,9 @@ function InstallPromptHost() {
   // (and the backend is idempotent anyway).
   const hostStampedRef = useRef(false);
 
-  const authQuery = useQuery({
-    queryKey: ['auth-status'],
-    queryFn: fetchAuthStatus,
-    staleTime: 30_000,
-    retry: false,
-  });
+  // T8-4: replaces the inline useQuery with the shared hook.
+  // Same queryKey, same network call — TanStack Query dedupes.
+  const authStatus = useAuthSession();
 
   // Capture beforeinstallprompt at mount; the global slot is set by
   // main.tsx before React hydrates, so we read it here AND register a
@@ -121,8 +73,8 @@ function InstallPromptHost() {
     };
   }, []);
 
-  if (!authQuery.data?.player) return null;
-  const device = authQuery.data.device;
+  if (authStatus.player === null) return null;
+  const device = authStatus.device;
   // No device row → we cannot stamp; render nothing. (Either the cookie
   // is missing, malformed, or the row doesn't match this player.)
   if (device === null) return null;

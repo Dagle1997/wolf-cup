@@ -56,6 +56,9 @@ import {
   transitionState,
 } from '../services/round-state.js';
 import { runPressOrchestrator } from '../services/press-orchestrator.js';
+import { evaluateAwards } from '../services/awards.js';
+import type { ScoreCommittedEvent } from '../engine/types/activity-events.js';
+import { logger as moduleLogger } from '../lib/log.js';
 
 const TENANT_ID = 'guyan';
 
@@ -262,6 +265,7 @@ scoresRouter.post(
   requireScorerForRound,
   async (c) => {
     const requestId = c.get('requestId') ?? randomUUID();
+    const log = c.get('logger') ?? moduleLogger;
     const player = c.get('player')!;
     const body = c.get('scorePostBody');
     const roundId = c.req.param('roundId')!;
@@ -452,6 +456,10 @@ scoresRouter.post(
       // (legacy non-event rounds); the chk_rounds_event_pairing CHECK
       // guarantees eventRoundId is also null in that case, so the par
       // lookup wouldn't have a course_revision to resolve against.
+      // T8-4: capture the typed score event so it can be passed to
+      // both emitActivity (here) AND evaluateAwards (after the press
+      // orchestrator below). Awards evaluation is best-effort.
+      let scoreEventForAwards: ScoreCommittedEvent | null = null;
       if (round.eventId !== null && round.eventRoundId !== null) {
         // Course-revision par lookup. O(1) via the
         // uniq_course_holes_revision_hole_number UNIQUE index.
@@ -479,7 +487,7 @@ scoresRouter.post(
         const par = parRows[0]?.par;
         if (par !== undefined) {
           const toPar = body.grossStrokes - par;
-          await emitActivity(tx, {
+          const scoreEvent: ScoreCommittedEvent = {
             type: 'score.committed',
             eventId: round.eventId,
             roundId,
@@ -491,7 +499,9 @@ scoresRouter.post(
             toPar,
             isBirdieOrBetter: toPar < 0,
             scorerPlayerId: player.id,
-          });
+          };
+          await emitActivity(tx, scoreEvent);
+          scoreEventForAwards = scoreEvent;
         }
         // par-not-found is a course-data integrity gap; skip emit
         // silently rather than fail the score-post. The audit_log row
@@ -512,6 +522,30 @@ scoresRouter.post(
         },
         TENANT_ID,
       );
+
+      // (5c) T8-4 awards evaluation. Best-effort posture (Josh call 6,
+      // epic line 2705-2707): a throw here MUST NOT roll back the
+      // score commit. Missing a celebratory animation is acceptable;
+      // rejecting a legitimate score because the decorative engine
+      // threw is not. Asymmetric vs. T6.4 press engine which is
+      // fail-loud (presses affect money; awards don't).
+      if (scoreEventForAwards !== null) {
+        try {
+          await evaluateAwards(tx, scoreEventForAwards, log);
+        } catch (err) {
+          log.error({
+            msg: 'awards_evaluate_failed',
+            requestId,
+            eventId: scoreEventForAwards.eventId,
+            roundId: scoreEventForAwards.roundId,
+            holeNumber: scoreEventForAwards.holeNumber,
+            playerId: scoreEventForAwards.playerId,
+            err: String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          });
+          // Swallow — score commit continues.
+        }
+      }
 
       // (6) First-commit transition not_started → in_progress.
       // Promoted to services/round-state.ts in T5-8. The service handles

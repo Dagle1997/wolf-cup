@@ -94,6 +94,10 @@ export default tseslint.config(
     // file by mistake.
     files: [
       'src/services/activity-feed.ts',
+      // T8-4: awards service is the read-side companion to the
+      // emitter. SELECTs against activity for idempotency; never
+      // writes (emitActivity is the only legitimate writer).
+      'src/services/awards.ts',
     ],
     rules: {
       'no-restricted-imports': ['error', {
@@ -124,6 +128,9 @@ export default tseslint.config(
       // the natural place for direct schema access; the gate's purpose
       // is preventing production-code drift, not test-fixture setup.
       'src/routes/activity.integration.test.ts',
+      // T8-4: awards service test seeds raw activity rows to set up
+      // the idempotency + first-eagle-after-birdie scenarios.
+      'src/services/awards.test.ts',
     ],
     rules: {
       'no-restricted-imports': 'off',
