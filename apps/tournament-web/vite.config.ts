@@ -49,6 +49,17 @@ export default defineConfig({
         // Apps that want client-side API caching should do it at the
         // TanStack Query layer (already in deps), not in the SW.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}', '**/*.webmanifest'],
+        // navigateFallback serves the SPA index.html for any HTML
+        // navigation that doesn't match a precache entry. By default
+        // workbox's denylist only excludes paths with file extensions
+        // (`/foo.js`) and underscore-prefixed paths — but NOT `/api/*`.
+        // That made every `<a href="/api/auth/google">` click on phones
+        // with the SW installed render the SPA's "Page not found"
+        // fallback instead of letting the browser follow the 302 to
+        // Google's OAuth screen. Excluding /api/* lets all API
+        // navigations (OAuth init, OAuth callback, anything else server
+        // -side) reach the network and get the real server response.
+        navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],
