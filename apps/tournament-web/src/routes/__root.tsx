@@ -73,22 +73,17 @@ function InstallPromptHost() {
     };
   }, []);
 
-  if (authStatus.player === null) return null;
-  const device = authStatus.device;
-  // No device row → we cannot stamp; render nothing. (Either the cookie
-  // is missing, malformed, or the row doesn't match this player.)
-  if (device === null) return null;
-
-  // Codex impl-codex round-3 High #1 + Med #2: only render when a real
-  // eventId is in the URL. The mutation sites that flip `flag` (score
-  // entry, gallery upload) are both event-scoped; if we somehow ended up
-  // on a non-event route with `flag === true`, suppress the prompt
-  // rather than POST under a dummy eventId (which would persist a
-  // meaningless audit-log payload AND, with the previous "treat 404 as
-  // success" rule, lock the host without actually stamping).
-  const eventIdFromLocation = extractEventIdFromLocation();
-  if (eventIdFromLocation === null) return null;
-
+  // Rules of Hooks: every hook MUST be called on every render. The early
+  // returns below (auth/device/eventId guards) used to live ABOVE this
+  // useCallback, which worked when /events/<id> was the only path that
+  // matched the eventId regex. After T10's nav fix added /admin/events/<id>
+  // (which also matches the un-anchored /events/(...)/ regex), the host
+  // started rendering with `extractEventIdFromLocation()` returning a
+  // value on `/admin/events/<id>` AFTER returning null on the previous
+  // route (e.g. `/admin/events/new` → success page → `/admin/events/<id>`).
+  // The hook count flipped between renders → React threw
+  // "undefined is not an object (evaluating 'h.installPromptShownAt'…)".
+  // Hoisting the hook above the guards keeps the hook count constant.
   const onShown = useCallback(async () => {
     // Concurrency lock: hostStampedRef serves as an in-flight guard so a
     // parallel onShown call (e.g. dismiss + unmount-cleanup racing)
@@ -128,6 +123,23 @@ function InstallPromptHost() {
     }
     await qc.invalidateQueries({ queryKey: ['auth-status'] });
   }, [qc]);
+
+  // ── Render-time guards (no hooks below this line) ────────────────────────
+  if (authStatus.player === null) return null;
+  const device = authStatus.device;
+  if (device === null) return null;
+
+  // Suppress the prompt on non-event routes. Mutation sites that flip
+  // `flag` (score entry, gallery upload) are both event-scoped; outside
+  // an event we'd POST under a dummy eventId and lock the stamp guard
+  // for the session.
+  //
+  // The /events/(...)/ regex deliberately matches both /events/<id> and
+  // /admin/events/<id> because both URL shapes are legitimately inside
+  // an event scope. The success page after event creation lives at
+  // /admin/events/new which (correctly) doesn't match.
+  const eventIdFromLocation = extractEventIdFromLocation();
+  if (eventIdFromLocation === null) return null;
 
   return (
     <InstallPrompt
