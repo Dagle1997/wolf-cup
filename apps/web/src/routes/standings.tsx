@@ -23,6 +23,8 @@ type StandingsPlayer = {
   highRound: number;
   rank: number;
   rankPrevious: number | null;
+  // For subs only: where they'd slot if ranked as a full member. null for full members.
+  hypotheticalRank: number | null;
   isPlayoffEligible: boolean;
   roundTotals: number[];
 };
@@ -470,25 +472,26 @@ function SubsSection({
       </button>
       {expanded && (
         <div className="space-y-1.5 mt-2 opacity-80">
-          {[...subs].sort((a, b) => a.rank - b.rank).map((player, i, arr) => {
-            // arr[i - 1] types as T | undefined under noUncheckedIndexedAccess;
-            // coalesce to match PlayerCard's `prev: T | null` expectation.
-            const prev = i > 0 ? arr[i - 1] ?? null : null;
-            const gap = prev ? prev.combinedTotal - player.combinedTotal : 0;
-            return (
+          {[...subs]
+            .sort(
+              (a, b) =>
+                (a.hypotheticalRank ?? Number.MAX_SAFE_INTEGER) -
+                  (b.hypotheticalRank ?? Number.MAX_SAFE_INTEGER) ||
+                b.combinedTotal - a.combinedTotal,
+            )
+            .map((player) => (
               <PlayerCard
                 key={player.playerId}
                 player={player}
-                prev={prev}
-                gap={gap}
+                prev={null}
+                gap={0}
                 isBubble={false}
                 pairs={pairs}
                 isPinned={pinnedId === player.playerId}
                 onTogglePin={() => onTogglePin(player.playerId)}
                 desaturate
               />
-            );
-          })}
+            ))}
         </div>
       )}
     </div>
@@ -539,12 +542,17 @@ function PlayerCard({
     delta = { kind: 'down', value: player.rank - player.rankPrevious };
   }
 
-  // Gap-to-next-up label
-  const gapLabel = prev === null
-    ? '👑 Leader'
-    : gap === 0
-      ? `= with ${firstName(prev.name)}`
-      : `−${fmt(gap)} to ${firstName(prev.name)}`;
+  // Gap-to-next-up label. Subs aren't in the points race, so we skip
+  // "Leader"/gap entirely and show their hypothetical slot instead.
+  const gapLabel = desaturate
+    ? player.hypotheticalRank !== null
+      ? `Sub · would slot at #${player.hypotheticalRank}`
+      : 'Sub'
+    : prev === null
+      ? '👑 Leader'
+      : gap === 0
+        ? `= with ${firstName(prev.name)}`
+        : `−${fmt(gap)} to ${firstName(prev.name)}`;
 
   const cardTone = desaturate
     ? 'bg-card/60'
@@ -556,11 +564,13 @@ function PlayerCard({
 
   const borderTone = isPinned
     ? 'border-blue-400 ring-2 ring-blue-400/30'
-    : player.rank === 1
-      ? 'border-amber-300 dark:border-amber-700/60'
-      : player.isPlayoffEligible
-        ? 'border-green-200 dark:border-green-900/50'
-        : 'border-border';
+    : desaturate
+      ? 'border-border'
+      : player.rank === 1
+        ? 'border-amber-300 dark:border-amber-700/60'
+        : player.isPlayoffEligible
+          ? 'border-green-200 dark:border-green-900/50'
+          : 'border-border';
 
   return (
     <div
@@ -570,7 +580,11 @@ function PlayerCard({
     >
       {/* Top row: rank pill · name · total */}
       <div className="flex items-center gap-2">
-        <RankPill rank={player.rank} isPlayoffEligible={player.isPlayoffEligible} />
+        <RankPill
+          rank={desaturate ? player.hypotheticalRank ?? player.rank : player.rank}
+          isPlayoffEligible={player.isPlayoffEligible}
+          muted={desaturate}
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-bold text-base truncate">{player.name}</span>
@@ -652,7 +666,23 @@ function PlayerCard({
   );
 }
 
-function RankPill({ rank, isPlayoffEligible }: { rank: number; isPlayoffEligible: boolean }) {
+function RankPill({
+  rank,
+  isPlayoffEligible,
+  muted = false,
+}: {
+  rank: number;
+  isPlayoffEligible: boolean;
+  muted?: boolean;
+}) {
+  if (muted) {
+    // Subs: faint hypothetical-rank pill, no trophy / no playoff check
+    return (
+      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted/40 text-muted-foreground/60 flex items-center justify-center font-medium text-sm">
+        {rank}
+      </div>
+    );
+  }
   if (rank === 1) {
     return (
       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-400 text-amber-900 flex items-center justify-center font-black text-sm shadow-sm">

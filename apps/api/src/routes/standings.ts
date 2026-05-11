@@ -23,6 +23,8 @@ type StandingsPlayer = {
   highRound: number;
   rank: number;
   rankPrevious: number | null; // rank as of the round before last finalized (null = not on prior board)
+  // For subs only: where they'd slot if ranked as a full member. null for full members.
+  hypotheticalRank: number | null;
   isPlayoffEligible: boolean;
   roundTotals: number[];
 };
@@ -197,6 +199,19 @@ app.get('/standings', async (c) => {
     const fullMemberRanks = assignRanks(fullMemberRows.map((p) => ({ playerId: p.playerId, total: p.combinedTotal })));
     const subRanks = assignRanks(subRows.map((p) => ({ playerId: p.playerId, total: p.combinedTotal })));
 
+    // Hypothetical rank for subs: where each sub would slot if they were a full
+    // member. Computed by ranking every sub individually against the full-member
+    // totals (subs do not affect each other's hypothetical ranks).
+    const fullMemberTotals = fullMemberRows
+      .map((p) => p.combinedTotal)
+      .sort((a, b) => b - a);
+    const hypotheticalSubRank = new Map<number, number>();
+    for (const sub of subRows) {
+      // Competition ranking: 1 + count of full members with strictly higher total.
+      const above = fullMemberTotals.filter((t) => t > sub.combinedTotal).length;
+      hypotheticalSubRank.set(sub.playerId, above + 1);
+    }
+
     // Previous ranks (for delta chip): recompute standings excluding the last
     // finalized round. Null for a player who had no data before that round.
     const finalizedRounds = officialRounds.filter((r) => r.status === 'finalized');
@@ -242,6 +257,7 @@ app.get('/standings', async (c) => {
         highRound: p.highRound,
         rank: fullMemberRanks.get(p.playerId) ?? fullMemberRows.length,
         rankPrevious: prevFullMemberRanks.get(p.playerId) ?? null,
+        hypotheticalRank: null,
         isPlayoffEligible: (fullMemberRanks.get(p.playerId) ?? 999) <= 8,
         roundTotals: roundTotalsByPlayer.get(p.playerId) ?? [],
       }))
@@ -261,6 +277,7 @@ app.get('/standings', async (c) => {
         highRound: p.highRound,
         rank: subRanks.get(p.playerId) ?? subRows.length,
         rankPrevious: prevSubRanks.get(p.playerId) ?? null,
+        hypotheticalRank: hypotheticalSubRank.get(p.playerId) ?? null,
         isPlayoffEligible: false,
         roundTotals: roundTotalsByPlayer.get(p.playerId) ?? [],
       }))

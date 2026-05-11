@@ -480,6 +480,67 @@ describe('GET /standings', () => {
     await db.delete(rounds).where(eq(rounds.id, cancelledRound!.id));
   });
 
+  it('computes hypotheticalRank for subs by slotting them against full-member totals', async () => {
+    // Full members: p1=20, p2=10, p3=5 (p4 omitted from harvey_results — won't appear)
+    // Subs: subA with combined 12 (slots between p1 and p2 → rank 2)
+    //       subB with combined 4 (below all → rank 4)
+    const [subA] = await db
+      .insert(players)
+      .values({ name: 'SubA', ghinNumber: null, isActive: 1, createdAt: Date.now() })
+      .returning({ id: players.id });
+    const [subB] = await db
+      .insert(players)
+      .values({ name: 'SubB', ghinNumber: null, isActive: 1, createdAt: Date.now() })
+      .returning({ id: players.id });
+
+    const [gA] = await db
+      .insert(groups)
+      .values({ roundId, groupNumber: 10, battingOrder: null })
+      .returning({ id: groups.id });
+    const [gB] = await db
+      .insert(groups)
+      .values({ roundId, groupNumber: 11, battingOrder: null })
+      .returning({ id: groups.id });
+    await db.insert(roundPlayers).values([
+      { roundId, groupId: gA!.id, playerId: subA!.id, handicapIndex: 10, isSub: 1 },
+      { roundId, groupId: gB!.id, playerId: subB!.id, handicapIndex: 10, isSub: 1 },
+    ]);
+
+    const now = Date.now();
+    await db.insert(harveyResults).values([
+      { roundId, playerId: p1Id, stablefordRank: 1, moneyRank: 1, stablefordPoints: 10, moneyPoints: 10, updatedAt: now },
+      { roundId, playerId: p2Id, stablefordRank: 2, moneyRank: 2, stablefordPoints: 5, moneyPoints: 5, updatedAt: now },
+      { roundId, playerId: p3Id, stablefordRank: 3, moneyRank: 3, stablefordPoints: 2, moneyPoints: 3, updatedAt: now },
+      { roundId, playerId: subA!.id, stablefordRank: 4, moneyRank: 4, stablefordPoints: 6, moneyPoints: 6, updatedAt: now },
+      { roundId, playerId: subB!.id, stablefordRank: 5, moneyRank: 5, stablefordPoints: 2, moneyPoints: 2, updatedAt: now },
+    ]);
+
+    const res = await standingsApp.request('/standings');
+    const body = await res.json() as {
+      fullMembers: Array<{ playerId: number; combinedTotal: number; hypotheticalRank: number | null }>;
+      subs: Array<{ playerId: number; combinedTotal: number; hypotheticalRank: number | null }>;
+    };
+
+    // Full members are unchanged + hypotheticalRank is null
+    expect(body.fullMembers.find((p) => p.playerId === p1Id)?.hypotheticalRank).toBeNull();
+
+    // SubA (12) slots between p1 (20) and p2 (10) → 1 full member above → rank 2
+    const subARow = body.subs.find((p) => p.playerId === subA!.id)!;
+    expect(subARow.combinedTotal).toBe(12);
+    expect(subARow.hypotheticalRank).toBe(2);
+
+    // SubB (4) below all full members (20, 10, 5) → 3 above → rank 4
+    const subBRow = body.subs.find((p) => p.playerId === subB!.id)!;
+    expect(subBRow.combinedTotal).toBe(4);
+    expect(subBRow.hypotheticalRank).toBe(4);
+
+    // Cleanup
+    await db.delete(harveyResults).where(inArray(harveyResults.playerId, [subA!.id, subB!.id]));
+    await db.delete(roundPlayers).where(inArray(roundPlayers.playerId, [subA!.id, subB!.id]));
+    await db.delete(groups).where(inArray(groups.id, [gA!.id, gB!.id]));
+    await db.delete(players).where(inArray(players.id, [subA!.id, subB!.id]));
+  });
+
   it('response contains lastUpdated ISO string', async () => {
     const res = await standingsApp.request('/standings');
     const body = await res.json() as { lastUpdated: string };
