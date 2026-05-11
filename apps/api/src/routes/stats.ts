@@ -1253,15 +1253,20 @@ app.get('/stats/:playerId/detail', async (c) => {
     }
 
     const chemistry = [...chemMap.entries()]
-      .map(([id, c]) => ({
-        playerId: id,
-        name: c.name,
-        holes: c.holes,
-        wins: c.wins,
-        losses: c.losses,
-        pushes: c.pushes,
-        winRate: c.holes > 0 ? Math.round((c.wins / c.holes) * 100) : 0,
-      }))
+      .map(([id, c]) => {
+        // Push-agnostic win rate — matches Best 2v2 Partnership math so a
+        // 4-0-1 teammate (100%) outranks a 4-0-0 teammate over fewer holes.
+        const decided = c.wins + c.losses;
+        return {
+          playerId: id,
+          name: c.name,
+          holes: c.holes,
+          wins: c.wins,
+          losses: c.losses,
+          pushes: c.pushes,
+          winRate: decided > 0 ? Math.round((c.wins / decided) * 100) : 0,
+        };
+      })
       .sort((a, b) => b.holes - a.holes);
 
     // Stat drill-downs: eagles, birdies, greenies, polies with hole/round/date context
