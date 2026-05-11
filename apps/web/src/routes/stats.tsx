@@ -427,7 +427,7 @@ function sortPlayers(players: PlayerStats[], sortKey: SortKey, standingsRankMap?
   return sorted;
 }
 
-type StandingsEntry = { playerId: number; rank: number; combinedTotal: number };
+type StandingsEntry = { playerId: number; rank: number; combinedTotal: number; hypotheticalRank: number | null };
 type StandingsData = { fullMembers: StandingsEntry[]; subs: StandingsEntry[] };
 
 function StatsPage() {
@@ -445,8 +445,15 @@ function StatsPage() {
   const standingsRankMap = useMemo(() => {
     const map = new Map<number, number>();
     if (standingsData) {
-      for (const p of [...standingsData.fullMembers, ...standingsData.subs]) {
+      for (const p of standingsData.fullMembers) {
         map.set(p.playerId, p.rank);
+      }
+      // Subs sort to the bottom: use hypotheticalRank (slot if they were a full
+      // member) offset past the full-member tail. Falls back to a large constant
+      // so they still sort below full members and remain stable.
+      const subOffset = standingsData.fullMembers.length;
+      for (const s of standingsData.subs) {
+        map.set(s.playerId, subOffset + (s.hypotheticalRank ?? 999));
       }
     }
     return map;
