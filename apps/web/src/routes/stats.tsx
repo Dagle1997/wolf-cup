@@ -382,32 +382,56 @@ export const Route = createFileRoute('/stats')({
   component: StatsPage,
 });
 
-type SortKey = 'standings' | 'alpha' | 'money' | 'birdies' | 'wolf';
+type SortKey = 'standings' | 'avg' | 'alpha' | 'money' | 'birdies' | 'wolf';
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'standings', label: 'Standings' },
+  { key: 'avg', label: 'Avg' },
   { key: 'alpha', label: 'A-Z' },
   { key: 'money', label: 'Money' },
   { key: 'birdies', label: 'Birdies' },
   { key: 'wolf', label: 'Wolf' },
 ];
 
-function sortPlayers(players: PlayerStats[], sortKey: SortKey, standingsRankMap?: Map<number, number>): PlayerStats[] {
+function sortPlayers(
+  players: PlayerStats[],
+  sortKey: SortKey,
+  standingsRankMap?: Map<number, number>,
+  avgMap?: Map<number, number>,
+  subIds?: Set<number>,
+): PlayerStats[] {
+  // Subs are kept in their own section below all full members on every sort.
+  // Within each bucket the case-specific comparator decides the order.
+  const isSub = (p: PlayerStats) => subIds?.has(p.playerId) ?? false;
+  const bucketed = (cmp: (a: PlayerStats, b: PlayerStats) => number) =>
+    (a: PlayerStats, b: PlayerStats) => {
+      const subDiff = Number(isSub(a)) - Number(isSub(b));
+      return subDiff !== 0 ? subDiff : cmp(a, b);
+    };
+
   const sorted = [...players];
   switch (sortKey) {
     case 'standings': {
       const getRank = (p: PlayerStats) => standingsRankMap?.get(p.playerId) ?? 999;
-      sorted.sort((a, b) => getRank(a) - getRank(b) || a.name.localeCompare(b.name));
+      sorted.sort(bucketed((a, b) => getRank(a) - getRank(b) || a.name.localeCompare(b.name)));
+      break;
+    }
+    case 'avg': {
+      // Best-of-10 average: combinedTotal / countedRounds. Mirrors Harvey
+      // standings math so a player with 2 strong rounds isn't penalized vs
+      // someone with 4 mixed rounds.
+      const getAvg = (p: PlayerStats) => avgMap?.get(p.playerId) ?? -1;
+      sorted.sort(bucketed((a, b) => getAvg(b) - getAvg(a) || a.name.localeCompare(b.name)));
       break;
     }
     case 'alpha':
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      sorted.sort(bucketed((a, b) => a.name.localeCompare(b.name)));
       break;
     case 'money':
-      sorted.sort((a, b) => b.totalMoney - a.totalMoney || a.name.localeCompare(b.name));
+      sorted.sort(bucketed((a, b) => b.totalMoney - a.totalMoney || a.name.localeCompare(b.name)));
       break;
     case 'birdies':
-      sorted.sort((a, b) => (b.birdies + b.eagles) - (a.birdies + a.eagles) || a.name.localeCompare(b.name));
+      sorted.sort(bucketed((a, b) => (b.birdies + b.eagles) - (a.birdies + a.eagles) || a.name.localeCompare(b.name)));
       break;
     case 'wolf': {
       // Sort by win%, then total alone/blind calls desc
@@ -416,18 +440,25 @@ function sortPlayers(players: PlayerStats[], sortKey: SortKey, standingsRankMap?
         if (total === 0) return -1; // no calls = bottom
         return p.wolfWins / total;
       };
-      sorted.sort((a, b) => {
+      sorted.sort(bucketed((a, b) => {
         const diff = wolfScore(b) - wolfScore(a);
         if (Math.abs(diff) > 0.001) return diff;
         return (b.wolfCallsWolf + b.wolfCallsBlindWolf) - (a.wolfCallsWolf + a.wolfCallsBlindWolf) || a.name.localeCompare(b.name);
-      });
+      }));
       break;
     }
   }
   return sorted;
 }
 
-type StandingsEntry = { playerId: number; rank: number; combinedTotal: number; hypotheticalRank: number | null };
+type StandingsEntry = {
+  playerId: number;
+  rank: number;
+  combinedTotal: number;
+  roundsPlayed: number;
+  roundsDropped: number;
+  hypotheticalRank: number | null;
+};
 type StandingsData = { fullMembers: StandingsEntry[]; subs: StandingsEntry[] };
 
 function StatsPage() {
@@ -459,12 +490,36 @@ function StatsPage() {
     return map;
   }, [standingsData]);
 
+  // Best-of-10 average per player, keyed by playerId. Uses combinedTotal (which
+  // is already the top-10 sum from the engine) divided by counted rounds
+  // (roundsPlayed - roundsDropped). Includes subs so they can be ranked
+  // within the sub bucket on the Avg sort.
+  const avgMap = useMemo(() => {
+    const map = new Map<number, number>();
+    if (standingsData) {
+      const all = [...standingsData.fullMembers, ...standingsData.subs];
+      for (const p of all) {
+        const counted = Math.max(1, p.roundsPlayed - p.roundsDropped);
+        map.set(p.playerId, p.combinedTotal / counted);
+      }
+    }
+    return map;
+  }, [standingsData]);
+
+  const subIds = useMemo(() => {
+    const set = new Set<number>();
+    if (standingsData) {
+      for (const s of standingsData.subs) set.add(s.playerId);
+    }
+    return set;
+  }, [standingsData]);
+
   const [sortKey, setSortKey] = useState<SortKey>('standings');
   const [compareIds, setCompareIds] = useState<[number, number] | null>(null);
 
   const sortedPlayers = useMemo(
-    () => data ? sortPlayers(data.players, sortKey, standingsRankMap) : [],
-    [data, sortKey, standingsRankMap],
+    () => data ? sortPlayers(data.players, sortKey, standingsRankMap, avgMap, subIds) : [],
+    [data, sortKey, standingsRankMap, avgMap, subIds],
   );
 
   return (
