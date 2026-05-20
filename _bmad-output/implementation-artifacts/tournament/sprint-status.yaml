@@ -260,4 +260,37 @@ development_status:
   # the handoff race-window 500 in isolation, decide stabilize-vs-retry-1.
   T10-2-investigate-flaky-tournament-api-tests: backlog
 
-  epic-T9-retrospective: optional
+  # ---------------------------------------------------------------------------
+  # Epic T11: tournament-web Design Consistency Sweep
+  # Surfaced by a post-T10-1 UI audit (2026-05-20) of apps/tournament-web/src/.
+  # T11 collects the cross-cutting visual/UX-coherence findings into separately-
+  # tractable stories. Earlier polish commits (bfe0f31 invisible inputs;
+  # 804241f Rules-of-Hooks; 4d08138 trip-day nav) addressed specific symptoms;
+  # T11 addresses the underlying patterns (no CSS vars; no shared shell
+  # components; copy-pasted auth boilerplate in 17 routes; no mobile @media;
+  # admin pages are dead-ends on iOS standalone PWA).
+  # ---------------------------------------------------------------------------
+  epic-T11: backlog
+
+  # T11-1: Foundation primitives only — no migrations. Introduce `tokens.css`
+  # (CSS vars for ~6-8 actual-use colors + a 4-step font scale) and the
+  # shared component family (PageShell / BackLink / LoadingCard / EmptyState /
+  # ErrorCard). New files; zero edits to existing routes. Sets up T11-2 and
+  # T11-3 to consume the primitives without bundling the cross-cutting work
+  # into one giant story.
+  T11-1-tokens-and-shell-component-primitives: backlog
+
+  # T11-2: Centralize auth boilerplate. Move loadAuthStatus +
+  # validateAuthStatus logic into hooks/use-auth-session.ts (already exists
+  # but route `beforeLoad`s don't use it). Migrate ~17 routes to consume the
+  # hook. Collapses ~425 lines of copy-paste. Depends on T11-1 only for the
+  # component family if loading/error states get migrated at the same time;
+  # auth-only path can ship without primitives.
+  T11-2-centralize-auth-boilerplate-in-use-auth-session: backlog
+
+  # T11-3: PageShell + BackLink rollout. Migrate ~25 routes (admin + player)
+  # to wrap content in <PageShell> + add <BackLink> on every admin detail
+  # page that's currently a dead-end on iOS standalone PWA. Replaces hand-
+  # rolled loading/empty states with the T11-1 primitives. Depends on T11-1
+  # and (preferably) T11-2.
+  T11-3-pageshell-and-backlink-rollout: backlog
