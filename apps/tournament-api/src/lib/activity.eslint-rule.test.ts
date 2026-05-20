@@ -9,7 +9,7 @@
  *      NOT inside the legitimate emitter file (allowlist effective).
  */
 
-import { describe, expect, test } from 'vitest';
+import { beforeAll, describe, expect, test } from 'vitest';
 import { ESLint, RuleTester, Rule } from 'eslint';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -172,11 +172,25 @@ declare const tx: { insert: (t: unknown) => { values: (v: unknown) => unknown } 
 tx.insert(activity).values({});
 `;
 
-  test('lintText against a non-allowlisted path fails the rule', async () => {
-    const eslint = new ESLint({
+  // T10-2: hoist the ESLint instance to beforeAll so both tests in this
+  // describe share one warm flat-config load. Pre-T10-2 each test created
+  // its own ESLint, paying the full plugin-resolution + config-parse cost
+  // twice, which could push past the 5s default Vitest timeout on a busy
+  // local CI machine (observed once during T10-1's CI runs 2026-05-20).
+  // Safe under sequential execution (this file uses no test.concurrent
+  // markers); revisit if a future refactor introduces concurrent tests.
+  let eslint!: ESLint;
+  beforeAll(() => {
+    eslint = new ESLint({
       cwd: apiRoot,
       overrideConfigFile: resolve(apiRoot, 'eslint.config.js'),
     });
+  });
+
+  // T10-2: 15s timeout via Vitest option-form. Belt-and-suspenders alongside
+  // the beforeAll hoist — covers heavy-parallelism cold-start jitter on
+  // local CI machines.
+  test('lintText against a non-allowlisted path fails the rule', { timeout: 15000 }, async () => {
     // Use a path that's NOT in the allowlist (any normal route file
     // would do). The path doesn't need to exist on disk; ESLint uses
     // it only to apply per-file rule overrides.
@@ -190,11 +204,7 @@ tx.insert(activity).values({});
     expect(restrictedSyntaxHits.length).toBeGreaterThan(0);
   });
 
-  test('lintText AS the emitter file path does NOT fail the rule (allowlist effective)', async () => {
-    const eslint = new ESLint({
-      cwd: apiRoot,
-      overrideConfigFile: resolve(apiRoot, 'eslint.config.js'),
-    });
+  test('lintText AS the emitter file path does NOT fail the rule (allowlist effective)', { timeout: 15000 }, async () => {
     // Same source, but pretend it's the emitter file — allowlist must
     // suppress both the syntax rule and the import-block rule.
     const filePath = resolve(apiRoot, 'src/lib/activity.ts');

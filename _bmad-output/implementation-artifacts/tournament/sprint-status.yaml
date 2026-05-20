@@ -258,7 +258,16 @@ development_status:
   # returned 500 instead of 422 once. Both unrelated to T10-1's changes.
   # Story should triage: bump testTimeout for the ESLint rule test, repro
   # the handoff race-window 500 in isolation, decide stabilize-vs-retry-1.
-  T10-2-investigate-flaky-tournament-api-tests: backlog
+  T10-2-investigate-flaky-tournament-api-tests: done
+
+  # T10-3: T10-2's retry: 1 on the finalize-before-handoff test is triage,
+  # not a verified fix. This story is the structural diagnosis: repro the
+  # 500-instead-of-422 in isolation, root-cause one of the three hypotheses
+  # (dynamic-import race, __testPlayer global mutation leak, post-finalize
+  # state transition window), and remove the retry once the underlying race
+  # is fixed. Also surfaces test-isolation primitives that may benefit other
+  # integration tests in the file (e.g., per-test __testPlayer reset).
+  T10-3-handoff-flake-structural-diagnosis: backlog
 
   # ---------------------------------------------------------------------------
   # Epic T11: tournament-web Design Consistency Sweep

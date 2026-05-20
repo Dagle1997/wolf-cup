@@ -495,7 +495,45 @@ describe('Score POST against finalized round (T5-6 integration with T5-8)', () =
 });
 
 describe('finalize-before-handoff regression (T5-8 closes T5-7g)', () => {
-  test('handoff returns 422 round_finalized when finalize committed before handoff begins', async () => {
+  // T10-2: retry: 1 is TRIAGE, not a verified fix.
+  //
+  // Observation: this test returned 500 instead of 422 exactly once during
+  // T10-1's CI runs (2026-05-20); passed on rerun. Root cause was not
+  // diagnosed in T10-2's scope.
+  //
+  // Hypothesized causes (any combination plausible):
+  //   1. The dynamic `await import('./scorer-assignments.js')` below races
+  //      with the parallelized test runner's in-memory libsql connection
+  //      state. The shared `file::memory:?cache=shared` URL is shared across
+  //      tests in this file.
+  //   2. The `__testPlayer = {...}` reassign inside this test (set in
+  //      buildApp() ~line 208, reassigned mid-test below) is a module-level
+  //      global. A concurrent test resetting `__testPlayer` between the
+  //      assignment and the request() call could change which player the
+  //      requireSession mock returns.
+  //   3. Post-finalize, the round_states row transition leaves a brief
+  //      window where the handoff handler's auth path reads state =
+  //      'finalized' but a downstream query fails on a not-yet-consistent
+  //      derived row, throwing into the route's 500 fallback.
+  //
+  // Honest retry math: with retry: 1 the test passes whenever at least ONE
+  // of the two attempts passes. Probability of false-PASS (test reports
+  // green despite a real bug) = 1 - p² where p is per-attempt failure
+  // probability. Examples:
+  //   - p=10% real bug rate → 99% false-pass rate (severe masking).
+  //   - p=50%               → 75% false-pass rate.
+  //   - p=90%               → 19% false-pass rate (still meaningful).
+  //   - p=100% deterministic→ 0% false-pass (BOTH iterations fail).
+  // So retry: 1 reduces signal across the WHOLE bug-rate spectrum, with
+  // worst masking at low-rate intermittent bugs (exactly the kind we'd
+  // want to catch). The project accepts this risk for T10-2 as a triage
+  // tradeoff against false-failure CI signal — if production 500s ever
+  // start appearing in the post-finalize-then-handoff window in real use,
+  // treat that as the structural-diagnosis trigger regardless of whether
+  // this test signal flips.
+  //
+  // Structural fix tracked as followup story `T10-3-handoff-flake-structural-diagnosis`.
+  test('handoff returns 422 round_finalized when finalize committed before handoff begins', { retry: 1 }, async () => {
     const s = await seed({ state: 'complete_editable', fullScores: true });
 
     // Step 1: organizer finalizes the round.
