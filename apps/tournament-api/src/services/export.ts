@@ -756,6 +756,7 @@ export async function buildEventExport(
       startHole: tp.startHole,
       triggerType: tp.triggerType,
       trigger: tp.trigger,
+      foursomeNumber: tp.foursomeNumber,
       multiplier: tp.multiplier,
       firedAt: msToIso(tp.firedAt),
       firedByPlayerId: tp.firedByPlayerId,

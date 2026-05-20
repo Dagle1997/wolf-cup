@@ -182,14 +182,16 @@ export async function runPressOrchestrator(
 ): Promise<void> {
   const { roundId, holeNumber, scoredPlayerId, scorerPlayerId } = input;
 
-  // ── (0) Trip-1 kill switch. ───────────────────────────────────────────────
-  // team_press_log is foursome-blind in v1 (UNIQUE is `(round_id, team,
-  // start_hole, trigger_type)` with no foursome dimension), so an auto-press
-  // fired in foursome 2 collides with foursome 1's press at the same
-  // hole/team or cross-suppresses via the engine's existingPressLog dedupe.
-  // Until v1.5 adds `foursome_number` to the schema + migrates the UNIQUE,
-  // disable the feature globally via env. The flag is read at call time
-  // (see `pressesDisabled()` in lib/env.ts) so tests can stub it.
+  // ── (0) Operational kill switch. ──────────────────────────────────────────
+  // The original 2026-05-07 reason for this gate (foursome-blind UNIQUE in
+  // team_press_log) was resolved by T10-1's migration 0012: the schema now
+  // includes `foursome_number` in both the column set and the UNIQUE index,
+  // and both INSERT sites + the existingPressLog filter + the DELETE-undo
+  // lookup thread it through. The env flag is retained as an operational
+  // override — if presses misbehave in production for any future reason,
+  // setting TOURNAMENT_PRESSES_DISABLED=true on the VPS turns them off
+  // without a redeploy. The flag is read at call time (see
+  // `pressesDisabled()` in lib/env.ts) so tests can stub it.
   if (pressesDisabled()) {
     logger.info({
       msg: 'press_orchestrator: skipped (TOURNAMENT_PRESSES_DISABLED=true)',
@@ -476,12 +478,16 @@ export async function runPressOrchestrator(
   }
 
   // ── (12) Load existingPressLog from team_press_log. ──
+  // Filter by foursomeNumber (T10-1): without this, the dedupe inside
+  // evaluatePresses sees sibling-foursome rows and cross-suppresses
+  // emission for THIS foursome.
   const existingPressLogRows = await tx
     .select()
     .from(teamPressLog)
     .where(
       and(
         eq(teamPressLog.roundId, roundId),
+        eq(teamPressLog.foursomeNumber, foursomeNumber),
         eq(teamPressLog.tenantId, tenantId),
       ),
     );
@@ -529,6 +535,7 @@ export async function runPressOrchestrator(
         startHole: press.startHole,
         triggerType: press.type,
         trigger: press.trigger ?? null,
+        foursomeNumber,
         multiplier: press.multiplier,
         firedAt: now,
         firedByPlayerId: press.type === 'manual' ? scorerPlayerId : null,

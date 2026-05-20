@@ -85,6 +85,13 @@
       "when": 1778166528330,
       "tag": "0011_pairing_member_tee_color",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1779305165423,
+      "tag": "0012_team_press_log_foursome_scoping",
+      "breakpoints": true
     }
   ]
 }

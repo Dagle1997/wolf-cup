@@ -312,6 +312,13 @@ describe('runPressOrchestrator — hole-complete detection (AC-3)', () => {
     expect(teamAPress).toBeDefined();
     expect(teamAPress!.multiplier).toBe(2);
     expect(teamAPress!.trigger).toBe('2-down');
+    // T10-1: assert foursomeNumber on the INSERT path for the single-foursome
+    // case. The multi-foursome regression test proves propagation of the
+    // STORED value (foursome 2's row can't come from .default(1)); this
+    // assertion makes the single-foursome contract explicit so a future
+    // refactor that drops foursomeNumber from the INSERT can't pass on the
+    // backfill default alone when run in isolation.
+    expect(teamAPress!.foursomeNumber).toBe(1);
   });
 });
 
@@ -505,5 +512,197 @@ describe('runPressOrchestrator — TOURNAMENT_PRESSES_DISABLED kill switch', () 
       .from(teamPressLog)
       .where(eq(teamPressLog.roundId, s.roundId));
     expect(presses.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// T10-1 multi-foursome regression
+//
+// Pre-T10-1 the team_press_log UNIQUE was (round_id, team, start_hole,
+// trigger_type) — no foursome dimension. With two foursomes in the same
+// round both going teamA-2-down at the same hole:
+//   - the existingPressLog SELECT returned BOTH foursomes' rows, so the
+//     second foursome's evaluatePresses cross-suppressed (dedup hit).
+//   - even if the cross-suppression somehow missed, the second INSERT
+//     would UNIQUE-violate.
+// Both paths converged on "foursome 2 never fires its own press". This
+// test exercises that exact shape; it would fail on the pre-migration-0012
+// schema and passes on the post-migration schema.
+// ───────────────────────────────────────────────────────────────────────────
+describe('runPressOrchestrator — T10-1 multi-foursome scoping (regression)', () => {
+  test('two foursomes both 2-down at hole 4 → two distinct team_press_log rows, one per foursome', async () => {
+    const now = Date.now();
+    const ids = {
+      organizerId: randomUUID(),
+      // Foursome 1: a1..a4. Foursome 2: b1..b4.
+      a1: randomUUID(), a2: randomUUID(), a3: randomUUID(), a4: randomUUID(),
+      b1: randomUUID(), b2: randomUUID(), b3: randomUUID(), b4: randomUUID(),
+      eventId: randomUUID(),
+      courseId: randomUUID(),
+      courseRevId: randomUUID(),
+      eventRoundId: randomUUID(),
+      pairing1Id: randomUUID(),
+      pairing2Id: randomUUID(),
+      roundId: randomUUID(),
+      ruleSetId: randomUUID(),
+      revisionId: randomUUID(),
+    };
+    const sortedF1: [string, string, string, string] =
+      [ids.a1, ids.a2, ids.a3, ids.a4].sort() as [string, string, string, string];
+    const sortedF2: [string, string, string, string] =
+      [ids.b1, ids.b2, ids.b3, ids.b4].sort() as [string, string, string, string];
+    const ctx = `event:${ids.eventId}`;
+
+    // Players (organizer + 8 foursome members).
+    const allPlayers: Array<[string, string]> = [
+      [ids.organizerId, 'Organizer'],
+      [ids.a1, 'A1'], [ids.a2, 'A2'], [ids.a3, 'A3'], [ids.a4, 'A4'],
+      [ids.b1, 'B1'], [ids.b2, 'B2'], [ids.b3, 'B3'], [ids.b4, 'B4'],
+    ];
+    for (const [id, name] of allPlayers) {
+      await db.insert(players).values({
+        id, isOrganizer: false, createdAt: now, name,
+        manualHandicapIndex: 0,
+        tenantId: TENANT_ID, contextId: CTX_BASE,
+      });
+    }
+
+    // Course + revision + tee + 18 par-4 holes.
+    await db.insert(courses).values({
+      id: ids.courseId, name: 'Test', clubName: 'Test CC',
+      createdAt: now, tenantId: TENANT_ID, contextId: CTX_BASE,
+    });
+    await db.insert(courseRevisions).values({
+      id: ids.courseRevId, courseId: ids.courseId, revisionNumber: 1,
+      sourceUrl: null, extractionDate: null, verified: false,
+      outTotal: 36, inTotal: 36, courseTotal: 72,
+      createdAt: now, tenantId: TENANT_ID, contextId: CTX_BASE,
+    });
+    await db.insert(courseTees).values({
+      id: randomUUID(), courseRevisionId: ids.courseRevId, teeColor: 'blue',
+      rating: 720, slope: 113,
+      tenantId: TENANT_ID, contextId: CTX_BASE,
+    });
+    for (let h = 1; h <= 18; h++) {
+      await db.insert(courseHoles).values({
+        id: randomUUID(), courseRevisionId: ids.courseRevId,
+        holeNumber: h, par: 4, si: ((h * 7) % 18) + 1,
+        yardagePerTeeJson: '{}',
+        tenantId: TENANT_ID, contextId: CTX_BASE,
+      });
+    }
+
+    // Event + event_round.
+    await db.insert(events).values({
+      id: ids.eventId, name: 'Test Event', startDate: now, endDate: now + 86400000,
+      timezone: 'America/New_York', organizerPlayerId: ids.organizerId,
+      createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+    });
+    await db.insert(eventRounds).values({
+      id: ids.eventRoundId, eventId: ids.eventId, roundNumber: 1, roundDate: now,
+      courseRevisionId: ids.courseRevId, teeColor: 'blue', holesToPlay: 18,
+      createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+    });
+
+    // TWO pairings (foursomeNumber=1 and foursomeNumber=2), each with 4 members.
+    await db.insert(pairings).values({
+      id: ids.pairing1Id, eventRoundId: ids.eventRoundId, foursomeNumber: 1,
+      createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+    });
+    await db.insert(pairings).values({
+      id: ids.pairing2Id, eventRoundId: ids.eventRoundId, foursomeNumber: 2,
+      createdAt: now, tenantId: TENANT_ID, contextId: ctx,
+    });
+    for (let i = 0; i < 4; i++) {
+      await db.insert(pairingMembers).values({
+        pairingId: ids.pairing1Id, playerId: sortedF1[i]!, slotNumber: i + 1,
+        tenantId: TENANT_ID, contextId: ctx,
+      });
+      await db.insert(pairingMembers).values({
+        pairingId: ids.pairing2Id, playerId: sortedF2[i]!, slotNumber: i + 1,
+        tenantId: TENANT_ID, contextId: ctx,
+      });
+    }
+    await db.insert(rounds).values({
+      id: ids.roundId, eventId: ids.eventId, eventRoundId: ids.eventRoundId,
+      holesToPlay: 18, createdAt: now,
+      tenantId: TENANT_ID, contextId: ctx,
+    });
+
+    // Rule set: auto-press enabled at 2-down, multiplier 2.
+    await db.insert(ruleSets).values({
+      id: ids.ruleSetId, name: 'Test', createdAt: now,
+      tenantId: TENANT_ID, contextId: `library:${TENANT_ID}`,
+    });
+    await db.insert(ruleSetRevisions).values({
+      id: ids.revisionId, ruleSetId: ids.ruleSetId, revisionNumber: 1,
+      configJson: JSON.stringify({
+        autoPressTriggerAtNDown: 2,
+        pressMultiplier: 2,
+        basePerHoleCents: 100,
+        sandies: false,
+        sandiesBonusPerHoleCents: 0,
+        greenieCarryover: false,
+        greenieValidation: 'none',
+        greenieBaseCents: 0,
+      }),
+      effectiveFromRoundId: null, effectiveFromHole: 1,
+      createdByPlayerId: ids.organizerId, reason: null, createdAt: now,
+      tenantId: TENANT_ID, contextId: `library:${TENANT_ID}`,
+    });
+
+    // Score holes 1-4 for BOTH foursomes with identical shape:
+    // teamA (sortedF*[0], sortedF*[1]) = bogey 5s; teamB ([2],[3]) = 4,5.
+    // teamA goes 2-down by hole 4 in each foursome; engine fires teamA auto-press.
+    for (const sf of [sortedF1, sortedF2]) {
+      for (let h = 1; h <= 4; h++) {
+        await commitHole(ids.roundId, sf[0]!, h, 5, ctx);
+        await commitHole(ids.roundId, sf[1]!, h, 5, ctx);
+        await commitHole(ids.roundId, sf[2]!, h, 4, ctx);
+        await commitHole(ids.roundId, sf[3]!, h, 5, ctx);
+      }
+    }
+
+    // Run orchestrator for each foursome's "last scorer at hole 4".
+    await db.transaction(async (tx) => {
+      await runPressOrchestrator(
+        tx,
+        { roundId: ids.roundId, holeNumber: 4, scoredPlayerId: sortedF1[3]!, scorerPlayerId: sortedF1[3]! },
+        TENANT_ID,
+      );
+    });
+    await db.transaction(async (tx) => {
+      await runPressOrchestrator(
+        tx,
+        { roundId: ids.roundId, holeNumber: 4, scoredPlayerId: sortedF2[3]!, scorerPlayerId: sortedF2[3]! },
+        TENANT_ID,
+      );
+    });
+
+    // AC-7: for the FIRST auto-press fired in each foursome (startHole = 3,
+    // the hole AFTER teamA hits 2-down at hole 2), there must be exactly one
+    // row per foursome. The engine may also fire a SECOND teamA auto-press
+    // at startHole = 4 (the press-of-the-press, since teamB also wins hole 3
+    // in the new sub-match) — that's expected behavior; the existing
+    // single-foursome trigger test uses toBeGreaterThanOrEqual(1) for the
+    // same reason. The load-bearing assertion is "foursome 2 has its own
+    // row" — pre-fix it would cross-suppress via existingPressLog dedupe or
+    // UNIQUE-collide on INSERT, leaving foursome 2 with ZERO rows.
+    const presses = await db
+      .select()
+      .from(teamPressLog)
+      .where(eq(teamPressLog.roundId, ids.roundId));
+    const autoTeamA = presses.filter(
+      (p) => p.team === 'teamA' && p.triggerType === 'auto',
+    );
+    // Sanity: both foursomes fired at least one teamA auto-press.
+    const foursomesPresent = new Set(autoTeamA.map((p) => p.foursomeNumber));
+    expect(foursomesPresent.has(1)).toBe(true);
+    expect(foursomesPresent.has(2)).toBe(true);
+    // For the FIRST press (startHole = 3): exactly one per foursome, two total.
+    const firstPresses = autoTeamA.filter((p) => p.startHole === 3);
+    expect(firstPresses.length).toBe(2);
+    const firstFoursomes = firstPresses.map((p) => p.foursomeNumber).sort();
+    expect(firstFoursomes).toEqual([1, 2]);
   });
 });

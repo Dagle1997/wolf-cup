@@ -11,15 +11,26 @@
  *
  * **Server-derived fromHole** (per epic AC line 1970): the route does
  * NOT accept fromHole in the body. It derives fromHole = (max-hole-
- * complete | 0) + 1 from hole_scores. If max-hole-complete === 18 →
- * round fully scored; reject 422 round_fully_scored.
+ * complete | 0) + 1 from hole_scores. The fromHole derivation also yields
+ * the caller's foursomeNumber (T10-1: returned by computeMaxCompleteHole
+ * as non-null; threaded into the team_press_log INSERT). If max-hole-
+ * complete === 18 → round fully scored; reject 422 no_holes_left_to_press.
  *
- * **UNIQUE constraint dedupe** (T6-4 schema): UNIQUE(round_id, team,
- * fired_at_hole, trigger_type) catches duplicate manual presses → 422
- * duplicate_press.
+ * **UNIQUE constraint dedupe** (T10-1 schema, migration 0012): UNIQUE on
+ * (round_id, foursome_number, team, start_hole, trigger_type) catches
+ * duplicate manual presses WITHIN THE SAME FOURSOME → 422
+ * press_already_filed_this_hole. Pre-T10-1 (migration 0006) the UNIQUE
+ * was foursome-blind and cross-collided between foursomes; that bug was
+ * masked in production by TOURNAMENT_PRESSES_DISABLED while T10-1
+ * shipped the schema fix.
  *
- * **Undo eligibility:** canUndo iff NO hole at-or-after press.fired_at_hole
- * is complete. I.e., once any hole >= fired_at_hole has 4/4 scores, undo
+ * **DELETE foursome-scoping** (T10-1 security fix): the undo path scopes
+ * the press-row lookup by the caller's foursomeNumber so a scorer in
+ * foursome 1 cannot DELETE a sibling foursome's press by guessing the
+ * UUID. The kill switch remains in place as an operational override.
+ *
+ * **Undo eligibility:** canUndo iff NO hole at-or-after press.startHole
+ * is complete. I.e., once any hole >= startHole has 4/4 scores, undo
  * window has closed.
  */
 
@@ -102,14 +113,26 @@ async function isScorerForRound(
 
 /**
  * Compute the highest hole number where ALL 4 foursome members for a given
- * scorer-assigned foursome have committed scores. Returns 0 if no holes
- * complete. Returns 18 if entire round is scored.
+ * scorer-assigned foursome have committed scores. Returns `{maxComplete: 0}`
+ * if no holes complete; `maxComplete: 18` if entire round is scored.
+ *
+ * Returns the scorer's `foursomeNumber` alongside `maxComplete` so callers
+ * (the POST handler) can use it for the team_press_log INSERT without
+ * re-querying scorer_assignments (T10-1). The field is NOT nullable: if
+ * the scorer-assignment lookup misses, this throws BusinessRuleError
+ * `scorer_assignment_missing` (422). The POST handler runs
+ * `isScorerForRound` first (which itself queries scorer_assignments), so
+ * the assignment row is guaranteed to exist when this helper runs absent
+ * a TOCTOU race (concurrent scorer-handoff between the two queries).
+ * Returning a non-null foursomeNumber + throwing on miss prevents the
+ * caller from passing NULL to the team_press_log INSERT (which would hit
+ * the NOT NULL constraint with an opaque SQL error instead).
  */
 async function computeMaxCompleteHole(
   tx: Tx,
   roundId: string,
   scorerPlayerId: string,
-): Promise<number> {
+): Promise<{ maxComplete: number; foursomeNumber: number }> {
   // Find the foursome the scorer is assigned to.
   const assignmentRows = await tx
     .select({ foursomeNumber: scorerAssignments.foursomeNumber })
@@ -122,7 +145,13 @@ async function computeMaxCompleteHole(
       ),
     )
     .limit(1);
-  if (assignmentRows.length === 0) return 0;
+  if (assignmentRows.length === 0) {
+    throw new BusinessRuleError(
+      'scorer_assignment_missing',
+      'no scorer_assignments row for this caller/round (TOCTOU race with handoff?)',
+      422,
+    );
+  }
   const foursomeNumber = assignmentRows[0]!.foursomeNumber;
 
   // Find foursome members.
@@ -141,7 +170,12 @@ async function computeMaxCompleteHole(
       ),
     );
   const expectedMembers = memberRows.map((m) => m.playerId);
-  if (expectedMembers.length !== 4) return 0;
+  if (expectedMembers.length !== 4) {
+    // Defense-in-depth: the foursome exists per the assignment lookup above,
+    // but a malformed pairing (member count != 4) is treated as "no holes
+    // complete." Return foursomeNumber for caller bookkeeping.
+    return { maxComplete: 0, foursomeNumber };
+  }
 
   // For each hole 1..18, count members scored. Take max where count === 4.
   const scoredRows = await tx
@@ -165,7 +199,7 @@ async function computeMaxCompleteHole(
       maxComplete = r.holeNumber;
     }
   }
-  return maxComplete;
+  return { maxComplete, foursomeNumber };
 }
 
 /**
@@ -211,9 +245,11 @@ pressesRouter.post('/:roundId/presses', requireSession, async (c) => {
   const player = c.get('player')!;
   const roundId = c.req.param('roundId');
 
-  // Trip-1 kill switch (see lib/env.ts:pressesDisabled). Same gate is on
-  // the auto-press orchestrator; both must short-circuit BEFORE any DB
-  // write so the foursome-blind UNIQUE on team_press_log can't be hit.
+  // Operational kill switch (see lib/env.ts:pressesDisabled). Same gate is
+  // on the auto-press orchestrator. The original T6-4 reason (foursome-blind
+  // UNIQUE on team_press_log) was resolved by T10-1's migration 0012; the
+  // switch is retained as an emergency override if presses misbehave in
+  // production for any future reason. Short-circuits BEFORE any DB write.
   if (pressesDisabled()) {
     return c.json(
       { error: 'feature_disabled', code: 'presses_disabled', requestId },
@@ -261,8 +297,13 @@ pressesRouter.post('/:roundId/presses', requireSession, async (c) => {
         );
       }
 
-      // (3) Server-derived fromHole.
-      const maxComplete = await computeMaxCompleteHole(tx, roundId, player.id);
+      // (3) Server-derived fromHole + foursome (T10-1: foursomeNumber must
+      // be threaded into the team_press_log INSERT for foursome-scoped UNIQUE).
+      const { maxComplete, foursomeNumber } = await computeMaxCompleteHole(
+        tx,
+        roundId,
+        player.id,
+      );
       const fromHole = maxComplete + 1;
       if (fromHole > 18) {
         throw new BusinessRuleError('no_holes_left_to_press', 'round fully scored', 422);
@@ -293,6 +334,7 @@ pressesRouter.post('/:roundId/presses', requireSession, async (c) => {
           startHole: fromHole,
           triggerType: 'manual',
           trigger: null,
+          foursomeNumber,
           multiplier,
           firedAt: now,
           firedByPlayerId: player.id,
@@ -358,7 +400,7 @@ pressesRouter.delete('/:roundId/presses/:pressId', requireSession, async (c) => 
   const roundId = c.req.param('roundId');
   const pressId = c.req.param('pressId');
 
-  // Trip-1 kill switch (see lib/env.ts:pressesDisabled). Same gate as POST.
+  // Operational kill switch (see lib/env.ts:pressesDisabled). Same gate as POST.
   if (pressesDisabled()) {
     return c.json(
       { error: 'feature_disabled', code: 'presses_disabled', requestId },
@@ -380,32 +422,11 @@ pressesRouter.delete('/:roundId/presses/:pressId', requireSession, async (c) => 
         throw new BusinessRuleError('not_scorer_for_round', 'caller is not a scorer for this round', 403);
       }
 
-      // Find the press row.
-      const pressRows = await tx
-        .select({
-          id: teamPressLog.id,
-          startHole: teamPressLog.startHole,
-          triggerType: teamPressLog.triggerType,
-        })
-        .from(teamPressLog)
-        .where(
-          and(
-            eq(teamPressLog.id, pressId),
-            eq(teamPressLog.roundId, roundId),
-            eq(teamPressLog.tenantId, TENANT_ID),
-          ),
-        )
-        .limit(1);
-      if (pressRows.length === 0) {
-        throw new BusinessRuleError('press_not_found', 'press row not found', 404);
-      }
-      const press = pressRows[0]!;
-      if (press.triggerType !== 'manual') {
-        throw new BusinessRuleError('cannot_undo_auto_press', 'only manual presses are undoable', 422);
-      }
-
-      // Undo eligibility: NO hole at-or-after press.startHole has 4/4 scores.
-      // Find foursome members for this scorer.
+      // T10-1: Resolve the caller's foursome BEFORE the press-row lookup so
+      // we can filter by it (preventing cross-foursome undo). Pre-T10-1 the
+      // press-row lookup ran first and was foursome-blind — a scorer in
+      // foursome 1 with knowledge of (or a guess at) a press UUID from
+      // foursome 2 could DELETE foursome 2's manual press.
       const assignmentRows = await tx
         .select({ foursomeNumber: scorerAssignments.foursomeNumber })
         .from(scorerAssignments)
@@ -421,6 +442,39 @@ pressesRouter.delete('/:roundId/presses/:pressId', requireSession, async (c) => 
       if (foursomeNumber === undefined) {
         throw new BusinessRuleError('not_scorer_for_round', 'no scorer assignment', 403);
       }
+
+      // Find the press row — scoped to caller's foursome (T10-1).
+      const pressRows = await tx
+        .select({
+          id: teamPressLog.id,
+          startHole: teamPressLog.startHole,
+          triggerType: teamPressLog.triggerType,
+        })
+        .from(teamPressLog)
+        .where(
+          and(
+            eq(teamPressLog.id, pressId),
+            eq(teamPressLog.roundId, roundId),
+            eq(teamPressLog.foursomeNumber, foursomeNumber),
+            eq(teamPressLog.tenantId, TENANT_ID),
+          ),
+        )
+        .limit(1);
+      if (pressRows.length === 0) {
+        // 404 covers both "press doesn't exist" and "press exists but belongs
+        // to a different foursome" — caller cannot distinguish, which is the
+        // correct security posture (don't leak existence of sibling-foursome
+        // press rows).
+        throw new BusinessRuleError('press_not_found', 'press row not found', 404);
+      }
+      const press = pressRows[0]!;
+      if (press.triggerType !== 'manual') {
+        throw new BusinessRuleError('cannot_undo_auto_press', 'only manual presses are undoable', 422);
+      }
+
+      // Undo eligibility: NO hole at-or-after press.startHole has 4/4 scores.
+      // Use the foursomeNumber already resolved above (was redundantly
+      // re-queried pre-T10-1).
       const memberRows = await tx
         .select({ playerId: pairingMembers.playerId })
         .from(pairingMembers)

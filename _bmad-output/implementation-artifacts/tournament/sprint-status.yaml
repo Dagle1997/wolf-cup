@@ -250,6 +250,14 @@ development_status:
   # (press-orchestrator + manual presses route) and the existingPressLog
   # filter, and adds the multi-foursome regression tests CI never had. After
   # ship, flip the env flag off in VPS and redeploy.
-  T10-1-team-press-log-foursome-scoping: backlog
+  T10-1-team-press-log-foursome-scoping: done
+
+  # T10-2: surfaced during T10-1's CI runs — two tournament-api tests flaked
+  # intermittently (pass on rerun). `activity.eslint-rule.test.ts` timed out
+  # once at the 5s default on the lintText call; `finalize-before-handoff`
+  # returned 500 instead of 422 once. Both unrelated to T10-1's changes.
+  # Story should triage: bump testTimeout for the ESLint rule test, repro
+  # the handoff race-window 500 in isolation, decide stabilize-vs-retry-1.
+  T10-2-investigate-flaky-tournament-api-tests: backlog
 
   epic-T9-retrospective: optional

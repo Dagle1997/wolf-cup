@@ -930,6 +930,59 @@ describe('GET /api/events/:eventId/export/raw', () => {
     expect(matrixAfter.matrix).toEqual(matrixBefore);
   });
 
+  // T10-1: AC-6 — raw-state export must include foursomeNumber on every
+  // teamPressLog row. We seed a non-default (foursome_number=2) row so the
+  // assertion verifies the projection propagates the STORED value rather
+  // than silently defaulting. Row is located by a deterministic
+  // (team, startHole, triggerType, contextId) tuple — no positional indexing.
+  test('T10-1: teamPressLog projection includes foursomeNumber (non-default value)', async () => {
+    const s = await seed({ populated: true });
+    expect(s.roundId).not.toBeNull();
+    const roundId = s.roundId!;
+    const eventCtx = `event:${s.eventId}`;
+    const knownPressId = randomUUID();
+    // Use startHole=18 + team=teamB to minimize the chance a future fixture
+    // adds a colliding (foursome_number, team, start_hole, trigger_type)
+    // tuple under the new UNIQUE index. The end-of-round hole is rarely the
+    // subject of a press in tests.
+    const knownStartHole = 18;
+    const knownTeam = 'teamB' as const;
+    const knownTriggerType = 'manual' as const;
+    await db.insert(teamPressLog).values({
+      id: knownPressId,
+      roundId,
+      team: knownTeam,
+      startHole: knownStartHole,
+      triggerType: knownTriggerType,
+      trigger: null,
+      foursomeNumber: 2,
+      multiplier: 2,
+      firedAt: Date.now(),
+      firedByPlayerId: s.organizerId,
+      tenantId: TENANT_ID,
+      contextId: eventCtx,
+    });
+
+    const app = buildApp({ id: s.organizerId, isOrganizer: true });
+    const res = await app.request(`/api/events/${s.eventId}/export/raw`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { teamPressLog: Array<Record<string, unknown>> };
+
+    // Deterministic lookup: (startHole, team, triggerType, contextId, id)
+    // collectively pin the inserted row even if the fixture grows additional
+    // press rows in the future.
+    const found = body.teamPressLog.find(
+      (p) =>
+        p['startHole'] === knownStartHole &&
+        p['team'] === knownTeam &&
+        p['triggerType'] === knownTriggerType &&
+        p['contextId'] === eventCtx &&
+        p['id'] === knownPressId,
+    );
+    expect(found, 'inserted team_press_log row should appear in export').toBeDefined();
+    expect(found!['foursomeNumber']).toBe(2);
+  });
+
   test('filename slug edge cases', async () => {
     const { exportFilename } = await import('../services/export.js');
     const fixed = Date.UTC(2026, 4, 8, 4);

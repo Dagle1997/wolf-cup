@@ -27,10 +27,20 @@ import { players } from './players.js';
  * integer-cents discipline consistency with T6-3's
  * `individual_bet_presses.multiplier`.
  *
- * **UNIQUE(round_id, team, start_hole, trigger_type)** is the last-line
- * defense against duplicate press fires when the engine's log-dedupe
+ * **UNIQUE(round_id, foursome_number, team, start_hole, trigger_type)** is the
+ * last-line defense against duplicate press fires when the engine's log-dedupe
  * misses (SQLite WAL snapshot residual). The orchestrator catches
  * UNIQUE violations + logs warning + continues; tx is NOT rolled back.
+ *
+ * **foursome_number** is part of the dedupe key (T10-1). Without it, a
+ * foursome-2 auto-press at `(teamA, hole 5, 2-down)` would collide with
+ * foursome-1's identical-shape press in the same round; the engine's
+ * `existingPressLog` dedupe would also cross-suppress between foursomes.
+ * The v1 schema (migration 0006) omitted this dimension; migration 0012
+ * adds the column (DEFAULT 1 backfills pre-existing single-foursome rows)
+ * and rewrites the UNIQUE. The `.default(1)` here keeps the TS
+ * source-of-truth aligned with the migration so future `drizzle generate`
+ * runs don't emit a "drop default" noise diff.
  *
  * **`fired_by_player_id` is nullable** for auto-presses (no user
  * filed them); manual presses populate with the filer's playerId.
@@ -54,6 +64,7 @@ export const teamPressLog = sqliteTable(
     startHole: integer('start_hole').notNull(),
     triggerType: text('trigger_type').notNull(),
     trigger: text('trigger'),
+    foursomeNumber: integer('foursome_number').notNull().default(1),
     multiplier: integer('multiplier').notNull(),
     firedAt: integer('fired_at').notNull(),
     firedByPlayerId: text('fired_by_player_id').references(() => players.id, {
@@ -65,7 +76,7 @@ export const teamPressLog = sqliteTable(
     roundIdx: index('idx_team_press_log_round_id').on(t.roundId),
     fireDedupeUniq: uniqueIndex(
       'uniq_team_press_log_dedupe',
-    ).on(t.roundId, t.team, t.startHole, t.triggerType),
+    ).on(t.roundId, t.foursomeNumber, t.team, t.startHole, t.triggerType),
     teamCheck: check(
       'check_team_press_log_team',
       sql`${t.team} IN ('teamA', 'teamB')`,
