@@ -287,7 +287,7 @@ development_status:
   # ErrorCard). New files; zero edits to existing routes. Sets up T11-2 and
   # T11-3 to consume the primitives without bundling the cross-cutting work
   # into one giant story.
-  T11-1-tokens-and-shell-component-primitives: backlog
+  T11-1-tokens-and-shell-component-primitives: done
 
   # T11-2: Centralize auth boilerplate. Move loadAuthStatus +
   # validateAuthStatus logic into hooks/use-auth-session.ts (already exists

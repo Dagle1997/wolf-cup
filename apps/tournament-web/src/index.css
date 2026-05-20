@@ -3,6 +3,53 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * T11-1 design tokens.
+ *
+ * Inline `:root { ... }` block (NOT a separate tokens.css imported via
+ * @import) because Tailwind v4's @import "tailwindcss" pipeline has
+ * fragile sequencing for subsequent @import statements. Inline is
+ * ordering-agnostic and works identically in vite build + vite dev.
+ *
+ * Token values are pinned by the 2026-05-20 UI audit's observed-frequency
+ * data (117 raw hex codes across 16 files collapsed to these 12 colors).
+ * Comments next to each token name the audit-observed literal it
+ * replaces. Brand-blue drift across `#1d4ed8` / `#1e3a8a` / `#3b82f6`
+ * collapses to `--color-brand-primary` (the most-used shade, 7 uses).
+ *
+ * Consumed via inline `style={{ color: 'var(--color-text-primary)' }}`
+ * in route components. Tailwind v4 `@theme` alias for utility-class
+ * consumers is a future micro-enhancement (non-breaking).
+ *
+ * Route migration to consume these tokens lands in T11-3 (PageShell
+ * rollout). T11-1 ships the primitives only.
+ */
+:root {
+  /* Colors (12 tokens; collapsed from 117 hex literals) */
+  --color-surface: #fff;                /* card / input background; 23 uses */
+  --color-text-primary: #0f172a;        /* primary text; 3 uses + form-reset base */
+  --color-text-secondary: #475569;      /* secondary text (slate-600); 3 uses */
+  --color-text-muted: #555;             /* muted body / metadata; 21 uses */
+  --color-border: #cbd5e1;              /* standard input/card border; 5 uses + form-reset base */
+  --color-border-subtle: #ddd;          /* lighter divider; 7 uses */
+  --color-brand-primary: #1d4ed8;       /* primary CTA; 7 uses; collapses #1e3a8a (2) + #3b82f6 brand-blue drift */
+  --color-brand-tint: #eff6ff;          /* selected-state tint / brand accent bg; 4 uses */
+  --color-success: #16a34a;             /* confirmation / positive; collapses #0a5 (4) + #16a34a (2) */
+  --color-warning-bg: #fef3c7;          /* warning-state background; 3 uses */
+  --color-warning-text: #92400e;        /* warning-state text; 3 uses */
+  --color-danger: #dc2626;              /* destructive / error; collapses #c33 + #f87171 + #dc2626 family */
+
+  /* Font sizes (4-step scale; collapsed from 9 ad-hoc values) */
+  --font-xs: 0.75rem;                   /* smallest annotation; 1-use floor */
+  --font-sm: 0.875rem;                  /* small text; replaces 0.85em/0.85rem/0.9rem/0.95rem family (~14 uses) */
+  --font-base: 1rem;                    /* body default; 3 uses + implicit inherit */
+  --font-lg: 1.25rem;                   /* section heading; replaces 1.05/1.1/1.5/1.6/1.75rem family (~6 uses) */
+
+  /* Layout (consumed by PageShell) */
+  --page-padding: 16px;                 /* default page edge padding */
+  --page-max-width: 960px;              /* default page max content width */
+}
+
+/*
  * Default form-control + button appearance. Tailwind v4's preflight
  * strips browser-default styling on <input>, <select>, <textarea>, and
  * <button> — combined with our utility-light routes (most admin pages
