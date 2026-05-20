@@ -232,4 +232,24 @@ development_status:
   T9-3-ship-defer-decision-artifact: deferred
   T9-4-per-scorer-device-pwa-install-verification: deferred
 
+  # ---------------------------------------------------------------------------
+  # Epic T10: v1.5 Post-Trip-1 Followups
+  # Stand-alone fixes surfaced by the T1-T8 exit review (2026-05-07) and the
+  # Pinehurst trip. Each story is scoped to close a single known-issue from
+  # the exit-review report at _bmad-output/reviews/T1-T8-final-exit-review-codex.md.
+  # ---------------------------------------------------------------------------
+  epic-T10: backlog
+
+  # T10-1: team_press_log is foursome-blind in v1 — UNIQUE on
+  # (round_id, team, start_hole, trigger_type) has no foursome dimension, so a
+  # foursome-2 auto-press collides with foursome-1's press at the same
+  # hole/team OR cross-suppresses via the engine's existingPressLog dedupe.
+  # Currently masked in prod by env flag TOURNAMENT_PRESSES_DISABLED=true
+  # (shipped 2026-05-07 in commit 52567df). This story migrates the schema
+  # to include foursome_number, threads it through both INSERT sites
+  # (press-orchestrator + manual presses route) and the existingPressLog
+  # filter, and adds the multi-foursome regression tests CI never had. After
+  # ship, flip the env flag off in VPS and redeploy.
+  T10-1-team-press-log-foursome-scoping: backlog
+
   epic-T9-retrospective: optional
