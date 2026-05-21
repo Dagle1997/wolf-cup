@@ -20,6 +20,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { queryClient as appQueryClient } from '../lib/query-client';
+import { PageShell } from '../components/page-shell';
 
 // ---- Loader (mirror T2-3b/T2-5) -------------------------------------------
 
@@ -257,8 +258,7 @@ export function ProfilePage({ player: initialPlayer }: ProfilePageProps) {
   // ---- Render ------------------------------------------------------------
 
   return (
-    <div>
-      <h1>Your profile</h1>
+    <PageShell title="Your profile">
       <p>
         Signed in as <code>{player.id}</code>
         {player.isOrganizer ? ' (organizer)' : ''}.
@@ -455,7 +455,7 @@ export function ProfilePage({ player: initialPlayer }: ProfilePageProps) {
         {hiSavedAt !== null ? <p role="status">Saved.</p> : null}
         {hiError !== null ? <p role="alert">{hiError}</p> : null}
       </section>
-    </div>
+    </PageShell>
   );
 }
 

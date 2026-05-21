@@ -8,6 +8,7 @@ import { ActivityFeedProvider } from '../providers/activity-feed-provider';
 import { TournamentToast } from '../components/tournament-toast';
 import { TournamentBanner } from '../components/tournament-banner';
 import { AwardCelebration } from '../components/award-celebration';
+import { GlobalNav } from '../components/global-nav';
 import { useAuthSession } from '../hooks/use-auth-session';
 
 export const Route = createRootRoute({
@@ -19,6 +20,7 @@ function RootComponent() {
     <FirstMutationProvider>
       <ActivityFeedProvider>
         <div>
+          <GlobalNav />
           <Outlet />
           <InstallPromptHost />
           <TournamentToast />

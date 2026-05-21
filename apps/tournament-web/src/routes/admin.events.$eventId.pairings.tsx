@@ -14,6 +14,8 @@ import { createFileRoute, useParams } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 
 // ---- Loader ---------------------------------------------------------------
 
@@ -447,8 +449,8 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
   }
 
   return (
-    <div>
-      <h1>Pairings — {data.event.name}</h1>
+    <PageShell title={`Pairings — ${data.event.name}`}>
+      <BackLink to="/admin/events/$eventId" params={{ eventId }} label="Event admin" />
       <div>
         <label>
           Foursomes per round:{' '}
@@ -589,7 +591,7 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
           ))}
         </tbody>
       </table>
-    </div>
+    </PageShell>
   );
 }
 

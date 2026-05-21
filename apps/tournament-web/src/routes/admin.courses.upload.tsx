@@ -18,6 +18,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
 
 // ---- Component ------------------------------------------------------------
 
@@ -188,8 +189,8 @@ export function UploadCoursePage() {
 
   // idle
   return (
-    <form onSubmit={onSubmit}>
-      <h1>Upload a scorecard</h1>
+    <PageShell title="Upload a scorecard">
+      <form onSubmit={onSubmit}>
       <p>Pick a PDF or take a photo of a printed scorecard.</p>
       <label htmlFor="scorecard-file">Scorecard file</label>
       <input
@@ -203,7 +204,8 @@ export function UploadCoursePage() {
       <button type="submit" disabled={!file}>
         Submit
       </button>
-    </form>
+      </form>
+    </PageShell>
   );
 }
 

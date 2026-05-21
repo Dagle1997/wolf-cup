@@ -2,7 +2,8 @@
  * T6-6 settle-up page smoke tests.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { renderInRouter } from '../test-utils/render-in-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { SettleUpPage } from './events.$eventId.settle-up';
@@ -14,7 +15,7 @@ function renderWithQueryClient(eventId: string, viewerId?: string) {
   const pageProps = viewerId === undefined
     ? ({ eventId } as const)
     : ({ eventId, viewerId } as const);
-  return render(
+  return renderInRouter(
     <QueryClientProvider client={qc}>
       <SettleUpPage {...pageProps} />
     </QueryClientProvider>,

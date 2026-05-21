@@ -19,6 +19,8 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 import { useMarkMutation } from '../hooks/use-first-mutation';
 
 // ---- Auth-status loader (mirror T7-1) ------------------------------------
@@ -183,15 +185,14 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
   const count = totalPhotoCount(groups);
 
   return (
-    <div style={{ paddingBottom: 96 }}>
-      <header style={{ marginBottom: 12 }}>
-        <h1 style={{ marginBottom: 4 }}>Gallery</h1>
-        <div style={{ color: '#555', fontSize: '0.9rem' }}>
-          {count === 0
-            ? 'No photos yet'
-            : `${count} photo${count === 1 ? '' : 's'}`}
-        </div>
-      </header>
+    <PageShell title="Gallery">
+      <BackLink to="/events/$eventId" params={{ eventId }} />
+      <div style={{ paddingBottom: 96 }}>
+      <div style={{ color: '#555', fontSize: '0.9rem', marginBottom: 12 }}>
+        {count === 0
+          ? 'No photos yet'
+          : `${count} photo${count === 1 ? '' : 's'}`}
+      </div>
 
       {progress && (
         <div
@@ -454,7 +455,8 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </PageShell>
   );
 }
 

@@ -10,6 +10,8 @@
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 
 type AdminContextResponse = {
   event: { id: string; name: string };
@@ -60,13 +62,8 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
   const ctx = query.data!;
 
   return (
-    <div style={{ padding: 16 }}>
-      <p style={{ marginBottom: 8 }}>
-        <Link to="/events/$eventId" params={{ eventId }}>
-          ← Back to event home
-        </Link>
-      </p>
-      <h1>Admin — {ctx.event.name}</h1>
+    <PageShell title={`Admin — ${ctx.event.name}`}>
+      <BackLink to="/events/$eventId" params={{ eventId }} label="Event home" />
 
       <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 24px', display: 'grid', gap: 8 }}>
         <li>
@@ -188,7 +185,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           </Link>
         </li>
       </ul>
-    </div>
+    </PageShell>
   );
 }
 

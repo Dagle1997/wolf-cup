@@ -18,6 +18,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 import { formatCents } from '../lib/format-cents';
 
 // ---- Types ----------------------------------------------------------------
@@ -135,8 +137,8 @@ export function BetsPage({ eventId }: BetsPageProps) {
   }
 
   return (
-    <div>
-      <h1>Bets</h1>
+    <PageShell title="Bets">
+      <BackLink to="/events/$eventId" params={{ eventId }} />
       {bets.map((bet) => (
         <section
           key={bet.betId}
@@ -195,7 +197,7 @@ export function BetsPage({ eventId }: BetsPageProps) {
           ) : null}
         </section>
       ))}
-    </div>
+    </PageShell>
   );
 }
 

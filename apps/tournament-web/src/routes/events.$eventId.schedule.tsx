@@ -20,6 +20,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -161,8 +163,8 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
   const groups = groupRoundsByDate(rounds);
 
   return (
-    <div>
-      <h1>Schedule</h1>
+    <PageShell title="Schedule">
+      <BackLink to="/events/$eventId" params={{ eventId }} />
       {groups.map((g) => (
         <section key={g.roundDate} aria-label={`Rounds on ${formatScheduleDate(g.roundDate, event.timezone)}`} style={{ marginBottom: 20 }}>
           <h2 style={{ fontSize: '1.05rem', margin: '12px 0 8px' }}>
@@ -227,7 +229,7 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
           ))}
         </section>
       ))}
-    </div>
+    </PageShell>
   );
 }
 

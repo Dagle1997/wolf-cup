@@ -23,6 +23,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
 
 // ---- Loader ---------------------------------------------------------------
 
@@ -307,8 +308,7 @@ export function EditRuleSetPage({ ruleSetId }: { ruleSetId: string }) {
   const revisionNumber = ruleSet.latestRevision?.revisionNumber ?? 0;
 
   return (
-    <div>
-      <h1>Edit Rule Set: {ruleSet.name}</h1>
+    <PageShell title={`Edit Rule Set: ${ruleSet.name}`}>
       <p>Revision {revisionNumber === 0 ? '— (no revisions yet)' : revisionNumber}</p>
 
       {ruleSet.latestRevision === null ? (
@@ -450,7 +450,7 @@ export function EditRuleSetPage({ ruleSetId }: { ruleSetId: string }) {
       <button type="button" onClick={onSave} disabled={saveMutation.isPending}>
         {saveMutation.isPending ? 'Saving…' : 'Save'}
       </button>
-    </div>
+    </PageShell>
   );
 }
 

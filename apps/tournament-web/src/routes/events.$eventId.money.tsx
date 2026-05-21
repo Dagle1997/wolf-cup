@@ -23,6 +23,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 import { formatCents } from '../lib/format-cents';
 
 // ---- Types ----------------------------------------------------------------
@@ -107,8 +109,8 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
   }
 
   return (
-    <div>
-      <h1>Money</h1>
+    <PageShell title="Money">
+      <BackLink to="/events/$eventId" params={{ eventId }} />
       <p style={{ color: '#555', fontSize: '0.85rem' }}>
         Cell shows what the row player is up on the column player.
       </p>
@@ -146,7 +148,7 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
           })}
         </tbody>
       </table>
-    </div>
+    </PageShell>
   );
 }
 

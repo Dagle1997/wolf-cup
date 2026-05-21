@@ -11,7 +11,8 @@
  *  - 403 forbidden card
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { renderInRouter } from '../test-utils/render-in-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { CoursePreviewPage, rangeYardageTotal } from './events.$eventId.courses.$courseId';
@@ -20,7 +21,7 @@ function renderWithQc(eventId: string, courseId: string) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  return renderInRouter(
     <QueryClientProvider client={qc}>
       <CoursePreviewPage eventId={eventId} courseId={courseId} />
     </QueryClientProvider>,

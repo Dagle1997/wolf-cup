@@ -302,4 +302,4 @@ development_status:
   # page that's currently a dead-end on iOS standalone PWA. Replaces hand-
   # rolled loading/empty states with the T11-1 primitives. Depends on T11-1
   # and (preferably) T11-2.
-  T11-3-pageshell-and-backlink-rollout: backlog
+  T11-3-pageshell-and-backlink-rollout: done

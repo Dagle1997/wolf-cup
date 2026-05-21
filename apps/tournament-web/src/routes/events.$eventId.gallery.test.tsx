@@ -5,7 +5,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { renderInRouter } from '../test-utils/render-in-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { GalleryPage, type GalleryResponse } from './events.$eventId.gallery';
@@ -58,7 +59,7 @@ function renderPage(props: { eventId: string; isOrganizer: boolean }) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  return renderInRouter(
     <QueryClientProvider client={qc}>
       <GalleryPage {...props} />
     </QueryClientProvider>,

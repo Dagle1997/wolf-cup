@@ -19,6 +19,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
 
 // ---- Component ------------------------------------------------------------
 
@@ -69,8 +70,7 @@ export function MePage({ player }: MePageProps) {
   });
 
   return (
-    <div>
-      <h1>Your account</h1>
+    <PageShell title="Your account">
       <p>
         Signed in as <code>{player.id}</code>
         {player.isOrganizer ? ' (organizer)' : ''}.
@@ -90,7 +90,7 @@ export function MePage({ player }: MePageProps) {
       {errorText !== null ? (
         <p role="alert">{errorText}</p>
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 

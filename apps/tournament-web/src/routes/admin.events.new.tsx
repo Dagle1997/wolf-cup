@@ -22,6 +22,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
 
 // ---- Loader (mirror T2-3b/T2-5) -------------------------------------------
 
@@ -294,8 +295,7 @@ export function NewEventWizard() {
   if (saveState.kind === 'success') {
     const inviteUrl = `${window.location.origin}/invite/${saveState.inviteToken}`;
     return (
-      <div style={{ padding: 16 }}>
-        <h1>Event created!</h1>
+      <PageShell title="Event created!">
         <p>Share this invite link with the players:</p>
         <p>
           <code>{inviteUrl}</code>
@@ -331,13 +331,12 @@ export function NewEventWizard() {
         <p style={{ fontSize: '0.8em', color: '#888', marginTop: 16 }}>
           Event id: {saveState.eventId}
         </p>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div>
-      <h1>New Event</h1>
+    <PageShell title="New Event">
       <p>Step {form.step} of 3</p>
 
       {form.step === 1 ? (
@@ -510,7 +509,7 @@ export function NewEventWizard() {
           ) : null}
         </section>
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 

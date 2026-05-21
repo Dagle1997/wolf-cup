@@ -21,6 +21,8 @@ import { createFileRoute, useParams } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 
 // ---- Loader (mirror T2-3b/T2-5) -------------------------------------------
 
@@ -273,8 +275,8 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
   }
 
   return (
-    <div>
-      <h1>Sub-game setup — Round {data.eventRound.roundNumber}</h1>
+    <PageShell title={`Sub-game setup — Round ${data.eventRound.roundNumber}`}>
+      <BackLink to="/admin/events/$eventId" params={{ eventId: data.eventRound.eventId }} label="Event admin" />
       <p>{data.event.name}</p>
 
       {ALL_SUB_GAME_TYPES.map((type) => {
@@ -342,7 +344,7 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
       {errorText !== null ? (
         <p role="alert">{errorText}</p>
       ) : null}
-    </div>
+    </PageShell>
   );
 }
 

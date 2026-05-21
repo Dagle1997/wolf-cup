@@ -8,7 +8,8 @@
  *  - forbidden message on 403
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { renderInRouter } from '../test-utils/render-in-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { BetsPage } from './events.$eventId.bets';
@@ -17,7 +18,7 @@ function renderWithQueryClient(eventId: string) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  return renderInRouter(
     <QueryClientProvider client={qc}>
       <BetsPage eventId={eventId} />
     </QueryClientProvider>,

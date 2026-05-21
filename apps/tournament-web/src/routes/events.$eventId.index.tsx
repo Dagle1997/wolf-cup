@@ -23,6 +23,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { ActivityFeed } from '../components/activity-feed';
+import { PageShell } from '../components/page-shell';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -185,12 +186,9 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
   const dateRange = formatDateRange(event.startDate, event.endDate, event.timezone);
 
   return (
-    <div>
-      <header style={{ marginBottom: 16 }}>
-        <h1>{event.name}</h1>
-        <div style={{ color: '#555', fontSize: '0.95rem' }}>{dateRange}</div>
-        <div style={{ marginTop: 4, fontWeight: 'bold' }}>{countdown}</div>
-      </header>
+    <PageShell title={event.name}>
+      <div style={{ color: '#555', fontSize: '0.95rem' }}>{dateRange}</div>
+      <div style={{ marginTop: 4, marginBottom: 16, fontWeight: 'bold' }}>{countdown}</div>
 
       <p style={{ marginBottom: 16 }}>
         You&apos;re in, {firstName(viewerName)}.
@@ -247,7 +245,7 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
       <div style={{ marginTop: 24 }}>
         <ActivityFeed />
       </div>
-    </div>
+    </PageShell>
   );
 }
 

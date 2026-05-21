@@ -20,6 +20,8 @@ import { useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -131,10 +133,10 @@ export function CoursePreviewPage({ eventId, courseId }: CoursePreviewPageProps)
     );
   }
 
-  return <CoursePreviewView data={outcome.data} />;
+  return <CoursePreviewView data={outcome.data} eventId={eventId} />;
 }
 
-function CoursePreviewView({ data }: { data: CoursePreviewResponse }) {
+function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eventId: string }) {
   const { course, revision, tees, holes, defaultTeeColor } = data;
 
   // Initial tee: defaultTeeColor if set, else first tee alphabetically
@@ -147,7 +149,8 @@ function CoursePreviewView({ data }: { data: CoursePreviewResponse }) {
   const totalYardage = rangeYardageTotal(holes, 1, 18, selectedTee);
 
   return (
-    <div>
+    <PageShell>
+      <BackLink to="/events/$eventId/schedule" params={{ eventId }} />
       <header
         style={{
           background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
@@ -221,7 +224,7 @@ function CoursePreviewView({ data }: { data: CoursePreviewResponse }) {
           </tr>
         </tbody>
       </table>
-    </div>
+    </PageShell>
   );
 }
 

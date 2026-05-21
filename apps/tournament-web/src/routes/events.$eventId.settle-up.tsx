@@ -15,6 +15,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 import { formatCents } from '../lib/format-cents';
 
 type MoneyMatrixResponse = {
@@ -99,8 +101,8 @@ export function SettleUpPage({ eventId, viewerId }: SettleUpPageProps) {
   const zeroSumOk = totalSum === 0;
 
   return (
-    <div>
-      <h1>Settle Up</h1>
+    <PageShell title="Settle Up">
+      <BackLink to="/events/$eventId" params={{ eventId }} />
 
       {!zeroSumOk && (
         <div
@@ -172,7 +174,7 @@ export function SettleUpPage({ eventId, viewerId }: SettleUpPageProps) {
           );
         })}
       </section>
-    </div>
+    </PageShell>
   );
 }
 

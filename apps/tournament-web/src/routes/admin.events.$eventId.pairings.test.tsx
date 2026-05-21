@@ -4,7 +4,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { renderInRouter } from '../test-utils/render-in-router';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -16,7 +17,7 @@ function renderPage() {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  return renderInRouter(
     <QueryClientProvider client={qc}>
       <PairingsPage eventId={TEST_EVENT_ID} />
     </QueryClientProvider>,

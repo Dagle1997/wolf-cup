@@ -5,7 +5,8 @@
  * including same-day grouping + each pairing-state variant.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
+import { renderInRouter } from '../test-utils/render-in-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { SchedulePage, groupRoundsByDate } from './events.$eventId.schedule';
@@ -17,7 +18,7 @@ function renderWithQc(eventId: string) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return render(
+  return renderInRouter(
     <QueryClientProvider client={qc}>
       <SchedulePage eventId={eventId} />
     </QueryClientProvider>,

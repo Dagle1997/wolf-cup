@@ -23,6 +23,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
 
 // ---- Types + initial state ------------------------------------------------
 
@@ -434,9 +435,7 @@ export function NewCoursePage() {
   const submitDisabled = !isComplete() || saveState.kind === 'saving' || uploading;
 
   return (
-    <div>
-      <h1>New Course</h1>
-
+    <PageShell title="New Course">
       {/* Upload pre-populate */}
       <section>
         <h2>Upload Scorecard (optional)</h2>
@@ -653,7 +652,7 @@ export function NewCoursePage() {
           {saveState.kind === 'saving' ? 'Saving…' : 'Submit'}
         </button>
       </form>
-    </div>
+    </PageShell>
   );
 }
 

@@ -8,11 +8,12 @@
  * - formatCents output verified
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { MoneyPage } from './events.$eventId.money';
 import { formatCents } from '../lib/format-cents';
+import { renderInRouter } from '../test-utils/render-in-router';
 
 function renderWithQueryClient(eventId: string, viewerId?: string) {
   const qc = new QueryClient({
@@ -22,7 +23,7 @@ function renderWithQueryClient(eventId: string, viewerId?: string) {
   const pageProps = viewerId === undefined
     ? ({ eventId } as const)
     : ({ eventId, viewerId } as const);
-  return render(
+  return renderInRouter(
     <QueryClientProvider client={qc}>
       <MoneyPage {...pageProps} />
     </QueryClientProvider>,

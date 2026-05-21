@@ -22,6 +22,8 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -174,8 +176,8 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
   const allUnscored = data.rows.every((r) => r.grossThroughHole === null);
 
   return (
-    <div>
-      <h1>Leaderboard</h1>
+    <PageShell title="Leaderboard">
+      <BackLink to="/events/$eventId" params={{ eventId }} />
       <div>
         <label htmlFor="scope-select">Scope: </label>
         <select
@@ -237,7 +239,7 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
           </tbody>
         </table>
       )}
-    </div>
+    </PageShell>
   );
 }
 

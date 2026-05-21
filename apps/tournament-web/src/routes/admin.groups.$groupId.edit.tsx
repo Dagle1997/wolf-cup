@@ -27,6 +27,8 @@ import { createFileRoute, useParams } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
+import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 
 // ---- Loader (mirror T2-3b/T2-5/T3-2) --------------------------------------
 
@@ -256,8 +258,8 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
   }
 
   return (
-    <div>
-      <h1>Edit Group: {group.name}</h1>
+    <PageShell title={`Edit Group: ${group.name}`}>
+      <BackLink to="/admin/events/$eventId" params={{ eventId: group.eventId }} label="Event admin" />
 
       {topLevelError ? <p role="alert">{topLevelError}</p> : null}
 
@@ -472,7 +474,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
           </div>
         ) : null}
       </section>
-    </div>
+    </PageShell>
   );
 }
 
