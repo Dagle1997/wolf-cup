@@ -326,4 +326,4 @@ development_status:
   # font scaling) and add responsive rules — preferably centralized in
   # tokens/index.css + PageShell rather than scattered across 114 inline-style
   # blocks. Judgment-heavy; verification needs viewport testing, not just jsdom.
-  T12-2-mobile-responsive-media-sweep: backlog
+  T12-2-mobile-responsive-media-sweep: done

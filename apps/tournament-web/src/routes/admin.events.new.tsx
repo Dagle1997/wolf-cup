@@ -379,7 +379,7 @@ export function NewEventWizard() {
       {form.step === 2 ? (
         <section>
           <h2>Rounds</h2>
-          <table>
+          <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
             <thead>
               <tr>
                 <th>Date</th>
@@ -450,7 +450,7 @@ export function NewEventWizard() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           <button type="button" onClick={addRound}>
             Add round
           </button>

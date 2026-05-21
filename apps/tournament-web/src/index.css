@@ -74,7 +74,7 @@
     color: #0f172a;
     font: inherit;
     margin: 4px 8px 12px 0;
-    min-height: 40px;
+    min-height: 44px;
     box-sizing: border-box;
   }
   :where(input:not([type='checkbox']):not([type='radio']):not([type='range'])):focus-visible {
@@ -104,7 +104,7 @@
     color: #0f172a;
     font: inherit;
     margin: 4px 8px 12px 0;
-    min-height: 40px;
+    min-height: 44px;
     box-sizing: border-box;
   }
   :where(button:not([data-skip-base-style])) {
@@ -118,7 +118,7 @@
     font-weight: 600;
     cursor: pointer;
     margin: 4px 8px 8px 0;
-    min-height: 40px;
+    min-height: 44px;
     box-sizing: border-box;
   }
   :where(button:not([data-skip-base-style])):disabled {

@@ -330,7 +330,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
         {group.members.length === 0 ? (
           <EmptyState title="No members yet." body="Add players below." />
         ) : (
-          <table>
+          <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
             <thead>
               <tr>
                 <th>Name</th>
@@ -358,7 +358,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </section>
 

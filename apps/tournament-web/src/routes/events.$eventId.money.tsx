@@ -122,7 +122,7 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
       <p style={{ color: '#555', fontSize: '0.85rem' }}>
         Cell shows what the row player is up on the column player.
       </p>
-      <table>
+      <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
         <thead>
           <tr>
             <th></th>
@@ -155,7 +155,7 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
             );
           })}
         </tbody>
-      </table>
+      </table></div>
     </PageShell>
   );
 }

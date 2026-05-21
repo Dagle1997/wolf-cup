@@ -212,7 +212,7 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
       ) : allUnscored ? (
         <EmptyState title="No scores yet." />
       ) : (
-        <table>
+        <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
           <thead>
             <tr>
               <th scope="col">Rank</th>
@@ -245,7 +245,7 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </PageShell>
   );

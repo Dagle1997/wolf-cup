@@ -531,7 +531,7 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
       {savedAt !== null ? <p role="status">Saved.</p> : null}
       {errorText !== null ? <p role="alert">{errorText}</p> : null}
 
-      <table>
+      <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
         <thead>
           <tr>
             <th>Round</th>
@@ -613,7 +613,7 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </PageShell>
   );
 }

@@ -486,7 +486,7 @@ export function NewCoursePage() {
         {/* Tees */}
         <section>
           <h2>Tees</h2>
-          <table>
+          <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
             <thead>
               <tr>
                 <th>Color</th>
@@ -535,7 +535,7 @@ export function NewCoursePage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           <button type="button" onClick={addTee}>
             Add tee
           </button>
@@ -544,7 +544,7 @@ export function NewCoursePage() {
         {/* 18 holes */}
         <section>
           <h2>Holes</h2>
-          <table>
+          <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
             <thead>
               <tr>
                 <th>Hole</th>
@@ -598,7 +598,7 @@ export function NewCoursePage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </section>
 
         {/* Totals */}

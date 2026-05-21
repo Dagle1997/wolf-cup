@@ -191,7 +191,7 @@ function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eve
         ))}
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div style={{ overflowX: 'auto' }} tabIndex={0}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th style={cellStyle}>Hole</th>
@@ -228,7 +228,7 @@ function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eve
             <td style={cellStyle} aria-hidden="true">—</td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
     </PageShell>
   );
 }
