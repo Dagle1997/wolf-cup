@@ -303,3 +303,27 @@ development_status:
   # rolled loading/empty states with the T11-1 primitives. Depends on T11-1
   # and (preferably) T11-2.
   T11-3-pageshell-and-backlink-rollout: done
+
+  # ---------------------------------------------------------------------------
+  # Epic T12: tournament-web Design Sweep — remaining followups
+  # The two cross-cutting items named in the T11 audit (2026-05-20) but never
+  # cut as stories. T11 shipped tokens + shell primitives + auth dedup +
+  # PageShell/BackLink rollout, but left two threads open. Both are
+  # tournament-web-only.
+  # ---------------------------------------------------------------------------
+  epic-T12: backlog
+
+  # T12-1: loading/error/empty-state primitive migration. The T11-1 primitives
+  # (LoadingCard / ErrorCard / EmptyState) exist but have ZERO route adoption;
+  # ~18 routes still hand-roll `if (query.isLoading) return <div>Loading…</div>`
+  # and ad-hoc `isError` divs. Migrate those routes to the primitives for
+  # visual + a11y consistency. Mechanical, well-bounded, unit-testable.
+  T12-1-loading-error-empty-primitive-migration: backlog
+
+  # T12-2: mobile/responsive @media sweep. tournament-web has ZERO @media
+  # queries; it's a phone-first PWA used at the course. Audit for small-viewport
+  # problems (horizontal overflow on wide tables/grids, touch-target sizing,
+  # font scaling) and add responsive rules — preferably centralized in
+  # tokens/index.css + PageShell rather than scattered across 114 inline-style
+  # blocks. Judgment-heavy; verification needs viewport testing, not just jsdom.
+  T12-2-mobile-responsive-media-sweep: backlog
