@@ -279,7 +279,7 @@ development_status:
   # components; copy-pasted auth boilerplate in 17 routes; no mobile @media;
   # admin pages are dead-ends on iOS standalone PWA).
   # ---------------------------------------------------------------------------
-  epic-T11: backlog
+  epic-T11: done
 
   # T11-1: Foundation primitives only — no migrations. Introduce `tokens.css`
   # (CSS vars for ~6-8 actual-use colors + a 4-step font scale) and the
