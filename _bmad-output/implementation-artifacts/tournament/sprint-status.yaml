@@ -238,7 +238,7 @@ development_status:
   # Pinehurst trip. Each story is scoped to close a single known-issue from
   # the exit-review report at _bmad-output/reviews/T1-T8-final-exit-review-codex.md.
   # ---------------------------------------------------------------------------
-  epic-T10: backlog
+  epic-T10: done
 
   # T10-1: team_press_log is foursome-blind in v1 — UNIQUE on
   # (round_id, team, start_hole, trigger_type) has no foursome dimension, so a
