@@ -29,6 +29,9 @@ import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
+import { EmptyState } from '../components/empty-state';
 
 // ---- Loader (mirror T2-3b/T2-5/T3-2) --------------------------------------
 
@@ -242,18 +245,20 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
 
   if (groupQuery.isLoading) {
     return (
-      <div>
-        <h1>Loading group…</h1>
-      </div>
+      <PageShell title="Edit Group">
+        <LoadingCard message="Loading group…" />
+      </PageShell>
     );
   }
 
   if (groupQuery.isError || !group) {
     return (
-      <div>
-        <h1>Failed to load group</h1>
-        <p role="alert">Try again or contact support.</p>
-      </div>
+      <PageShell title="Edit Group">
+        <ErrorCard
+          title="Failed to load group"
+          error="Try again or contact support."
+        />
+      </PageShell>
     );
   }
 
@@ -323,7 +328,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
       <section>
         <h2>Members ({group.members.length})</h2>
         {group.members.length === 0 ? (
-          <p>No members yet. Add players below.</p>
+          <EmptyState title="No members yet." body="Add players below." />
         ) : (
           <table>
             <thead>

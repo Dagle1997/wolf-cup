@@ -19,6 +19,7 @@
 
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { LoadingCard } from '../components/loading-card';
 import {
   useCallback,
   useEffect,
@@ -393,7 +394,11 @@ export function ScoreEntryRoute() {
   }, []);
 
   if (isLoading) {
-    return <div data-testid="loading">Loading…</div>;
+    return (
+      <div data-testid="loading">
+        <LoadingCard />
+      </div>
+    );
   }
   if (error) {
     // TypeError without .status — pure network failure with no cached

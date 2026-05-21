@@ -16,6 +16,9 @@ import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAuthSession } from '../hooks/use-auth-session';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
+import { EmptyState } from '../components/empty-state';
 
 type EventListItem = {
   id: string;
@@ -102,7 +105,7 @@ function IndexPage() {
     return (
       <div style={{ padding: 24 }}>
         <h1>Tournament</h1>
-        <p>Loading…</p>
+        <LoadingCard />
       </div>
     );
   }
@@ -111,7 +114,10 @@ function IndexPage() {
     return (
       <div style={{ padding: 24 }}>
         <h1>Tournament</h1>
-        <p role="alert">Couldn&apos;t load your events. Refresh to retry.</p>
+        <ErrorCard
+          error="Couldn't load your events. Refresh to retry."
+          onRetry={eventsQuery.refetch}
+        />
       </div>
     );
   }
@@ -121,31 +127,31 @@ function IndexPage() {
       <div style={{ padding: 24 }}>
         <h1>Tournament</h1>
         {session.player.isOrganizer ? (
-          <>
-            <p style={{ color: '#555', margin: '12px 0 16px' }}>
-              No events yet. Create one to start.
-            </p>
-            <Link
-              to="/admin/events/new"
-              style={{
-                display: 'inline-block',
-                padding: '10px 18px',
-                background: '#1d4ed8',
-                color: '#fff',
-                borderRadius: 6,
-                textDecoration: 'none',
-                fontWeight: 600,
-              }}
-              data-testid="home-create-event"
-            >
-              + Create your first event
-            </Link>
-          </>
+          <EmptyState
+            title="No events yet. Create one to start."
+            action={
+              <Link
+                to="/admin/events/new"
+                style={{
+                  display: 'inline-block',
+                  padding: '10px 18px',
+                  background: '#1d4ed8',
+                  color: '#fff',
+                  borderRadius: 6,
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                }}
+                data-testid="home-create-event"
+              >
+                + Create your first event
+              </Link>
+            }
+          />
         ) : (
-          <p style={{ color: '#555', margin: '12px 0' }}>
-            You aren&apos;t in any events yet. Your organizer will share an
-            invite link when the event is set up.
-          </p>
+          <EmptyState
+            title="You aren't in any events yet."
+            body="Your organizer will share an invite link when the event is set up."
+          />
         )}
       </div>
     );
@@ -157,7 +163,7 @@ function IndexPage() {
     return (
       <div style={{ padding: 24 }}>
         <h1>Tournament</h1>
-        <p>Loading your event…</p>
+        <LoadingCard message="Loading your event…" />
       </div>
     );
   }

@@ -24,6 +24,8 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { ActivityFeed } from '../components/activity-feed';
 import { PageShell } from '../components/page-shell';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -156,27 +158,31 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
 
   if (query.isPending) {
     return (
-      <div>
-        <h1>Event</h1>
-        <p>Loading…</p>
-      </div>
+      <PageShell title="Event">
+        <LoadingCard />
+      </PageShell>
     );
   }
   if (query.isError) {
     return (
-      <div>
-        <h1>Event</h1>
-        <p role="alert">Couldn&apos;t load the event. {String(query.error)}</p>
-      </div>
+      <PageShell title="Event">
+        <ErrorCard
+          title="Couldn't load the event."
+          error={query.error}
+          onRetry={query.refetch}
+        />
+      </PageShell>
     );
   }
   const outcome = query.data!;
   if (outcome.kind === 'forbidden') {
     return (
-      <div>
-        <h1>Event</h1>
-        <p role="alert">You aren&apos;t a participant in this event.</p>
-      </div>
+      <PageShell title="Event">
+        <ErrorCard
+          title="Not a participant"
+          error="You aren't a participant in this event."
+        />
+      </PageShell>
     );
   }
 

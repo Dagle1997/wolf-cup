@@ -23,6 +23,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
 
 // ---- Loader (mirror T2-3b/T2-5) -------------------------------------------
 
@@ -249,13 +251,25 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
   // ---- Render --------------------------------------------------------------
 
   if (query.isLoading) {
-    return <div>Loading…</div>;
+    return (
+      <PageShell title="Sub-game setup">
+        <LoadingCard />
+      </PageShell>
+    );
   }
   if (query.isError) {
-    return <div role="alert">Couldn't load sub-game setup. Try again.</div>;
+    return (
+      <PageShell title="Sub-game setup">
+        <ErrorCard error="Couldn't load sub-game setup. Try again." />
+      </PageShell>
+    );
   }
   if (!data) {
-    return <div>Loading…</div>;
+    return (
+      <PageShell title="Sub-game setup">
+        <LoadingCard />
+      </PageShell>
+    );
   }
 
   function togglePlayer(type: SubGameType, playerId: string): void {

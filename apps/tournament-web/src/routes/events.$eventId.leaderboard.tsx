@@ -24,6 +24,9 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
+import { EmptyState } from '../components/empty-state';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -134,21 +137,23 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
 
   if (query.isPending) {
     return (
-      <div>
-        <h1>Leaderboard</h1>
-        <p>Loading…</p>
-      </div>
+      <PageShell title="Leaderboard">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <LoadingCard />
+      </PageShell>
     );
   }
 
   if (query.isError) {
     return (
-      <div>
-        <h1>Leaderboard</h1>
-        <p role="alert">
-          Couldn&apos;t load the leaderboard. {String(query.error)}
-        </p>
-      </div>
+      <PageShell title="Leaderboard">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard
+          title="Couldn't load the leaderboard."
+          error={query.error}
+          onRetry={query.refetch}
+        />
+      </PageShell>
     );
   }
 
@@ -156,19 +161,22 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
 
   if (outcome.kind === 'forbidden') {
     return (
-      <div>
-        <h1>Leaderboard</h1>
-        <p role="alert">You aren&apos;t a participant in this event.</p>
-      </div>
+      <PageShell title="Leaderboard">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard
+          title="Not a participant"
+          error="You aren't a participant in this event."
+        />
+      </PageShell>
     );
   }
 
   if (outcome.kind === 'unknown_event') {
     return (
-      <div>
-        <h1>Leaderboard</h1>
-        <p role="alert">Event not found.</p>
-      </div>
+      <PageShell title="Leaderboard">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard title="Event not found" error="Event not found." />
+      </PageShell>
     );
   }
 
@@ -200,9 +208,9 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
         <p>No rounds yet.</p>
       )}
       {data.rows.length === 0 ? (
-        <p>No participants yet.</p>
+        <EmptyState title="No participants yet." />
       ) : allUnscored ? (
-        <p>No scores yet.</p>
+        <EmptyState title="No scores yet." />
       ) : (
         <table>
           <thead>

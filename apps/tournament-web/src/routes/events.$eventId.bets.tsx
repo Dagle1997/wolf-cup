@@ -20,6 +20,9 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
+import { EmptyState } from '../components/empty-state';
 import { formatCents } from '../lib/format-cents';
 
 // ---- Types ----------------------------------------------------------------
@@ -98,41 +101,46 @@ export function BetsPage({ eventId }: BetsPageProps) {
 
   if (query.isPending) {
     return (
-      <div>
-        <h1>Bets</h1>
-        <p>Loading…</p>
-      </div>
+      <PageShell title="Bets">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <LoadingCard />
+      </PageShell>
     );
   }
 
   if (query.isError) {
     return (
-      <div>
-        <h1>Bets</h1>
-        <p role="alert">
-          Couldn&apos;t load bets. {String(query.error)}
-        </p>
-      </div>
+      <PageShell title="Bets">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard
+          title="Couldn't load bets."
+          error={query.error}
+          onRetry={query.refetch}
+        />
+      </PageShell>
     );
   }
 
   const outcome = query.data!;
   if (outcome.kind === 'forbidden') {
     return (
-      <div>
-        <h1>Bets</h1>
-        <p role="alert">You aren&apos;t a participant in this event.</p>
-      </div>
+      <PageShell title="Bets">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard
+          title="Not a participant"
+          error="You aren't a participant in this event."
+        />
+      </PageShell>
     );
   }
 
   const { bets } = outcome.data;
   if (bets.length === 0) {
     return (
-      <div>
-        <h1>Bets</h1>
-        <p>No bets yet — organizer can add via admin.</p>
-      </div>
+      <PageShell title="Bets">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <EmptyState title="No bets yet — organizer can add via admin." />
+      </PageShell>
     );
   }
 

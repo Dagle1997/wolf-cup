@@ -24,6 +24,8 @@ import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
 
 // ---- Loader ---------------------------------------------------------------
 
@@ -289,18 +291,20 @@ export function EditRuleSetPage({ ruleSetId }: { ruleSetId: string }) {
 
   if (ruleSetQuery.isLoading) {
     return (
-      <div>
-        <h1>Loading rule set…</h1>
-      </div>
+      <PageShell title="Edit Rule Set">
+        <LoadingCard message="Loading rule set…" />
+      </PageShell>
     );
   }
 
   if (ruleSetQuery.isError || !ruleSetQuery.data) {
     return (
-      <div>
-        <h1>Failed to load rule set</h1>
-        <p role="alert">Try again or contact support.</p>
-      </div>
+      <PageShell title="Edit Rule Set">
+        <ErrorCard
+          title="Failed to load rule set"
+          error="Try again or contact support."
+        />
+      </PageShell>
     );
   }
 

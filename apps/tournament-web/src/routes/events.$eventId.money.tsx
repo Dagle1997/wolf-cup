@@ -25,6 +25,9 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
+import { EmptyState } from '../components/empty-state';
 import { formatCents } from '../lib/format-cents';
 
 // ---- Types ----------------------------------------------------------------
@@ -70,41 +73,46 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
 
   if (query.isPending) {
     return (
-      <div>
-        <h1>Money</h1>
-        <p>Loading…</p>
-      </div>
+      <PageShell title="Money">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <LoadingCard />
+      </PageShell>
     );
   }
 
   if (query.isError) {
     return (
-      <div>
-        <h1>Money</h1>
-        <p role="alert">
-          Couldn&apos;t load the money matrix. {String(query.error)}
-        </p>
-      </div>
+      <PageShell title="Money">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard
+          title="Couldn't load the money matrix."
+          error={query.error}
+          onRetry={query.refetch}
+        />
+      </PageShell>
     );
   }
 
   const outcome = query.data!;
   if (outcome.kind === 'forbidden') {
     return (
-      <div>
-        <h1>Money</h1>
-        <p role="alert">You aren&apos;t a participant in this event.</p>
-      </div>
+      <PageShell title="Money">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard
+          title="Not a participant"
+          error="You aren't a participant in this event."
+        />
+      </PageShell>
     );
   }
 
   const { players, matrix, totals } = outcome.data;
   if (players.length === 0) {
     return (
-      <div>
-        <h1>Money</h1>
-        <p>No participants yet.</p>
-      </div>
+      <PageShell title="Money">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <EmptyState title="No participants yet." />
+      </PageShell>
     );
   }
 

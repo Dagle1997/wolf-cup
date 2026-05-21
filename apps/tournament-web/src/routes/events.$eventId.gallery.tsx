@@ -21,6 +21,9 @@ import { useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
+import { EmptyState } from '../components/empty-state';
 import { useMarkMutation } from '../hooks/use-first-mutation';
 
 // ---- Auth-status loader (mirror T7-1) ------------------------------------
@@ -157,27 +160,34 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
 
   if (query.isPending) {
     return (
-      <div>
-        <h1>Gallery</h1>
-        <p>Loading…</p>
-      </div>
+      <PageShell title="Gallery">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <LoadingCard />
+      </PageShell>
     );
   }
   if (query.isError) {
     return (
-      <div>
-        <h1>Gallery</h1>
-        <p role="alert">Couldn&apos;t load the gallery. {String(query.error)}</p>
-      </div>
+      <PageShell title="Gallery">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard
+          title="Couldn't load the gallery."
+          error={query.error}
+          onRetry={query.refetch}
+        />
+      </PageShell>
     );
   }
   const outcome = query.data!;
   if (outcome.kind === 'forbidden') {
     return (
-      <div>
-        <h1>Gallery</h1>
-        <p role="alert">You aren&apos;t a participant in this event.</p>
-      </div>
+      <PageShell title="Gallery">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <ErrorCard
+          title="Not a participant"
+          error="You aren't a participant in this event."
+        />
+      </PageShell>
     );
   }
 
@@ -241,7 +251,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
       )}
 
       {groups.length === 0 && !progress && (
-        <p style={{ color: '#777' }}>Tap the camera button to add the first photo.</p>
+        <EmptyState title="Tap the camera button to add the first photo." />
       )}
 
       {groups.map((g) => (

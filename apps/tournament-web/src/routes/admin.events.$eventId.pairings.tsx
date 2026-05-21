@@ -16,6 +16,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
 
 // ---- Loader ---------------------------------------------------------------
 
@@ -392,9 +394,30 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
     return false;
   }, [data, grid, foursomesPerRound]);
 
-  if (query.isLoading) return <div>Loading…</div>;
-  if (query.isError) return <div role="alert">Couldn&apos;t load pairings.</div>;
-  if (!data) return <div>Loading…</div>;
+  if (query.isLoading) {
+    return (
+      <PageShell title="Pairings">
+        <BackLink to="/admin/events/$eventId" params={{ eventId }} label="Event admin" />
+        <LoadingCard />
+      </PageShell>
+    );
+  }
+  if (query.isError) {
+    return (
+      <PageShell title="Pairings">
+        <BackLink to="/admin/events/$eventId" params={{ eventId }} label="Event admin" />
+        <ErrorCard error="Couldn't load pairings." />
+      </PageShell>
+    );
+  }
+  if (!data) {
+    return (
+      <PageShell title="Pairings">
+        <BackLink to="/admin/events/$eventId" params={{ eventId }} label="Event admin" />
+        <LoadingCard />
+      </PageShell>
+    );
+  }
 
   function setCell(rIdx: number, fIdx: number, sIdx: number, value: string) {
     setGrid((prev) =>

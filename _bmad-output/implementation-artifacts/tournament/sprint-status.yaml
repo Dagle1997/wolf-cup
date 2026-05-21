@@ -318,7 +318,7 @@ development_status:
   # ~18 routes still hand-roll `if (query.isLoading) return <div>Loading…</div>`
   # and ad-hoc `isError` divs. Migrate those routes to the primitives for
   # visual + a11y consistency. Mechanical, well-bounded, unit-testable.
-  T12-1-loading-error-empty-primitive-migration: backlog
+  T12-1-loading-error-empty-primitive-migration: done
 
   # T12-2: mobile/responsive @media sweep. tournament-web has ZERO @media
   # queries; it's a phone-first PWA used at the course. Audit for small-viewport

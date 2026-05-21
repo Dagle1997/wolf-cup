@@ -12,6 +12,8 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
 
 type AdminContextResponse = {
   event: { id: string; name: string };
@@ -47,16 +49,20 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
     staleTime: 30_000,
   });
 
-  if (query.isPending) return <div style={{ padding: 24 }}>Loading…</div>;
+  if (query.isPending) {
+    return (
+      <PageShell title="Admin">
+        <BackLink to="/events/$eventId" params={{ eventId }} label="Event home" />
+        <LoadingCard />
+      </PageShell>
+    );
+  }
   if (query.isError) {
     return (
-      <div style={{ padding: 24 }}>
-        <h1>Admin</h1>
-        <p role="alert">Couldn&apos;t load admin context.</p>
-        <Link to="/events/$eventId" params={{ eventId }}>
-          ← Back to event home
-        </Link>
-      </div>
+      <PageShell title="Admin">
+        <BackLink to="/events/$eventId" params={{ eventId }} label="Event home" />
+        <ErrorCard error="Couldn't load admin context." />
+      </PageShell>
     );
   }
   const ctx = query.data!;

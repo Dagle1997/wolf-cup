@@ -15,6 +15,9 @@
 import { createFileRoute, useParams } from '@tanstack/react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { LoadingCard } from '../components/loading-card';
+import { ErrorCard } from '../components/error-card';
+import { EmptyState } from '../components/empty-state';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -138,7 +141,7 @@ export function InvitePage({ token }: { token: string }) {
   if (inviteQuery.isLoading) {
     return (
       <div>
-        <h1>Loading invite…</h1>
+        <LoadingCard message="Loading invite…" />
       </div>
     );
   }
@@ -148,23 +151,29 @@ export function InvitePage({ token }: { token: string }) {
     if (status === 410) {
       return (
         <div>
-          <h1>This invite has expired</h1>
-          <p role="alert">Ask Josh for a new invite link.</p>
+          <ErrorCard
+            title="This invite has expired"
+            error="Ask Josh for a new invite link."
+          />
         </div>
       );
     }
     if (status === 404) {
       return (
         <div>
-          <h1>Invite not found</h1>
-          <p role="alert">Double-check the link, or ask Josh for a new one.</p>
+          <ErrorCard
+            title="Invite not found"
+            error="Double-check the link, or ask Josh for a new one."
+          />
         </div>
       );
     }
     return (
       <div>
-        <h1>Couldn't load invite</h1>
-        <p role="alert">Try again in a moment.</p>
+        <ErrorCard
+          title="Couldn't load invite"
+          error="Try again in a moment."
+        />
       </div>
     );
   }
@@ -205,7 +214,10 @@ export function InvitePage({ token }: { token: string }) {
         ))}
       </ul>
       {data.roster.length === 0 ? (
-        <p>The event roster is empty. Ask Josh to add players first.</p>
+        <EmptyState
+          title="The event roster is empty."
+          body="Ask Josh to add players first."
+        />
       ) : null}
     </div>
   );
