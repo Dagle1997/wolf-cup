@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  KeyRound,
   Loader2,
   Plus,
   RefreshCw,
@@ -98,14 +99,25 @@ export const Route = createFileRoute('/attendance')({
 
 function AttendancePage() {
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminChecked, setAdminChecked] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const [selectedWeekId, setSelectedWeekId] = useState<number | null>(null);
 
   // Check admin status silently
   useEffect(() => {
     apiFetch<{ authenticated: boolean }>('/admin/auth/check')
       .then(() => setIsAdmin(true))
-      .catch(() => setIsAdmin(false));
+      .catch(() => setIsAdmin(false))
+      .finally(() => setAdminChecked(true));
   }, []);
+
+  // Inline login success: flipping isAdmin is sufficient. The isAdmin-gated
+  // queries (weeks, specific-week) fetch automatically when `enabled` flips
+  // true, and the public /attendance payload is identical for admins, so no
+  // invalidation is needed — only the controls' interactivity changes.
+  function handleAdminLogin() {
+    setIsAdmin(true);
+  }
 
   // Load default attendance (current/next week)
   const defaultQuery = useQuery({
@@ -186,18 +198,43 @@ function AttendancePage() {
     <div className="p-4 max-w-2xl mx-auto pb-24">
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-xl font-semibold">Attendance</h2>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2"
-          onClick={() => {
-            void defaultQuery.refetch();
-            if (selectedWeekId) void weekQuery.refetch();
-          }}
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-        </Button>
+        <div className="flex items-center gap-1">
+          {/* Discreet admin entry — organizers tap to log in inline; players ignore it */}
+          {adminChecked && !isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-muted-foreground/50 hover:text-muted-foreground"
+              onClick={() => setShowLogin((v) => !v)}
+              aria-label="Admin login"
+              title="Admin login"
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2"
+            onClick={() => {
+              void defaultQuery.refetch();
+              if (selectedWeekId) void weekQuery.refetch();
+            }}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+          </Button>
+        </div>
       </div>
+
+      {adminChecked && !isAdmin && showLogin && (
+        <AdminLoginInline
+          onSuccess={() => {
+            setShowLogin(false);
+            handleAdminLogin();
+          }}
+          onCancel={() => setShowLogin(false)}
+        />
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -299,6 +336,84 @@ function AttendancePage() {
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Admin Login (inline)
+// ---------------------------------------------------------------------------
+
+function AdminLoginInline({
+  onSuccess,
+  onCancel,
+}: {
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      await apiFetch('/admin/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      });
+      setPassword('');
+      onSuccess();
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message === 'INVALID_CREDENTIALS'
+          ? 'Invalid username or password.'
+          : 'Login failed. Try again.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(e) => void handleSubmit(e)}
+      className="mb-3 rounded-md border p-3 bg-muted/20 flex flex-col gap-2"
+    >
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        Admin login
+      </p>
+      <input
+        type="text"
+        autoComplete="username"
+        placeholder="Username"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        required
+        className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      <input
+        type="password"
+        autoComplete="current-password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        required
+        className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={loading}>
+          {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+          Sign in
+        </Button>
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }
 
