@@ -311,7 +311,7 @@ development_status:
   # PageShell/BackLink rollout, but left two threads open. Both are
   # tournament-web-only.
   # ---------------------------------------------------------------------------
-  epic-T12: backlog
+  epic-T12: done
 
   # T12-1: loading/error/empty-state primitive migration. The T11-1 primitives
   # (LoadingCard / ErrorCard / EmptyState) exist but have ZERO route adoption;
