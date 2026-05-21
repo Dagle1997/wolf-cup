@@ -18,44 +18,10 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
-import { queryClient as appQueryClient } from '../lib/query-client';
+import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { useMarkMutation } from '../hooks/use-first-mutation';
 
 // ---- Auth-status loader (mirror T7-1) ------------------------------------
-
-type AuthStatus = {
-  player: null | { id: string; isOrganizer: boolean; name?: string };
-};
-
-function validateAuthStatus(body: unknown): AuthStatus {
-  if (body === null || typeof body !== 'object') return { player: null };
-  const p = (body as { player?: unknown }).player;
-  if (p === null) return { player: null };
-  if (
-    p !== null &&
-    typeof p === 'object' &&
-    typeof (p as { id?: unknown }).id === 'string' &&
-    typeof (p as { isOrganizer?: unknown }).isOrganizer === 'boolean'
-  ) {
-    const obj = p as { id: string; isOrganizer: boolean; name?: unknown };
-    return {
-      player: {
-        id: obj.id,
-        isOrganizer: obj.isOrganizer,
-        ...(typeof obj.name === 'string' ? { name: obj.name } : {}),
-      },
-    };
-  }
-  return { player: null };
-}
-
-async function loadAuthStatus(): Promise<AuthStatus> {
-  const res = await fetch('/api/auth/status').catch(() => null);
-  if (res === null || !res.ok) return { player: null };
-  const body = (await res.json().catch(() => null)) as unknown;
-  if (body === null) return { player: null };
-  return validateAuthStatus(body);
-}
 
 // ---- Types ----------------------------------------------------------------
 
@@ -496,17 +462,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
 
 export const Route = createFileRoute('/events/$eventId/gallery')({
   beforeLoad: async () => {
-    const status = await appQueryClient.fetchQuery({
-      queryKey: ['auth-status'],
-      queryFn: loadAuthStatus,
-      staleTime: 30_000,
-      retry: false,
-    });
-    if (status.player === null) {
-      window.location.assign('/api/auth/google');
-      throw new Error('redirecting-to-oauth');
-    }
-    return { player: status.player };
+    return requireAuthOrRedirect();
   },
   component: RouteComponent,
 });

@@ -19,7 +19,7 @@
 
 import { createFileRoute } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { queryClient } from '../lib/query-client';
+import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -58,35 +58,6 @@ type FetchOutcome =
 
 // ---- Auth-status loader (mirror leaderboard) ------------------------------
 
-type AuthStatus = { player: null | { id: string; isOrganizer: boolean } };
-
-function validateAuthStatus(body: unknown): AuthStatus {
-  if (body === null || typeof body !== 'object') return { player: null };
-  const p = (body as { player?: unknown }).player;
-  if (p === null) return { player: null };
-  if (
-    p !== null &&
-    typeof p === 'object' &&
-    typeof (p as { id?: unknown }).id === 'string' &&
-    typeof (p as { isOrganizer?: unknown }).isOrganizer === 'boolean'
-  ) {
-    return {
-      player: {
-        id: (p as { id: string }).id,
-        isOrganizer: (p as { isOrganizer: boolean }).isOrganizer,
-      },
-    };
-  }
-  return { player: null };
-}
-
-async function loadAuthStatus(): Promise<AuthStatus> {
-  const res = await fetch('/api/auth/status').catch(() => null);
-  if (res === null || !res.ok) return { player: null };
-  const body = (await res.json().catch(() => null)) as unknown;
-  if (body === null) return { player: null };
-  return validateAuthStatus(body);
-}
 
 // ---- Schedule fetcher -----------------------------------------------------
 
@@ -346,17 +317,7 @@ function PairingBlock({
 
 export const Route = createFileRoute('/events/$eventId/schedule')({
   beforeLoad: async () => {
-    const status = await queryClient.fetchQuery({
-      queryKey: ['auth-status'],
-      queryFn: loadAuthStatus,
-      staleTime: 30_000,
-      retry: false,
-    });
-    if (status.player === null) {
-      window.location.assign('/api/auth/google');
-      throw new Error('redirecting-to-oauth');
-    }
-    return { player: status.player };
+    return requireAuthOrRedirect();
   },
   component: RouteComponent,
 });

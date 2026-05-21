@@ -17,44 +17,7 @@
 
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
-import { queryClient } from '../lib/query-client';
-
-// ---- Loader ---------------------------------------------------------------
-
-type AuthStatus = { player: null | { id: string; isOrganizer: boolean } };
-
-/**
- * Validates the /api/auth/status response shape. Returns the body if
- * shape-conformant; returns `{ player: null }` otherwise.
- */
-function validateAuthStatus(body: unknown): AuthStatus {
-  if (body === null || typeof body !== 'object') return { player: null };
-  const p = (body as { player?: unknown }).player;
-  if (p === null) return { player: null };
-  if (
-    p !== null &&
-    typeof p === 'object' &&
-    typeof (p as { id?: unknown }).id === 'string' &&
-    typeof (p as { isOrganizer?: unknown }).isOrganizer === 'boolean'
-  ) {
-    return { player: { id: (p as { id: string }).id, isOrganizer: (p as { isOrganizer: boolean }).isOrganizer } };
-  }
-  return { player: null };
-}
-
-/**
- * Loader for /admin/courses/upload. Five-step contract per spec
- * Risk Acceptance §3 — covers fetch failure, !ok responses, JSON parse
- * failures, body=null, and shape mismatches by collapsing every error
- * path into `{ player: null }` (which then triggers the OAuth redirect).
- */
-async function loadAuthStatus(): Promise<AuthStatus> {
-  const res = await fetch('/api/auth/status').catch(() => null);
-  if (res === null || !res.ok) return { player: null };
-  const body = (await res.json().catch(() => null)) as unknown;
-  if (body === null) return { player: null };
-  return validateAuthStatus(body);
-}
+import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 
 // ---- Component ------------------------------------------------------------
 
@@ -262,27 +225,7 @@ function ForbiddenMessage() {
 
 export const Route = createFileRoute('/admin/courses/upload')({
   beforeLoad: async () => {
-    // TanStack Query caching per spec Risk Acceptance §3: 30s staleTime
-    // (a freshly-promoted organizer sees the change within 30s of
-    // navigation), retry: false (a failing /api/auth/status surfaces via
-    // the redirect-to-OAuth branch, not via retry storms).
-    const status = await queryClient.ensureQueryData({
-      queryKey: ['auth-status'],
-      queryFn: loadAuthStatus,
-      staleTime: 30_000,
-      retry: false,
-    });
-    if (status.player === null) {
-      // Same-origin relative URL — works in production AND local dev (Vite
-      // proxy forwards /api/* to the API). Must escape the SPA so the
-      // OAuth Set-Cookie + 302 round-trip can complete.
-      window.location.assign('/api/auth/google');
-      // The browser navigates away before TanStack Router resolves the
-      // loader. Throwing keeps TanStack Router from rendering anything in
-      // the meantime.
-      throw new Error('redirecting-to-oauth');
-    }
-    return { player: status.player };
+    return requireAuthOrRedirect();
   },
   component: RouteComponent,
 });

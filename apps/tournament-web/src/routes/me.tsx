@@ -18,39 +18,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { queryClient } from '../lib/query-client';
-
-// ---- Loader (mirror T2-3b/T2-5) -------------------------------------------
-
-type AuthStatus = { player: null | { id: string; isOrganizer: boolean } };
-
-function validateAuthStatus(body: unknown): AuthStatus {
-  if (body === null || typeof body !== 'object') return { player: null };
-  const p = (body as { player?: unknown }).player;
-  if (p === null) return { player: null };
-  if (
-    p !== null &&
-    typeof p === 'object' &&
-    typeof (p as { id?: unknown }).id === 'string' &&
-    typeof (p as { isOrganizer?: unknown }).isOrganizer === 'boolean'
-  ) {
-    return {
-      player: {
-        id: (p as { id: string }).id,
-        isOrganizer: (p as { isOrganizer: boolean }).isOrganizer,
-      },
-    };
-  }
-  return { player: null };
-}
-
-async function loadAuthStatus(): Promise<AuthStatus> {
-  const res = await fetch('/api/auth/status').catch(() => null);
-  if (res === null || !res.ok) return { player: null };
-  const body = (await res.json().catch(() => null)) as unknown;
-  if (body === null) return { player: null };
-  return validateAuthStatus(body);
-}
+import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 
 // ---- Component ------------------------------------------------------------
 
@@ -130,21 +98,11 @@ export function MePage({ player }: MePageProps) {
 
 export const Route = createFileRoute('/me')({
   beforeLoad: async () => {
-    // staleTime: 0 — /me is the "is this still me?" surface; reading a
-    // 30s-cached auth-status can let a server-deleted session keep the
-    // page visible until the cache expires. Force a fresh check here.
-    // Other admin routes use 30s caching; /me is intentionally stricter.
-    const status = await queryClient.fetchQuery({
-      queryKey: ['auth-status'],
-      queryFn: loadAuthStatus,
-      staleTime: 0,
-      retry: false,
-    });
-    if (status.player === null) {
-      window.location.assign('/api/auth/google');
-      throw new Error('redirecting-to-oauth');
-    }
-    return { player: status.player };
+    // freshness: 'always' (staleTime 0) — /me is the "is this still me?"
+    // surface; reading a 30s-cached auth-status can let a server-deleted
+    // session keep the page visible until the cache expires. Force a fresh
+    // check. Other routes use the default 'cache' (30s) freshness.
+    return requireAuthOrRedirect({ freshness: 'always' });
   },
   component: RouteComponent,
 });
