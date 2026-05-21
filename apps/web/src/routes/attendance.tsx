@@ -204,7 +204,7 @@ function AttendancePage() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-muted-foreground/50 hover:text-muted-foreground"
+              className="h-8 px-2 text-amber-500 hover:text-amber-600 dark:text-amber-400"
               onClick={() => setShowLogin((v) => !v)}
               aria-label="Admin login"
               title="Admin login"
