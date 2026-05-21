@@ -495,44 +495,48 @@ describe('Score POST against finalized round (T5-6 integration with T5-8)', () =
 });
 
 describe('finalize-before-handoff regression (T5-8 closes T5-7g)', () => {
-  // T10-2: retry: 1 is TRIAGE, not a verified fix.
+  // retry: 1 is RETAINED by decision after the T10-3 structural diagnosis
+  // (2026-05-21). It is the correct mitigation for a rare environmental
+  // transient — NOT a band-aid over an unfixed structural bug.
   //
-  // Observation: this test returned 500 instead of 422 exactly once during
-  // T10-1's CI runs (2026-05-20); passed on rerun. Root cause was not
-  // diagnosed in T10-2's scope.
+  // Symptom: this test returned 500 instead of 422 exactly once during
+  // T10-1's CI runs (2026-05-20); passed on rerun.
   //
-  // Hypothesized causes (any combination plausible):
-  //   1. The dynamic `await import('./scorer-assignments.js')` below races
-  //      with the parallelized test runner's in-memory libsql connection
-  //      state. The shared `file::memory:?cache=shared` URL is shared across
-  //      tests in this file.
-  //   2. The `__testPlayer = {...}` reassign inside this test (set in
-  //      buildApp() ~line 208, reassigned mid-test below) is a module-level
-  //      global. A concurrent test resetting `__testPlayer` between the
-  //      assignment and the request() call could change which player the
-  //      requireSession mock returns.
-  //   3. Post-finalize, the round_states row transition leaves a brief
-  //      window where the handoff handler's auth path reads state =
-  //      'finalized' but a downstream query fails on a not-yet-consistent
-  //      derived row, throwing into the route's 500 fallback.
+  // T10-3 investigated the three originally-hypothesized causes (full
+  // writeup: _bmad-output/implementation-artifacts/tournament/
+  // T10-3-handoff-flake-structural-diagnosis.md). #1 and #2 are refuted by
+  // direct empirical evidence; #3 is refuted deductively (no concurrency to
+  // create the window):
+  //   1. Cross-file `file::memory:?cache=shared` contamination — REFUTED
+  //      (empirical). A 4-mode sentinel probe showed Vitest 3.2.4's default
+  //      `forks` + `isolate: true` spawns a FRESH process per test file
+  //      (distinct pids even at maxForks=1), so the process-scoped shared-
+  //      cache DB is never shared across files. Sharing appeared only under
+  //      the non-default `singleFork` / `--no-isolate`. This repo's
+  //      vitest.config.ts declares NO pool/isolate overrides, so the default
+  //      (isolating) behavior is what runs in CI and locally.
+  //   2. `__testPlayer` module-global race — REFUTED (empirical). No
+  //      `test.concurrent` in this file → tests run sequentially; the global
+  //      can't be raced by a sibling, and cross-file the processes are
+  //      separate (per #1).
+  //   3. Post-finalize handler state-transition window — REFUTED
+  //      (deductive). /finalize commits state='finalized' via transitionState
+  //      and returns 200 BEFORE this handoff begins; the handoff's
+  //      getRoundState runs in a later transaction on the same single
+  //      connection, where the commit is visible. The "sub-ms residual race"
+  //      in services/round-state.ts concerns CONCURRENT writers — there is
+  //      no concurrency in this sequential test.
   //
-  // Honest retry math: with retry: 1 the test passes whenever at least ONE
-  // of the two attempts passes. Probability of false-PASS (test reports
-  // green despite a real bug) = 1 - p² where p is per-attempt failure
-  // probability. Examples:
-  //   - p=10% real bug rate → 99% false-pass rate (severe masking).
-  //   - p=50%               → 75% false-pass rate.
-  //   - p=90%               → 19% false-pass rate (still meaningful).
-  //   - p=100% deterministic→ 0% false-pass (BOTH iterations fail).
-  // So retry: 1 reduces signal across the WHOLE bug-rate spectrum, with
-  // worst masking at low-rate intermittent bugs (exactly the kind we'd
-  // want to catch). The project accepts this risk for T10-2 as a triage
-  // tradeoff against false-failure CI signal — if production 500s ever
-  // start appearing in the post-finalize-then-handoff window in real use,
-  // treat that as the structural-diagnosis trigger regardless of whether
-  // this test signal flips.
-  //
-  // Structural fix tracked as followup story `T10-3-handoff-flake-structural-diagnosis`.
+  // The actual firing path of the one-off 500 (`transfer_failed` catch at
+  // scorer-assignments.ts:443 vs `event_not_resolvable` at :227) was NOT
+  // captured at the time, so the precise cause is not proven. With every
+  // structural hypothesis eliminated, the leading remaining INFERENCE is a
+  // rare environmental/load-induced transient on the in-memory connection
+  // surfacing through the `transfer_failed` fallback — the class `retry: 1`
+  // correctly absorbs. If this test ever fails BOTH iterations
+  // (deterministic), or production 500s appear in the post-finalize→handoff
+  // window, that is a NEW signal — reopen the diagnosis (ideally capturing
+  // `body.code` + the server error string); do not silently widen the retry.
   test('handoff returns 422 round_finalized when finalize committed before handoff begins', { retry: 1 }, async () => {
     const s = await seed({ state: 'complete_editable', fullScores: true });
 

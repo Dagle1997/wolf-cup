@@ -267,7 +267,7 @@ development_status:
   # state transition window), and remove the retry once the underlying race
   # is fixed. Also surfaces test-isolation primitives that may benefit other
   # integration tests in the file (e.g., per-test __testPlayer reset).
-  T10-3-handoff-flake-structural-diagnosis: backlog
+  T10-3-handoff-flake-structural-diagnosis: done
 
   # ---------------------------------------------------------------------------
   # Epic T11: tournament-web Design Consistency Sweep
