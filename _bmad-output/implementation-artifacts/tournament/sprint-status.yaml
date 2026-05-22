@@ -311,11 +311,9 @@ development_status:
   # PageShell/BackLink rollout, but left two threads open. Both are
   # tournament-web-only.
   # ---------------------------------------------------------------------------
-  # Reopened 2026-05-22: T12-1 + T12-2 shipped but the T12-2 completion notes
-  # flagged a non-blocking a11y followup that was never cut as a story (the
-  # scroll-region wrappers added in T12-2 are focusable but unnamed + have no
-  # explicit focus ring). T12-3 closes it. Epic flips back to done when T12-3 lands.
-  epic-T12: in-progress
+  # Reopened 2026-05-22 for T12-3 (scroll-region a11y followup); closed again
+  # the same day when T12-3 landed. T12-1 + T12-2 + T12-3 all done.
+  epic-T12: done
 
   # T12-1: loading/error/empty-state primitive migration. The T11-1 primitives
   # (LoadingCard / ErrorCard / EmptyState) exist but have ZERO route adoption;
@@ -352,4 +350,4 @@ development_status:
   # unit-testable. OUT OF SCOPE: the "on-phone confirmation" item from the T12-2
   # notes is operational manual-verify (Josh tabbing through on a real device),
   # not code — record it as a manual followup, do not implement. tournament-web-only.
-  T12-3-scroll-region-accessibility: backlog
+  T12-3-scroll-region-accessibility: done

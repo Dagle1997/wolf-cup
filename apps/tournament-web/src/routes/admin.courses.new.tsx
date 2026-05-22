@@ -24,6 +24,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
+import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Types + initial state ------------------------------------------------
 
@@ -486,7 +487,7 @@ export function NewCoursePage() {
         {/* Tees */}
         <section>
           <h2>Tees</h2>
-          <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
+          <ScrollableTable label="Course tees"><table>
             <thead>
               <tr>
                 <th>Color</th>
@@ -535,7 +536,7 @@ export function NewCoursePage() {
                 </tr>
               ))}
             </tbody>
-          </table></div>
+          </table></ScrollableTable>
           <button type="button" onClick={addTee}>
             Add tee
           </button>
@@ -544,7 +545,7 @@ export function NewCoursePage() {
         {/* 18 holes */}
         <section>
           <h2>Holes</h2>
-          <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
+          <ScrollableTable label="Course holes"><table>
             <thead>
               <tr>
                 <th>Hole</th>
@@ -598,7 +599,7 @@ export function NewCoursePage() {
                 </tr>
               ))}
             </tbody>
-          </table></div>
+          </table></ScrollableTable>
         </section>
 
         {/* Totals */}

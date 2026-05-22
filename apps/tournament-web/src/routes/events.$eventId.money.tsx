@@ -28,6 +28,7 @@ import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
+import { ScrollableTable } from '../components/scrollable-table';
 import { formatCents } from '../lib/format-cents';
 
 // ---- Types ----------------------------------------------------------------
@@ -122,7 +123,7 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
       <p style={{ color: '#555', fontSize: '0.85rem' }}>
         Cell shows what the row player is up on the column player.
       </p>
-      <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
+      <ScrollableTable label="Money matrix"><table>
         <thead>
           <tr>
             <th></th>
@@ -155,7 +156,7 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
             );
           })}
         </tbody>
-      </table></div>
+      </table></ScrollableTable>
     </PageShell>
   );
 }

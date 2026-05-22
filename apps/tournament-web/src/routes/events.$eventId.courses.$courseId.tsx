@@ -24,6 +24,7 @@ import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
+import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -191,7 +192,7 @@ function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eve
         ))}
       </div>
 
-      <div style={{ overflowX: 'auto' }} tabIndex={0}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <ScrollableTable label="Course scorecard"><table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th style={cellStyle}>Hole</th>
@@ -228,7 +229,7 @@ function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eve
             <td style={cellStyle} aria-hidden="true">—</td>
           </tr>
         </tbody>
-      </table></div>
+      </table></ScrollableTable>
     </PageShell>
   );
 }

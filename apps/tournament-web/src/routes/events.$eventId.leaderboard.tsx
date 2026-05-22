@@ -27,6 +27,7 @@ import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
+import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -212,7 +213,7 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
       ) : allUnscored ? (
         <EmptyState title="No scores yet." />
       ) : (
-        <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
+        <ScrollableTable label="Leaderboard"><table>
           <thead>
             <tr>
               <th scope="col">Rank</th>
@@ -245,7 +246,7 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
               </tr>
             ))}
           </tbody>
-        </table></div>
+        </table></ScrollableTable>
       )}
     </PageShell>
   );

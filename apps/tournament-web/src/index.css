@@ -133,3 +133,17 @@
     color: #334155;
   }
 }
+
+/*
+ * T12-3 scroll-region focus ring. The T12-2 horizontal-scroll table wrappers
+ * (now the ScrollableTable primitive — role="region" tabIndex={0}) are keyboard
+ * tab-stops; this gives them a visible focus indicator that mirrors the input
+ * :focus-visible rule above (2px solid #1d4ed8, offset 1px), sourced via the
+ * --color-brand-primary token. :focus-visible (not :focus) shows the ring only
+ * for keyboard focus, not on mouse/touch scroll. The outline is drawn outside
+ * the border box, so the region's own overflow-x:auto does not clip it.
+ */
+.scroll-region:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 1px;
+}

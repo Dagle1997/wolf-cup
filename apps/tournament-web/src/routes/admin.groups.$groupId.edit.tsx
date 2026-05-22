@@ -32,6 +32,7 @@ import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
+import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Loader (mirror T2-3b/T2-5/T3-2) --------------------------------------
 
@@ -330,7 +331,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
         {group.members.length === 0 ? (
           <EmptyState title="No members yet." body="Add players below." />
         ) : (
-          <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
+          <ScrollableTable label="Group members"><table>
             <thead>
               <tr>
                 <th>Name</th>
@@ -358,7 +359,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
                 </tr>
               ))}
             </tbody>
-          </table></div>
+          </table></ScrollableTable>
         )}
       </section>
 

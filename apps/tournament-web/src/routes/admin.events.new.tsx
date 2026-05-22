@@ -23,6 +23,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
+import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Loader (mirror T2-3b/T2-5) -------------------------------------------
 
@@ -379,7 +380,7 @@ export function NewEventWizard() {
       {form.step === 2 ? (
         <section>
           <h2>Rounds</h2>
-          <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
+          <ScrollableTable label="Event rounds"><table>
             <thead>
               <tr>
                 <th>Date</th>
@@ -450,7 +451,7 @@ export function NewEventWizard() {
                 </tr>
               ))}
             </tbody>
-          </table></div>
+          </table></ScrollableTable>
           <button type="button" onClick={addRound}>
             Add round
           </button>

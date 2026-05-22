@@ -18,6 +18,7 @@ import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
+import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Loader ---------------------------------------------------------------
 
@@ -531,7 +532,7 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
       {savedAt !== null ? <p role="status">Saved.</p> : null}
       {errorText !== null ? <p role="alert">{errorText}</p> : null}
 
-      <div style={{ overflowX: 'auto' }} tabIndex={0}><table>
+      <ScrollableTable label="Pairings"><table>
         <thead>
           <tr>
             <th>Round</th>
@@ -613,7 +614,7 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
             </tr>
           ))}
         </tbody>
-      </table></div>
+      </table></ScrollableTable>
     </PageShell>
   );
 }
