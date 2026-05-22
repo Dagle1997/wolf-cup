@@ -311,7 +311,11 @@ development_status:
   # PageShell/BackLink rollout, but left two threads open. Both are
   # tournament-web-only.
   # ---------------------------------------------------------------------------
-  epic-T12: done
+  # Reopened 2026-05-22: T12-1 + T12-2 shipped but the T12-2 completion notes
+  # flagged a non-blocking a11y followup that was never cut as a story (the
+  # scroll-region wrappers added in T12-2 are focusable but unnamed + have no
+  # explicit focus ring). T12-3 closes it. Epic flips back to done when T12-3 lands.
+  epic-T12: in-progress
 
   # T12-1: loading/error/empty-state primitive migration. The T11-1 primitives
   # (LoadingCard / ErrorCard / EmptyState) exist but have ZERO route adoption;
@@ -327,3 +331,25 @@ development_status:
   # tokens/index.css + PageShell rather than scattered across 114 inline-style
   # blocks. Judgment-heavy; verification needs viewport testing, not just jsdom.
   T12-2-mobile-responsive-media-sweep: done
+
+  # T12-3: scroll-region accessibility (accessible-name + focus-ring). T12-2
+  # (commit d6ca3f2) fixed 375px horizontal overflow by wrapping 8 wide tables
+  # across 7 routes in `<div style={{ overflowX: 'auto' }} tabIndex={0}>` scroll
+  # containers. Two a11y gaps remain on those containers, both verifiable against
+  # the source: (1) NO ACCESSIBLE NAME — tabIndex={0} makes each div a keyboard
+  # tab-stop, but with no role/aria-label a screen reader announces nothing on
+  # focus; (2) NO EXPLICIT FOCUS RING — index.css has a :focus-visible outline
+  # rule for inputs (line ~80) but nothing for these focusable divs, so the
+  # keyboard-focus indicator is browser-default/subtle. Correct-over-expedient
+  # fix: extract a `ScrollableTable` primitive (same family as BackLink /
+  # PageShell / LoadingCard) encapsulating overflowX:auto + tabIndex={0} +
+  # role="region" + an aria-label prop + a `.scroll-region` className; add a
+  # `.scroll-region:focus-visible` rule to index.css mirroring the existing
+  # input rule; migrate all 8 call sites (admin.groups.$groupId.edit,
+  # events.$eventId.courses.$courseId, admin.events.new, admin.courses.new ×2,
+  # admin.events.$eventId.pairings, events.$eventId.money,
+  # events.$eventId.leaderboard); add unit tests for the primitive. Mechanical +
+  # unit-testable. OUT OF SCOPE: the "on-phone confirmation" item from the T12-2
+  # notes is operational manual-verify (Josh tabbing through on a real device),
+  # not code — record it as a manual followup, do not implement. tournament-web-only.
+  T12-3-scroll-region-accessibility: backlog

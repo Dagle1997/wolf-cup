@@ -129,14 +129,14 @@ Read `_bmad-output/implementation-artifacts/tournament/sprint-status.yaml`.
 
 **Story-key uniqueness assertion.** After parsing sprint-status.yaml, build the set of all story-keys within the active epic. If any duplicates exist (manual edit error, partial merge), write gate marker `gate_type: "schema-violation"` and STOP. Question: `Director: duplicate story-key "{key}" found in sprint-status.yaml. Fix the file (de-dupe or rename) and confirm before proceeding. [gate-id: ...]` Do not auto-resolve.
 
-**Define "current epic"** as the earliest epic (lowest T-number) that has any story not in status `done`. Work only within the current epic until it is fully `done`.
+**Define "current epic"** as the earliest epic (lowest T-number) that has any story not in a terminal status. **Terminal statuses are `done` and `deferred`** — a `deferred` story (e.g. all of epic T9, deferred 2026-05-07) is treated exactly like `done` for epic selection, so a deferred epic never becomes the "current epic" and never blocks selection of a later epic's `backlog` story. Work only within the current epic until it is fully terminal.
 
 Then decide which story to run by scanning stories within the current epic **in file order** (top to bottom):
 
 - If any story in the current epic is in status `in-progress`, `ready-for-dev`, or `review` → **do NOT start a new story.** Write a gate marker with `gate_type: "in-flight-resume"` (see Loop pause protocol) and STOP: ask whether to resume it, abandon it, or investigate. Do not guess.
 - Otherwise, select the first story in status `backlog` within the current epic. This is the selected story.
-- If the current epic has no `backlog` story AND every story in it is `done` → the epic is complete. Write a gate marker with `gate_type: "epic"` and STOP: announce `Epic {T#} complete. Proceed to epic {next}? Run retrospective? [gate-id: ...]` Do not auto-advance across epics.
-- If there is no `backlog` story anywhere AND every epic is `done` → write gate marker `gate_type: "complete"` and STOP. Question: `All epics done. Run final cross-epic codex pass, run retrospective, or close out the program? [gate-id: ...]` This marker prevents `/loop` from re-running orient-and-finding-nothing every iteration after program completion.
+- If the current epic has no `backlog` story AND every story in it is terminal (`done` or `deferred`) → the epic is complete. Write a gate marker with `gate_type: "epic"` and STOP: announce `Epic {T#} complete. Proceed to epic {next}? Run retrospective? [gate-id: ...]` Do not auto-advance across epics.
+- If there is no `backlog` story anywhere AND every epic is terminal (every story `done` or `deferred`) → write gate marker `gate_type: "complete"` and STOP. Question: `All epics done. Run final cross-epic codex pass, run retrospective, or close out the program? [gate-id: ...]` This marker prevents `/loop` from re-running orient-and-finding-nothing every iteration after program completion.
 
 Announce the selected story in one line: `Director: running {story-key} — {title}`.
 
