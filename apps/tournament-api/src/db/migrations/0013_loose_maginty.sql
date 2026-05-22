@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `uniq_rounds_event_round_id` ON `rounds` (`event_round_id`) WHERE "rounds"."event_round_id" IS NOT NULL;

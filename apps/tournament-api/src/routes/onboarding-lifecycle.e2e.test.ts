@@ -55,9 +55,13 @@ const { players, courses, courseRevisions, events, eventRounds, groups, groupMem
   await import('../db/schema/index.js');
 const { adminEventsRouter } = await import('./admin-events.js');
 const { adminGroupsRouter } = await import('./admin-groups.js');
+const { adminEventRoundsRouter } = await import('./admin-event-rounds.js');
 const { eventsRouter } = await import('./events.js');
 const { eventsLeaderboardRouter } = await import('./events-leaderboard.js');
+const { scoresRouter } = await import('./scores.js');
 const { requestIdMiddleware } = await import('../middleware/request-id.js');
+const { rounds, roundStates, scorerAssignments, pairings, pairingMembers, holeScores, activity, auditLog } =
+  await import('../db/schema/index.js');
 
 const TENANT_ID = 'guyan';
 const CTX = 'league:guyan-wolf-cup-friday';
@@ -67,6 +71,17 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  // Score commit emits an activity row + a state-transition audit row that
+  // reference players (RESTRICT) — clear them before the player delete.
+  // eslint-disable-next-line no-restricted-syntax -- test-cleanup truncate only; the T8-1 rule targets production emit paths, not beforeEach teardown
+  await db.delete(activity);
+  await db.delete(auditLog);
+  await db.delete(holeScores);
+  await db.delete(scorerAssignments);
+  await db.delete(roundStates);
+  await db.delete(rounds);
+  await db.delete(pairingMembers);
+  await db.delete(pairings);
   await db.delete(groupMembers);
   await db.delete(groups);
   await db.delete(invites);
@@ -83,8 +98,10 @@ function buildApp(): Hono {
   app.use('*', requestIdMiddleware);
   app.route('/api/admin', adminEventsRouter);
   app.route('/api/admin', adminGroupsRouter);
+  app.route('/api/admin', adminEventRoundsRouter);
   app.route('/api/events', eventsRouter);
   app.route('/api/events', eventsLeaderboardRouter);
+  app.route('/api/rounds', scoresRouter);
   return app;
 }
 
@@ -241,5 +258,228 @@ describe('E2E: organizer onboarding / roster build (real HTTP build flow)', () =
 
     const ghinPlayers = await db.select().from(players).where(eq(players.ghin, '9999999'));
     expect(ghinPlayers.length).toBe(1); // exactly one player row for that GHIN
+  });
+});
+
+// =====================================================================
+// T13-2: Start round (instantiate scoring) — the previously-missing path.
+// Builds through the real HTTP flow to LOCKED pairings, then exercises
+// start-round + the score chain + leaderboard, plus validation + idempotency.
+// =====================================================================
+
+interface BuiltEvent {
+  eventId: string;
+  eventRoundId: string;
+  organizerId: string;
+  /** member ids per foursome, index 0 = foursome 1, etc. */
+  foursomeMembers: string[][];
+}
+
+/** Build event -> roster -> N LOCKED foursomes (3 distinct manual players each). */
+async function buildToLockedPairings(app: Hono, foursomeCount = 1, lockAll = true): Promise<BuiltEvent> {
+  const { organizerId, courseRevId } = await seedPrereqs();
+  const startDate = Date.UTC(2026, 4, 8, 4);
+  asOrganizer(organizerId);
+  const createRes = await postJson(app, '/api/admin/events', {
+    name: 'Lifecycle', start_date: startDate, end_date: startDate,
+    timezone: 'America/New_York',
+    rounds: [{ round_date: startDate, course_revision_id: courseRevId, tee_color: 'blue', holes_to_play: 18 }],
+  });
+  expect(createRes.status).toBe(201);
+  const { eventId } = (await createRes.json()) as { eventId: string };
+  const groupId = (await db.select().from(groups).where(eq(groups.eventId, eventId)))[0]!.id;
+  const eventRoundId = (await db.select().from(eventRounds).where(eq(eventRounds.eventId, eventId)))[0]!.id;
+
+  const foursomeMembers: string[][] = [];
+  const pairingsPayload: Array<{ foursomeNumber: number; locked: boolean; memberPlayerIds: string[] }> = [];
+  let added = 0;
+  for (let f = 1; f <= foursomeCount; f++) {
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const name = `P${added++}`;
+      const r = await postJson(app, `/api/admin/groups/${groupId}/members`, { mode: 'manual', name });
+      expect([200, 201]).toContain(r.status);
+    }
+    // collect the most recent 3 member ids by name order is unreliable; pull all then slice per foursome below.
+    void ids;
+  }
+  // Pull all members, assign 3 per foursome deterministically by created order.
+  const allMembers = await db
+    .select({ playerId: groupMembers.playerId, name: players.name })
+    .from(groupMembers)
+    .innerJoin(players, eq(groupMembers.playerId, players.id))
+    .where(eq(groupMembers.groupId, groupId));
+  const ordered = allMembers
+    .slice()
+    .sort((a, b) => Number((a.name ?? '').slice(1)) - Number((b.name ?? '').slice(1)))
+    .map((m) => m.playerId);
+  for (let f = 1; f <= foursomeCount; f++) {
+    const slice = ordered.slice((f - 1) * 3, f * 3);
+    foursomeMembers.push(slice);
+    pairingsPayload.push({ foursomeNumber: f, locked: lockAll, memberPlayerIds: slice });
+  }
+  const pairRes = await postJson(app, `/api/admin/events/${eventId}/pairings`, {
+    rounds: [{ eventRoundId, pairings: pairingsPayload }],
+  });
+  expect(pairRes.status).toBeLessThan(300);
+
+  return { eventId, eventRoundId, organizerId, foursomeMembers };
+}
+
+function startBody(scorers: Array<{ foursomeNumber: number; scorerPlayerId: string }>) {
+  return { scorers };
+}
+
+describe('E2E: T13-2 start round + score lifecycle', () => {
+  test('full lifecycle: start -> score -> leaderboard reflects the score (the gap closes)', async () => {
+    const app = buildApp();
+    const { eventId, eventRoundId, organizerId, foursomeMembers } = await buildToLockedPairings(app, 1);
+
+    // Start: organizer is the designated scorer for foursome 1.
+    asOrganizer(organizerId);
+    const startRes = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([{ foursomeNumber: 1, scorerPlayerId: organizerId }]));
+    expect(startRes.status).toBe(201);
+    const { roundId } = (await startRes.json()) as { roundId: string };
+    expect(roundId).toBeTruthy();
+
+    // AC-1: all three row types created.
+    expect((await db.select().from(rounds).where(eq(rounds.id, roundId))).length).toBe(1);
+    expect((await db.select().from(roundStates).where(eq(roundStates.roundId, roundId))).length).toBe(1);
+    expect((await db.select().from(scorerAssignments).where(eq(scorerAssignments.roundId, roundId))).length).toBe(1);
+
+    // AC-2: scoring is now REACHABLE — organizer (the scorer) posts a gross.
+    const scoredPlayer = foursomeMembers[0]![0]!;
+    const scoreRes = await postJson(app, `/api/rounds/${roundId}/holes/1/scores`,
+      { playerId: scoredPlayer, grossStrokes: 4, clientEventId: 'evt-1' });
+    expect(scoreRes.status).toBeLessThan(300);
+    const scored = await db.select().from(holeScores)
+      .where(and(eq(holeScores.roundId, roundId), eq(holeScores.playerId, scoredPlayer)));
+    expect(scored.length).toBe(1);
+
+    // AC-6: leaderboard reflects the live score.
+    asPlayer(scoredPlayer);
+    const lbRes = await app.request(`/api/events/${eventId}/leaderboard`);
+    expect(lbRes.status).toBe(200);
+    const lb = (await lbRes.json()) as { rows: Array<{ playerId: string; throughHole: number }> };
+    const row = lb.rows.find((r) => r.playerId === scoredPlayer);
+    expect(row).toBeTruthy();
+    expect(row!.throughHole).toBeGreaterThanOrEqual(1);
+  });
+
+  test('idempotent: starting twice returns the same round, one row (UNIQUE-recover branch)', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 1);
+    asOrganizer(organizerId);
+    const body = startBody([{ foursomeNumber: 1, scorerPlayerId: organizerId }]);
+    const first = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, body);
+    expect(first.status).toBe(201);
+    const { roundId } = (await first.json()) as { roundId: string };
+    const second = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, body);
+    expect(second.status).toBe(200);
+    const secondBody = (await second.json()) as { roundId: string; alreadyStarted: boolean };
+    expect(secondBody.roundId).toBe(roundId);
+    expect(secondBody.alreadyStarted).toBe(true);
+    expect((await db.select().from(rounds).where(eq(rounds.eventRoundId, eventRoundId))).length).toBe(1);
+    expect((await db.select().from(scorerAssignments).where(eq(scorerAssignments.roundId, roundId))).length).toBe(1);
+  });
+
+  test('403 for a non-organizer', async () => {
+    const app = buildApp();
+    const { eventRoundId, foursomeMembers } = await buildToLockedPairings(app, 1);
+    asPlayer(foursomeMembers[0]![0]!); // a rostered, non-organizer player
+    const res = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([{ foursomeNumber: 1, scorerPlayerId: foursomeMembers[0]![0]! }]));
+    expect(res.status).toBe(403);
+  });
+
+  test('404 for an unknown event_round', async () => {
+    const app = buildApp();
+    const { organizerId } = await buildToLockedPairings(app, 1);
+    asOrganizer(organizerId);
+    const res = await postJson(app, `/api/admin/event-rounds/${randomUUID()}/start`,
+      startBody([{ foursomeNumber: 1, scorerPlayerId: organizerId }]));
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { code: string }).code).toBe('event_round_not_found');
+  });
+
+  test('422 pairings_not_ready when pairings are unlocked', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 1, /* lockAll */ false);
+    asOrganizer(organizerId);
+    const res = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([{ foursomeNumber: 1, scorerPlayerId: organizerId }]));
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('pairings_not_ready');
+  });
+
+  test('400 invalid_scorer when the designated scorer is neither a foursome member nor the organizer', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 1);
+    asOrganizer(organizerId);
+    const res = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([{ foursomeNumber: 1, scorerPlayerId: randomUUID() }]));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('invalid_scorer');
+  });
+
+  test('400 duplicate_foursome', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 1);
+    asOrganizer(organizerId);
+    const res = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([
+        { foursomeNumber: 1, scorerPlayerId: organizerId },
+        { foursomeNumber: 1, scorerPlayerId: organizerId },
+      ]));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('duplicate_foursome');
+  });
+
+  test('400 unknown_foursome', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 1);
+    asOrganizer(organizerId);
+    const res = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([{ foursomeNumber: 99, scorerPlayerId: organizerId }]));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('unknown_foursome');
+  });
+
+  test('400 missing_scorer_for_foursome when a locked foursome has no entry', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 2); // two foursomes
+    asOrganizer(organizerId);
+    // Supply a scorer for foursome 1 only — foursome 2 is left uncovered.
+    const res = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([{ foursomeNumber: 1, scorerPlayerId: organizerId }]));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('missing_scorer_for_foursome');
+  });
+
+  test('400 invalid_body on a strict-violating body', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 1);
+    asOrganizer(organizerId);
+    const res = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, { bogus: true });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('invalid_body');
+  });
+
+  test('422 pairings_not_ready when no pairings exist for the event_round', async () => {
+    const app = buildApp();
+    const { organizerId, courseRevId } = await seedPrereqs();
+    const startDate = Date.UTC(2026, 4, 8, 4);
+    asOrganizer(organizerId);
+    const createRes = await postJson(app, '/api/admin/events', {
+      name: 'NoPairings', start_date: startDate, end_date: startDate, timezone: 'America/New_York',
+      rounds: [{ round_date: startDate, course_revision_id: courseRevId, tee_color: 'blue', holes_to_play: 18 }],
+    });
+    const { eventId } = (await createRes.json()) as { eventId: string };
+    const eventRoundId = (await db.select().from(eventRounds).where(eq(eventRounds.eventId, eventId)))[0]!.id;
+    const res = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([{ foursomeNumber: 1, scorerPlayerId: organizerId }]));
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('pairings_not_ready');
   });
 });

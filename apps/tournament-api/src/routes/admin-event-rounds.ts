@@ -58,7 +58,13 @@ import {
   players,
   subGames,
   subGameParticipants,
+  pairings,
+  pairingMembers,
+  rounds,
+  roundStates,
+  scorerAssignments,
 } from '../db/schema/index.js';
+import { INITIAL_ROUND_STATE } from '../services/round-state.js';
 
 const SAVE_BODY_LIMIT_BYTES = 8 * 1024;
 const TENANT_ID = 'guyan';
@@ -421,5 +427,252 @@ adminEventRoundsRouter.post(
     });
 
     return c.json({ subGameCount, participantCount, requestId }, 200);
+  },
+);
+
+// =====================================================================
+// T13-2: POST /event-rounds/:eventRoundId/start — instantiate scoring.
+//
+// Closes the confirmed gap: the app had NO path to create the scoring
+// `rounds` row, its `round_states`, or `scorer_assignments` (score entry
+// requires all three). The organizer "starts" a round from an event_round
+// whose pairings are locked, designating a scorer per foursome.
+//
+// Creates (one transaction): the `rounds` row (event_id sourced from the
+// event_round, holes_to_play copied), the `round_states` row at
+// `not_started` (the FSM's entry state per round-state.ts; immediately
+// scorable since not_started is writable, and the first score transitions
+// it to in_progress), and one `scorer_assignments` row per foursome.
+//
+// Idempotent + race-safe via the partial UNIQUE on rounds.event_round_id
+// (migration 0013): insert-then-recover — a concurrent loser catches the
+// UNIQUE violation and returns the winner's roundId (mirrors
+// resolveOrInsertGhinPlayer; no pre-check, so the recovery branch is the
+// single idempotency path and is unit-testable by pre-inserting a round).
+//
+// Auth: requireSession → requireOrganizer (global organizer flag — the
+// interim guard until the multi-organizer auth pass makes it event-scoped).
+// =====================================================================
+
+const StartRoundRequestSchema = z
+  .object({
+    scorers: z
+      .array(
+        z
+          .object({
+            foursomeNumber: z.number().int().positive(),
+            scorerPlayerId: z.string().uuid(),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
+
+// Local UNIQUE/PK constraint detector (mirror of admin-groups'
+// isUniqueOrPkConstraintError, which is not exported). libsql surfaces the
+// constraint code on the error or its cause; the raw codes are
+// SQLITE_CONSTRAINT_UNIQUE (2067) and SQLITE_CONSTRAINT_PRIMARYKEY (1555).
+function isUniqueOrPkConstraintError(err: unknown): boolean {
+  const e = err as {
+    code?: string;
+    extendedCode?: string;
+    rawCode?: number;
+    cause?: { code?: string; rawCode?: number };
+  } | null;
+  const hasUniqueStr = (v: unknown) =>
+    typeof v === 'string' &&
+    (v.includes('SQLITE_CONSTRAINT_UNIQUE') ||
+      v.includes('SQLITE_CONSTRAINT_PRIMARYKEY'));
+  return (
+    hasUniqueStr(e?.code) ||
+    hasUniqueStr(e?.extendedCode) ||
+    hasUniqueStr(e?.cause?.code) ||
+    e?.rawCode === 2067 ||
+    e?.rawCode === 1555 ||
+    e?.cause?.rawCode === 2067 ||
+    e?.cause?.rawCode === 1555
+  );
+}
+
+adminEventRoundsRouter.post(
+  '/event-rounds/:eventRoundId/start',
+  // requireSession + requireOrganizer are applied router-wide via
+  // `.use('/event-rounds/*', ...)` above — not repeated here.
+  bodyLimit({
+    maxSize: SAVE_BODY_LIMIT_BYTES,
+    onError: (c) => {
+      const requestId = c.get('requestId');
+      return c.json({ error: 'bad_request', code: 'body_too_large', requestId }, 400);
+    },
+  }),
+  async (c) => {
+    const requestId = c.get('requestId');
+    const log = c.get('logger');
+    const player = c.get('player')!;
+    const eventRoundId = c.req.param('eventRoundId');
+
+    // 1. Body validation (strict).
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'bad_request', code: 'invalid_body', requestId, issues: [] }, 400);
+    }
+    const parsed = StartRoundRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        { error: 'bad_request', code: 'invalid_body', requestId, issues: parsed.error.issues },
+        400,
+      );
+    }
+    const { scorers } = parsed.data;
+
+    // 2. event_round exists (tenant-scoped). event_id + holes_to_play come
+    //    from this row — NEVER from the request (satisfies chk_rounds_event_pairing).
+    const erRows = await db
+      .select({ eventId: eventRounds.eventId, holesToPlay: eventRounds.holesToPlay })
+      .from(eventRounds)
+      .where(and(eq(eventRounds.id, eventRoundId), eq(eventRounds.tenantId, TENANT_ID)))
+      .limit(1);
+    if (erRows.length === 0) {
+      return c.json({ error: 'not_found', code: 'event_round_not_found', requestId }, 404);
+    }
+    const { eventId, holesToPlay } = erRows[0]!;
+    const contextId = `event:${eventId}`;
+
+    // 3. Pairings must exist AND every pairing must be locked.
+    const pairingRows = await db
+      .select({ id: pairings.id, foursomeNumber: pairings.foursomeNumber, locked: pairings.locked })
+      .from(pairings)
+      .where(and(eq(pairings.eventRoundId, eventRoundId), eq(pairings.tenantId, TENANT_ID)));
+    if (pairingRows.length === 0 || pairingRows.some((p) => !p.locked)) {
+      return c.json({ error: 'unprocessable', code: 'pairings_not_ready', requestId }, 422);
+    }
+
+    // 4. Members per foursome.
+    const pairingIds = pairingRows.map((p) => p.id);
+    const memberRows = await db
+      .select({ pairingId: pairingMembers.pairingId, playerId: pairingMembers.playerId })
+      .from(pairingMembers)
+      .where(
+        and(
+          inArray(pairingMembers.pairingId, pairingIds),
+          eq(pairingMembers.tenantId, TENANT_ID),
+        ),
+      );
+    const pairingIdToFoursome = new Map(pairingRows.map((p) => [p.id, p.foursomeNumber]));
+    const foursomeMembers = new Map<number, Set<string>>();
+    for (const m of memberRows) {
+      const fn = pairingIdToFoursome.get(m.pairingId)!;
+      if (!foursomeMembers.has(fn)) foursomeMembers.set(fn, new Set());
+      foursomeMembers.get(fn)!.add(m.playerId);
+    }
+    const pairingFoursomes = new Set(pairingRows.map((p) => p.foursomeNumber));
+
+    // 5. Validate the scorer mapping (deterministic order, all 400s).
+    const seen = new Set<number>();
+    for (const s of scorers) {
+      if (seen.has(s.foursomeNumber)) {
+        return c.json({ error: 'bad_request', code: 'duplicate_foursome', requestId, foursomeNumber: s.foursomeNumber }, 400);
+      }
+      seen.add(s.foursomeNumber);
+      if (!pairingFoursomes.has(s.foursomeNumber)) {
+        return c.json({ error: 'bad_request', code: 'unknown_foursome', requestId, foursomeNumber: s.foursomeNumber }, 400);
+      }
+    }
+    for (const fn of pairingFoursomes) {
+      if (!seen.has(fn)) {
+        return c.json({ error: 'bad_request', code: 'missing_scorer_for_foursome', requestId, foursomeNumber: fn }, 400);
+      }
+    }
+    for (const s of scorers) {
+      const members = foursomeMembers.get(s.foursomeNumber) ?? new Set<string>();
+      const isMember = members.has(s.scorerPlayerId);
+      const isOrganizer = s.scorerPlayerId === player.id;
+      if (!isMember && !isOrganizer) {
+        return c.json({ error: 'bad_request', code: 'invalid_scorer', requestId, foursomeNumber: s.foursomeNumber }, 400);
+      }
+    }
+
+    // 6. Create rounds + round_states + scorer_assignments atomically.
+    const roundId = randomUUID();
+    const now = Date.now();
+    try {
+      await db.transaction(async (tx) => {
+        await tx.insert(rounds).values({
+          id: roundId,
+          eventId,
+          eventRoundId,
+          holesToPlay,
+          // opened_at / opened_by_player_id are LEFT NULL at creation: the FSM
+          // (round-state.ts transitionState) owns them, setting opened_at on
+          // the first not_started→in_progress transition (first score) under
+          // `WHERE opened_at IS NULL`. Pre-setting here would mean "created"
+          // not "first scored" and would block the FSM's first-open set.
+          openedAt: null,
+          openedByPlayerId: null,
+          createdAt: now,
+          tenantId: TENANT_ID,
+          contextId,
+        });
+        await tx.insert(roundStates).values({
+          roundId,
+          state: INITIAL_ROUND_STATE,
+          enteredAt: now,
+          enteredByPlayerId: player.id,
+          tenantId: TENANT_ID,
+          contextId,
+        });
+        for (const s of scorers) {
+          await tx.insert(scorerAssignments).values({
+            roundId,
+            foursomeNumber: s.foursomeNumber,
+            scorerPlayerId: s.scorerPlayerId,
+            assignedAt: now,
+            assignedByPlayerId: player.id,
+            tenantId: TENANT_ID,
+            contextId,
+          });
+        }
+      });
+    } catch (err) {
+      // 7. Race-safe idempotency: a concurrent winner already created the
+      //    round for this event_round (partial UNIQUE fired). Recover the
+      //    existing round OUTSIDE the aborted transaction.
+      if (isUniqueOrPkConstraintError(err)) {
+        const existing = await db
+          .select({ id: rounds.id })
+          .from(rounds)
+          .where(and(eq(rounds.eventRoundId, eventRoundId), eq(rounds.tenantId, TENANT_ID)))
+          .limit(1);
+        if (existing[0]) {
+          // Defensive: a rounds row implies its round_state (atomic create).
+          const stateRows = await db
+            .select({ roundId: roundStates.roundId })
+            .from(roundStates)
+            .where(
+              and(
+                eq(roundStates.roundId, existing[0].id),
+                eq(roundStates.tenantId, TENANT_ID),
+              ),
+            )
+            .limit(1);
+          if (stateRows.length === 0) {
+            return c.json({ error: 'conflict', code: 'round_state_corrupt', requestId }, 409);
+          }
+          return c.json({ roundId: existing[0].id, alreadyStarted: true, requestId }, 200);
+        }
+      }
+      log.error({
+        event: 'start_round_failed',
+        eventRoundId,
+        message: (err as { message?: unknown } | null)?.message ?? null,
+      });
+      return c.json({ error: 'internal', code: 'start_failed', requestId }, 500);
+    }
+
+    log.info({ event: 'round_started', roundId, eventRoundId, foursomeCount: scorers.length });
+    return c.json({ roundId, requestId }, 201);
   },
 );

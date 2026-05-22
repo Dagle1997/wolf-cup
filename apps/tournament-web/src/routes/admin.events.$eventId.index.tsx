@@ -86,6 +86,20 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           </Link>
         </li>
 
+        <li>
+          <Link
+            to="/admin/events/$eventId/start-round"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-start-round"
+          >
+            <strong>Start round</strong>
+            <div style={{ fontSize: '0.85em', color: '#555' }}>
+              Begin scoring a round — pick who scores each locked foursome.
+            </div>
+          </Link>
+        </li>
+
         {ctx.groups.length === 0 ? (
           <li
             style={{

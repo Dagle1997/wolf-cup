@@ -82,6 +82,16 @@ export class BusinessRuleError extends Error {
 // Legal transition matrix (Section 5 of T5-8 spec)
 // ---------------------------------------------------------------------------
 
+/**
+ * The state a freshly-created round enters (T13-2 start-round). `not_started`
+ * is the FSM's source-only entry state (see LEGAL_TRANSITIONS: nothing
+ * transitions INTO it) and is in the scorable/writable set, so a round is
+ * immediately scorable on start and the first score moves it to `in_progress`.
+ * Exported so creators source the entry state from the FSM rather than
+ * hardcoding a literal that could drift.
+ */
+export const INITIAL_ROUND_STATE: RoundState = 'not_started';
+
 const LEGAL_TRANSITIONS: ReadonlyMap<RoundState, ReadonlySet<RoundState>> =
   new Map([
     ['not_started', new Set<RoundState>(['in_progress', 'cancelled'])],

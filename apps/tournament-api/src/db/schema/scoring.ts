@@ -83,6 +83,12 @@ export const rounds = sqliteTable(
   (t) => ({
     eventIdx: index('idx_rounds_event_id').on(t.eventId),
     eventRoundIdx: index('idx_rounds_event_round_id').on(t.eventRoundId),
+    // T13-2: at most one scoring round per event_round. Partial (WHERE NOT
+    // NULL) because event_round_id is nullable for legacy Wolf-Cup-shaped
+    // rounds. Makes start-round idempotency race-safe (insert-then-recover).
+    eventRoundUniq: uniqueIndex('uniq_rounds_event_round_id')
+      .on(t.eventRoundId)
+      .where(sql`${t.eventRoundId} IS NOT NULL`),
     holesToPlayCheck: check(
       'chk_rounds_holes_to_play',
       sql`${t.holesToPlay} IN (9, 18)`,

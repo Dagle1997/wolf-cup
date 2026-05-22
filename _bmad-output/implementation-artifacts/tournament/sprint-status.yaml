@@ -422,4 +422,4 @@ development_status:
   # score) — proves scoring is reachable end-to-end. AUTH: organizer-scoped
   # (event organizer per T13-1 Option B, or requireOrganizer interim until the
   # multi-org auth pass). tournament-api + tournament-web only.
-  T13-2-start-round-instantiate-scoring: backlog
+  T13-2-start-round-instantiate-scoring: done
