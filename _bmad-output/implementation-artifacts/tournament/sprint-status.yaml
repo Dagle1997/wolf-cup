@@ -351,3 +351,39 @@ development_status:
   # notes is operational manual-verify (Josh tabbing through on a real device),
   # not code — record it as a manual followup, do not implement. tournament-web-only.
   T12-3-scroll-region-accessibility: done
+
+  # ---------------------------------------------------------------------------
+  # Epic T13: Production run-through bug fixes
+  # Opened 2026-05-22 from a live-prod run-through (Josh, organizer). The main
+  # site has real bugs surfaced by signing in against prod. Each story closes a
+  # confirmed defect. Evidence is the prod DB read-only inspection + code trace
+  # (require-event-participant.ts, index.tsx, require-organizer.ts). Stories are
+  # added as the run-through audit finds more.
+  # ---------------------------------------------------------------------------
+  epic-T13: in-progress
+
+  # T13-1: ORGANIZER LOCKED OUT OF THEIR OWN EVENT (login trap). CONFIRMED on
+  # prod 2026-05-22: organizer (only player, is_organizer=1) logs in with
+  # Google, lands on `/`, which (index.tsx:68-73) auto-redirects a 1-event user
+  # to the PLAYER event-home `/events/:id`. That page's data endpoint
+  # (events.ts:117) is gated by requireEventParticipant, which (require-event-
+  # participant.ts:71-87) checks ONLY group_members and does NOT exempt the
+  # event organizer → 403 not_event_participant → "You aren't a participant in
+  # this event." Dead-end: the global-nav home link loops back to `/` →
+  # re-redirect → 403 again; only /me escapes, and /me has no admin link.
+  # ROOT FIX (#2, API): requireEventParticipant must exempt organizers, mirroring
+  # how requireOrganizer authorizes admin on the GLOBAL player.isOrganizer flag
+  # (require-organizer.ts:40) — and matching the existing intent that organizer-
+  # only routes skip the participant check (export.ts:6, app.ts:213). Exempting
+  # player.isOrganizer is zero-extra-query (player is already on ctx) and lets
+  # the organizer view ALL participant-gated pages (events detail, leaderboard,
+  # money, bets, schedule, gallery, activity, course-preview). Add middleware
+  # tests for the organizer-exempt path. (Event-specific organizer_player_id
+  # scoping is a v1.5 multi-org refinement — note as followup, do not build now.)
+  # SECONDARY FIX (#1/#3, web): on the player event-home (events.$eventId.index
+  # .tsx), render an organizer-only "Manage event" link to /admin/events/$eventId
+  # (gated on session.player.isOrganizer) so the organizer has an in-app path to
+  # setup and the page is never a dead-end. Add a render test. OUT OF SCOPE:
+  # the empty-name player row (#4) and any prod data writes (Josh: admin-URL-only,
+  # no prod mutation). tournament-api + tournament-web only.
+  T13-1-organizer-event-lockout-fix: backlog
