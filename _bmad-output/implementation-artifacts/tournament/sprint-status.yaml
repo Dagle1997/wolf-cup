@@ -387,3 +387,39 @@ development_status:
   # the empty-name player row (#4) and any prod data writes (Josh: admin-URL-only,
   # no prod mutation). tournament-api + tournament-web only.
   T13-1-organizer-event-lockout-fix: done
+
+  # T13-2: START ROUND — instantiate scoring (the MISSING create-round path).
+  # CONFIRMED 2026-05-22 via exhaustive `.insert(` enumeration: the tournament
+  # app NEVER inserts into `rounds`, `round_states`, or `scorer_assignments`
+  # (every reference is SELECT/UPDATE; tests only pass because they seed those
+  # rows directly). Score entry (scores.ts) requires all three to pre-exist
+  # (404 round_not_found / 422 round_state_missing / 422 foursome_has_no_scorer),
+  # and scorer-assignments only has /transfer (no initial assign). round-lifecycle
+  # only has complete/complete-rollback/finalize/cancel on an EXISTING round.
+  # => There is NO way to start scoring a round in the deployed app (this is why
+  # "no rounds existed in prod"). Wolf Cup (the port source, apps/api/src/routes/
+  # admin/rounds.ts) DOES create rounds (POST /rounds 'scheduled' + /rounds/
+  # from-attendance); tournament added round_states (T5-8) + scorer_assignments
+  # (T5-6/7) but never built the create step.
+  # FIX (explicit organizer "Start round" action — Josh 2026-05-22): a new
+  # organizer-gated endpoint (e.g. POST /api/admin/event-rounds/:eventRoundId/start)
+  # that, in one transaction, creates: (1) the `rounds` row {eventId, eventRoundId,
+  # holesToPlay from event_round, openedAt, openedByPlayerId=organizer, createdAt,
+  # tenant, context} — note the chk_rounds_event_pairing CHECK requires eventId
+  # and eventRoundId both set; (2) the `round_states` row {state:'in_progress'
+  # (the scorable state; confirm vs round-state.ts transitions), enteredAt,
+  # enteredByPlayerId=organizer}; (3) one `scorer_assignments` row per foursome
+  # {roundId, foursomeNumber, scorerPlayerId, assignedAt, assignedByPlayerId=
+  # organizer} from a REQUEST-SUPPLIED mapping {foursomeNumber -> scorerPlayerId}
+  # (Josh: organizer DESIGNATES a scorer per foursome at start). Validate:
+  # event_round exists (tenant); pairings exist + locked for it; each foursome has
+  # a designated scorer who is a member of that foursome's pairing OR the organizer;
+  # idempotent (re-start returns the existing round, never duplicates). After start,
+  # return roundId so the client navigates to score-entry. WEB: a "Start round" UI
+  # on the admin round/event page — per-foursome scorer picker (foursome members +
+  # organizer), then Start. ACCEPTANCE: extend the onboarding e2e into the FULL
+  # lifecycle (build -> pairings -> START -> score -> leaderboard reflects the
+  # score) — proves scoring is reachable end-to-end. AUTH: organizer-scoped
+  # (event organizer per T13-1 Option B, or requireOrganizer interim until the
+  # multi-org auth pass). tournament-api + tournament-web only.
+  T13-2-start-round-instantiate-scoring: backlog
