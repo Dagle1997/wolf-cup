@@ -509,14 +509,18 @@ function RoundRow({
   const finalizable = round.finalizable ?? false;
 
   const cancelMutation = useMutation({
-    mutationFn: (id: number) =>
+    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
       apiFetch<{ round: Round }>(`/admin/rounds/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'cancelled' }),
+        body: JSON.stringify({ status: 'cancelled', cancellationReason: reason }),
       }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['admin-rounds'] }),
     onError: (err: Error) => {
-      if (err.message === 'UNAUTHORIZED') void navigate({ to: '/admin/login' });
+      if (err.message === 'UNAUTHORIZED') {
+        void navigate({ to: '/admin/login' });
+        return;
+      }
+      alert(`Could not cancel round: ${err.message}`);
     },
   });
 
@@ -558,7 +562,14 @@ function RoundRow({
 
   function handleCancel() {
     if (!window.confirm(`Cancel round on ${formatDate(round.scheduledDate)}? This cannot be undone.`)) return;
-    cancelMutation.mutate(round.id);
+    const reason = window.prompt('Reason for cancelling? (e.g. Rained out)', 'Rained out');
+    if (reason === null) return; // admin dismissed the prompt
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      alert('A cancellation reason is required.');
+      return;
+    }
+    cancelMutation.mutate({ id: round.id, reason: trimmed });
   }
 
   function handleFinalize() {
