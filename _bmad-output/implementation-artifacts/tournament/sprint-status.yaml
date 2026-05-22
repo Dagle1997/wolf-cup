@@ -386,4 +386,4 @@ development_status:
   # setup and the page is never a dead-end. Add a render test. OUT OF SCOPE:
   # the empty-name player row (#4) and any prod data writes (Josh: admin-URL-only,
   # no prod mutation). tournament-api + tournament-web only.
-  T13-1-organizer-event-lockout-fix: backlog
+  T13-1-organizer-event-lockout-fix: done

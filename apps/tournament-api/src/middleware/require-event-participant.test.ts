@@ -243,4 +243,103 @@ describe('requireEventParticipant middleware', () => {
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('not_event_participant');
   });
+
+  // ---- T13-1: event-specific organizer exemption ------------------------
+
+  test('T13-1: next() when player IS THIS event organizer, even with NO group_members row', async () => {
+    // seedEventWithMembers sets organizerPlayerId = organizerId and does NOT
+    // add the organizer to group_members — exactly the prod trap state.
+    const { eventId, organizerId } = await seedEventWithMembers({ playerIds: [randomUUID()] });
+
+    const app = new Hono();
+    app.use('*', requestIdMiddleware);
+    app.use('*', stubPlayerMiddleware({ id: organizerId, isOrganizer: true }));
+    app.use('/events/:eventId/*', requireEventParticipant);
+    app.get('/events/:eventId/x', (c) => c.json({ ok: true }));
+
+    const res = await app.request(`/events/${eventId}/x`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
+  test('T13-1: 403 for the organizer of a DIFFERENT event (event-specific; guards the events.id conjunct)', async () => {
+    // Event A is the target. Event B is organized by a player who carries the
+    // global is_organizer flag (seedEventWithMembers stamps isOrganizer:true on
+    // the organizer it creates) but does NOT organize A and is not a member of
+    // A. This is STRICTLY stronger than "organizer of nothing": if the
+    // `events.id = :eventId` conjunct were ever dropped, the org lookup for B's
+    // organizer hitting A would still match B's row → wrongly grant access.
+    // Requiring 403 here catches that regression.
+    const eventA = await seedEventWithMembers({ playerIds: [randomUUID()] });
+    const eventB = await seedEventWithMembers({ playerIds: [randomUUID()] });
+
+    const app = new Hono();
+    app.use('*', requestIdMiddleware);
+    app.use('*', stubPlayerMiddleware({ id: eventB.organizerId, isOrganizer: true }));
+    app.use('/events/:eventId/*', requireEventParticipant);
+    app.get('/events/:eventId/x', (c) => c.json({ ok: true }));
+
+    const res = await app.request(`/events/${eventA.eventId}/x`);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('not_event_participant');
+  });
+
+  test('T13-1: 403 when the event row is in a DIFFERENT tenant (organizer lookup is tenant-scoped)', async () => {
+    const now = Date.now();
+    const organizerId = randomUUID();
+    await db.insert(players).values({
+      id: organizerId,
+      isOrganizer: true,
+      createdAt: now,
+      tenantId: TENANT_ID,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    const eventId = randomUUID();
+    await db.insert(events).values({
+      id: eventId,
+      name: 'Foreign Event',
+      startDate: 1_715_040_000_000,
+      endDate: 1_715_300_000_000,
+      timezone: 'America/New_York',
+      organizerPlayerId: organizerId,
+      createdAt: now,
+      tenantId: 'other-tenant', // foreign-tenant event row
+      contextId: `event:${eventId}`,
+    });
+
+    const app = new Hono();
+    app.use('*', requestIdMiddleware);
+    app.use('*', stubPlayerMiddleware({ id: organizerId, isOrganizer: true }));
+    app.use('/events/:eventId/*', requireEventParticipant);
+    app.get('/events/:eventId/x', (c) => c.json({ ok: true }));
+
+    const res = await app.request(`/events/${eventId}/x`);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('not_event_participant');
+  });
+
+  test('T13-1: 403 for a nonexistent event (no organizer match, no-existence-leak preserved)', async () => {
+    const organizerId = randomUUID();
+    await db.insert(players).values({
+      id: organizerId,
+      isOrganizer: true,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+
+    const app = new Hono();
+    app.use('*', requestIdMiddleware);
+    app.use('*', stubPlayerMiddleware({ id: organizerId, isOrganizer: true }));
+    app.use('/events/:eventId/*', requireEventParticipant);
+    app.get('/events/:eventId/x', (c) => c.json({ ok: true }));
+
+    const res = await app.request(`/events/${randomUUID()}/x`);
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('not_event_participant');
+  });
 });

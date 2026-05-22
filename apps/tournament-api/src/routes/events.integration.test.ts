@@ -216,4 +216,17 @@ describe('GET /api/events/:eventId', () => {
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code: string }).code).toBe('not_event_participant');
   });
+
+  test('(e) T13-1: 200 for THIS event organizer with NO group_members row (event-specific exemption)', async () => {
+    const s = await seed();
+    // organizerId is events.organizer_player_id but is NOT a group member —
+    // exactly the prod trap state. buildApp stamps isOrganizer:false, so a 200
+    // here proves the exemption is keyed on organizer_player_id, NOT the global
+    // is_organizer flag.
+    const app = buildApp(s.organizerId);
+    const res = await getEvent(app, s.eventId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { event: { id: string } };
+    expect(body.event.id).toBe(s.eventId);
+  });
 });

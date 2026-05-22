@@ -61,7 +61,12 @@ const EVENT_FIXTURE = {
   ],
 };
 
-function renderWithRouter(props: { eventId: string; viewerName?: string; nowMs?: number }) {
+function renderWithRouter(props: {
+  eventId: string;
+  viewerName?: string;
+  nowMs?: number;
+  isOrganizer?: boolean;
+}) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
@@ -79,6 +84,7 @@ function renderWithRouter(props: { eventId: string; viewerName?: string; nowMs?:
     '/events/$eventId/bets',
     '/events/$eventId/settle-up',
     '/events/$eventId/gallery',
+    '/admin/events/$eventId',
   ] as const;
   const stubs = childPaths.map((p) =>
     createRoute({
@@ -141,6 +147,36 @@ describe('EventHomePage', () => {
     await waitFor(() => {
       expect(screen.getByText(/aren't a participant/i)).toBeInTheDocument();
     });
+  });
+
+  it('T13-1: organizer sees the "Manage event" admin link (now reachable once the API exempts the organizer)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify(EVENT_FIXTURE), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    renderWithRouter({ eventId: 'evt-1', isOrganizer: true, nowMs: MAY_8_NY_MIDNIGHT });
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Pinehurst 2026' })).toBeInTheDocument();
+    });
+    const adminLink = screen.getByTestId('event-home-admin-link');
+    expect(adminLink).toBeInTheDocument();
+    expect(adminLink.getAttribute('href')).toBe('/admin/events/evt-1');
+  });
+
+  it('T13-1: non-organizer does NOT see the admin link', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify(EVENT_FIXTURE), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    renderWithRouter({ eventId: 'evt-1', isOrganizer: false, nowMs: MAY_8_NY_MIDNIGHT });
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Pinehurst 2026' })).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('event-home-admin-link')).toBeNull();
   });
 
   it('countdown — pre-event, 3 days out', async () => {
