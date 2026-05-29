@@ -5,7 +5,7 @@ import { Loader2, AlertCircle, X, Dices } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 import { getSession, setSession, clearSession } from '@/lib/session-store';
-import { calcCourseHandicap, TEE_RATINGS, getWolfAssignment } from '@wolf-cup/engine';
+import { calcCourseHandicap, TEE_RATINGS, getWolfAssignment, shuffle } from '@wolf-cup/engine';
 import type { Tee, HoleNumber } from '@wolf-cup/engine';
 
 // ---------------------------------------------------------------------------
@@ -687,7 +687,7 @@ function BattingOrderForm({
     let ticks = 0;
     const totalTicks = 12;
     const interval = setInterval(() => {
-      const shuffled = [...players].sort(() => Math.random() - 0.5);
+      const shuffled = shuffle(players);
       setOrder(shuffled.map((p) => p.id));
       ticks++;
       if (ticks >= totalTicks) {
