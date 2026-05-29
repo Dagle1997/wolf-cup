@@ -41,6 +41,7 @@ apps/web/.vite/
 
 # Reference videos / large media (local only)
 reference/videos/
+reference/2025 Playoff Media/
 
 # Scratch / work-in-progress scorecards (use reference/ for canonical copies)
 _tmp_scorecards/
