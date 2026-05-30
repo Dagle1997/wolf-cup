@@ -26,6 +26,7 @@ import pairingHistoryRouter from './routes/pairing-history.js';
 import galleryRouter from './routes/gallery.js';
 import oddsRouter from './routes/odds.js';
 import ctpEntriesRouter from './routes/ctp-entries.js';
+import scoutingRouter from './routes/scouting.js';
 import cron from 'node-cron';
 import { ghinClient } from './lib/ghin-client.js';
 import { runBackup, backupConfigured } from './lib/backup.js';
@@ -61,6 +62,7 @@ app.route('/api', historyRouter);
 app.route('/api', galleryRouter);
 app.route('/api', oddsRouter);
 app.route('/api', ctpEntriesRouter);
+app.route('/api', scoutingRouter);
 
 // ---------------------------------------------------------------------------
 // Admin routes

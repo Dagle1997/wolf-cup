@@ -5,6 +5,7 @@ import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles } 
 import { Button } from '@/components/ui/button';
 import { CtpSideGameCard } from '@/components/CtpSideGameCard';
 import { SkinsSideGameCard } from '@/components/SkinsSideGameCard';
+import { ScoutingPanel } from '@/components/ScoutingPanel';
 import { apiFetch } from '@/lib/api';
 import { getSession, clearSession } from '@/lib/session-store';
 
@@ -691,6 +692,7 @@ function LeaderboardTable({
   const [expandedPlayerIds, setExpandedPlayerIds] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<'all' | 'group'>('all');
   const [sortMode, setSortMode] = useState<SortMode>(() => readSortPref());
+  const [showScouting, setShowScouting] = useState(false);
   const colCount = data.harveyLiveEnabled ? 6 : 5;
 
   // Persist sort preference (without overwriting on render-time fallback)
@@ -791,7 +793,20 @@ function LeaderboardTable({
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => setShowScouting((v) => !v)}
+          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+            showScouting ? 'bg-background text-foreground shadow-sm' : 'bg-muted/40 text-muted-foreground hover:text-foreground'
+          }`}
+          aria-pressed={showScouting}
+        >
+          🔎 Scouting
+        </button>
       </div>
+      {showScouting ? (
+        <ScoutingPanel roundId={roundId} />
+      ) : (
       <div className="rounded-xl border overflow-hidden shadow-sm">
       <table className="w-full text-sm">
         <thead>
@@ -902,6 +917,7 @@ function LeaderboardTable({
         </tbody>
       </table>
       </div>
+      )}
     </div>
   );
 }
