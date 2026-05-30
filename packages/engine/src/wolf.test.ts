@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getWolfAssignment } from './wolf.js';
+import { getWolfAssignment, wolfHoleChanges } from './wolf.js';
 import type { BattingOrder, HoleNumber } from './types.js';
 
 const ORDER: BattingOrder<string> = ['alice', 'bob', 'carol', 'dave'];
@@ -139,5 +139,42 @@ describe('getWolfAssignment', () => {
         expect(ORDER[a.wolfBatterIndex]).toBe('dave');
       }
     });
+  });
+});
+
+describe('wolfHoleChanges', () => {
+  it('no change when the order is identical', () => {
+    expect(wolfHoleChanges([11, 13, 21, 17], [11, 13, 21, 17])).toEqual([]);
+  });
+
+  it('swapping slots 3 & 4 changes only their wolf holes (5,8,11,12,13,15,17,18)', () => {
+    // old: Matt(11) Scott(13) Ronnie(17) Kyle(21)  -> new: Matt Scott Kyle(21) Ronnie(17)
+    const changes = wolfHoleChanges([11, 13, 17, 21], [11, 13, 21, 17]);
+    expect(changes.map((c) => c.hole)).toEqual([5, 8, 11, 12, 13, 15, 17, 18]);
+    // holes 2 (slot1) and 4 (slot2) are NOT in the list — the real 2026-05-29 case
+    expect(changes.map((c) => c.hole)).not.toContain(2);
+    expect(changes.map((c) => c.hole)).not.toContain(4);
+    // hole 5 is slot 3: old wolf Ronnie(17) -> new wolf Kyle(21)
+    expect(changes.find((c) => c.hole === 5)).toEqual({ hole: 5, oldWolf: 17, newWolf: 21 });
+    // hole 8 is slot 4: old wolf Kyle(21) -> new wolf Ronnie(17)
+    expect(changes.find((c) => c.hole === 8)).toEqual({ hole: 8, oldWolf: 21, newWolf: 17 });
+  });
+
+  it('moving slot 1 changes its wolf holes (2,6,9,14) — earliest is hole 2', () => {
+    const changes = wolfHoleChanges([1, 2, 3, 4], [2, 1, 3, 4]);
+    // slot1 (1->2) holes: 2,6,9,14 ; slot2 (2->1) holes: 4,7,10,16
+    expect(changes.map((c) => c.hole)).toEqual([2, 4, 6, 7, 9, 10, 14, 16]);
+    expect(changes[0]!.hole).toBe(2); // first wolf hole — error surfaces early
+  });
+
+  it('skins holes 1 and 3 are never reported', () => {
+    const changes = wolfHoleChanges([4, 3, 2, 1], [1, 2, 3, 4]);
+    expect(changes.map((c) => c.hole)).not.toContain(1);
+    expect(changes.map((c) => c.hole)).not.toContain(3);
+  });
+
+  it('a full reversal changes every wolf hole (all 16)', () => {
+    const changes = wolfHoleChanges([1, 2, 3, 4], [4, 3, 2, 1]);
+    expect(changes).toHaveLength(16);
   });
 });

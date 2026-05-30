@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, Loader2, AlertCircle, ChevronLeft, ChevronRight, WifiOff, TriangleAlert, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CtpPrompt } from '@/components/CtpPrompt';
+import { BattingOrderCorrectionDialog } from '@/components/BattingOrderCorrectionDialog';
 import { apiFetch } from '@/lib/api';
 import { getSession, clearSession } from '@/lib/session-store';
 import { enqueueScore, enqueueCtpEntry } from '@/lib/offline-queue';
@@ -164,6 +165,7 @@ function ScoreEntryHolePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [wolfError, setWolfError] = useState<string | null>(null);
   const [showEndRoundConfirm, setShowEndRoundConfirm] = useState(false);
+  const [showCorrection, setShowCorrection] = useState(false);
   // Par-3 hole the CTP prompt is asking about (6/7/12/15) or null when closed.
   const [ctpPromptHole, setCtpPromptHole] = useState<number | null>(null);
   // Par-3 holes deferred because ctpEntriesData hadn't loaded when the user
@@ -1303,6 +1305,30 @@ function ScoreEntryHolePage() {
             <AlertCircle className="w-4 h-4 shrink-0" />
             {submitError ?? wolfError}
           </div>
+        )}
+
+        {/* Change batting order — scorer correction, both round types (official has no End button here) */}
+        <button
+          type="button"
+          className="text-xs text-muted-foreground/50 hover:text-muted-foreground mt-2 w-full text-center py-2"
+          onClick={() => setShowCorrection(true)}
+        >
+          Change batting order
+        </button>
+        {showCorrection && group.battingOrder && (
+          <BattingOrderCorrectionDialog
+            roundId={session!.roundId}
+            groupId={session!.groupId!}
+            entryCode={session!.entryCode ?? null}
+            currentOrder={group.battingOrder}
+            players={group.players}
+            onClose={() => setShowCorrection(false)}
+            onApplied={() => {
+              void queryClient.invalidateQueries({ queryKey: ['round', session!.roundId] });
+              void queryClient.invalidateQueries({ queryKey: ['scores', session!.roundId, session!.groupId] });
+              void queryClient.invalidateQueries({ queryKey: ['wolf-decisions', session!.roundId, session!.groupId] });
+            }}
+          />
         )}
 
         {/* End Round — casual rounds only */}

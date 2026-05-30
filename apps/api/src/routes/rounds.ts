@@ -9,6 +9,7 @@ import {
   applyBonusModifiers,
   getHandicapStrokes,
   calcCourseHandicap,
+  wolfHoleChanges,
 } from '@wolf-cup/engine';
 import type { HoleNumber, WolfDecision, HoleAssignment, BonusInput, BattingPosition } from '@wolf-cup/engine';
 import type { Tee } from '@wolf-cup/engine';
@@ -72,8 +73,18 @@ type DbWolfDecision = {
   bonusesJson: string | null;
 };
 
-async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'blue'): Promise<Map<number, number>> {
-  const group = await db
+// db or an in-flight transaction handle. Lets recalculateMoney run inside a
+// caller's transaction so the batting-order correction (order update + decision
+// resets + money recompute + outcome writes) is atomic — codex F3.
+type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function recalculateMoney(
+  roundId: number,
+  groupId: number,
+  tee: Tee = 'blue',
+  dbx: DbOrTx = db,
+): Promise<Map<number, number>> {
+  const group = await dbx
     .select({ battingOrder: groups.battingOrder })
     .from(groups)
     .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
@@ -81,25 +92,25 @@ async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'bl
   if (!group?.battingOrder) return new Map();
   const battingOrder = JSON.parse(group.battingOrder) as number[];
 
-  const [allScoresRows, allDecisionRows, handicapRows] = await Promise.all([
-    db
-      .select({ playerId: holeScores.playerId, holeNumber: holeScores.holeNumber, grossScore: holeScores.grossScore })
-      .from(holeScores)
-      .where(and(eq(holeScores.roundId, roundId), eq(holeScores.groupId, groupId))),
-    db
-      .select({
-        holeNumber: wolfDecisions.holeNumber,
-        decision: wolfDecisions.decision,
-        partnerPlayerId: wolfDecisions.partnerPlayerId,
-        bonusesJson: wolfDecisions.bonusesJson,
-      })
-      .from(wolfDecisions)
-      .where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId))),
-    db
-      .select({ playerId: roundPlayers.playerId, handicapIndex: roundPlayers.handicapIndex })
-      .from(roundPlayers)
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId))),
-  ]);
+  // Sequential reads — safe inside a single-connection transaction (avoid
+  // Promise.all racing statements on the same tx).
+  const allScoresRows = await dbx
+    .select({ playerId: holeScores.playerId, holeNumber: holeScores.holeNumber, grossScore: holeScores.grossScore })
+    .from(holeScores)
+    .where(and(eq(holeScores.roundId, roundId), eq(holeScores.groupId, groupId)));
+  const allDecisionRows = await dbx
+    .select({
+      holeNumber: wolfDecisions.holeNumber,
+      decision: wolfDecisions.decision,
+      partnerPlayerId: wolfDecisions.partnerPlayerId,
+      bonusesJson: wolfDecisions.bonusesJson,
+    })
+    .from(wolfDecisions)
+    .where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId)));
+  const handicapRows = await dbx
+    .select({ playerId: roundPlayers.playerId, handicapIndex: roundPlayers.handicapIndex })
+    .from(roundPlayers)
+    .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId)));
 
   // Build lookup maps
   const scoresByHole = new Map<number, Map<number, number>>();
@@ -125,7 +136,9 @@ async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'bl
 
   for (let holeNum = 1; holeNum <= 18; holeNum++) {
     const holeMap = scoresByHole.get(holeNum);
-    if (!holeMap || holeMap.size < 4) continue;
+    // Require every batting-order player to have a score on this hole — guards against
+    // a missing score being silently read as 0 (codex F4).
+    if (!holeMap || battingOrder.some((pid) => !holeMap.has(pid))) continue;
 
     const courseHole = getCourseHole(holeNum as HoleNumber);
     const grossScores = battingOrder.map((pid) => holeMap.get(pid) ?? 0) as [
@@ -170,7 +183,7 @@ async function recalculateMoney(roundId: number, groupId: number, tee: Tee = 'bl
       const wolfBatterIndex = holeAssignment.wolfBatterIndex;
       const wolfMoney = result[wolfBatterIndex]!.total;
       const outcome = wolfMoney > 0 ? 'win' : wolfMoney < 0 ? 'loss' : 'push';
-      await db
+      await dbx
         .update(wolfDecisions)
         .set({ outcome })
         .where(
@@ -883,6 +896,208 @@ app.put('/rounds/:roundId/groups/:groupId/batting-order', async (c) => {
         battingOrder: order,
         wolfSchedule,
       },
+    },
+    200,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// PUT /rounds/:roundId/groups/:groupId/batting-order/correct
+//   In-round batting-order CORRECTION (scorer-accessible). Unlike the initial
+//   ball draw, this is safe to call after scoring has started: it detects which
+//   wolf holes change, surfaces conflicts (a changed wolf hole that already has
+//   a recorded decision), and on confirm atomically saves the new order, resets
+//   the order-dependent parts of conflicting decisions (bonuses preserved),
+//   fixes wolf_player_id on changed holes, recomputes money, and asserts the
+//   group nets to $0. See tech-spec-in-round-batting-order-correction.md.
+// ---------------------------------------------------------------------------
+
+app.put('/rounds/:roundId/groups/:groupId/batting-order/correct', async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  const groupId = Number(c.req.param('groupId'));
+  if (!Number.isInteger(roundId) || roundId <= 0 || !Number.isInteger(groupId) || groupId <= 0) {
+    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+  }
+
+  let round: { id: number; type: string; status: string; entryCodeHash: string | null; tee: string | null } | undefined;
+  try {
+    round = await db
+      .select({ id: rounds.id, type: rounds.type, status: rounds.status, entryCodeHash: rounds.entryCodeHash, tee: rounds.tee })
+      .from(rounds)
+      .where(eq(rounds.id, roundId))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  if (round.status === 'finalized' || round.status === 'cancelled' || round.status === 'completed') {
+    return c.json({ error: 'Round not editable', code: 'ROUND_NOT_JOINABLE' }, 422);
+  }
+
+  // Scorer-accessible: entry-code auth for official rounds (same as scoring, no admin gate).
+  if (round.type === 'official') {
+    const code = c.req.header('x-entry-code');
+    if (!code || !round.entryCodeHash) return c.json({ error: 'Invalid entry code', code: 'INVALID_ENTRY_CODE' }, 403);
+    let valid = false;
+    try { valid = await bcrypt.compare(code, round.entryCodeHash); } catch { return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500); }
+    if (!valid) return c.json({ error: 'Invalid entry code', code: 'INVALID_ENTRY_CODE' }, 403);
+  }
+
+  let group: { id: number; groupNumber: number; battingOrder: string | null } | undefined;
+  try {
+    group = await db
+      .select({ id: groups.id, groupNumber: groups.groupNumber, battingOrder: groups.battingOrder })
+      .from(groups)
+      .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
+      .get();
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
+  if (!group) return c.json({ error: 'Group not found', code: 'NOT_FOUND' }, 404);
+  if (!group.battingOrder) return c.json({ error: 'No batting order set yet', code: 'NO_BATTING_ORDER' }, 422);
+
+  // Parse body: { order: number[], confirm?: boolean, fromOrder?: number[] }
+  let body: { order?: unknown; confirm?: unknown; fromOrder?: unknown };
+  try { body = (await c.req.json()) as typeof body; } catch { return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400); }
+  const newOrder = Array.isArray(body.order) ? body.order.map(Number) : null;
+  if (!newOrder || newOrder.some((n) => !Number.isInteger(n))) {
+    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
+  }
+  const confirm = body.confirm === true;
+  const fromOrder = Array.isArray(body.fromOrder) && body.fromOrder.length === 4 ? body.fromOrder.map(Number) : null;
+
+  // Validate: exactly 4, unique, and the SAME four players as the current order (reorder, not roster change).
+  if (newOrder.length !== 4 || new Set(newOrder).size !== 4) {
+    return c.json({ error: 'Invalid batting order', code: 'INVALID_BATTING_ORDER' }, 422);
+  }
+  // Everything that depends on the CURRENT stored order — membership, optimistic
+  // lock, conflict detection — is done INSIDE the transaction against a fresh read,
+  // so a concurrent score/decision submit or a second corrector cannot slip between
+  // the check and the write (codex F1). Sentinels are thrown to surface 409/422.
+  type Signal = Error & { signal?: 'stale' | 'conflict' | 'roster' | 'corrupt'; current?: number[]; holes?: number[] };
+  type CorrectionResult = { battingOrder: number[]; conflicts: number[]; changedHoles: number[]; moneyTotals: Array<{ playerId: number; moneyTotal: number }> };
+  let applied: CorrectionResult | undefined;
+  try {
+    applied = await db.transaction(async (tx): Promise<CorrectionResult> => {
+      const cur = await tx.select({ battingOrder: groups.battingOrder }).from(groups).where(eq(groups.id, groupId)).get();
+      // F5 + round-2: don't trust stored JSON (drives membership + partner resolution).
+      // Guard the parse, and normalize ids to numbers so legacy string ids don't falsely
+      // trip the membership/stale checks.
+      let liveOld: number[] = [];
+      try {
+        const parsed = cur?.battingOrder ? (JSON.parse(cur.battingOrder) as unknown[]) : [];
+        liveOld = Array.isArray(parsed) ? parsed.map(Number) : [];
+      } catch {
+        throw Object.assign(new Error('corrupt stored order'), { signal: 'corrupt' }) as Signal;
+      }
+      if (liveOld.length !== 4 || new Set(liveOld).size !== 4 || liveOld.some((n) => !Number.isInteger(n))) {
+        throw Object.assign(new Error('corrupt stored order'), { signal: 'corrupt' }) as Signal;
+      }
+      // Same four players (reorder, not roster change).
+      if (new Set([...liveOld, ...newOrder]).size !== 4) {
+        throw Object.assign(new Error('roster change'), { signal: 'roster' }) as Signal;
+      }
+      // Optimistic lock (F8) — checked against the fresh read.
+      if (fromOrder && JSON.stringify(fromOrder) !== JSON.stringify(liveOld)) {
+        throw Object.assign(new Error('stale order'), { signal: 'stale', current: liveOld }) as Signal;
+      }
+      // No-op.
+      if (JSON.stringify(liveOld) === JSON.stringify(newOrder)) {
+        return { battingOrder: liveOld, conflicts: [], changedHoles: [], moneyTotals: [] };
+      }
+
+      const changes = wolfHoleChanges(liveOld, newOrder);
+      const changedHoleSet = new Set<number>(changes.map((ch) => ch.hole));
+      const decisionRows = await tx
+        .select({ holeNumber: wolfDecisions.holeNumber, decision: wolfDecisions.decision })
+        .from(wolfDecisions)
+        .where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId)));
+      // Conflict (F1) = a CHANGED wolf hole that already has a recorded decision — that
+      // call belonged to the old wolf and must be re-entered. A changed wolf hole with
+      // scores but NO decision is intentionally NOT a conflict (F2): no money/outcome is
+      // computed for it, and its denormalized wolf_player_id is fixed below regardless,
+      // so nothing is stale and there is nothing for the scorer to re-enter — flagging it
+      // would only produce a false "re-enter" prompt.
+      const conflictHoles = decisionRows
+        .filter((d) => d.decision != null && changedHoleSet.has(d.holeNumber))
+        .map((d) => d.holeNumber)
+        .sort((a, b) => a - b);
+      if (conflictHoles.length > 0 && !confirm) {
+        throw Object.assign(new Error('wolf conflict'), { signal: 'conflict', holes: conflictHoles }) as Signal;
+      }
+
+      // 1. Save new order — batting order ONLY, never the tee (codex F7).
+      await tx.update(groups).set({ battingOrder: JSON.stringify(newOrder) }).where(eq(groups.id, groupId));
+
+      // 2. Fix wolf_player_id on every changed hole; reset order-dependent decision fields
+      //    on conflicts while PRESERVING bonuses (codex F2/F6).
+      const conflictSet = new Set(conflictHoles);
+      for (const ch of changes) {
+        if (conflictSet.has(ch.hole)) {
+          await tx
+            .update(wolfDecisions)
+            .set({ wolfPlayerId: ch.newWolf, decision: null, partnerPlayerId: null, outcome: null })
+            .where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId), eq(wolfDecisions.holeNumber, ch.hole)));
+        } else {
+          await tx
+            .update(wolfDecisions)
+            .set({ wolfPlayerId: ch.newWolf })
+            .where(and(eq(wolfDecisions.roundId, roundId), eq(wolfDecisions.groupId, groupId), eq(wolfDecisions.holeNumber, ch.hole)));
+        }
+      }
+
+      // 3. Recompute money inside the tx (codex F3).
+      const totals = await recalculateMoney(roundId, groupId, (round!.tee as Tee) ?? 'blue', tx);
+
+      // 4. Overwrite persisted money for all four players (codex F9).
+      const now = Date.now();
+      for (const pid of newOrder) {
+        const moneyTotal = totals.get(pid) ?? 0;
+        await tx
+          .insert(roundResults)
+          .values({ roundId, playerId: pid, stablefordTotal: 0, moneyTotal, updatedAt: now })
+          .onConflictDoUpdate({ target: [roundResults.roundId, roundResults.playerId], set: { moneyTotal, updatedAt: now } });
+      }
+
+      // 5. Zero-sum or roll back (codex F9).
+      const groupSum = newOrder.reduce((acc, pid) => acc + (totals.get(pid) ?? 0), 0);
+      if (Math.abs(groupSum) > 0.001) {
+        throw new Error(`zero-sum violation: group ${groupId} money sums to ${groupSum}`);
+      }
+
+      // Returned from INSIDE the tx → response uses these, no post-commit recompute (codex F3).
+      return {
+        battingOrder: newOrder,
+        conflicts: conflictHoles,
+        changedHoles: [...changedHoleSet].sort((a, b) => a - b),
+        moneyTotals: newOrder.map((pid) => ({ playerId: pid, moneyTotal: totals.get(pid) ?? 0 })),
+      };
+    });
+  } catch (e) {
+    const sig = e as Signal;
+    if (sig?.signal === 'stale') {
+      return c.json({ error: 'Batting order changed since you loaded it — refresh and try again', code: 'STALE_ORDER', currentOrder: sig.current ?? [] }, 409);
+    }
+    if (sig?.signal === 'conflict') {
+      const holes = sig.holes ?? [];
+      return c.json({ error: 'Reorder changes the wolf on already-played holes', code: 'WOLF_CONFLICT', conflicts: holes, message: `Holes ${holes.join(', ')} were played as wolf holes whose wolf changes — their wolf call must be re-entered.` }, 409);
+    }
+    if (sig?.signal === 'roster') {
+      return c.json({ error: 'Batting order must contain the same four players', code: 'INVALID_BATTING_ORDER' }, 422);
+    }
+    if (sig?.signal === 'corrupt') {
+      return c.json({ error: 'Stored batting order is invalid — contact an admin', code: 'CORRUPT_ORDER' }, 500);
+    }
+    return c.json({ error: 'Could not apply correction', code: 'INTERNAL_ERROR' }, 500);
+  }
+
+  if (!applied) return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  return c.json(
+    {
+      group: { id: group.id, groupNumber: group.groupNumber, battingOrder: applied.battingOrder },
+      conflicts: applied.conflicts,
+      changedHoles: applied.changedHoles,
+      moneyTotals: applied.moneyTotals,
     },
     200,
   );

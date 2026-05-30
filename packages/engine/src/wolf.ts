@@ -45,3 +45,30 @@ export function getWolfAssignment<TPlayerId>(
 
   return { type: 'wolf', wolfBatterIndex };
 }
+
+/**
+ * Given an old and a new batting order (each a 4-tuple of player IDs), return
+ * the wolf holes whose WOLF changes — i.e. holes whose batting-slot occupant
+ * differs between the two orders. Skins holes (1, 3) are never included.
+ *
+ * Pure. Used by the in-round batting-order correction to detect which
+ * already-recorded wolf decisions a reorder invalidates (the decision belongs
+ * to whoever was wolf then; a new wolf means the call must be re-entered).
+ *
+ * Both orders must contain the same 4 player IDs (a reorder, not a roster
+ * change). Returned holes are sorted ascending.
+ */
+export function wolfHoleChanges(
+  oldOrder: readonly number[],
+  newOrder: readonly number[],
+): Array<{ hole: HoleNumber; oldWolf: number; newWolf: number }> {
+  const changes: Array<{ hole: HoleNumber; oldWolf: number; newWolf: number }> = [];
+  for (const [hole, slot] of WOLF_TABLE) {
+    const oldWolf = oldOrder[slot];
+    const newWolf = newOrder[slot];
+    if (oldWolf !== undefined && newWolf !== undefined && oldWolf !== newWolf) {
+      changes.push({ hole, oldWolf, newWolf });
+    }
+  }
+  return changes.sort((a, b) => a.hole - b.hole);
+}
