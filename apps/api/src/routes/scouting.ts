@@ -101,16 +101,21 @@ app.get('/scouting/:roundId', async (c) => {
     const biggestLoss = monies.length ? Math.min(0, ...monies) : 0; // 0 = never lost (codex F3)
 
     // Per-hole gross vs par.
-    const perHole = new Map<number, { sumToPar: number; rounds: number; birdies: number }>();
+    const perHole = new Map<number, { par: number; sumToPar: number; rounds: number; birdies: number }>();
     for (const s of scores) {
       if (s.holeNumber < 1 || s.holeNumber > 18) continue; // guard getCourseHole (codex F5)
       const par = getCourseHole(s.holeNumber as HoleNumber).par;
-      const cur = perHole.get(s.holeNumber) ?? { sumToPar: 0, rounds: 0, birdies: 0 };
+      const cur = perHole.get(s.holeNumber) ?? { par, sumToPar: 0, rounds: 0, birdies: 0 };
       cur.sumToPar += s.gross - par;
       cur.rounds += 1;
       if (s.gross <= par - 1) cur.birdies += 1; // birdie-or-better
       perHole.set(s.holeNumber, cur);
     }
+    // Per-hole average gross — shipped WITH the card so the tap-to-expand hole-by-hole
+    // is instant (no second fetch, no layout shift on expand).
+    const holes = [...perHole.entries()]
+      .map(([hole, v]) => ({ hole, par: v.par, avg: Math.round((v.par + v.sumToPar / v.rounds) * 10) / 10 }))
+      .sort((a, b) => a.hole - b.hole);
     const holesForBW = [...perHole.entries()].map(([hole, v]) => ({ hole, avgToPar: v.sumToPar / v.rounds, rounds: v.rounds }));
     const { best, worst } = bestWorstHoles(holesForBW, MIN_HOLE);
     let topBirdieHole: { hole: number; count: number; rounds: number } | null = null;
@@ -161,6 +166,7 @@ app.get('/scouting/:roundId', async (c) => {
       biggestLoss,
       boomOrBust: boom.sample >= 2 ? boom : null,
       loneWolfWhenBehind: lwb.behind > 0 ? lwb : null,
+      holes,
     };
   }
 

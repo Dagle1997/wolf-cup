@@ -17,6 +17,7 @@ type ScoutPlayer = {
   biggestLoss: number;
   boomOrBust: { stdDev: number; sample: number } | null;
   loneWolfWhenBehind: { alone: number; behind: number; rate: number } | null;
+  holes: { hole: number; par: number; avg: number }[];
 };
 type ScoutGroup = {
   groupNumber: number;
@@ -47,32 +48,26 @@ function statLines(p: ScoutPlayer): string[] {
   return out;
 }
 
-type HoleAvg = { hole: number; par: number; avg: number | null };
-
-/** Hole-by-hole average score (vs par) — reuses the player stats detail endpoint. */
-function HoleAverages({ playerId }: { playerId: number }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['player-detail-holes', playerId],
-    queryFn: () => apiFetch<{ holeAverages: HoleAvg[] }>(`/stats/${playerId}/detail`),
-    staleTime: 60_000,
-  });
-  if (isLoading) return <p className="mt-2 text-[10px] text-muted-foreground">Loading holes…</p>;
-  const holes = data?.holeAverages ?? [];
+/** Hole-by-hole average score (vs par). Rendered from data already on the card —
+ * no fetch, so expanding is instant and the layout doesn't shift. */
+function HoleAverages({ holes }: { holes: ScoutPlayer['holes'] }) {
   if (holes.length === 0) return null;
-  const cell = (h: HoleAvg) => {
-    const color = h.avg == null ? 'text-muted-foreground' : h.avg < h.par ? 'text-green-600' : h.avg > h.par ? 'text-destructive' : 'text-foreground';
+  const byHole = new Map(holes.map((h) => [h.hole, h]));
+  const cell = (n: number) => {
+    const h = byHole.get(n);
+    const color = !h ? 'text-muted-foreground' : h.avg < h.par ? 'text-green-600' : h.avg > h.par ? 'text-destructive' : 'text-foreground';
     return (
-      <div key={h.hole} className="flex flex-col items-center w-7 shrink-0 text-[10px]">
-        <span className="text-muted-foreground">{h.hole}</span>
-        <span className={`font-semibold ${color}`}>{h.avg == null ? '—' : h.avg.toFixed(1)}</span>
+      <div key={n} className="flex flex-col items-center w-7 shrink-0 text-[10px]">
+        <span className="text-muted-foreground">{n}</span>
+        <span className={`font-semibold ${color}`}>{h ? h.avg.toFixed(1) : '—'}</span>
       </div>
     );
   };
   return (
     <div className="mt-2">
       <p className="text-[10px] text-muted-foreground mb-0.5">Avg score by hole (green = under par)</p>
-      <div className="flex">{holes.filter((h) => h.hole <= 9).map(cell)}</div>
-      <div className="flex mt-0.5">{holes.filter((h) => h.hole > 9).map(cell)}</div>
+      <div className="flex">{[1, 2, 3, 4, 5, 6, 7, 8, 9].map(cell)}</div>
+      <div className="flex mt-0.5">{[10, 11, 12, 13, 14, 15, 16, 17, 18].map(cell)}</div>
     </div>
   );
 }
@@ -101,7 +96,7 @@ function PlayerRow({ p }: { p: ScoutPlayer }) {
               <li className="text-xs text-muted-foreground">Not enough rounds yet ({p.rounds}).</li>
             )}
           </ul>
-          <HoleAverages playerId={p.playerId} />
+          <HoleAverages holes={p.holes} />
         </div>
       )}
     </div>
