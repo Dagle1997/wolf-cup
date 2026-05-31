@@ -47,6 +47,36 @@ function statLines(p: ScoutPlayer): string[] {
   return out;
 }
 
+type HoleAvg = { hole: number; par: number; avg: number | null };
+
+/** Hole-by-hole average score (vs par) — reuses the player stats detail endpoint. */
+function HoleAverages({ playerId }: { playerId: number }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['player-detail-holes', playerId],
+    queryFn: () => apiFetch<{ holeAverages: HoleAvg[] }>(`/stats/${playerId}/detail`),
+    staleTime: 60_000,
+  });
+  if (isLoading) return <p className="mt-2 text-[10px] text-muted-foreground">Loading holes…</p>;
+  const holes = data?.holeAverages ?? [];
+  if (holes.length === 0) return null;
+  const cell = (h: HoleAvg) => {
+    const color = h.avg == null ? 'text-muted-foreground' : h.avg < h.par ? 'text-green-600' : h.avg > h.par ? 'text-destructive' : 'text-foreground';
+    return (
+      <div key={h.hole} className="flex flex-col items-center w-7 shrink-0 text-[10px]">
+        <span className="text-muted-foreground">{h.hole}</span>
+        <span className={`font-semibold ${color}`}>{h.avg == null ? '—' : h.avg.toFixed(1)}</span>
+      </div>
+    );
+  };
+  return (
+    <div className="mt-2">
+      <p className="text-[10px] text-muted-foreground mb-0.5">Avg score by hole (green = under par)</p>
+      <div className="flex">{holes.filter((h) => h.hole <= 9).map(cell)}</div>
+      <div className="flex mt-0.5">{holes.filter((h) => h.hole > 9).map(cell)}</div>
+    </div>
+  );
+}
+
 function PlayerRow({ p }: { p: ScoutPlayer }) {
   const [open, setOpen] = useState(false);
   const lines = statLines(p);
@@ -63,13 +93,16 @@ function PlayerRow({ p }: { p: ScoutPlayer }) {
         <span className="text-xs text-muted-foreground truncate">· {headline}</span>
       </button>
       {open && (
-        <ul className="px-3 pb-2 pl-8 flex flex-col gap-1">
-          {lines.length > 0 ? (
-            lines.map((l, i) => <li key={i} className="text-xs text-muted-foreground">{l}</li>)
-          ) : (
-            <li className="text-xs text-muted-foreground">Not enough rounds yet ({p.rounds}).</li>
-          )}
-        </ul>
+        <div className="px-3 pb-2 pl-8">
+          <ul className="flex flex-col gap-1">
+            {lines.length > 0 ? (
+              lines.map((l, i) => <li key={i} className="text-xs text-muted-foreground">{l}</li>)
+            ) : (
+              <li className="text-xs text-muted-foreground">Not enough rounds yet ({p.rounds}).</li>
+            )}
+          </ul>
+          <HoleAverages playerId={p.playerId} />
+        </div>
       )}
     </div>
   );

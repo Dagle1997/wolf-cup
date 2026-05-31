@@ -98,11 +98,12 @@ app.get('/scouting/:roundId', async (c) => {
     const boom = volatility(results.map((r) => r.stableford));
     const monies = results.map((r) => r.money);
     const biggestWin = monies.length ? Math.max(...monies) : 0;
-    const biggestLoss = monies.length ? Math.min(...monies) : 0;
+    const biggestLoss = monies.length ? Math.min(0, ...monies) : 0; // 0 = never lost (codex F3)
 
     // Per-hole gross vs par.
     const perHole = new Map<number, { sumToPar: number; rounds: number; birdies: number }>();
     for (const s of scores) {
+      if (s.holeNumber < 1 || s.holeNumber > 18) continue; // guard getCourseHole (codex F5)
       const par = getCourseHole(s.holeNumber as HoleNumber).par;
       const cur = perHole.get(s.holeNumber) ?? { sumToPar: 0, rounds: 0, birdies: 0 };
       cur.sumToPar += s.gross - par;
@@ -114,7 +115,8 @@ app.get('/scouting/:roundId', async (c) => {
     const { best, worst } = bestWorstHoles(holesForBW, MIN_HOLE);
     let topBirdieHole: { hole: number; count: number; rounds: number } | null = null;
     for (const [hole, v] of perHole) {
-      if (v.birdies > 0 && (!topBirdieHole || v.birdies > topBirdieHole.count)) {
+      // deterministic on ties: most birdies, then lowest hole number (codex F4)
+      if (v.birdies > 0 && (!topBirdieHole || v.birdies > topBirdieHole.count || (v.birdies === topBirdieHole.count && hole < topBirdieHole.hole))) {
         topBirdieHole = { hole, count: v.birdies, rounds: v.rounds };
       }
     }
@@ -219,7 +221,9 @@ app.get('/scouting/:roundId', async (c) => {
       if (total < MIN_PARTNER) continue;
       const decisive = v.wins + v.losses;
       const winRate = decisive === 0 ? 0 : Math.round((v.wins / decisive) * 100) / 100; // pushes don't penalize
-      if (!top || winRate > top.winRate) {
+      const topTotal = top ? top.wins + top.losses + top.pushes : 0;
+      // deterministic on ties: higher win rate, then larger sample (codex F6)
+      if (!top || winRate > top.winRate || (winRate === top.winRate && total > topTotal)) {
         const [x, y] = k.split('-').map(Number) as [number, number];
         top = { aId: x, aName: nameOf.get(x) ?? '', bId: y, bName: nameOf.get(y) ?? '', wins: v.wins, losses: v.losses, pushes: v.pushes, winRate };
       }
