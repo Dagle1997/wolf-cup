@@ -21,7 +21,7 @@ type ScoutPlayer = {
 type ScoutGroup = {
   groupNumber: number;
   players: ScoutPlayer[];
-  rivalry: { aName: string; bName: string; leaderName: string; aWins: number; bWins: number; moneyDiff: number; shared: number } | null;
+  rivalry: { leaderName: string; trailerName: string; leaderWins: number; trailerWins: number; moneyDiff: number; shared: number } | null;
   luckyCharm: { aName: string; bName: string; wins: number; losses: number; pushes: number; winRate: number } | null;
 };
 type ScoutResponse = { roundId: number; seasonRounds: number; groups: ScoutGroup[] };
@@ -104,10 +104,10 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
           <div className="bg-muted/60 px-3 py-2 border-b">
             <p className="font-semibold text-sm">Group {g.groupNumber}</p>
             <div className="mt-1 flex flex-col gap-0.5">
-              {g.rivalry && Math.abs(g.rivalry.aWins - g.rivalry.bWins) > 0 && (
+              {g.rivalry && g.rivalry.leaderWins > g.rivalry.trailerWins && (
                 <p className="text-xs text-amber-800">
-                  ⚔️ {g.rivalry.leaderName} owns it — {g.rivalry.aName} {g.rivalry.aWins}–{g.rivalry.bWins} {g.rivalry.bName}
-                  {Math.abs(g.rivalry.moneyDiff) > 0 ? ` (${g.rivalry.moneyDiff >= 0 ? '+' : '−'}$${Math.abs(g.rivalry.moneyDiff)})` : ''}
+                  ⚔️ {g.rivalry.leaderName} owns {g.rivalry.trailerName} — {g.rivalry.leaderWins}–{g.rivalry.trailerWins}
+                  {g.rivalry.moneyDiff !== 0 ? ` (${g.rivalry.moneyDiff >= 0 ? '+' : '−'}$${Math.abs(g.rivalry.moneyDiff)})` : ''}
                 </p>
               )}
               {g.luckyCharm && (

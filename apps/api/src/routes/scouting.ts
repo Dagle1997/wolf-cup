@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, lt } from 'drizzle-orm';
 import { getCourseHole, handicapTrend, volatility, bestWorstHoles, loneWolfWhenBehindRate } from '@wolf-cup/engine';
 import type { HoleNumber } from '@wolf-cup/engine';
 import { db } from '../db/index.js';
@@ -32,14 +32,22 @@ app.get('/scouting/:roundId', async (c) => {
     return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
   }
 
-  const round = await db.select({ seasonId: rounds.seasonId }).from(rounds).where(eq(rounds.id, roundId)).get();
+  const round = await db.select({ seasonId: rounds.seasonId, scheduledDate: rounds.scheduledDate }).from(rounds).where(eq(rounds.id, roundId)).get();
   if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
 
-  // This season's finalized official rounds, oldest → newest.
+  // Form going INTO this round: this season's finalized official rounds BEFORE the
+  // target round's date. Makes the report a true scouting report (pre-round intel)
+  // and — because it never looks at later rounds — a frozen snapshot for that week
+  // that won't change as the season goes on.
   const seasonRounds = await db
     .select({ id: rounds.id, scheduledDate: rounds.scheduledDate, tee: rounds.tee })
     .from(rounds)
-    .where(and(eq(rounds.seasonId, round.seasonId), eq(rounds.type, 'official'), eq(rounds.status, 'finalized')))
+    .where(and(
+      eq(rounds.seasonId, round.seasonId),
+      eq(rounds.type, 'official'),
+      eq(rounds.status, 'finalized'),
+      lt(rounds.scheduledDate, round.scheduledDate),
+    ))
     .orderBy(rounds.scheduledDate, rounds.id);
   const seasonRoundIds = seasonRounds.map((r) => r.id);
   const roundOrder = new Map(seasonRounds.map((r, i) => [r.id, i]));
@@ -156,7 +164,9 @@ app.get('/scouting/:roundId', async (c) => {
 
   // Intra-group rivalry (money H2H) + lucky charm (wolf partnership).
   function rivalry(ids: number[]) {
-    let top: { aId: number; aName: string; bId: number; bName: string; leaderName: string; aWins: number; bWins: number; moneyDiff: number; shared: number } | null = null;
+    // Find the most lopsided money head-to-head among the group (by round-wins,
+    // tiebreak by total money). diff is kept from a's perspective (a - b).
+    let top: { a: number; b: number; aWins: number; bWins: number; diff: number; shared: number } | null = null;
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const a = ids[i]!, b = ids[j]!;
@@ -171,13 +181,23 @@ app.get('/scouting/:roundId', async (c) => {
         }
         if (shared < 2) continue;
         const spread = Math.abs(aWins - bWins);
-        if (!top || spread > Math.abs(top.aWins - top.bWins) || (spread === Math.abs(top.aWins - top.bWins) && Math.abs(diff) > Math.abs(top.moneyDiff))) {
-          const leaderName = diff >= 0 ? (nameOf.get(a) ?? '') : (nameOf.get(b) ?? '');
-          top = { aId: a, aName: nameOf.get(a) ?? '', bId: b, bName: nameOf.get(b) ?? '', leaderName, aWins, bWins, moneyDiff: diff, shared };
+        if (!top || spread > Math.abs(top.aWins - top.bWins) || (spread === Math.abs(top.aWins - top.bWins) && Math.abs(diff) > Math.abs(top.diff))) {
+          top = { a, b, aWins, bWins, diff, shared };
         }
       }
     }
-    return top;
+    if (!top) return null;
+    // Report from the LEADER's perspective (more round-wins; tiebreak money) so the
+    // record and the money sign always agree with who "owns it".
+    const aIsLeader = top.aWins > top.bWins || (top.aWins === top.bWins && top.diff >= 0);
+    return {
+      leaderName: nameOf.get(aIsLeader ? top.a : top.b) ?? '',
+      trailerName: nameOf.get(aIsLeader ? top.b : top.a) ?? '',
+      leaderWins: aIsLeader ? top.aWins : top.bWins,
+      trailerWins: aIsLeader ? top.bWins : top.aWins,
+      moneyDiff: aIsLeader ? top.diff : -top.diff,
+      shared: top.shared,
+    };
   }
 
   function luckyCharm(ids: number[]) {
