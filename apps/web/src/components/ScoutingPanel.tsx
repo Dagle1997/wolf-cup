@@ -275,11 +275,11 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
         </div>
       )}
 
+      {/* Retrospective grade (past finalized weeks only) — leads, above the line */}
+      {data.retrospective && <RetroGrade retro={data.retrospective} />}
+
       {/* 📊 The Line */}
       <TheLine odds={data.odds} />
-
-      {/* Retrospective grade (past finalized weeks only) */}
-      {data.retrospective && <RetroGrade retro={data.retrospective} />}
 
       {data.groups.length === 0 ? (
         <div className="rounded-xl border p-6 text-center text-sm text-muted-foreground">No scouting data yet — groups or 2026 rounds aren't set.</div>
