@@ -66,9 +66,12 @@ describe('pickWeightedIndex', () => {
   it('respects weight proportions (heavier weight drawn more often)', () => {
     const rng = mulberry32(55);
     const counts = [0, 0];
-    for (let i = 0; i < 10_000; i++) counts[pickWeightedIndex(rng, [3, 1])]++;
+    for (let i = 0; i < 10_000; i++) {
+      const idx = pickWeightedIndex(rng, [3, 1]);
+      counts[idx] = (counts[idx] ?? 0) + 1;
+    }
     // index 0 should win ~75% of the time
-    expect(counts[0]).toBeGreaterThan(counts[1] * 2);
+    expect(counts[0] ?? 0).toBeGreaterThan((counts[1] ?? 0) * 2);
   });
 
   it('falls back to a uniform draw when all weights are zero (never returns -1)', () => {
