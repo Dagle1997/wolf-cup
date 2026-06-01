@@ -108,6 +108,17 @@ export interface OddsLine {
   readonly impliedProb: number;
   readonly tier: OddsTier;
   readonly confidence: { readonly rounds: number; readonly level: 'low' | 'medium' | 'high' };
+  /** Plain-numeric "why" behind the price — the UI composes the sentence. Means
+   * are over the member's own prior rounds; ranks are 1..fieldSize among members
+   * (1 = best). Means are null for a member with no prior rounds. */
+  readonly drivers: {
+    readonly rounds: number;
+    readonly stablefordMean: number | null;
+    readonly moneyMean: number | null;
+    readonly stablefordRank: number | null;
+    readonly moneyRank: number | null;
+    readonly fieldSize: number;
+  };
 }
 
 export type OddsResult =
@@ -287,6 +298,23 @@ export function computeOddsLine(input: ComputeOddsInput): OddsResult {
   const fairByPlayer = new Map<number, number>();
   for (const m of members) fairByPlayer.set(m.playerId, (wins.get(m.playerId) ?? 0) / validSims);
 
+  // "Why" drivers: each member's mean Stableford/money over their own prior rounds,
+  // plus their rank among members (1 = best). This is the plain-language story
+  // behind the price (the UI composes the sentence) — and it lines up with the
+  // model because the favorite/longshot ordering tracks these same means.
+  const meanOf = (m: OddsFieldEntry, key: 'stableford' | 'money'): number | null =>
+    m.history.length ? m.history.reduce((a, r) => a + r[key], 0) / m.history.length : null;
+  const stabMean = new Map(members.map((m) => [m.playerId, meanOf(m, 'stableford')]));
+  const moneyMean = new Map(members.map((m) => [m.playerId, meanOf(m, 'money')]));
+  const rankBy = (means: Map<number, number | null>): Map<number, number> => {
+    const ranked = members
+      .filter((m) => means.get(m.playerId) != null)
+      .sort((a, b) => (means.get(b.playerId)! - means.get(a.playerId)!) || a.playerId - b.playerId);
+    return new Map(ranked.map((m, i) => [m.playerId, i + 1]));
+  };
+  const stabRank = rankBy(stabMean);
+  const moneyRank = rankBy(moneyMean);
+
   // 6. Posted line + tier per member.
   const lines: OddsLine[] = members.map((m) => {
     const fairProb = fairByPlayer.get(m.playerId)!;
@@ -295,6 +323,8 @@ export function computeOddsLine(input: ComputeOddsInput): OddsResult {
     const underSampled = rounds < C.MIN_PLAYER_ROUNDS;
     const postedAmerican = underSampled ? null : probToAmerican(impliedProb, C.LONGSHOT_CAP, C.FAVORITE_CAP);
     const level: 'low' | 'medium' | 'high' = rounds >= 6 ? 'high' : rounds >= 3 ? 'medium' : 'low';
+    const sm = stabMean.get(m.playerId);
+    const mm = moneyMean.get(m.playerId);
 
     let tier: OddsTier;
     if (underSampled) {
@@ -306,7 +336,18 @@ export function computeOddsLine(input: ComputeOddsInput): OddsResult {
     } else {
       tier = 'live';
     }
-    return { playerId: m.playerId, fairProb, postedAmerican, impliedProb, tier, confidence: { rounds, level } };
+    return {
+      playerId: m.playerId, fairProb, postedAmerican, impliedProb, tier,
+      confidence: { rounds, level },
+      drivers: {
+        rounds,
+        stablefordMean: sm == null ? null : Math.round(sm * 10) / 10,
+        moneyMean: mm == null ? null : Math.round(mm),
+        stablefordRank: stabRank.get(m.playerId) ?? null,
+        moneyRank: moneyRank.get(m.playerId) ?? null,
+        fieldSize: M,
+      },
+    };
   });
 
   // Sort favorites → longshots (by fair prob desc; stable tiebreak on playerId).

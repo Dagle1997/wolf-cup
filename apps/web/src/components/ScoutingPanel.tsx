@@ -35,7 +35,34 @@ type OddsLine = {
   impliedProb: number;
   tier: OddsTier;
   confidence: { rounds: number; level: 'low' | 'medium' | 'high' };
+  drivers: {
+    rounds: number;
+    stablefordMean: number | null;
+    moneyMean: number | null;
+    stablefordRank: number | null;
+    moneyRank: number | null;
+    fieldSize: number;
+  };
 };
+
+/** Plain-language reasoning behind a member's price — "the form behind the number."
+ * Built from the same Stableford/money the model priced on, so it can't be argued with. */
+function oddsWhy(line: OddsLine): string | null {
+  const d = line.drivers;
+  if (!d) return null;
+  if (line.tier === 'unpriced' || d.rounds < 2) {
+    return `Only ${d.rounds} round${d.rounds === 1 ? '' : 's'} in the books — too thin to price, so you're parked near the field average until there's more to go on.`;
+  }
+  const N = d.fieldSize;
+  const band = Math.max(1, Math.ceil(N / 3));
+  const where = (rank: number | null) =>
+    rank == null ? 'mid-pack' : rank <= band ? 'top of the field' : rank > N - band ? 'near the bottom' : 'mid-pack';
+  const money = d.moneyMean == null ? '' : d.moneyMean >= 0 ? `+$${d.moneyMean}` : `−$${Math.abs(d.moneyMean)}`;
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const stab = `${where(d.stablefordRank)} in Stableford (${d.stablefordMean} avg)`;
+  const mon = `${where(d.moneyRank)} in money (${money})`;
+  return `${cap(stab)}; ${mon} — Harvey counts both, so the price blends them.`;
+}
 type Odds =
   | { gated: true; reason: string }
   | { gated: false; theoreticalHold: number; effectiveHold: number; wideOpen: boolean; simCount: number; lines: OddsLine[] };
@@ -141,13 +168,18 @@ function PlayerRow({ p, line }: { p: ScoutPlayer; line: OddsLine | undefined }) 
       {open && (
         <div className="px-3 pb-2 pl-8">
           {line && (
-            <p className="text-xs mb-1">
-              <span className="font-medium">{tierLabel[line.tier]}</span>
-              {line.postedAmerican !== null && (
-                <span className="text-muted-foreground"> · {(line.fairProb * 100).toFixed(1)}% to win the week</span>
+            <>
+              <p className="text-xs mb-1">
+                <span className="font-medium">{line.postedAmerican !== null ? fmtAmerican(line.postedAmerican) + ' · ' : ''}{tierLabel[line.tier]}</span>
+                {line.postedAmerican !== null && (
+                  <span className="text-muted-foreground"> · {(line.fairProb * 100).toFixed(1)}% to win the week</span>
+                )}
+                <span className="text-muted-foreground"> · confidence {line.confidence.level}</span>
+              </p>
+              {oddsWhy(line) && (
+                <p className="text-xs text-foreground/80 mb-1.5 leading-snug">📊 <span className="italic">{oddsWhy(line)}</span></p>
               )}
-              <span className="text-muted-foreground"> · confidence {line.confidence.level}</span>
-            </p>
+            </>
           )}
           <ul className="flex flex-col gap-1">
             {lines.length > 0 ? (

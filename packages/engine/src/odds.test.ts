@@ -136,6 +136,21 @@ describe('computeOddsLine — favorite emerges + members only', () => {
     expect(impliedSum).toBeCloseTo(DEFAULT_ODDS_CONSTANTS.OVERROUND, 6);
   });
 
+  it('emits "why" drivers — means + ranks among members (favorite ranks best)', () => {
+    const r = computeOddsLine(base(field));
+    if (r.gated) throw new Error('gated');
+    const fav = r.lines[0]!; // player 1 — strongest
+    expect(fav.drivers.rounds).toBe(6);
+    expect(fav.drivers.fieldSize).toBe(4);
+    expect(fav.drivers.stablefordRank).toBe(1); // best Stableford
+    expect(fav.drivers.moneyRank).toBe(1);      // best money
+    expect(fav.drivers.stablefordMean).toBeGreaterThan(39);
+    // weakest member ranks worst in the field
+    const weak = r.lines.find((l) => l.playerId === 4)!;
+    expect(weak.drivers.stablefordRank).toBe(4);
+    expect(weak.drivers.moneyRank).toBe(4);
+  });
+
   it('agrees with the independent estimator on favorite ordering (self-consistency)', () => {
     const r = computeOddsLine(base(field));
     if (r.gated) throw new Error('gated');
