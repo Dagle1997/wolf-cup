@@ -23,6 +23,7 @@ vi.mock('../db/index.js', async () => {
 });
 
 import scoutingRouter from './scouting.js';
+import { buildHouseLedger } from '../lib/house-ledger.js';
 import { db } from '../db/index.js';
 import { seasons, players, rounds, groups, roundPlayers, roundResults, harveyResults } from '../db/schema.js';
 
@@ -126,8 +127,7 @@ beforeAll(async () => {
 type OddsLine = { playerId: number; name: string; fairProb: number; postedAmerican: number | null; impliedProb: number; tier: string };
 type Odds = { gated: boolean; reason?: string; lines?: OddsLine[]; wideOpen?: boolean; theoreticalHold?: number; effectiveHold?: number };
 type Retro = { winningMemberId: number | null; winningMemberName: string | null; subSpoiled: boolean; verdict: string; favoriteId: number | null } | null;
-type Ledger = { openWeeks: number; cumulativeUnits: number; totalStakes: number; realizedHold: number; theoreticalHold: number; perWeek: Array<{ roundId: number }>; validity: { logLoss: number; baselines: { uniform: { logLoss: number }; handicapOnly: { logLoss: number }; lastWeek: { logLoss: number } }; ci: { logLoss: unknown; vsUniform: unknown } } | null };
-type Resp = { odds: Odds; retrospective: Retro; houseLedger: Ledger; weeks: Array<{ roundId: number }> };
+type Resp = { odds: Odds; retrospective: Retro; weeks: Array<{ roundId: number }> };
 
 const get = async (rid: number) => (await (await app.request(`/api/scouting/${rid}`)).json()) as Resp;
 
@@ -201,19 +201,26 @@ describe('retrospective — graded opening line', () => {
   });
 });
 
-describe('house ledger', () => {
+describe('house ledger is ADMIN-ONLY, off the public response', () => {
+  it('the public scouting response does NOT include houseLedger', async () => {
+    const raw = await (await app.request('/api/scouting/7')).json() as Record<string, unknown>;
+    expect('houseLedger' in raw).toBe(false);
+  });
+
+  // The ledger logic itself (lib/house-ledger.ts) — unit-tested directly against
+  // the seeded in-memory DB (the admin endpoint just wraps this with auth + season pick).
   it('opens after week 3, excludes below-gate weeks, covers R4/R5/R6', async () => {
-    const { houseLedger } = await get(7);
-    expect(houseLedger.openWeeks).toBe(3);
-    expect(houseLedger.perWeek.map((w) => w.roundId)).toEqual([4, 5, 6]);
+    const ledger = await buildHouseLedger(1, '2026-09-30');
+    expect(ledger.openWeeks).toBe(3);
+    expect(ledger.perWeek.map((w) => w.roundId)).toEqual([4, 5, 6]);
   });
 
   it('reports cumulative units + holds + calibration vs. baselines', async () => {
-    const { houseLedger } = await get(7);
-    expect(Number.isFinite(houseLedger.cumulativeUnits)).toBe(true);
-    expect(houseLedger.theoreticalHold).toBeCloseTo(1 - 1 / 1.18, 4);
-    expect(houseLedger.realizedHold).toBeGreaterThanOrEqual(-1);
-    const v = houseLedger.validity!;
+    const ledger = await buildHouseLedger(1, '2026-09-30');
+    expect(Number.isFinite(ledger.cumulativeUnits)).toBe(true);
+    expect(ledger.theoreticalHold).toBeCloseTo(1 - 1 / 1.18, 4);
+    expect(ledger.realizedHold).toBeGreaterThanOrEqual(-1);
+    const v = ledger.validity!;
     expect(Number.isFinite(v.logLoss)).toBe(true); // finite even if a winner had fair_p=0 (floored)
     expect(v.baselines.uniform).toBeDefined();
     expect(v.baselines.handicapOnly).toBeDefined();
@@ -223,9 +230,9 @@ describe('house ledger', () => {
   });
 
   it('is deterministic across reads', async () => {
-    const a = await get(7);
-    const b = await get(7);
-    expect(JSON.stringify(a.houseLedger)).toBe(JSON.stringify(b.houseLedger));
+    const a = await buildHouseLedger(1, '2026-09-30');
+    const b = await buildHouseLedger(1, '2026-09-30');
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
 

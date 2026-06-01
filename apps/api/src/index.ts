@@ -19,6 +19,7 @@ import adminPairingRouter from './routes/admin/pairing.js';
 import adminAttendanceRouter from './routes/admin/attendance.js';
 import adminHistoryRouter from './routes/admin/history.js';
 import adminBackupRouter from './routes/admin/backup.js';
+import adminTheHouseRouter from './routes/admin/the-house.js';
 import attendanceRouter from './routes/attendance.js';
 import historyRouter from './routes/history.js';
 import pairingsRouter from './routes/pairings.js';
@@ -79,6 +80,7 @@ app.route('/api/admin', adminPairingRouter);
 app.route('/api/admin', adminAttendanceRouter);
 app.route('/api/admin/history', adminHistoryRouter);
 app.route('/api/admin', adminBackupRouter);
+app.route('/api/admin', adminTheHouseRouter);
 
 // ---------------------------------------------------------------------------
 // Startup cleanup — delete cancelled casual rounds older than 24 hours

@@ -48,21 +48,6 @@ type Retrospective = {
   favoriteName: string | null;
   winnerPostedAmerican: number | null;
 } | null;
-type HouseLedger = {
-  openWeeks: number;
-  cumulativeUnits: number;
-  totalStakes: number;
-  theoreticalHold: number;
-  effectiveHold: number;
-  realizedHold: number;
-  perWeek: { roundId: number; date: string; housePnl: number; cumulative: number; effectiveHold: number }[];
-  validity: {
-    logLoss: number;
-    brier: number;
-    baselines: { uniform: { logLoss: number }; handicapOnly: { logLoss: number }; lastWeek: { logLoss: number } };
-    ci: { logLoss: { mean: number; lo: number; hi: number } };
-  } | null;
-};
 type Week = { roundId: number; date: string; label: string; status: string };
 type ScoutResponse = {
   roundId: number;
@@ -71,7 +56,6 @@ type ScoutResponse = {
   weeks: Week[];
   odds: Odds;
   retrospective: Retrospective;
-  houseLedger: HouseLedger;
 };
 
 const teeLabel = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -243,54 +227,6 @@ function RetroGrade({ retro }: { retro: NonNullable<Retrospective> }) {
   );
 }
 
-/** 🏛️ The House — cumulative P&L ledger + calibration. */
-function TheHouse({ ledger }: { ledger: HouseLedger }) {
-  if (ledger.openWeeks === 0) {
-    return (
-      <div className="rounded-xl border p-4 text-center text-sm text-muted-foreground">
-        🏛️ The House · books open after week 3
-      </div>
-    );
-  }
-  const up = ledger.cumulativeUnits >= 0;
-  const max = Math.max(1, ...ledger.perWeek.map((w) => Math.abs(w.cumulative)));
-  return (
-    <div className="rounded-xl border overflow-hidden shadow-sm">
-      <div className="bg-muted/60 px-3 py-2 border-b font-semibold text-sm">🏛️ The House</div>
-      <div className="px-3 py-2">
-        <p className={`text-2xl font-bold tabular-nums ${up ? 'text-emerald-700' : 'text-rose-700'}`}>
-          {up ? '+' : ''}{ledger.cumulativeUnits.toFixed(2)}u
-        </p>
-        <p className="text-[11px] text-muted-foreground">
-          {ledger.openWeeks} wk{ledger.openWeeks === 1 ? '' : 's'} · realized hold {(ledger.realizedHold * 100).toFixed(1)}% · theoretical {(ledger.theoreticalHold * 100).toFixed(1)}%
-        </p>
-        {/* tiny weekly cumulative sparkline */}
-        <div className="mt-2 flex items-end gap-0.5 h-8">
-          {ledger.perWeek.map((w) => (
-            <div
-              key={w.roundId}
-              title={`${fmtDate(w.date)}: ${w.cumulative >= 0 ? '+' : ''}${w.cumulative}u`}
-              className={`w-2 ${w.cumulative >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`}
-              style={{ height: `${(Math.abs(w.cumulative) / max) * 100}%` }}
-            />
-          ))}
-        </div>
-        {ledger.validity && (
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Calibration (log-loss, lower=better): line <span className="font-medium">{ledger.validity.logLoss.toFixed(3)}</span> vs.
-            uniform {ledger.validity.baselines.uniform.logLoss.toFixed(3)} ·
-            handicap {ledger.validity.baselines.handicapOnly.logLoss.toFixed(3)} ·
-            last-wk {ledger.validity.baselines.lastWeek.logLoss.toFixed(3)}
-          </p>
-        )}
-        <p className="mt-1 text-[10px] text-muted-foreground">
-          For entertainment — the line can't price dives, round-dumping, or index sandbagging.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export function ScoutingPanel({ roundId }: { roundId: number }) {
   // Week selector — default = the round we were mounted with; scrubbing loads a
   // past week's frozen line + grade.
@@ -338,9 +274,6 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
           </select>
         </div>
       )}
-
-      {/* 🏛️ The House — leads on mobile */}
-      <TheHouse ledger={data.houseLedger} />
 
       {/* 📊 The Line */}
       <TheLine odds={data.odds} />
