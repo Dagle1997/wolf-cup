@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wolf Cup — The Line &amp; Group Scouting</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --green: #16a34a;
+    --green-dark: #15803d;
+    --green-deeper: #0f5c2e;
+    --gold: #f59e0b;
+    --dark: #0a0f0a;
+    --grey: #6b7280;
+  }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: white;
+    color: #1a1a1a;
+    line-height: 1.5;
+  }
+
+  @page {
+    size: letter;
+    margin: 0;
+  }
+
+  .page {
+    width: 8.5in;
+    height: 11in;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+
+  /* ===== SHARED ===== */
+  .section-label {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .section-title {
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1.15;
+    margin-bottom: 12px;
+  }
+
+  .section-desc {
+    font-size: 20px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+
+  .phone-frame {
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.15), 0 2px 8px rgba(0,0,0,0.1);
+    border: 2px solid #e5e7eb;
+  }
+
+  .phone-frame img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .dark-phone-frame {
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    border: 2px solid rgba(255,255,255,0.1);
+  }
+
+  .dark-phone-frame img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .bullets {
+    list-style: none;
+    padding: 0;
+  }
+
+  .bullets li {
+    font-size: 18px;
+    padding: 6px 0;
+    padding-left: 28px;
+    position: relative;
+    line-height: 1.5;
+  }
+
+  .bullets li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--green);
+    font-weight: 700;
+  }
+
+  .dark-bullets li {
+    color: rgba(255,255,255,0.8);
+  }
+
+  .dark-bullets li::before {
+    color: var(--green);
+  }
+
+  /* ===== PAGE 1: HERO ===== */
+  .hero-page {
+    background: linear-gradient(165deg, var(--dark) 0%, #0d1f0d 40%, var(--green-deeper) 100%);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 0.7in 0.8in;
+  }
+
+  .hero-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.6in;
+  }
+
+  .hero-top-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .hero-logo { font-size: 32px; }
+
+  .hero-brand {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--green);
+  }
+
+  .asstv-badge {
+    font-size: 14px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.6);
+    letter-spacing: 1px;
+  }
+
+  .asstv-badge .asstv-icon { font-size: 16px; }
+
+  .hero-headline {
+    font-size: 56px;
+    font-weight: 900;
+    line-height: 1.05;
+    letter-spacing: -1.5px;
+    margin-bottom: 24px;
+  }
+
+  .hero-headline .accent { color: var(--green); }
+
+  .hero-sub {
+    font-size: 22px;
+    font-weight: 300;
+    color: rgba(255,255,255,0.7);
+    max-width: 6in;
+    line-height: 1.6;
+    margin-bottom: 0.5in;
+  }
+
+  .hero-features {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: auto;
+  }
+
+  .hero-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 18px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+  }
+
+  .hero-feature-icon { font-size: 28px; flex-shrink: 0; margin-top: 2px; }
+
+  .hero-feature-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+
+  .hero-feature-desc { font-size: 15px; color: rgba(255,255,255,0.5); line-height: 1.45; }
+
+  .hero-bottom {
+    margin-top: 0.4in;
+    text-align: center;
+  }
+
+  .hero-url-text { font-size: 28px; font-weight: 700; color: var(--green); }
+
+  .hero-url-note { font-size: 15px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+
+  .hero-tagline { font-size: 14px; color: rgba(255,255,255,0.3); font-style: italic; }
+
+  /* ===== FEATURE PAGES (light) ===== */
+  .feature-page-light {
+    background: white;
+    padding: 0.6in 0.8in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .feature-page-light .section-label { color: var(--green); }
+  .feature-page-light .section-title { color: var(--dark); }
+  .feature-page-light .section-desc { color: var(--grey); }
+  .feature-page-light .bullets li { color: #374151; }
+
+  .feature-layout {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    flex: 1;
+  }
+
+  .feature-layout.reverse { flex-direction: row-reverse; }
+
+  .feature-layout .phone-frame { width: 260px; flex-shrink: 0; }
+
+  .feature-text { flex: 1; }
+
+  .feature-text h3 {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--dark);
+    margin-bottom: 14px;
+  }
+
+  .feature-text p {
+    font-size: 19px;
+    color: var(--grey);
+    line-height: 1.6;
+    margin-bottom: 18px;
+  }
+
+  /* ===== FEATURE PAGES (dark) ===== */
+  .feature-page-dark {
+    background: var(--dark);
+    color: white;
+    padding: 0.6in 0.8in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .feature-page-dark .section-label { color: var(--gold); }
+  .feature-page-dark .section-title { color: white; }
+  .feature-page-dark .section-desc { color: rgba(255,255,255,0.5); }
+
+  .dark-feature-layout {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    flex: 1;
+  }
+
+  .dark-feature-layout.reverse { flex-direction: row-reverse; }
+
+  .dark-feature-layout .dark-phone-frame { width: 260px; flex-shrink: 0; }
+
+  .dark-feature-text { flex: 1; }
+
+  .dark-feature-text h3 {
+    font-size: 32px;
+    font-weight: 800;
+    margin-bottom: 14px;
+  }
+
+  .dark-feature-text p {
+    font-size: 19px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+    margin-bottom: 18px;
+  }
+
+  /* ===== STANDINGS PAGE (dark, landscape ss) ===== */
+  .standings-banner {
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 28px;
+  }
+
+  .standings-banner img {
+    width: 100%;
+    display: block;
+  }
+
+  /* ===== CTA PAGE ===== */
+  .cta-page {
+    background: linear-gradient(170deg, #fafafa 0%, white 50%, #f0fdf4 100%);
+    padding: 0.4in 0.8in 0.35in;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .steps-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .step-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+
+  .step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    background: var(--green);
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .step-card h4 { font-size: 17px; font-weight: 700; color: var(--dark); margin-bottom: 5px; }
+
+  .step-card p { font-size: 14px; color: var(--grey); line-height: 1.5; }
+
+  .what-it-replaces {
+    background: var(--dark);
+    border-radius: 14px;
+    padding: 14px 20px;
+    margin-bottom: 14px;
+    color: white;
+  }
+
+  .what-it-replaces h3 { font-size: 20px; font-weight: 800; margin-bottom: 14px; }
+
+  .replace-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .replace-item { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+  .replace-old { color: #ef4444; text-decoration: line-through; opacity: 0.6; }
+  .replace-arrow { color: var(--green); font-weight: 700; }
+  .replace-new { color: var(--green); font-weight: 600; }
+
+  .cta-box {
+    text-align: center;
+    padding: 22px;
+    background: white;
+    border-radius: 18px;
+    border: 2px solid var(--green);
+    box-shadow: 0 4px 20px rgba(22,163,74,0.1);
+  }
+
+  .cta-box h2 { font-size: 24px; font-weight: 900; color: var(--dark); margin-bottom: 6px; }
+  .cta-box p { font-size: 15px; color: var(--grey); margin-bottom: 10px; }
+  .cta-url { font-size: 26px; font-weight: 800; color: var(--green); }
+
+  .cta-install { font-size: 12px; color: var(--grey); margin-top: 8px; line-height: 1.5; }
+
+  .footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding-top: 16px;
+  }
+
+  .footer-note { font-size: 11px; color: #9ca3af; }
+
+  .footer-asstv { font-size: 11px; color: #9ca3af; }
+
+  @media print {
+    .page { page-break-after: always; page-break-inside: avoid; }
+    body { -webkit-print-color-adjust: exact; }
+  }
+</style>
+
+</head>
+<body>
+
+<!-- ===== PAGE 1: HERO ===== -->
+<div class="page hero-page">
+  <div class="hero-top">
+    <div class="hero-top-left">
+      <span class="hero-logo">🐺</span>
+      <span class="hero-brand">Wolf Cup</span>
+    </div>
+    <div class="asstv-badge">AssTV <span class="asstv-icon">🍑</span><br><span style="font-size: 8px; font-weight: 400; letter-spacing: 0; opacity: 0.5;">NETWORKS</span></div>
+  </div>
+
+  <div style="font-size: 16px; font-weight: 500; color: rgba(255,255,255,0.4); letter-spacing: 1px; margin-bottom: 12px;">
+    The AssTV 🍑 Networks proudly invests in
+  </div>
+
+  <h1 class="hero-headline">
+    Two new ways to<br>
+    <span class="accent">scout Friday.</span>
+  </h1>
+
+  <p class="hero-sub">
+    New this week in the Wolf Cup app: <strong style="color:#fff;font-weight:600;">The Line</strong> sets live betting
+    odds on who takes the week, and <strong style="color:#fff;font-weight:600;">Group Scouting</strong> breaks down every
+    foursome before you tee off. Frozen, graded, and 100% for fun — plus a stack of upgrades all season long.
+  </p>
+
+  <div class="hero-features">
+    <div class="hero-feature">
+      <span class="hero-feature-icon">📊</span>
+      <div>
+        <div class="hero-feature-title">The Line</div>
+        <div class="hero-feature-desc">Real American odds on every member to win the week — favorites to longshots</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">🔍</span>
+      <div>
+        <div class="hero-feature-title">Group Scouting</div>
+        <div class="hero-feature-desc">Every foursome broken down — form, hot/cold holes, rivalries, lucky charms</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">🎯</span>
+      <div>
+        <div class="hero-feature-title">Tap for the why</div>
+        <div class="hero-feature-desc">Question your number? Tap it — the app shows the Stableford + money behind the price</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">✅</span>
+      <div>
+        <div class="hero-feature-title">Graded every week</div>
+        <div class="hero-feature-desc">Chalk, Upset, or Busted — the line answers for itself, publicly, every Friday</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-bottom">
+    <div class="hero-url-text">wolf.dagle.cloud</div>
+    <div class="hero-url-note">Scouting tab → 📊 The Line + 🔍 Group Scouting · works on any phone</div>
+    <div class="hero-tagline" style="margin-top: 12px;">Built for the Wolf Cup at Guyan Golf &amp; Country Club</div>
+  </div>
+</div>
+
+<!-- ===== PAGE 2: THE LINE (light) ===== -->
+<div class="page feature-page-light">
+  <div class="section-label">New this week</div>
+  <div class="section-title">The app now sets the line</div>
+  <div class="section-desc">
+    Open the Scouting tab and it leads with The Line — a full sportsbook board pricing every member's odds to win the week.
+  </div>
+
+  <div class="feature-layout">
+    <div class="phone-frame">
+      <img src="app%20screenshots/the-line-board.png" alt="The Line odds board with a player drilled down">
+    </div>
+    <div class="feature-text">
+      <h3>Odds to win the week</h3>
+      <p>
+        Every member gets a real American price to post the most Harvey points that Friday — favorites in the black,
+        live dogs in the middle, longshots out to +2500. Tap any name to drill in: your true win %, your confidence,
+        and the reasoning behind the number.
+      </p>
+      <ul class="bullets">
+        <li><strong>Favorites → longshots</strong> — a board with real texture</li>
+        <li><strong>Tap for the why</strong> — your Stableford + money rank, in plain English</li>
+        <li>Frozen before tee time — it can never peek at the result</li>
+        <li><strong>Graded weekly</strong> — ✅ Chalk, 🎲 Upset, or 💥 Busted at the top of the board</li>
+        <li>Scrub the week selector to relive any past Friday's line</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 3: GROUP SCOUTING (dark) ===== -->
+<div class="page feature-page-dark">
+  <div class="section-label">New this week</div>
+  <div class="section-title">Know the foursome before you tee off</div>
+  <div class="section-desc">
+    Below the line, Group Scouting breaks down this week's foursomes — the pre-round intel that used to live only in your head.
+  </div>
+
+  <div class="dark-feature-layout">
+    <div class="dark-phone-frame">
+      <img src="app%20screenshots/group-scouting.png" alt="Group Scouting — foursome form breakdown">
+    </div>
+    <div class="dark-feature-text">
+      <h3>Scouting, by the group</h3>
+      <p>
+        Tap any player in your foursome to see exactly how they're playing — handicap trend, the holes they own,
+        the holes they dread, and their average score on every hole, front nine and back.
+      </p>
+      <ul class="bullets dark-bullets">
+        <li>📈 Handicap trend — who's heating up, who's cooling off</li>
+        <li>🎯 Best &amp; worst holes, plus their go-to birdie hole</li>
+        <li>🟦 Hole-by-hole scoring averages (green = under par)</li>
+        <li>⚔️ Rivalries — who owns who in the money</li>
+        <li>🤝 Lucky charms — the partnerships that just work</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 4: ALSO NEW (light) ===== -->
+<div class="page feature-page-light">
+  <div class="section-label">Also new this season</div>
+  <div class="section-title">A season of upgrades</div>
+  <div class="section-desc">
+    The app keeps getting sharper between Fridays. A few of the upgrades you may have missed:
+  </div>
+
+  <div class="steps-grid" style="margin-top: 4px;">
+    <div class="step-card">
+      <div style="font-size: 24px; margin-bottom: 6px;">🎲</div>
+      <h4>Ball draw, squared up</h4>
+      <p>The digital ball draw is now a true, uniformity-tested random shuffle — every batting position is equally likely. (Thanks for the nudge.)</p>
+    </div>
+    <div class="step-card">
+      <div style="font-size: 24px; margin-bottom: 6px;">💰</div>
+      <h4>Skins, listed</h4>
+      <p>Every player who cards a skin is now shown — not just a single "most skins" winner.</p>
+    </div>
+    <div class="step-card">
+      <div style="font-size: 24px; margin-bottom: 6px;">🎯</div>
+      <h4>Closest-to-pin, per par 3</h4>
+      <p>On CTP weeks the app prompts for the winner right after each par 3 — no more reconstructing it later.</p>
+    </div>
+    <div class="step-card">
+      <div style="font-size: 24px; margin-bottom: 6px;">✨</div>
+      <h4>Season Highlights reel</h4>
+      <p>A rotating widget: Most Birdies, Par 3 Champion, Sandman, Putting Master, best partnerships, and more.</p>
+    </div>
+    <div class="step-card">
+      <div style="font-size: 24px; margin-bottom: 6px;">📊</div>
+      <h4>Sharper stats</h4>
+      <p>Chemistry, rivalries, and batting all reworked so higher always means better — no more squinting at the numbers.</p>
+    </div>
+    <div class="step-card">
+      <div style="font-size: 24px; margin-bottom: 6px;">🕳️</div>
+      <h4>Hole-by-hole on the card</h4>
+      <p>Tap any player anywhere in the app to see their per-hole averages instantly — no second screen.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE 5: FINE PRINT + CTA ===== -->
+<div class="page cta-page">
+  <div class="section-label" style="color: var(--green);">The Fine Print</div>
+  <div class="section-title" style="color: var(--dark); margin-bottom: 6px;">Read it — it's funny</div>
+  <div style="font-size: 18px; color: var(--grey); margin-bottom: 16px; line-height: 1.5;">
+    The Line is 100% for entertainment. No money changes hands, no accounts, no wallet — just the bragging rights of
+    being the week's chalk (or the longshot who ruined everyone's card).
+  </div>
+
+  <div class="what-it-replaces">
+    <h3>What the line can — and can't — price</h3>
+    <div class="replace-grid">
+      <div class="replace-item"><span class="replace-arrow">✓</span><span class="replace-new">Current form</span><span style="color:rgba(255,255,255,0.45);font-size:14px;">— beating your index</span></div>
+      <div class="replace-item"><span class="replace-arrow">✓</span><span class="replace-new">The money half</span><span style="color:rgba(255,255,255,0.45);font-size:14px;">— who owns wolf</span></div>
+      <div class="replace-item"><span style="color:#ef4444;font-weight:700;">✗</span><span class="replace-old">Sandbagging</span><span style="color:rgba(255,255,255,0.45);font-size:14px;">— gaming your index</span></div>
+      <div class="replace-item"><span style="color:#ef4444;font-weight:700;">✗</span><span class="replace-old">Dumping a round</span><span style="color:rgba(255,255,255,0.45);font-size:14px;">— tanking on purpose</span></div>
+      <div class="replace-item"><span style="color:#ef4444;font-weight:700;">✗</span><span class="replace-old">Lightning</span><span style="color:rgba(255,255,255,0.45);font-size:14px;">— catching fire late</span></div>
+      <div class="replace-item"><span class="replace-arrow">✓</span><span class="replace-new">Handicaps equalize</span><span style="color:rgba(255,255,255,0.45);font-size:14px;">— so the edge stays honest</span></div>
+    </div>
+  </div>
+  <p style="font-size: 15px; color: var(--grey); margin-bottom: 14px; text-align: center; font-style: italic;">
+    That last column is exactly why we still play it on grass instead of a spreadsheet.
+  </p>
+
+  <div class="cta-box">
+    <h2>The board's open.</h2>
+    <p>Go see where you sit, then scout your group. Favorite or longshot, your number's already waiting.</p>
+    <div class="cta-url">wolf.dagle.cloud</div>
+    <div class="cta-install">
+      Scouting tab → 📊 The Line &amp; 🔍 Group Scouting · scrub the week selector for past lines &amp; grades
+    </div>
+  </div>
+
+  <div style="text-align: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid #e5e7eb;">
+    <div style="font-size: 12px; color: #9ca3af; margin-bottom: 4px;">Built for the Wolf Cup at Guyan Golf &amp; Country Club · For entertainment only — no wagering</div>
+    <div style="font-size: 10px; color: #b0b0b0; line-height: 1.5; max-width: 6in; margin: 0 auto;">
+      © 2026 Appalachian Sports Station TV Networks (AssTV). All content is owned by Appalachian Sports Station TV Networks
+      and may not be reproduced, rebroadcast, or otherwise distributed without the express written consent of AssTV Networks.
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
