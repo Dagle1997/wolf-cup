@@ -52,7 +52,12 @@ export interface OddsConstants {
 
 export const DEFAULT_ODDS_CONSTANTS: OddsConstants = {
   SIM_COUNT: 20000,
-  SHRINKAGE_PSEUDO_ROUNDS: 4,
+  // 8 (was 4): with only ~5 finalized rounds per player early-season the bootstrap
+  // is under-dispersed, so 4 pseudo-rounds left the board over-confident (favorite
+  // ~30% / longshots pinned at the +2500 cap). 8 pulls thin samples harder toward
+  // the field mean — favorite ~23%, longshots off the floor — a more honest line
+  // for a small sample. Revisit toward 4 once there's a deeper track record.
+  SHRINKAGE_PSEUDO_ROUNDS: 8,
   RECENCY_HALF_LIFE: 4,
   MIN_FIELD_ROUNDS: 3,
   MIN_PLAYER_ROUNDS: 2,
