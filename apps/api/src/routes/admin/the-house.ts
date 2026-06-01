@@ -23,9 +23,9 @@ app.get('/the-house', adminAuthMiddleware, async (c) => {
   if (all.length === 0) return c.json({ season: null, ledger: null }, 200);
 
   const today = todayIso();
-  const current =
-    all.find((s) => s.startDate <= today && today <= s.endDate) ??
-    [...all].sort((a, b) => b.year - a.year)[0]!;
+  // Deterministic: prefer the most recent in-window season, else the latest year.
+  const byYearDesc = [...all].sort((a, b) => b.year - a.year);
+  const current = byYearDesc.find((s) => s.startDate <= today && today <= s.endDate) ?? byYearDesc[0]!;
 
   // Pass the season's endDate so the ledger covers every finalized week in it.
   const ledger = await buildHouseLedger(current.id, current.endDate);

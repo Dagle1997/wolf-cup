@@ -145,6 +145,7 @@ export async function buildHouseLedger(seasonId: number, uptoDate: string): Prom
 
     // Priced members (a posted price) + recent-form z (last RECENCY_HALF_LIFE prior rounds of combined Harvey pts).
     const priced = odds.lines.filter((l) => l.postedAmerican !== null);
+    if (priced.length === 0) continue; // no bettable line this week — not an "open" book (F3)
     const recentMeanOf = (pid: number): number => {
       const pts: number[] = [];
       for (const pr of priorRounds) pts.push(harveyByRound.get(pr.id)?.get(pid) ?? NaN);

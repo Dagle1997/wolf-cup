@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, inArray, lt } from 'drizzle-orm';
+import { eq, and, inArray, lt, ne } from 'drizzle-orm';
 import {
   getCourseHole, handicapTrend, volatility, bestWorstHoles, loneWolfWhenBehindRate,
   computeOddsLine,
@@ -87,11 +87,13 @@ app.get('/scouting/:roundId', async (c) => {
   const roundOrder = new Map(seasonRounds.map((r, i) => [r.id, i]));
   const teeByRound = new Map(seasonRounds.map((r) => [r.id, r.tee]));
 
-  // Season round list for the UI week selector (all official rounds, any status).
+  // Season round list for the UI week selector. Excludes CANCELLED rounds
+  // (e.g. a rained-out week) — those never have a line to scout and would
+  // otherwise show as a stray "(upcoming)" entry in the dropdown.
   const weekRows = await db
     .select({ id: rounds.id, scheduledDate: rounds.scheduledDate, status: rounds.status })
     .from(rounds)
-    .where(and(eq(rounds.seasonId, round.seasonId), eq(rounds.type, 'official')))
+    .where(and(eq(rounds.seasonId, round.seasonId), eq(rounds.type, 'official'), ne(rounds.status, 'cancelled')))
     .orderBy(rounds.scheduledDate, rounds.id);
   const weeks = weekRows.map((w) => ({ roundId: w.id, date: w.scheduledDate, label: w.scheduledDate, status: w.status }));
 
