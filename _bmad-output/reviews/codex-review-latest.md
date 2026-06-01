@@ -1,56 +1,45 @@
 # Codex Review
 
-- Generated: 2026-06-01T15:49:25.502Z
+- Generated: 2026-06-01T17:21:13.825Z
 - Model: gpt-5.2
 - Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: packages/engine/src/odds.ts, apps/api/src/routes/scouting.ts, packages/engine/src/rng.ts
+- Reviewed files: apps/api/src/lib/house-ledger.ts, apps/api/src/routes/admin/the-house.ts, apps/api/src/routes/scouting.ts, apps/api/src/index.ts, apps/web/src/routes/admin/the-house.tsx, apps/web/src/components/ScoutingPanel.tsx, apps/web/src/routes/admin/index.tsx, packages/engine/src/odds.ts
 
 ## Summary
 
-Round-1 findings F1–F7 appear genuinely resolved in the engine/odds core (notably: computeOddsLine now normalizes ordering; favorite odds are capped; recency horizon uses priorRoundCount−1; dead-heat handling is deterministic; ledger no longer does quadratic scans). However, the fixes/added blocks introduced a couple of concrete regressions/edge bugs: (1) the route-level try/catch for the odds block can incorrectly wipe out a valid odds line if only the retrospective DB read fails, and (2) the house-ledger “last week winner” baseline is still order-dependent on ties (and also wrong when N=1).
+Reviewed the new/extracted House ledger lib, new admin endpoint + web page, and the public scouting endpoint changes (weeks filter + removal of House ledger). Admin auth gating appears correctly applied, public /scouting no longer returns the ledger, and the cancelled-round exclusion in the week selector query matches the stated intent. Main residual concerns are minor: season-selection robustness and a client-side redirect pattern that can cause render-time navigation warnings; plus a ledger edge case where a week can be counted as “open” even if nobody is priced (0 stakes).
 
-Overall risk: medium
+Overall risk: low
 
 ## Findings
 
-1. [high] Odds line can be incorrectly downgraded to gated if ONLY retrospective fails (try/catch scopes too wide)
-   - File: apps/api/src/routes/scouting.ts:131-161
-   - Confidence: high
-   - Why it matters: The error-isolation fix (F6) is intended to prevent additive blocks from 500’ing, but the current implementation couples unrelated work: computeOddsLine + buildRetrospective are inside the same try/catch. If buildRetrospective throws (e.g., transient DB issue, schema mismatch, or harvey_results access failure), the catch block sets `odds = { gated: true, reason: 'odds unavailable' }` even though the odds line may have been successfully computed. That is a functional regression: consumers lose the core “odds” output due to a retrospective-only failure.
-   - Suggested fix: Split the logic into separate try/catch blocks so retrospective failure cannot overwrite a valid odds line. Example: (a) compute odds in its own try; (b) if round.status==='finalized', wrap buildRetrospective in a narrower try/catch that only nulls retrospective while preserving `odds`.
-
-2. [medium] House-ledger last-week baseline is still non-deterministic on dead-heats (depends on DB row order)
-   - File: apps/api/src/routes/scouting.ts:608-625
-   - Confidence: high
-   - Why it matters: You fixed deterministic winner selection for the *current* week (winners sorted) and for retrospective grading. But the “lastWeek” baseline chooses `prevWinner` by scanning `prevRoster` and only updating on `v > mx` (strict). If two members tie for top Harvey points last week, the first encountered in `prevRoster` wins the tie-break. `prevRoster` comes from `rosterByRound` built from an unordered query (no ORDER BY), so the picked `prevWinner` (and thus `lastWeekMap`, and logloss/brier baselines/CI) can change across reads/query plans.
-   - Suggested fix: Make tie-breaking deterministic: compute the full co-winner set for prev week and either (a) pick `Math.min(...coWinners)`; or (b) split LAST_WEEK_P mass across all co-winners. Also consider sorting `prevRoster` by playerId before scanning as a backstop.
-
-3. [medium] House-ledger last-week baseline produces an invalid probability distribution when N=1
-   - File: apps/api/src/routes/scouting.ts:620-625
-   - Confidence: high
-   - Why it matters: When `N = memberList.length` equals 1, `others = (1 - LAST_WEEK_P) / Math.max(1, N - 1)` becomes `(1 - p)/1`, and the loop sets the only member to `LAST_WEEK_P` (0.5) if they are `prevWinner`. That yields a total probability sum of 0.5 instead of 1. This directly corrupts `logLossAndBrier(lastWeekMap, ...)` outputs for those weeks.
-   - Suggested fix: Special-case N<=1: if N===1, set that member’s probability to 1. More generally, build `lastWeekMap` by normalization (sum then divide) or by explicitly ensuring probabilities sum to 1 across `memberList`.
-
-4. [medium] Retrospective can mis-grade if harvey_results contains rows for players not in the round roster (missing players treated as members)
-   - File: apps/api/src/routes/scouting.ts:390-407
+1. [medium] Season selection in /admin/the-house is sensitive to overlaps/ordering and uses local-date generation
+   - File: apps/api/src/routes/admin/the-house.ts:16-33
    - Confidence: medium
-   - Why it matters: `isSubOf` is built only from `roster`. Any `harvey_results` row whose `playerId` is absent from `roster` yields `isSubOf.get(...) === undefined`, which is treated as falsy, so that player is treated as a member for winner selection (`memberMax`/`winnerSet`). If data ever contains extra harvey_results rows (bad import, stale rows, etc.), retrospective can declare an impossible “member winner” not in the pairing roster and label verdicts incorrectly.
-   - Suggested fix: Filter `hr` to roster playerIds up front (e.g., `const rosterSet = new Set(roster.map(r=>r.playerId)); const hrInRound = hr.filter(h=>rosterSet.has(h.playerId));`). Optionally treat missing roster entries as invalid and return null to avoid mis-grading.
+   - Why it matters: The endpoint selects the "current" season via `all.find(startDate <= today <= endDate)` over an unordered `select` (line 22). If seasons ever overlap due to misconfiguration (or if multiple rows satisfy the predicate), selection becomes dependent on DB return order. Also `todayIso()` uses the server's local timezone; around midnight/UTC vs ET mismatch, it could select the wrong season on boundary days.
+   - Suggested fix: Make selection deterministic and robust: query ordered (e.g., `orderBy(seasons.year desc)` or by `endDate desc`) and if multiple seasons match 'today', pick the highest year/latest endDate. Consider using a consistent timezone (e.g. UTC via `new Date().toISOString().slice(0,10)`), matching how dates are stored/compared elsewhere.
 
-5. [low] computeOddsLine can return impliedProb > 1 for heavy favorites (API field may violate probability expectations)
-   - File: packages/engine/src/odds.ts:286-305
+2. [low] Client-side 401 redirect triggers navigation during render
+   - File: apps/web/src/routes/admin/the-house.tsx:44-55
    - Confidence: high
-   - Why it matters: With proportional overround, `impliedProb = fairProb * OVERROUND` can exceed 1 when `fairProb > 1/OVERROUND` (~0.847 at 1.18). You fixed the absurd American conversion by clamping/capping in probToAmerican, but `impliedProb` is still returned un-clamped in each line. If any consumer/UI assumes impliedProb ∈ [0,1], it can display nonsense (e.g., 101% implied) or break validation.
-   - Suggested fix: Either clamp `impliedProb` to <1 for output (keeping an internal unclamped value for pricing), or rename/document it as “rawImpliedBeforeClamp”. If you clamp, ensure effectiveHold continues to be computed from postedAmerican (as now).
+   - Why it matters: Calling `navigate()` directly in the render path (lines 52–54) can produce React warnings (state update during render) and can lead to repeated navigations on re-render in some scenarios.
+   - Suggested fix: Move the redirect into a `useEffect` that runs when `(isError && error.message === 'UNAUTHORIZED')` becomes true; optionally use `replace: true` to avoid back-button loops.
+
+3. [low] House ledger counts a week as “open” even if no members are priced (0 stakes)
+   - File: apps/api/src/lib/house-ledger.ts:146-174
+   - Confidence: high
+   - Why it matters: A week is pushed to `perWeek` (and thus included in `openWeeks`) even when `priced` is empty (line 146–169). In that case `simulateWeekHousePnl` returns `{0,0}` and the entry shows 0 stakes/P&L while still affecting `openWeeks` and average `effectiveHold` (line 172). If the intended meaning of “open week” is “a board existed that week,” this can slightly skew summary metrics in edge cases (e.g., many new/under-sampled members).
+   - Suggested fix: If desired, treat weeks with `priced.length === 0` as not-open: `continue` before sim + perWeek push, or track a separate `pricedWeeks` counter for `effectiveHold` averaging and `openWeeks` definition.
 
 ## Strengths
 
-- F1 determinism: computeOddsLine now explicitly sorts field by playerId, each member history by orderIndex (with deterministic tie-break), and subPrior tuples (packages/engine/src/odds.ts:169-182). This removes DB-row-order dependence in the RNG stream and pickWeightedIndex traversal.
-- F2 favorite cap: probToAmerican now clamps favorite-side prices to −FAVORITE_CAP and constants pin FAVORITE_CAP=10000 (packages/engine/src/odds.ts:53-63, 142-153, 291). No obvious NaN/sign issues in effectiveHold recomputation.
-- F4 recency anchor: horizon uses priorRoundCount−1, fixing the “max observed orderIndex” anchoring bug (packages/engine/src/odds.ts:210-217). Ledger passes priorRoundCount consistent with the number of prior rounds (apps/api/src/routes/scouting.ts:531-552).
-- F5 perf: ledger pre-indexes results into Map(round→player→result), eliminating nested filter/find scans (apps/api/src/routes/scouting.ts:510-517, 533-549).
-- F7 dead-heats: retrospective computes and grades on the full co-winner set and chooses lowest-id for display; ledger winners are sorted for deterministic selection (apps/api/src/routes/scouting.ts:403-407, 560-563).
+- Security/auth gating: the new admin endpoint applies `adminAuthMiddleware` directly on the route handler (apps/api/src/routes/admin/the-house.ts:21), and it’s mounted under `/api/admin` (apps/api/src/index.ts:83–84), so the P&L ledger is not exposed on public routes.
+- Public /scouting payload no longer includes the House ledger in either early-return or main response paths (apps/api/src/routes/scouting.ts:161–163 and 350–351). No dangling house-ledger imports/vars are present in the provided file.
+- Weeks dropdown filter matches the stated requirement: it excludes only `status='cancelled'` while still including scheduled/active/finalized (apps/api/src/routes/scouting.ts:93–98).
+- Determinism in the extracted ledger looks intentional and well-defended: per-week odds are seeded by round id (apps/api/src/lib/house-ledger.ts:132), dead-heat winners are sorted for deterministic selection (142–143, 178–179), and bootstrap CIs use a deterministic seed derived from season + open-week count (223–238).
+- Calibration sign display on the admin page is consistent with the API’s `vsUniform = ours - uniform` convention: negating mean and bounds yields “positive = line wins” (apps/web/src/routes/admin/the-house.tsx:159–161).
+- Scouting UI change is applied: retrospective banner renders above The Line (apps/web/src/components/ScoutingPanel.tsx:278–283), and no House ledger types/components appear in the provided ScoutingPanel.
 
 ## Warnings
 
