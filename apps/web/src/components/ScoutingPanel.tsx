@@ -61,7 +61,7 @@ function oddsWhy(line: OddsLine): string | null {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const stab = `${where(d.stablefordRank)} in Stableford (${d.stablefordMean} avg)`;
   const mon = `${where(d.moneyRank)} in money (${money})`;
-  return `${cap(stab)}; ${mon} — Harvey counts both, so the price blends them.`;
+  return `${cap(stab)}; ${mon}.`;
 }
 type Odds =
   | { gated: true; reason: string }
