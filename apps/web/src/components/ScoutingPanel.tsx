@@ -144,7 +144,7 @@ function HoleAverages({ holes }: { holes: ScoutPlayer['holes'] }) {
   );
 }
 
-function PlayerRow({ p, line }: { p: ScoutPlayer; line: OddsLine | undefined }) {
+function PlayerRow({ p }: { p: ScoutPlayer }) {
   const [open, setOpen] = useState(false);
   const lines = statLines(p);
   const headline = lines[0] ?? `${p.rounds} round${p.rounds === 1 ? '' : 's'} this year`;
@@ -158,29 +158,9 @@ function PlayerRow({ p, line }: { p: ScoutPlayer; line: OddsLine | undefined }) 
         {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
         <span className="font-medium text-sm shrink-0">{p.name}</span>
         <span className="text-xs text-muted-foreground truncate">· {headline}</span>
-        {line && (
-          // ml-auto + fixed width + tabular-nums so the price never jitters the truncating headline.
-          <span className={`ml-auto shrink-0 w-14 text-right text-xs font-semibold tabular-nums rounded px-1 ${chipClass(line.tier)}`}>
-            {fmtAmerican(line.postedAmerican)}
-          </span>
-        )}
       </button>
       {open && (
         <div className="px-3 pb-2 pl-8">
-          {line && (
-            <>
-              <p className="text-xs mb-1">
-                <span className="font-medium">{line.postedAmerican !== null ? fmtAmerican(line.postedAmerican) + ' · ' : ''}{tierLabel[line.tier]}</span>
-                {line.postedAmerican !== null && (
-                  <span className="text-muted-foreground"> · {(line.fairProb * 100).toFixed(1)}% to win the week</span>
-                )}
-                <span className="text-muted-foreground"> · confidence {line.confidence.level}</span>
-              </p>
-              {oddsWhy(line) && (
-                <p className="text-xs text-foreground/80 mb-1.5 leading-snug">📊 <span className="italic">{oddsWhy(line)}</span></p>
-              )}
-            </>
-          )}
           <ul className="flex flex-col gap-1">
             {lines.length > 0 ? (
               lines.map((l, i) => <li key={i} className="text-xs text-muted-foreground">{l}</li>)
@@ -195,7 +175,35 @@ function PlayerRow({ p, line }: { p: ScoutPlayer; line: OddsLine | undefined }) 
   );
 }
 
-/** 📊 The Line — field-wide board, favorites → longshots, posted American odds. */
+/** One tappable row on The Line — name + price; tap to drill into the % + reasoning. */
+function LineRow({ line }: { line: OddsLine }) {
+  const [open, setOpen] = useState(false);
+  const why = oddsWhy(line);
+  return (
+    <div className="border-b last:border-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/40 text-sm"
+      >
+        {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+        <span className="font-medium">{line.name}</span>
+        <span className="text-[10px] text-muted-foreground">{tierLabel[line.tier]}</span>
+        <span className={`ml-auto w-14 text-right font-semibold tabular-nums rounded px-1 ${chipClass(line.tier)}`}>{fmtAmerican(line.postedAmerican)}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-2 pl-8 text-xs">
+          {line.postedAmerican !== null && (
+            <p className="text-muted-foreground mb-1">{(line.fairProb * 100).toFixed(1)}% to win the week · confidence {line.confidence.level}</p>
+          )}
+          {why && <p className="text-foreground/80 italic leading-snug">📊 {why}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 📊 The Line — field-wide board, favorites → longshots; tap a name to drill in. */
 function TheLine({ odds }: { odds: Odds }) {
   if (odds.gated) {
     return (
@@ -225,16 +233,10 @@ function TheLine({ odds }: { odds: Odds }) {
     <div className="rounded-xl border overflow-hidden shadow-sm">
       <div className="bg-muted/60 px-3 py-2 border-b">
         <p className="font-semibold text-sm">📊 The Line — to win the week</p>
-        <p className="text-[10px] text-muted-foreground">most Harvey points · house holds ~{(odds.effectiveHold * 100).toFixed(0)}% · for fun</p>
+        <p className="text-[10px] text-muted-foreground">most Harvey points · house holds ~{(odds.effectiveHold * 100).toFixed(0)}% · for fun · tap a name for the why</p>
       </div>
       <div>
-        {odds.lines.map((l) => (
-          <div key={l.playerId} className="flex items-center gap-2 px-3 py-1.5 border-b last:border-0 text-sm">
-            <span className="font-medium">{l.name}</span>
-            <span className="text-[10px] text-muted-foreground">{tierLabel[l.tier]}</span>
-            <span className={`ml-auto w-14 text-right font-semibold tabular-nums rounded px-1 ${chipClass(l.tier)}`}>{fmtAmerican(l.postedAmerican)}</span>
-          </div>
-        ))}
+        {odds.lines.map((l) => <LineRow key={l.playerId} line={l} />)}
       </div>
     </div>
   );
@@ -282,10 +284,6 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
     return <div className="rounded-xl border p-6 text-center text-sm text-muted-foreground">Could not load the scouting report.</div>;
   }
 
-  const oddsByPlayer = new Map<number, OddsLine>(
-    !data.odds.gated ? data.odds.lines.map((l) => [l.playerId, l]) : [],
-  );
-
   return (
     <div className="space-y-3">
       {/* Week selector */}
@@ -317,7 +315,10 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
         <div className="rounded-xl border p-6 text-center text-sm text-muted-foreground">No scouting data yet — groups or 2026 rounds aren't set.</div>
       ) : (
         <>
-          <p className="text-[11px] text-muted-foreground px-1">Based on {data.seasonRounds} round{data.seasonRounds === 1 ? '' : 's'} this season · tap a player for more</p>
+          <div className="px-1 pt-1">
+            <h3 className="font-bold text-sm">🔍 Group Scouting</h3>
+            <p className="text-[11px] text-muted-foreground">This week's foursomes · based on {data.seasonRounds} round{data.seasonRounds === 1 ? '' : 's'} this season · tap a player for their form</p>
+          </div>
           {data.groups.map((g) => (
             <div key={g.groupNumber} className="rounded-xl border overflow-hidden shadow-sm">
               <div className="bg-muted/60 px-3 py-2 border-b">
@@ -338,7 +339,7 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
                 </div>
               </div>
               <div>
-                {g.players.map((p) => <PlayerRow key={p.playerId} p={p} line={oddsByPlayer.get(p.playerId)} />)}
+                {g.players.map((p) => <PlayerRow key={p.playerId} p={p} />)}
               </div>
             </div>
           ))}
