@@ -10,3 +10,5 @@ export * from './pairing.js';
 export * from './sandbagger.js';
 export * from './shuffle.js';
 export * from './scouting.js';
+export * from './rng.js';
+export * from './odds.js';

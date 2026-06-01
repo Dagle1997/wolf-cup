@@ -2,7 +2,7 @@
 title: 'Weekly Harvey-Points Win Odds — Scouting "The Line"'
 slug: 'scouting-harvey-win-odds'
 created: '2026-06-01'
-status: 'ready-for-dev'
+status: 'completed'
 stepsCompleted: [1, 2, 3, 4]
 adversarialReview: '_bmad-output/reviews/tech-spec-scouting-harvey-win-odds-adversarial.md (2 ensemble rounds: BMAD adversarial-general + codex; criticals confirmed dead in round 2)'
 reviewResolution: 'RESOLVED: F1/F2 (subs = non-bettable rank fillers from pooled prior; settlement on top member; GHIN rejected; flip-rate measurement + regression test). F3/F4 (realistic favorite-leaning public for fun P&L + calibration-vs-baselines as the real validity metric; dead sharp scenario removed). F6 (no-roster → gated "line opens when pairings set"). F8 (calibration judged vs baselines, reliability by fair price). F11 (hold = 1−1/λ). F13 (wrap calculateHarveyPoints in sim loop). F5 (line freezes at pairings-lock; roster churn = documented re-price vector). F9 (SIM_COUNT=20000). F10 (all constants pinned). F12 (dead-heat 1/k settlement; float-safe exact tie detection). F15 (MIN_PLAYER_ROUNDS=2 → "—"). Round-2 re-review (criticals confirmed DEAD by both reviewers): NEW-1 (public bettor model now PINNED deterministically — softmax on recent-form z, never reads posted odds). codex cap/vig (effective hold recomputed post-cap). Flip-rate now a 5% acceptance gate (Task 14). Calibration reports bootstrap CIs + paired diffs (low-power season). F12 defensive 2×-int compare + precondition documented. NEW-3 (sub-prior is a new unfiltered query) flagged in Task 5. OPEN (documented dev-time considerations, non-blocking): F7 (bonus — dissolves with F1), F14 (money comparability — only rank matters; note), F16 (handicap anti-persistence — accepted v1 limitation), F18 (benchmark ledger recompute; add response-time budget), NEW-2 (pooled-sub is an approximation graded vs actual — standing sensitivity via Task 14), F19 (re-verify q>=p post-rounding; guard q>=1).'
@@ -173,18 +173,18 @@ Dependency order: **engine foundation → core API/UI line (Block A) → retrosp
 
 #### Engine foundation
 
-- [ ] **Task 1: Seedable PRNG.**
+- [x] **Task 1: Seedable PRNG.**
   - File: `packages/engine/src/rng.ts` (new)
   - Action: export `mulberry32(seed: number): () => number` (returns a function yielding floats in `[0,1)`); add a small `pickWeightedIndex(rng, weights: number[]): number` helper (cumulative-weight draw) used by both bootstrap and bettor allocation.
   - Notes: pure/deterministic; no `Math.random`/`Date.now`. This is the root fix for F1.
 
-- [ ] **Task 2: Export surface.**
+- [x] **Task 2: Export surface.**
   - File: `packages/engine/src/index.ts`
   - Action: add `export * from './rng.js';` and `export * from './odds.js';`.
 
 #### Block A — Core odds model + line
 
-- [ ] **Task 3: Odds model (engine).**
+- [x] **Task 3: Odds model (engine).**
   - File: `packages/engine/src/odds.ts` (new)
   - Action: implement `computeOddsLine(input): OddsResult` where `input = { field: Array<{ playerId; history: Array<{ stableford; money; orderIndex }> }>, seed, constants }`. Steps, in order:
     1. **Gate:** if distinct prior finalized rounds `< MIN_FIELD_ROUNDS` → return `{ gated: true }`.
@@ -198,49 +198,50 @@ Dependency order: **engine foundation → core API/UI line (Block A) → retrosp
   - Output: `{ gated:false, hold, wideOpen, lines: OddsLine[] /* sorted favorites→longshots */ }`, `OddsLine = { playerId, fairProb, postedAmerican, impliedProb, tier, confidence }`.
   - Notes: constants live here with rationale comments: `SIM_COUNT`, `SHRINKAGE_PSEUDO_ROUNDS`, `RECENCY_HALF_LIFE`, `MIN_FIELD_ROUNDS`, `OVERROUND`, `LONGSHOT_CAP`. Bonus argmax-invariant → `0`.
 
-- [ ] **Task 4: Self-consistency estimator (engine).**
+- [x] **Task 4: Self-consistency estimator (engine).**
   - File: `packages/engine/src/odds.ts`
   - Action: export a **genuinely independent** `estimateStrengthOrder(field): playerId[]` for the cross-check test — NOT mean-Harvey-finish through the same `calculateHarveyPoints` (that's circular, F17). Use a different basis (e.g. mean raw Stableford + mean money z-scores, or a last-week-naive order). It need only agree with the bootstrap on gross favorite ordering; divergence flags a real bug, not just a typo.
 
-- [ ] **Task 5: `odds` block on the endpoint (API).**
+- [x] **Task 5: `odds` block on the endpoint (API).**
   - File: `apps/api/src/routes/scouting.ts`
   - Action: add `isSub` to the roster query; build the sim **field = members (`isSub = 0`) + subs (`isSub = 1`) as non-bettable rank fillers** from the already-loaded `resultRows` + `roundOrder`; load the **pooled sub-class prior** from historical `is_sub = 1` `round_results` (field-baseline fallback) — note this is a **NEW access pattern, NOT filtered by `scoutedIds`** (join `round_results` → `round_players` for the `is_sub` flag, since `round_results` has no `isSub` column), distinct from the existing scouted-only load (NEW-3); compute field baseline; call `computeOddsLine({ seed: roundId, ... })` (odds lines emitted for **members only**); attach `odds` to the JSON (additive — `groups`/`rivalry`/`luckyCharm` unchanged). Also add a `weeks: [{ roundId, date, label, status }]` list for the UI selector.
   - Notes: model reads only rounds **before** the target date (existing `lt(scheduledDate)` filter) — blindness preserved. **Field requires a posted roster** (F6): if the target round has no roster yet, emit `odds.gated` with reason `"line opens when pairings are set"`.
 
-- [ ] **Task 6: "The Line" board + chips + expand (Web).**
+- [x] **Task 6: "The Line" board + chips + expand (Web).**
   - File: `apps/web/src/components/ScoutingPanel.tsx`
   - Action: render a top-level **📊 The Line** card (field-wide, favorites→longshots, posted American odds, tier labels) above `data.groups`; **🌀 Wide-open week** treatment when `odds.wideOpen`; "odds open in a few weeks" when `odds.gated`. Add a fixed-width `tabular-nums ml-auto` odds chip to collapsed `PlayerRow`; reveal **fair %** + confidence only on expand.
 
 #### Block B — Retrospective
 
-- [ ] **Task 7: `retrospective` block (API).**
+- [x] **Task 7: `retrospective` block (API).**
   - File: `apps/api/src/routes/scouting.ts`
   - Action: when the target round is `finalized` and has `harvey_results`, read them, compute the **top MEMBER** by `stablefordPoints + moneyPoints` (the bet's winner; a sub posting the overall high is settled around — noted as `subSpoiled: true` color only), and emit `{ winningMember, subSpoiled, verdict: 'chalk'|'upset'|'busted', favorite, postedRecap }`. `busted` = the winning **member** was off the posted board (ungated / "—"). Presentation-only; never feeds the model. (F2 corrected.)
 
-- [ ] **Task 8: Week selector + retrospective grade (Web).**
+- [x] **Task 8: Week selector + retrospective grade (Web).**
   - File: `apps/web/src/components/ScoutingPanel.tsx`
   - Action: add a compact week selector (segmented/dropdown from `weeks`, default current) that switches `roundId`; on finalized weeks render the **✅ Chalk / 🎲 Upset / 💥 Busted** grade panel (sub-won → 💥 "won by a sub").
 
 #### Block C — House P&L + calibration
 
-- [ ] **Task 9: `houseLedger` block (API).**
+- [x] **Task 9: `houseLedger` block (API).**
   - File: `apps/api/src/routes/scouting.ts`
   - Action: load season-wide finalized rounds + results + rosters + `harvey_results` up to the viewed week. For each week `W` with `≥ MIN_FIELD_ROUNDS` prior rounds: compute `W`'s **posted** odds (memoized via `mulberry32(W.roundId)`), determine `W`'s actual **top member**, simulate `N_BETTORS` flat `STAKE_UNIT` bettors off a **derived seed stream** (`W.roundId * 0x9E3779B1 >>> 0`) using the **pinned public bettor model** (multinomial on `softmax(PUBLIC_FAV_BIAS × recent-form z); NEVER reads posted odds` — F4/NEW-1), settle at posted odds vs. actual, and compute weekly + cumulative P&L + **effective hold recomputed from posted prices after `LONGSHOT_CAP`** (not nominal `1−1/λ` — codex cap/vig). Separately compute the **validity block**: our line's **log-loss + Brier vs. baselines** (uniform `1/N`, handicap-only, last-week-winner), `fair_p` floored at `1e-6`, **with bootstrap confidence intervals + paired week-level diffs** (the ~20-round season is low-power — report uncertainty, don't over-claim). Emit `{ openWeeks, perWeek[], cumulativeUnits, theoreticalHold, effectiveHold, realizedHold, validity: { logLoss, brier, baselines: { uniform, handicapOnly, lastWeek }, ci } }`.
   - Notes: recompute-on-read, memoized per request; off-board winning member ⇒ house keeps all stakes; weeks below the gate excluded. **Wrap `calculateHarveyPoints` in the sim loop so a thrown `HarveySumViolationError` can't 500 the additive scouting response** (F13).
 
-- [ ] **Task 10: "🏛️ The House" ledger card (Web).**
+- [x] **Task 10: "🏛️ The House" ledger card (Web).**
   - File: `apps/web/src/components/ScoutingPanel.tsx`
   - Action: render the ledger card (cumulative units green/red, hold%, weekly sparkline, public-vs-sharp lines, calibration summary); "books open after week 3" placeholder until `openWeeks > 0`; stacks above the board on mobile; include the "for entertainment — can't price dives/sandbagging" caveat line.
 
 #### Tests
 
-- [ ] **Task 11: `rng.test.ts`** — committed seed→first-N-outputs vector; basic uniformity sanity.
-- [ ] **Task 12: `odds.test.ts`** — determinism, tie-split, shrinkage pulls thin samples to baseline, gate, single-member "lock" (no divide-by-zero), all-identical-history (no false favorite), overround/hold math, `probToAmerican` incl. longshot cap, and the self-consistency cross-check (favorite order agrees with `estimateStrengthOrder`).
-- [ ] **Task 13: `scouting.integration.test.ts`** — `odds` block present + sorted; **blindness** (insert a target-round result → odds byte-identical); **subs included as rank fillers but emit no OddsLine** (lines members-only); **a sub ranked between two members can flip the member winner** (F1 regression guard, mirrors the codex counterexample); **no-roster round → gated "line opens when pairings are set"** (F6); **determinism** (two calls → identical JSON); retrospective `chalk`/`upset`/`busted` + `subSpoiled` color (F2); ledger cumulative units + realized hold to fixed decimals across 3 seeded weeks; off-board-winner keeps stakes; below-gate week excluded; log-loss finite when a winner had `fair_p = 0`.
+- [x] **Task 11: `rng.test.ts`** — committed seed→first-N-outputs vector; basic uniformity sanity.
+- [x] **Task 12: `odds.test.ts`** — determinism, tie-split, shrinkage pulls thin samples to baseline, gate, single-member "lock" (no divide-by-zero), all-identical-history (no false favorite), overround/hold math, `probToAmerican` incl. longshot cap, and the self-consistency cross-check (favorite order agrees with `estimateStrengthOrder`).
+- [x] **Task 13: `scouting.integration.test.ts`** — `odds` block present + sorted; **blindness** (insert a target-round result → odds byte-identical); **subs included as rank fillers but emit no OddsLine** (lines members-only); **a sub ranked between two members can flip the member winner** (F1 regression guard, mirrors the codex counterexample); **no-roster round → gated "line opens when pairings are set"** (F6); **determinism** (two calls → identical JSON); retrospective `chalk`/`upset`/`busted` + `subSpoiled` color (F2); ledger cumulative units + realized hold to fixed decimals across 3 seeded weeks; off-board-winner keeps stakes; below-gate week excluded; log-loss finite when a winner had `fair_p = 0`.
 
-- [ ] **Task 14: Sub-exclusion flip-rate measurement (F1).**
+- [~] **Task 14: Sub-exclusion flip-rate measurement (F1).** — PARTIAL (mechanism guard done; real-round measurement pending prod data)
   - File: `packages/engine/src/odds.test.ts` (or a one-off script under `scripts/`)
   - Action: over real finalized rounds, compute the top member with vs. without subs in the rank field; report the % of rounds the winner differs. **Acceptance threshold:** if `> 5%` of rounds flip, the pooled-class filler is load-bearing → escalate sub modeling (individual sub priors / handicap-conditioned) before relying on the line; if `≤ 5%`, the pooled filler is an adequate safety margin. Note (codex/NEW-2): this measures the *exclusion* impact, not the pooled-prior's accuracy — pooled subs are an approximation graded against actual sub scores, so keep this as a standing sensitivity check.
+  - **Status (2026-06-01):** The F1 *mechanism* is proven with a hardcoded, hand-verified counterexample in `odds.test.ts` ("including a sub flips the top member C → B") — confirming subs are load-bearing rank fillers, not argmax-invariant. The **real-round 5% flip-rate measurement** requires the production season's finalized `round_results` + `round_players.is_sub`, which are not available in this dev environment. **TODO before trusting the line in prod:** run the exclusion-flip script against the live DB (the user flagged this as the early signal to verify). If `>5%`, invest in per-sub priors before relying on the line.
 
 ### Acceptance Criteria
 
@@ -297,3 +298,12 @@ User framing: "odds are fun, % chance to win is depressing." Bet target chosen =
 **Edge cases to force in ACs (Quinn, party-mode):** single eligible member ("lock", no divide-by-zero), all members with identical history (no false favorite), member exactly at the gate threshold, empty `round_results`, retrospective when the target round isn't finalized (no `harvey_results` → "line still open"), retrospective where the actual winner was a sub (💥 "won by a sub"). Signature tests: **determinism** (two calls → identical JSON), **blindness** (insert a target-round result, assert odds unchanged), and a committed **mulberry32 test vector** (seed → first-N outputs).
 
 **Self-consistency cross-check test (advanced-elicitation):** in the engine suite, compute a cheap independent estimator (Elo/strength-rating or analytic rank-probability) alongside the bootstrap and assert they agree on **favorite ordering** and **top-p within tolerance** — a free guard that catches a bootstrap implementation bug which still looks plausible.
+
+## Review Notes (quick-dev, 2026-06-01)
+
+- **Adversarial review completed — 2 codex rounds (gpt-5.2, high reasoning).**
+- **Round 1: 7 findings, all fixed.** F1 [critical] frozen-determinism break (unordered DB rows attached the RNG stream to different players/rounds) → `computeOddsLine` now normalizes input internally (field by playerId, history by orderIndex, sub prior by tuple). F2 [high] `fairProb×OVERROUND>1` produced absurd favorite prices → `FAVORITE_CAP=10000` floors negative odds. F3 ledger order-sensitivity (fixed by F1 + pre-index). F4 recency anchor → true prior-round horizon (`priorRoundCount−1`). F5 ledger quadratic scans → pre-indexed `resultByRound` map. F6 additive blocks could 500 → each block wrapped in try/catch. F7 dead-heat collapse + DB-order winner → sorted co-winner set; retrospective grades on the full winner set.
+- **Round 2: confirmed R1 F1–F7 genuinely dead; 5 new edge findings.** R2-F1 [high] over-wide try/catch could wipe a valid odds line when only the retrospective DB read failed → retrospective moved to its own try/catch. R2-F2 [med] last-week baseline non-deterministic on ties → lowest-id tie-break. R2-F3 [med] last-week baseline invalid distribution at N=1 → falls back to uniform. R2-F4 [med] retrospective could treat a non-roster harvey row as a member → restricted to the known roster member set. R2-F5 [low] `impliedProb>1` for heavy favorites — **acknowledged, intentional**: `impliedProb = fairProb×OVERROUND` is deliberately unclamped so the posted line sums to `OVERROUND` (AC-A6); the UI only ever displays `fairProb`, never `impliedProb`.
+- **Findings: 12 total, 11 fixed, 1 acknowledged as intentional invariant. Resolution: auto-fix (all findings classified real).**
+- **Tests:** engine 522 pass (incl. 23 odds + 9 rng, with order-independence + favorite-cap + sub-flip + house-P&L regression guards) + lint clean; api scouting 17 pass (4 existing + 13 new) + lint clean; web typecheck + lint clean. No regressions.
+- **Task 14 (sub-exclusion flip-rate) PARTIAL:** the F1 *mechanism* is proven with a hand-verified counterexample; the real-round 5% acceptance measurement requires production data and remains a pre-trust TODO (the user flagged this as the early signal to verify).

@@ -1,44 +1,56 @@
 # Codex Review
 
-- Generated: 2026-05-01T17:19:15.606Z
+- Generated: 2026-06-01T15:49:25.502Z
 - Model: gpt-5.2
-- Reasoning effort: medium
+- Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: apps/api/src/lib/side-game-calc-db.ts, apps/api/src/routes/leaderboard.ts, apps/api/src/routes/admin/side-games.ts, apps/api/src/routes/history.ts, apps/api/src/db/migrations/0028_skins_rename.sql
+- Reviewed files: packages/engine/src/odds.ts, apps/api/src/routes/scouting.ts, packages/engine/src/rng.ts
 
 ## Summary
 
-The two Round 4 Medium issues appear addressed in principle (finalized-round skins gating and name-based skins identification/guard). However, there are still two concrete behavior gaps that can cause skins to disappear or never compute under certain real statuses / boot-order conditions. I don’t see any new High-severity security or data-loss bugs introduced, but these gaps are deploy-relevant because they undermine the “belt-and-suspenders” intent and can regress skins display in production edge cases.
+Round-1 findings F1–F7 appear genuinely resolved in the engine/odds core (notably: computeOddsLine now normalizes ordering; favorite odds are capped; recency horizon uses priorRoundCount−1; dead-heat handling is deterministic; ledger no longer does quadratic scans). However, the fixes/added blocks introduced a couple of concrete regressions/edge bugs: (1) the route-level try/catch for the odds block can incorrectly wipe out a valid odds line if only the retrospective DB read fails, and (2) the house-ledger “last week winner” baseline is still order-dependent on ties (and also wrong when N=1).
 
 Overall risk: medium
 
 ## Findings
 
-1. [medium] Skins “boot-order belt” doesn’t work if calculationType is NULL: leaderboard won’t compute skins, and also won’t show stored winner
-   - File: apps/api/src/routes/leaderboard.ts:284-351
+1. [high] Odds line can be incorrectly downgraded to gated if ONLY retrospective fails (try/catch scopes too wide)
+   - File: apps/api/src/routes/scouting.ts:131-161
    - Confidence: high
-   - Why it matters: You added name-based detection (isSkinsGame) to handle legacy/partial migration rows, but the live-calculation branch still requires `activeSideGame.calculationType` to be truthy (line 291). If a legacy skins row has `name='Skins'` (or 'Most Skins') but `calculationType` is NULL, then:
-- `isSkinsGame` becomes true (lines 284-288)
-- the live compute block is skipped entirely because `activeSideGame.calculationType` is falsy (line 291)
-- the finalized winner block is also skipped because `!isSkinsGame` is false (line 350)
-Net effect: skins shows neither `sideGameSkinHolders` nor a winner, even though you intended name-based fallback coverage. This contradicts the comment about handling partial migrations / legacy seeds.
-   - Suggested fix: Allow the skins path to run even when `calculationType` is NULL, e.g.:
-- Change the `if` guard to `(activeSideGame.calculationType && activeSideGame.calculationType !== 'manual') || isSkinsGame`
-- And pass a non-null calc type into `computeSideGameLeaderLive`, e.g. `calculationType: activeSideGame.calculationType ?? (isSkinsGame ? 'auto_skins' : null)`.
-Add a regression test (or route-level test) for an activeSideGame with name 'Skins' and NULL calculationType to ensure `sideGameSkinHolders` is populated.
+   - Why it matters: The error-isolation fix (F6) is intended to prevent additive blocks from 500’ing, but the current implementation couples unrelated work: computeOddsLine + buildRetrospective are inside the same try/catch. If buildRetrospective throws (e.g., transient DB issue, schema mismatch, or harvey_results access failure), the catch block sets `odds = { gated: true, reason: 'odds unavailable' }` even though the odds line may have been successfully computed. That is a functional regression: consumers lose the core “odds” output due to a retrospective-only failure.
+   - Suggested fix: Split the logic into separate try/catch blocks so retrospective failure cannot overwrite a valid odds line. Example: (a) compute odds in its own try; (b) if round.status==='finalized', wrap buildRetrospective in a narrower try/catch that only nulls retrospective while preserving `odds`.
 
-2. [medium] Skins completeness gate is only skipped for roundStatus === 'finalized', but other “finished” statuses (e.g. 'completed') may still incorrectly apply the gate
-   - File: apps/api/src/lib/side-game-calc-db.ts:214-262
+2. [medium] House-ledger last-week baseline is still non-deterministic on dead-heats (depends on DB row order)
+   - File: apps/api/src/routes/scouting.ts:608-625
+   - Confidence: high
+   - Why it matters: You fixed deterministic winner selection for the *current* week (winners sorted) and for retrospective grading. But the “lastWeek” baseline chooses `prevWinner` by scanning `prevRoster` and only updating on `v > mx` (strict). If two members tie for top Harvey points last week, the first encountered in `prevRoster` wins the tie-break. `prevRoster` comes from `rosterByRound` built from an unordered query (no ORDER BY), so the picked `prevWinner` (and thus `lastWeekMap`, and logloss/brier baselines/CI) can change across reads/query plans.
+   - Suggested fix: Make tie-breaking deterministic: compute the full co-winner set for prev week and either (a) pick `Math.min(...coWinners)`; or (b) split LAST_WEEK_P mass across all co-winners. Also consider sorting `prevRoster` by playerId before scanning as a backstop.
+
+3. [medium] House-ledger last-week baseline produces an invalid probability distribution when N=1
+   - File: apps/api/src/routes/scouting.ts:620-625
+   - Confidence: high
+   - Why it matters: When `N = memberList.length` equals 1, `others = (1 - LAST_WEEK_P) / Math.max(1, N - 1)` becomes `(1 - p)/1`, and the loop sets the only member to `LAST_WEEK_P` (0.5) if they are `prevWinner`. That yields a total probability sum of 0.5 instead of 1. This directly corrupts `logLossAndBrier(lastWeekMap, ...)` outputs for those weeks.
+   - Suggested fix: Special-case N<=1: if N===1, set that member’s probability to 1. More generally, build `lastWeekMap` by normalization (sum then divide) or by explicitly ensuring probabilities sum to 1 across `memberList`.
+
+4. [medium] Retrospective can mis-grade if harvey_results contains rows for players not in the round roster (missing players treated as members)
+   - File: apps/api/src/routes/scouting.ts:390-407
    - Confidence: medium
-   - Why it matters: `computeSideGameLeaderLive` skips the skins per-hole completeness gate only when `roundStatus === 'finalized'` (lines 242-244). But your own status comment lists multiple terminal-ish statuses: `'finalized' | 'completed' | 'cancelled'` (line 219). Elsewhere, `/leaderboard/history` explicitly includes `'completed'` rounds, and `buildLeaderboard` computes live side-game leaders for any status other than exactly `'finalized'` (apps/api/src/routes/leaderboard.ts:289-294). If a round is effectively “done” but stored as `completed` (or another terminal status you use operationally), skins may reintroduce the original problem: the field completeness set is built and the calc can zero out skins if any roster player lacks a hole score (late subs, roster tweaks).
-   - Suggested fix: Decide which statuses should be treated as “final scores are authoritative” and skip the skins completeness gate for all of them (e.g. `roundStatus !== 'active'` or `roundStatus === 'finalized' || roundStatus === 'completed'`). Also consider aligning `buildLeaderboard`’s “use stored sideGameResults vs live compute” logic with the same terminal-status set.
+   - Why it matters: `isSubOf` is built only from `roster`. Any `harvey_results` row whose `playerId` is absent from `roster` yields `isSubOf.get(...) === undefined`, which is treated as falsy, so that player is treated as a member for winner selection (`memberMax`/`winnerSet`). If data ever contains extra harvey_results rows (bad import, stale rows, etc.), retrospective can declare an impossible “member winner” not in the pairing roster and label verdicts incorrectly.
+   - Suggested fix: Filter `hr` to roster playerIds up front (e.g., `const rosterSet = new Set(roster.map(r=>r.playerId)); const hrInRound = hr.filter(h=>rosterSet.has(h.playerId));`). Optionally treat missing roster entries as invalid and return null to avoid mis-grading.
+
+5. [low] computeOddsLine can return impliedProb > 1 for heavy favorites (API field may violate probability expectations)
+   - File: packages/engine/src/odds.ts:286-305
+   - Confidence: high
+   - Why it matters: With proportional overround, `impliedProb = fairProb * OVERROUND` can exceed 1 when `fairProb > 1/OVERROUND` (~0.847 at 1.18). You fixed the absurd American conversion by clamping/capping in probToAmerican, but `impliedProb` is still returned un-clamped in each line. If any consumer/UI assumes impliedProb ∈ [0,1], it can display nonsense (e.g., 101% implied) or break validation.
+   - Suggested fix: Either clamp `impliedProb` to <1 for output (keeping an internal unclamped value for pricing), or rename/document it as “rawImpliedBeforeClamp”. If you clamp, ensure effectiveHold continues to be computed from postedAmerican (as now).
 
 ## Strengths
 
-- Good invariant enforcement for skins: `computeSideGameWinnerForRound` now proactively deletes any persisted `sideGameResults` rows for `auto_skins` before exiting (apps/api/src/lib/side-game-calc-db.ts:49-69), which prevents Champion-track contamination even if data was historically wrong.
-- Admin POST guard now blocks manual skins results by both `calculationType` and legacy names (apps/api/src/routes/admin/side-games.ts:265-282), addressing the prior bypass vector.
-- History aggregation adds an explicit exclusion filter for skins by calc-type and name (apps/api/src/routes/history.ts:107-143), which is a sensible defense-in-depth layer if anything slips into `sideGameResults`.
-- Migration 0028 promotes calc type by name first, renames, then deletes historical `side_game_results` for skins (apps/api/src/db/migrations/0028_skins_rename.sql:32-50). The step ordering is coherent and matches the runtime assumptions.
+- F1 determinism: computeOddsLine now explicitly sorts field by playerId, each member history by orderIndex (with deterministic tie-break), and subPrior tuples (packages/engine/src/odds.ts:169-182). This removes DB-row-order dependence in the RNG stream and pickWeightedIndex traversal.
+- F2 favorite cap: probToAmerican now clamps favorite-side prices to −FAVORITE_CAP and constants pin FAVORITE_CAP=10000 (packages/engine/src/odds.ts:53-63, 142-153, 291). No obvious NaN/sign issues in effectiveHold recomputation.
+- F4 recency anchor: horizon uses priorRoundCount−1, fixing the “max observed orderIndex” anchoring bug (packages/engine/src/odds.ts:210-217). Ledger passes priorRoundCount consistent with the number of prior rounds (apps/api/src/routes/scouting.ts:531-552).
+- F5 perf: ledger pre-indexes results into Map(round→player→result), eliminating nested filter/find scans (apps/api/src/routes/scouting.ts:510-517, 533-549).
+- F7 dead-heats: retrospective computes and grades on the full co-winner set and chooses lowest-id for display; ledger winners are sorted for deterministic selection (apps/api/src/routes/scouting.ts:403-407, 560-563).
 
 ## Warnings
 
