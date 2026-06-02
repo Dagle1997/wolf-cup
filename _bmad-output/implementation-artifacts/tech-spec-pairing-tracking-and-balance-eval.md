@@ -2,7 +2,7 @@
 title: 'Pairing Transparency & Co-Play Balance Evaluation'
 slug: 'pairing-tracking-and-balance-eval'
 created: '2026-06-01'
-status: 'ready-for-dev'
+status: 'implementation-complete'
 stepsCompleted: [1, 2, 3, 4]
 tech_stack: ['TypeScript', 'Hono', 'Drizzle ORM', 'libsql/SQLite', 'React (TanStack Router) + TanStack Query', '@wolf-cup/engine', 'Vitest']
 files_to_modify: ['apps/api/src/db/schema.ts', 'apps/api/src/db/migrations/0029_*.sql', 'apps/api/src/routes/admin/rounds.ts', 'apps/api/src/routes/admin/pairing.ts', 'apps/web/src/routes/admin/rounds.tsx', 'apps/api/src/lib/pairing-diff.ts (new)', 'packages/engine (evaluation only — no change)']
@@ -118,53 +118,62 @@ Separately, it is **unverified** whether the engine achieves its original Story 
 
 > Two threads: **A. Tracking (build)** = Tasks 1–8; **B. Evaluation (analysis doc, no code)** = Task 9. Engine is NOT modified.
 
+### Clarifications (Josh, 2026-06-01) — SUPERSEDE Tasks 5 & 7
+
+After the spec was finalized, Josh clarified the intent. These override the conflicting parts of Tasks 5/7 and the related ACs:
+
+1. **"Don't change how it works now."** The from-attendance *Generate* path and the Rounds *Suggest → Apply* flow stay exactly as they behave today. Attendance (subs + First/Last requests) remains the source of truth; both generation entry points use the weighted-average engine and honor First/Last pins (already true).
+2. **Capture only at from-attendance (Task 4).** The generated pairing is snapshotted in-transaction at *Generate from Attend* — the real creation path — and that is the audit baseline. **Task 5 (the new `apply-suggestion` endpoint that *replaced* the web Apply flow) is DROPPED**: it changed how Apply works, which Josh vetoed. Without it, a round built purely via Suggest→Apply (never generated from Attend) reads **"Not tracked"** — Josh accepted this (it shouldn't occur in practice). ⇒ **AC6 and AC13 no longer apply** (no apply-suggestion endpoint).
+3. **Destructive-reassign guard (NEW).** Any action that would reassign/overwrite *already-assigned* players (the Rounds Suggest→Apply re-roll on a populated round) must first show an **"Are you sure?" confirmation dialog**. Manual edits still save normally; Josh just wants the audit trail.
+4. **Audit UI lives in its own admin page, NOT on the Rounds page (REVISES Task 7).** "Keep audits separate from the systems they're for." The "Pairing changes" view becomes a standalone admin tile **`/admin/pairing-audit`** (sibling to Score Corrections; round selector → generated-vs-final diff). ⇒ **AC7's location changes** from round-detail to the dedicated audit page; its content (human-readable, actor-neutral change lines; tracked/no-changes/untracked/error states) is unchanged.
+
 ### Tasks
 
-- [ ] **Task 1: Schema + migration — persist the generated pairing**
+- [x] **Task 1: Schema + migration — persist the generated pairing**
   - File: `apps/api/src/db/schema.ts` (`rounds` table, ~line 149)
   - Action: add `generatedPairing: text('generated_pairing')` (nullable JSON). **One column only** (cost dropped per party-mode).
   - File: `apps/api/src/db/migrations/0029_generated_pairing.sql` (new)
   - Action: `ALTER TABLE rounds ADD COLUMN generated_pairing TEXT;` (single statement; if more are added, separate with `--> statement-breakpoint` — libsql gotcha). Regenerate/append the drizzle journal as the existing migrations do.
   - Notes: nullable so all pre-2026-06 rounds read as "not tracked." JSON shape: `[{ "groupNumber": 1, "playerIds": [id,id,id,id] }, ...]`.
 
-- [ ] **Task 2: Diff + serialize helpers**
+- [x] **Task 2: Diff + serialize helpers**
   - File: `apps/api/src/lib/pairing-capture.ts` (new) — single module imported by BOTH route files (avoids route→route imports; Codex #5).
   - Action: export two clearly-separated functions:
     - `serializeGroups(roundId, dbx) → Promise<{groupNumber, playerIds}[]>` — **does DB IO** (reads `groups` + `round_players`, ordered by `groups.groupNumber`). NOT pure.
     - `computePairingDiff(generated, final) → { moved: {playerId, fromGroup, toGroup}[], added: {playerId, toGroup}[], removed: {playerId, fromGroup}[] }` — **pure, no IO** (in-memory comparison; unit-testable in isolation). A player in both with differing groupNumber = `moved`; only in final = `added`; only in generated = `removed`.
   - Notes: **`groupNumber` is a stable diff key** — it is assigned at group creation and never renumbered; delete-group only removes *empty* groups (`admin/rounds.ts:721`), so remaining groups keep their numbers (closes Codex #4). Keep IO and pure logic in separate functions.
 
-- [ ] **Task 3: Set-once capture helper (server-side snapshot)**
+- [x] **Task 3: Set-once capture helper (server-side snapshot)**
   - File: `apps/api/src/lib/pairing-capture.ts`
   - Action: add `captureGeneratedPairingIfAbsent(roundId, dbx) → Promise<boolean>` — reads the CURRENT groups via `serializeGroups(roundId, dbx)` and writes `generated_pairing` ONLY if it `IS NULL` (idempotent set-once); returns whether it captured. Snapshot is from **committed DB state**, never a client payload. Both capture call-sites (Task 4 from-attendance, Task 5 apply) invoke this helper **inside their own transaction** so the snapshot can never reflect a half-applied or post-edit state (Codex #2).
   - Notes: no standalone empty-body trigger endpoint (removed — it was the fragile race in Codex #2). Capture only ever happens atomically inside the two transactions that establish a round's groups. **⚠️ Implementation trap (pre-mortem): the helper MUST be passed the active transaction handle (`tx`), never the global `db`** — called with the global handle inside an open tx it won't see the uncommitted `round_players` inserts and will snapshot empty/stale state.
 
-- [ ] **Task 4: Capture at the primary path (from-attendance)**
+- [x] **Task 4: Capture at the primary path (from-attendance)**
   - File: `apps/api/src/routes/admin/rounds.ts` (`POST /rounds/from-attendance`, ~line 1283 tx)
   - Action: inside the same transaction, AFTER the `round_players` inserts, call `captureGeneratedPairingIfAbsent(round.id, tx)`. At that instant the persisted groups == the engine suggestion, so the snapshot is the generated pairing.
   - Notes: canonical capture; fully server-side.
 
-- [ ] **Task 5: Atomic apply-suggestion endpoint (replaces the fragile trigger — Codex #2)**
+- [~] **Task 5 (SUPERSEDED — see Clarifications; replaced by confirm-dialog guard, no new endpoint): Atomic apply-suggestion endpoint (replaces the fragile trigger — Codex #2)**
   - File: `apps/api/src/routes/admin/pairing.ts` (new endpoint) + `apps/web/src/routes/admin/rounds.tsx` (apply flow, ~lines 1131–1143)
   - Action: add `POST /admin/rounds/:roundId/apply-suggestion` (adminAuth), body = the groups to apply `[{groupNumber, playerIds}]` (validated; the admin legitimately chooses which suggestion to apply). **Validate every `playerId` belongs to this round's `round_players`** (reject unknown IDs → prevents orphaned assignments — FMA guard). In **ONE transaction**: (a) reassign `round_players.groupId` to match the payload (creating groups as needed), then (b) call `captureGeneratedPairingIfAbsent(roundId, tx)` with the **tx handle** — so the snapshot is the just-committed apply result, taken before any manual edit.
   - Notes: this endpoint **REPLACES** the web "Apply" flow's N per-player calls — it is the *sole* commit path for an applied suggestion, not an addition (pre-mortem: running both would double-write). Eliminates the timing race. Captured `generated_pairing` reflects committed DB state, not the raw payload. Rounds built *entirely* by hand (never via apply) read "not tracked" — acceptable. Note: Jason's *normal* post-creation edits (swap/add) are still audited via from-attendance capture vs live final, regardless of this path.
 
-- [ ] **Task 6: Diff endpoint**
+- [x] **Task 6: Diff endpoint**
   - File: `apps/api/src/routes/admin/pairing.ts`
   - Action: `GET /admin/rounds/:roundId/pairing-diff` (adminAuth) → `{ tracked: boolean, generated: {groupNumber, playerIds, names}[] | null, final: {groupNumber, playerIds, names}[], changes: {moved, added, removed} }`. `tracked=false` + `generated=null` for untracked rounds. Resolve player names for display.
   - Notes: reuse `serializeGroups` + `computePairingDiff`; join `players.name`. **Tolerate a missing/null name** (a since-deleted player in the generated snapshot) → fall back to `Player #<id>`, never throw (FMA guard).
 
-- [ ] **Task 7: Admin UI — "Pairing changes" section**
+- [x] **Task 7: Admin UI — "Pairing changes" section**
   - File: `apps/web/src/routes/admin/rounds.tsx` (round detail / `EditRow`, ~line 729)
   - Action: a "Pairing changes" section that fetches `pairing-diff` (TanStack Query). Render **human-readable, ACTOR-NEUTRAL change lines** (Codex #7 — we capture *what* changed, not *who*), e.g. *"Ronnie moved from Group 2 → Group 3"* and *"Kyle Cox (sub) replaced Joe White in Group 1."* (Optionally original-vs-final foursomes below.) **When there are no changes, collapse/hide the section** (clean week shows nothing or a one-line "No changes from the generated pairing"). Untracked → "Not tracked (created before pairing tracking)." **On fetch error (500), render an error state (ErrorCard), not a blank page** (FMA guard). Follow existing admin loading/empty patterns; mobile-friendly 44px targets.
   - Notes: read-only; no mutations. Endpoint returns names + groupNumbers to compose sentences client-side. **Per-edit actor attribution (which admin moved whom) is OUT OF SCOPE** — there is no per-edit audit log; copy must not name an actor.
 
-- [ ] **Task 8: Tests (tracking)**
+- [x] **Task 8: Tests (tracking)**
   - Files: `apps/api/src/routes/admin/pairing.test.ts`, `apps/api/src/lib/pairing-diff.test.ts`
   - Action: cover set-once (second call is no-op), diff moved/added/removed, untracked round = `tracked:false`, admin-auth required. **Party-mode edge cases (Quinn):** (1) **group count changed** between generated and final (a group deleted) → moved/removed resolve, no throw; (2) **headcount not a multiple of 4** (remainder/3-some) → capture + diff handle remainder gracefully; (3) **player removed AND a sub added to the same group** → removed in `changes.removed`, sub in `changes.added`; (4) **re-finalize does NOT re-capture** (set-once). Web: render states (tracked w/ changes, tracked w/ no changes → collapsed, untracked, **error/500**). **Self-consistency invariant (assert in diff tests):** every player in `final` is exactly one of unchanged / moved / added, and every player in `generated` is exactly one of unchanged / moved / removed — no player double-counted. **apply-suggestion tests:** it is the sole commit path (no double-write), rejects unknown playerIds, and captures in-tx.
   - Notes: in-memory libsql with `file::memory:?cache=shared` for tx tests (project gotcha).
 
-- [ ] **Task 9: Co-play balance evaluation (analysis deliverable — NO engine change)**
+- [x] **Task 9: Co-play balance evaluation (analysis deliverable — NO engine change)**
   - File: `_bmad-output/implementation-artifacts/pairing-balance-evaluation.md` (new)
   - Action: write up the verified evaluation using the real data + adversarial controls already produced (random baseline 12 vs 29.2, 0/2000; ≥2-co-attend denominator 11/124 = 8.9%; per-player worst-case 7 vs random 7.43; Jason structural-not-pin breakdown). MUST satisfy the four rigor requirements in Technical Decisions. Conclude: aggregate strongly defensible; individual-worst gap is real; recommend a follow-up spec for a minimize-max / escalating-repeat-penalty objective in `packages/engine/src/pairing.ts`.
   - Notes: reproducible from `_audit/wolf-cup-prod.db`; cite the script. This documents "is the system doing the best it can" with evidence.

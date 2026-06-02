@@ -7,6 +7,7 @@ import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHist
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
 import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
+import { captureGeneratedPairingIfAbsent } from '../../lib/pairing-capture.js';
 import { checkRoundCompleteness } from '../../lib/round-completeness.js';
 import {
   createRoundSchema,
@@ -1327,6 +1328,12 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
           isSub: subIds.has(pid) ? 1 : 0,
         });
       }
+
+      // Snapshot the engine's generated pairing for the audit trail. At this
+      // instant the just-inserted round_players == the engine suggestion, so
+      // the committed-state snapshot IS the generated pairing. Set-once; uses
+      // the tx handle so it sees the uncommitted inserts above.
+      await captureGeneratedPairingIfAbsent(round.id, tx);
 
       return round;
     });

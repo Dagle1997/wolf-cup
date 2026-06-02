@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Users, CalendarDays, Trophy, FilePenLine, KeyRound, LogOut, Loader2, Check, CalendarClock, FileDown, Landmark } from 'lucide-react';
+import { Users, CalendarDays, Trophy, FilePenLine, KeyRound, LogOut, Loader2, Check, CalendarClock, FileDown, Landmark, GitCompareArrows } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -135,6 +135,12 @@ const NAV_CARDS = [
     icon: FilePenLine,
     title: 'Score Corrections',
     description: 'Edit finalized round scores with full audit trail',
+  },
+  {
+    to: '/admin/pairing-audit' as const,
+    icon: GitCompareArrows,
+    title: 'Pairing Audit',
+    description: 'Engine-generated groups vs. final, per round',
   },
   {
     to: '/admin/the-house' as const,

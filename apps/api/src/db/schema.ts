@@ -162,6 +162,10 @@ export const rounds = sqliteTable(
     autoCalculateMoney: integer('auto_calculate_money').notNull().default(1),
     headcount: integer('headcount'),
     cancellationReason: text('cancellation_reason'), // set when status='cancelled'
+    // Set-once snapshot of the engine's generated pairing at group creation
+    // (from-attendance Generate). JSON: [{ groupNumber, playerIds:[...] }].
+    // Null = round predates pairing tracking (or was never generated) → "not tracked".
+    generatedPairing: text('generated_pairing'),
     handicapUpdatedAt: integer('handicap_updated_at'), // timestamp of last HI refresh
     contextId: text('context_id').notNull().default('league:guyan-wolf-cup-friday'),
     tenantId: text('tenant_id').notNull().default('guyan'),

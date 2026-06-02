@@ -1,8 +1,14 @@
 import { Hono } from 'hono';
 import { eq, and, or, inArray } from 'drizzle-orm';
 import { db } from '../../db/index.js';
-import { pairingHistory, rounds } from '../../db/schema.js';
+import { pairingHistory, rounds, players } from '../../db/schema.js';
 import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
+import {
+  serializeGroups,
+  computePairingDiff,
+  isValidSnapshot,
+  type PairingGroup,
+} from '../../lib/pairing-capture.js';
 import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
 import { suggestGroupsSchema } from '../../schemas/pairing.js';
 import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
@@ -189,6 +195,89 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
     },
     200,
   );
+});
+
+// ---------------------------------------------------------------------------
+// GET /rounds/:roundId/pairing-diff
+//
+// Audit: the engine's generated pairing (captured at from-attendance Generate)
+// vs the round's current group membership. Untracked rounds (null snapshot,
+// e.g. created before this feature) return tracked:false + generated:null +
+// the current groups as `final`, never an error.
+// ---------------------------------------------------------------------------
+
+app.get('/rounds/:roundId/pairing-diff', adminAuthMiddleware, async (c) => {
+  const roundId = Number(c.req.param('roundId'));
+  if (!Number.isInteger(roundId) || roundId <= 0) {
+    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
+  }
+
+  try {
+    const round = await db
+      .select({ id: rounds.id, generatedPairing: rounds.generatedPairing })
+      .from(rounds)
+      .where(eq(rounds.id, roundId))
+      .get();
+
+    if (!round) {
+      return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+    }
+
+    // Parse the set-once snapshot. A value that is unparseable OR parses to the
+    // wrong shape is treated as "not tracked" rather than throwing downstream
+    // (FMA guard — generated_pairing is only ever written well-formed, but the
+    // endpoint must never 500 on a corrupt row).
+    let generated: PairingGroup[] | null = null;
+    if (round.generatedPairing != null) {
+      try {
+        const parsed: unknown = JSON.parse(round.generatedPairing);
+        if (isValidSnapshot(parsed)) generated = parsed;
+      } catch {
+        generated = null;
+      }
+    }
+
+    const final = await serializeGroups(roundId, db);
+    const tracked = generated !== null;
+    const changes = tracked
+      ? computePairingDiff(generated!, final)
+      : { moved: [], added: [], removed: [] };
+
+    // Resolve display names for every player referenced in either snapshot.
+    // Tolerate a since-deleted player (missing/null name) → "Player #<id>".
+    const ids = new Set<number>();
+    for (const g of generated ?? []) for (const id of g.playerIds) ids.add(id);
+    for (const g of final) for (const id of g.playerIds) ids.add(id);
+
+    const nameById = new Map<number, string>();
+    if (ids.size > 0) {
+      const rows = await db
+        .select({ id: players.id, name: players.name })
+        .from(players)
+        .where(inArray(players.id, [...ids]));
+      for (const r of rows) if (r.name) nameById.set(r.id, r.name);
+    }
+    const nameOf = (id: number) => nameById.get(id) ?? `Player #${id}`;
+    const withNames = (gs: PairingGroup[]) =>
+      gs.map((g) => ({
+        groupNumber: g.groupNumber,
+        playerIds: g.playerIds,
+        names: g.playerIds.map(nameOf),
+      }));
+
+    return c.json(
+      {
+        tracked,
+        generated: generated ? withNames(generated) : null,
+        final: withNames(final),
+        changes,
+        names: Object.fromEntries([...ids].map((id) => [id, nameOf(id)])),
+      },
+      200,
+    );
+  } catch {
+    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+  }
 });
 
 export default app;

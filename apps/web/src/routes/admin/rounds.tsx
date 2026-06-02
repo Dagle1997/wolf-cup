@@ -1088,6 +1088,17 @@ function GroupsPanel({ roundId, seasonId: _seasonId }: { roundId: number; season
 
   async function handleApply() {
     if (!suggestions) return;
+    // Guard: applying a suggestion to a round that already has assigned players
+    // tears down and rebuilds every group. Confirm before reassigning so an
+    // accidental re-roll can't silently overwrite hand-set groups.
+    if (
+      roundPlayerList.length > 0 &&
+      !window.confirm(
+        'This will reassign every player into the suggested groups, replacing the current groups. Continue?',
+      )
+    ) {
+      return;
+    }
     setApplying(true);
     setApplyError(null);
     try {

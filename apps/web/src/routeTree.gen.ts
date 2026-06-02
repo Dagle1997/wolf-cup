@@ -33,6 +33,7 @@ import { Route as AdminSeasonRouteImport } from './routes/admin/season'
 import { Route as AdminScoreCorrectionsRouteImport } from './routes/admin/score-corrections'
 import { Route as AdminRoundsRouteImport } from './routes/admin/rounds'
 import { Route as AdminRosterRouteImport } from './routes/admin/roster'
+import { Route as AdminPairingAuditRouteImport } from './routes/admin/pairing-audit'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
 
 const StatsRoute = StatsRouteImport.update({
@@ -155,6 +156,11 @@ const AdminRosterRoute = AdminRosterRouteImport.update({
   path: '/roster',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminPairingAuditRoute = AdminPairingAuditRouteImport.update({
+  id: '/pairing-audit',
+  path: '/pairing-audit',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -178,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/standings': typeof StandingsRoute
   '/stats': typeof StatsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/pairing-audit': typeof AdminPairingAuditRoute
   '/admin/roster': typeof AdminRosterRoute
   '/admin/rounds': typeof AdminRoundsRoute
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
@@ -204,6 +211,7 @@ export interface FileRoutesByTo {
   '/standings': typeof StandingsRoute
   '/stats': typeof StatsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/pairing-audit': typeof AdminPairingAuditRoute
   '/admin/roster': typeof AdminRosterRoute
   '/admin/rounds': typeof AdminRoundsRoute
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
@@ -232,6 +240,7 @@ export interface FileRoutesById {
   '/standings': typeof StandingsRoute
   '/stats': typeof StatsRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/pairing-audit': typeof AdminPairingAuditRoute
   '/admin/roster': typeof AdminRosterRoute
   '/admin/rounds': typeof AdminRoundsRoute
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
@@ -261,6 +270,7 @@ export interface FileRouteTypes {
     | '/standings'
     | '/stats'
     | '/admin/login'
+    | '/admin/pairing-audit'
     | '/admin/roster'
     | '/admin/rounds'
     | '/admin/score-corrections'
@@ -287,6 +297,7 @@ export interface FileRouteTypes {
     | '/standings'
     | '/stats'
     | '/admin/login'
+    | '/admin/pairing-audit'
     | '/admin/roster'
     | '/admin/rounds'
     | '/admin/score-corrections'
@@ -314,6 +325,7 @@ export interface FileRouteTypes {
     | '/standings'
     | '/stats'
     | '/admin/login'
+    | '/admin/pairing-audit'
     | '/admin/roster'
     | '/admin/rounds'
     | '/admin/score-corrections'
@@ -516,6 +528,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRosterRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/pairing-audit': {
+      id: '/admin/pairing-audit'
+      path: '/pairing-audit'
+      fullPath: '/admin/pairing-audit'
+      preLoaderRoute: typeof AdminPairingAuditRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/login': {
       id: '/admin/login'
       path: '/login'
@@ -528,6 +547,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminPairingAuditRoute: typeof AdminPairingAuditRoute
   AdminRosterRoute: typeof AdminRosterRoute
   AdminRoundsRoute: typeof AdminRoundsRoute
   AdminScoreCorrectionsRoute: typeof AdminScoreCorrectionsRoute
@@ -538,6 +558,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminLoginRoute: AdminLoginRoute,
+  AdminPairingAuditRoute: AdminPairingAuditRoute,
   AdminRosterRoute: AdminRosterRoute,
   AdminRoundsRoute: AdminRoundsRoute,
   AdminScoreCorrectionsRoute: AdminScoreCorrectionsRoute,

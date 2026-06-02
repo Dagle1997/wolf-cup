@@ -204,6 +204,13 @@
       "when": 1778976000000,
       "tag": "0028_skins_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1780343787468,
+      "tag": "0029_generated_pairing",
+      "breakpoints": true
     }
   ]
 }
