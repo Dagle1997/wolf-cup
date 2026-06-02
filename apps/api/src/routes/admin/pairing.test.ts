@@ -32,6 +32,17 @@ import { migrate } from 'drizzle-orm/libsql/migrator';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = resolve(__dirname, '../../db/migrations');
 
+type DiffBody = {
+  tracked: boolean;
+  generated: { groupNumber: number; playerIds: number[]; names: string[] }[] | null;
+  final: { groupNumber: number; playerIds: number[]; names: string[] }[];
+  changes: {
+    moved: { playerId: number; fromGroup: number; toGroup: number }[];
+    added: { playerId: number; toGroup: number }[];
+    removed: { playerId: number; fromGroup: number }[];
+  };
+};
+
 let seasonId: number;
 let week1Id: number; // round used for capture / no-change / set-once
 let week2Id: number; // round used for the end-to-end moved scenario
@@ -145,12 +156,12 @@ describe('GET /rounds/:roundId/pairing-diff', () => {
   it('returns tracked with no changes for a freshly-generated round', async () => {
     const res = await pairingApp.request(`/rounds/${round1Id}/pairing-diff`, { method: 'GET' });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as DiffBody;
     expect(body.tracked).toBe(true);
     expect(body.generated).not.toBeNull();
     expect(body.changes).toEqual({ moved: [], added: [], removed: [] });
     // names resolved for display
-    expect(body.final[0].names.length).toBeGreaterThan(0);
+    expect(body.final[0]!.names.length).toBeGreaterThan(0);
   });
 
   it('returns tracked:false / generated:null for an untracked round (AC5)', async () => {
@@ -168,7 +179,7 @@ describe('GET /rounds/:roundId/pairing-diff', () => {
 
     const res = await pairingApp.request(`/rounds/${bare!.id}/pairing-diff`, { method: 'GET' });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as DiffBody;
     expect(body.tracked).toBe(false);
     expect(body.generated).toBeNull();
     expect(body.final).toEqual([]);
@@ -196,7 +207,7 @@ describe('GET /rounds/:roundId/pairing-diff', () => {
 
     const res = await pairingApp.request(`/rounds/${r!.id}/pairing-diff`, { method: 'GET' });
     expect(res.status).toBe(200);
-    const body = await res.json();
+    const body = (await res.json()) as DiffBody;
     expect(body.tracked).toBe(false);
     expect(body.generated).toBeNull();
   });
@@ -254,7 +265,7 @@ describe('GET /rounds/:roundId/pairing-diff', () => {
     expect(add.status).toBe(201);
 
     const res = await pairingApp.request(`/rounds/${round2Id}/pairing-diff`, { method: 'GET' });
-    const body = await res.json();
+    const body = (await res.json()) as DiffBody;
     expect(body.tracked).toBe(true);
     expect(body.changes.moved).toContainEqual({ playerId: mover.playerId, fromGroup: 1, toGroup: 2 });
     expect(body.changes.added).toEqual([]);
