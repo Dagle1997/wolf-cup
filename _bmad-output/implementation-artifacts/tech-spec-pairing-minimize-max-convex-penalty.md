@@ -2,7 +2,7 @@
 title: 'Worst-Player-Protecting Pairing — Convex Repeat Penalty + Tie-Break'
 slug: 'pairing-minimize-max-convex-penalty'
 created: '2026-06-02'
-status: 'ready-for-dev'
+status: 'completed'
 stepsCompleted: [1, 2, 3, 4]
 tech_stack: ['TypeScript', '@wolf-cup/engine (pure, zero-dep)', 'Vitest']
 files_to_modify: ['packages/engine/src/pairing.ts', 'packages/engine/src/pairing.test.ts', 'apps/api/src/scripts/_audit_pairing_engine_replay.ts (new — counterfactual validation)']
@@ -80,22 +80,22 @@ Both are drop-in changes to cost computation/selection — the pure greedy + Fis
 
 ### Tasks
 
-- [ ] **Task 1: Convex-penalty primitives (no behavior change yet)**
+- [x] **Task 1: Convex-penalty primitives (no behavior change yet)**
   - File: `packages/engine/src/pairing.ts`
   - Action: add `export const REPEAT_PENALTY_EXP = 2;` and `export function pairPenalty(count: number): number` → `count <= 0 ? 0 : count ** REPEAT_PENALTY_EXP`. Add `export function groupPenaltyCost(matrix, group): number` — mirrors `groupCost` but sums `pairPenalty(matrix.get(pairKey) ?? 0)`. Add `export function maxPlayerRepeatLoad(matrix, groups): number` — for each player in each group, `load = Σ over groupmates q of (matrix.get(pairKey(p,q)) ?? 0)`; return the **max load over all players** (0 if none).
   - Notes: **`groupCost` stays UNCHANGED (raw sum)** — it feeds the displayed `totalCost`. `pairPenalty(0)=0` so brand-new pairings are free; weight is on the *historical* count so a pair already at count 2 costs 4 to re-pair vs 1 at count 1. Helper is `maxPlayerRepeatLoad` (worst *player*), deliberately distinct from the per-group `maxPairCount` field in `admin/pairing.ts:181` (review F4).
 
-- [ ] **Task 2: Optimize on the convex penalty; tie-break on the worst player; keep `totalCost` raw**
+- [x] **Task 2: Optimize on the convex penalty; tie-break on the worst player; keep `totalCost` raw**
   - File: `packages/engine/src/pairing.ts` (`suggestGroups`)
   - Action: (a) greedy incremental step (`:107-110`) — sum `pairPenalty(matrix.get(...) ?? 0)` instead of the raw count. (b) restart selection (`:124-131`) — compute `penaltyCost = Σ groupPenaltyCost` and `thisLoad = maxPlayerRepeatLoad(matrix, currentGroups)`; track `bestPenalty`/`bestLoad` (both init `Infinity`); replace best when `penaltyCost < bestPenalty` **OR** (`penaltyCost === bestPenalty` AND `thisLoad < bestLoad`). (c) return `totalCost = Σ groupCost(raw)` of the chosen `bestGroups`.
   - Notes: penalty drives BOTH the greedy and the selection (consistent); the worst-player tie-break is what actually targets the objective (review F1); raw `totalCost` computed once at the end for display. Remainder logic unchanged. **Greedy caveat (review F8):** because `pairPenalty(0)=0`, the greedy is byte-identical to the old raw greedy whenever every candidate group is all-fresh (low-history weeks); it only diverges once a candidate group already contains a prior partner. The tie-break carries the load in low-history weeks.
 
-- [ ] **Task 3: Inject an optional deterministic RNG**
+- [x] **Task 3: Inject an optional deterministic RNG**
   - File: `packages/engine/src/pairing.ts`
   - Action: add `readonly rng?: () => number;` to `SuggestGroupsInput`; `const rng = input.rng ?? Math.random;` and use `rng()` in the Fisher-Yates shuffle (`:94`).
   - Notes: keeps the engine pure (caller supplies the seed); required for the deterministic tie-break test and the reproducible replay harness. Default `Math.random` → production behavior unchanged. The shuffle is the only nondeterministic source; given a fixed shuffle the greedy + selection are deterministic (also relies on stable `Map` iteration order, true in V8 — review F10).
 
-- [ ] **Task 4: Engine unit tests**
+- [x] **Task 4: Engine unit tests**
   - File: `packages/engine/src/pairing.test.ts`
   - Action: ADD —
     - `pairPenalty` (0/1/2/3 → 0/1/4/9); `groupPenaltyCost` convex sum; `maxPlayerRepeatLoad` (hand-computed fixture).
@@ -106,28 +106,28 @@ Both are drop-in changes to cost computation/selection — the pure greedy + Fis
     - **Re-confirm the existing `≥0.8` separation test (`:90-114`) still passes under the convex greedy** (review F9 — counts 10 → convex 100 vs raw 10, still strongly separated; keep it as a deliberate regression check).
     - Pins + all other existing property tests remain unchanged and must stay green.
 
-- [ ] **Task 5: Counterfactual engine-replay validation harness**
+- [x] **Task 5: Counterfactual engine-replay validation harness**
   - File: `apps/api/src/scripts/_audit_pairing_engine_replay.ts` (new)
   - Action: read the 6 finalized rounds in date order from `_audit/wolf-cup-prod.db`. For each week: roster = that round's `round_players`; run the NEW `suggestGroups` with `rng = mulberry32(seed)` and the matrix accumulated from the REPLAY's own prior-week groupings (NOT history). Accumulate pair counts. After all weeks compute worst-player `repeatSlots` + `totalRepeats`. Repeat across **≥20 seeds** → report **min / median / max** worst-player (not just an average). Compare to old-actual (7/12) and the random baseline (reuse `mulberry32` + the `totalRepeats`/`repeatSlotsByPlayer` helpers from `_audit_pairing_balance.ts`).
   - **Pin handling (review F5/F6 — measured, not assumed):** `attendance.group_request` rows in the snapshot cover only **04-17 (4), 05-01 (4), 05-08 (1), 05-15 (1)**; weeks **04-24 and 05-29 have ZERO pins**, and the lone **05-22** row belongs to the rained-out non-replay week (ignore it). So 2 of 6 replay weeks run unpinned — consistent with the random baseline, which is also unpinned. To avoid pin-translation drift, **run the harness with `DB_PATH=_audit/wolf-cup-prod.db` so the drizzle `db` points at the snapshot and the replay can call the production `buildGroupRequestPins` directly** (rather than re-implementing the first-click-wins overflow logic); the engine + harness still read rosters via the audit libsql client. If reuse proves impractical, re-implement the overflow logic and assert parity against `buildGroupRequestPins` on the pinned weeks.
   - Notes: counterfactual ("what if the new engine had run all season"); directional evidence, not a guarantee for future fields. Engine importable via `@wolf-cup/engine`.
 
-- [ ] **Task 6: Validate + record results**
+- [x] **Task 6: Validate + record results**
   - Files: run Task 5; append a "Post-change validation" section to `_bmad-output/implementation-artifacts/pairing-balance-evaluation.md`
   - Action: run the replay; record the new-engine worst-player **min/median/max** + total-repeats vs old-actual (7/12) and random (median + 7.46 avg / 29.2), with the seed methodology and the which-weeks-pinned note. **Pass condition: median worst-player < random median AND < old-actual 7.** If unmet, raise `REPEAT_PENALTY_EXP` (e.g. 3) and re-run, documenting the final value.
   - Notes: data-backed proof, mirroring how the original evaluation was earned rather than asserted. Also report the random *median* worst-player (the harness should compute it, since "below the average" is a weak bar — review F7).
 
 ### Acceptance Criteria
 
-- [ ] **AC1 (convex primitive):** Given `pairPenalty`, when called with 0/1/2/3, then it returns 0/1/4/9 (`c²`).
-- [ ] **AC2 (new pairings free):** Given a group whose pairs have no history, when `groupPenaltyCost` is computed, then it is 0 — a first-time pairing is never penalized.
-- [ ] **AC3 (display unchanged):** Given any suggestion, when `suggestGroups` returns, then `totalCost` equals the RAW Σ of grouped-pair counts (not the penalty sum), so `rounds.tsx:1573` (+ `heatColor`) and `attendance.tsx:603` render exactly as before.
-- [ ] **AC4 (convex discriminates from raw):** Given a choice where the raw-sum cost **ties** but the convex cost differs — two count-1 pairs in one group (raw 2 / convex 2) vs one count-2 pair in a group (raw 2 / convex 4) — when `suggestGroups` runs across N seeded restarts, then it picks the lower-**convex** arrangement (two count-1 pairs) in the large majority of runs, whereas the raw engine would be indifferent. (This fixture, unlike a count-2-vs-count-1 choice, actually proves the convex change matters — review F11.)
-- [ ] **AC5 (worst-player tie-break):** Given two assignments with EQUAL convex penalty cost but different `maxPlayerRepeatLoad`, when selection runs under a fixed seeded `rng`, then the assignment with the lower max-player-load (the flatter-per-player option) is chosen.
-- [ ] **AC6 (determinism):** Given identical `playerIds`/`matrix`/`pins` and a fixed seeded `rng`, when `suggestGroups` is called twice, then it returns identical groups (relies on the injected `rng` + stable `Map` order).
-- [ ] **AC7 (pins still hard):** Given First/Last pins, when `suggestGroups` runs, then each pinned player is in its pinned group (behavior unchanged).
-- [ ] **AC8 (no regression):** Given the pre-existing engine test suite, when run after the change, then every prior test still passes — including the `≥0.8` separation test (`:90-114`) under the convex greedy (raw `groupCost`/`totalCost` semantics intact).
-- [ ] **AC9 (validation — the real bar):** Given the counterfactual replay over the 6 finalized 2026 rounds (seeded, history fed forward; pins on 4 weeks, 2 weeks unpinned per F5), when the NEW engine's season is simulated across **≥20 seeds**, then the **median** worst-player repeat-slots is **below the random median AND below the old-actual 7**, while total repeats stay **well under random (~29.2)**; the min/median/max distribution is recorded in `pairing-balance-evaluation.md`. Feasibility is pre-established (forced floor ≈ 2, decision log); if the bar is missed it indicates heuristic quality, so raise `REPEAT_PENALTY_EXP` and re-validate, documenting the final value.
+- [x] **AC1 (convex primitive):** Given `pairPenalty`, when called with 0/1/2/3, then it returns 0/1/4/9 (`c²`).
+- [x] **AC2 (new pairings free):** Given a group whose pairs have no history, when `groupPenaltyCost` is computed, then it is 0 — a first-time pairing is never penalized.
+- [x] **AC3 (display unchanged):** Given any suggestion, when `suggestGroups` returns, then `totalCost` equals the RAW Σ of grouped-pair counts (not the penalty sum), so `rounds.tsx:1573` (+ `heatColor`) and `attendance.tsx:603` render exactly as before.
+- [x] **AC4 (convex discriminates from raw):** Given a choice where the raw-sum cost **ties** but the convex cost differs — two count-1 pairs in one group (raw 2 / convex 2) vs one count-2 pair in a group (raw 2 / convex 4) — when `suggestGroups` runs across N seeded restarts, then it picks the lower-**convex** arrangement (two count-1 pairs) in the large majority of runs, whereas the raw engine would be indifferent. (This fixture, unlike a count-2-vs-count-1 choice, actually proves the convex change matters — review F11.)
+- [x] **AC5 (worst-player tie-break):** Given two assignments with EQUAL convex penalty cost but different `maxPlayerRepeatLoad`, when selection runs under a fixed seeded `rng`, then the assignment with the lower max-player-load (the flatter-per-player option) is chosen.
+- [x] **AC6 (determinism):** Given identical `playerIds`/`matrix`/`pins` and a fixed seeded `rng`, when `suggestGroups` is called twice, then it returns identical groups (relies on the injected `rng` + stable `Map` order).
+- [x] **AC7 (pins still hard):** Given First/Last pins, when `suggestGroups` runs, then each pinned player is in its pinned group (behavior unchanged).
+- [x] **AC8 (no regression):** Given the pre-existing engine test suite, when run after the change, then every prior test still passes — including the `≥0.8` separation test (`:90-114`) under the convex greedy (raw `groupCost`/`totalCost` semantics intact).
+- [x] **AC9 (validation — the real bar):** Given the counterfactual replay over the 6 finalized 2026 rounds (seeded, history fed forward; pins on 4 weeks, 2 weeks unpinned per F5), when the NEW engine's season is simulated across **≥20 seeds**, then the **median** worst-player repeat-slots is **below the random median AND below the old-actual 7**, while total repeats stay **well under random (~29.2)**; the min/median/max distribution is recorded in `pairing-balance-evaluation.md`. Feasibility is pre-established (forced floor ≈ 2, decision log); if the bar is missed it indicates heuristic quality, so raise `REPEAT_PENALTY_EXP` and re-validate, documenting the final value.
 
 ## Additional Context
 
@@ -155,3 +155,15 @@ Both are drop-in changes to cost computation/selection — the pure greedy + Fis
 - **Feasibility (review F2):** the worst player's forced-repeat lower bound is ≈ 2 (Jason needs 18 partner-slots, co-attends 19 distinct), so AC9's bar is arithmetically reachable; residual risk is heuristic quality (greedy + 10 restarts), not arithmetic.
 - **Known limitations:** greedy + 10 restarts is a heuristic — the convex penalty + worst-player tie-break *improve* the worst case but don't guarantee a global optimum. Acceptable for league sizes (≤ ~20 players).
 - **Future considerations (out of scope):** recency weighting (separate spec); promoting `REPEAT_PENALTY_EXP` to runtime config if retuning becomes frequent; if a future change ever makes the displayed `totalCost` convex, recalibrate the `heatColor` thresholds in `rounds.tsx`/`attendance.tsx` (left raw here precisely to avoid that).
+
+## Review Notes
+
+- Adversarial review completed (2026-06-02) — two independent reviewers: a fresh BMAD adversarial-review subagent (diff-only, information-asymmetric) + external Codex (`gpt-5.2`, high effort). Both converged on the same top finding.
+- **Findings: 5 real fixed, rest documented/cosmetic.** Resolution approach: auto-fix the real ones.
+  - **F1 (High, both reviewers):** replay engine-arm could silently drop remainder players when a roster isn't a multiple of 4, while the random arm keeps everyone → biased comparison. *Verified all 6 snapshot rounds are clean groups of 4, so the reported numbers were unbiased*, but added an upfront roster-shape guard (and per-week `remainder===0` assertion) that **fails loudly** if a future snapshot violates it.
+  - **F2 (Med, both):** injected `rng()` was unclamped — a `>=1` value could index the shuffle out of bounds. Clamped the Fisher-Yates index to `[0, i]` and documented the `[0,1)` contract.
+  - **F3 (Med, both):** removed the `bestGroups!` non-null assertion in favor of a defensive guard (a NaN penalty would otherwise crash).
+  - **F4 (Low):** documented that `REPEAT_PENALTY_EXP` must stay a positive integer (the tie-break uses exact `===` on integer penalties).
+  - **F10 (Low):** harness AC9 gate now compares median-to-median for both metrics (was median-vs-avg on total).
+  - Documented-limitation / cosmetic (no code change): tie-break is restart-shallow (already spec F1/F8); single-rng correlated seasons (mitigated by bumping seeds 50 → 200); even-length median; worst-player tally double-counts ties ("for color").
+- **Post-fix validation:** engine suite 538/538, full workspace typecheck clean, replay re-run at 200 seeds → **AC9 PASS** (median worst-player 5 < random median 7 and < old-actual 7; median total 13 < random median 29).

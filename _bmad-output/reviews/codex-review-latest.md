@@ -1,57 +1,45 @@
 # Codex Review
 
-- Generated: 2026-06-01T20:15:26.153Z
+- Generated: 2026-06-03T00:08:45.283Z
 - Model: gpt-5.2
 - Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: apps/api/src/lib/pairing-capture.ts, apps/api/src/routes/admin/pairing.ts, apps/api/src/routes/admin/rounds.ts, apps/api/src/db/schema.ts, apps/api/src/db/migrations/0029_generated_pairing.sql, apps/web/src/routes/admin/pairing-audit.tsx, apps/web/src/routes/admin/rounds.tsx, apps/web/src/routes/admin/index.tsx, apps/api/src/lib/pairing-capture.test.ts, apps/api/src/routes/admin/pairing.test.ts, apps/api/src/routes/admin/pairing.auth.test.ts, apps/api/src/scripts/_audit_pairing_balance.ts
+- Reviewed files: packages/engine/src/pairing.ts, packages/engine/src/pairing.test.ts, apps/api/src/scripts/_audit_pairing_engine_replay.ts
 
 ## Summary
 
-The feature mostly matches the clarified design: capture happens only in the from-attendance transaction via the tx handle, and the audit UI is isolated at /admin/pairing-audit. However, the “set-once + never 500 on corrupt snapshot” goals aren’t fully met: capture is not atomic (race can overwrite), and the pairing-diff endpoint can still throw/500 on parseable-but-invalid JSON. There’s also an unguarded assumption that (roundId, groupNumber) is unique; if it’s not, serialization/diff will silently merge groups and misreport changes.
+Engine-side change largely meets the stated invariants: optimization is done on a convex objective (c²) while the returned `totalCost` is recomputed as RAW Σ `groupCost` for display. The worst-player tie-break is implemented at restart selection time and an injectable RNG is threaded into the Fisher–Yates shuffle. Main concrete risks are (1) `rng()` contract is unchecked and can produce out-of-range indices/undefined players, and (2) the new replay audit script can silently drop players if any round roster isn’t an exact multiple of 4, making AC9 conclusions potentially invalid without an explicit guard.
 
 Overall risk: medium
 
 ## Findings
 
-1. [high] captureGeneratedPairingIfAbsent is not atomic set-once (select-then-update race can overwrite baseline)
-   - File: apps/api/src/lib/pairing-capture.ts:84-103
+1. [high] Replay audit can silently drop players when roster size isn’t a multiple of GROUP_SIZE (results can be overly optimistic / invalid)
+   - File: apps/api/src/scripts/_audit_pairing_engine_replay.ts:168-177
    - Confidence: high
-   - Why it matters: The function is intended to be “set-once” and idempotent, but it performs a read (`select ... generatedPairing`) followed by a separate unconditional `update` when null. Two concurrent callers can both observe NULL and then both write—meaning the second write can overwrite the original baseline snapshot. If group membership changes between the two snapshots (or one call is mistakenly made after manual edits), the audit trail becomes incorrect and non-reproducible.
-   - Suggested fix: Make the write conditional at the DB level: `UPDATE rounds SET generated_pairing=? WHERE id=? AND generated_pairing IS NULL` and check affected rows (or use `.returning()` to detect success). Consider removing the default `dbx=db` to force passing `tx` in transactional contexts, or at least provide a separate `capture...InTx` wrapper to reduce accidental misuse.
+   - Why it matters: `suggestGroups` only forms `floor(roster.length / groupSize)` full groups and returns the rest in `remainder`. The replay script accumulates pair counts only from `res.groups` (line 176) and ignores `res.remainder`, and it never asserts that `round.roster.length % GROUP_SIZE === 0`. If any finalized round had (e.g.) 15 players with a real 3-person group, the replay would consistently omit 3 players for that week, undercount repeats, and make “median worst-player”/“total repeats” look better than reality—directly impacting AC9 gating.
+   - Suggested fix: Add an explicit guard before calling `suggestGroups`: if `round.roster.length % GROUP_SIZE !== 0`, either (a) throw/fail fast with a clear message, or (b) incorporate remainder players into additional (smaller) group(s) for accumulation so every rostered player contributes to the forward matrix and metrics. At minimum, log and exclude such rounds from the evaluation to avoid misleading PASS/FAIL.
 
-2. [high] pairing-diff treats only JSON.parse failures as “untracked”; parseable but wrong-shaped JSON can still crash and 500
-   - File: apps/api/src/routes/admin/pairing.ts:225-275
+2. [medium] Injected `rng()` is not validated/clamped; `rng() >= 1` can generate out-of-bounds shuffle indices and introduce `undefined` playerIds
+   - File: packages/engine/src/pairing.ts:158-163
    - Confidence: high
-   - Why it matters: The endpoint’s comment promises “corrupt/unparseable treated as not tracked (never throws)”, but the current guard only checks `Array.isArray(parsed)`. If the stored value is parseable JSON but not an array of `{groupNumber:number, playerIds:number[]}` (e.g. `[{}]`, `[{playerIds:null}]`, or `[{groupNumber:"1", playerIds:[...]}]`), the subsequent loops (`for (const id of g.playerIds)`) and `withNames()` will throw TypeError, and the outer try/catch returns a 500. That defeats the “audit page never errors for bad historical data” requirement and can take down the whole audit view for a round.
-   - Suggested fix: Validate the parsed value structurally before using it (zod or manual checks). If any group fails validation, set `generated=null` (tracked:false) rather than proceeding. Add a test case where `round.generatedPairing` is `'[{}]'` (parseable) to ensure the endpoint returns tracked:false instead of 500.
+   - Why it matters: `const j = Math.floor(rng() * (i + 1));` assumes `rng()` behaves like `Math.random` in [0,1). The type `() => number` doesn’t enforce that. If a caller supplies an RNG that can return 1 (or NaN/negative), `j` can become `i+1` (or negative/NaN), causing swaps with `undefined` and potentially pushing `undefined` into `shuffled`, which then can flow into `pairKey(pid, existing)` and `currentGroups.push(pid)` without runtime checks. This can lead to malformed group outputs or hard-to-debug behavior. (Math.random/mulberry32 are fine, but the API is now publicly injectable.)
+   - Suggested fix: Clamp/validate RNG output at the shuffle site, e.g. `const r = rng(); if (!Number.isFinite(r)) throw ...; const u = Math.min(Math.max(r, 0), 0.999999999999); const j = Math.floor(u * (i + 1));` Alternatively, document/encode the contract as `rng: () => number /* in [0,1) */` and add a dev-time assertion.
 
-3. [medium] serializeGroups implicitly assumes groupNumber is unique per round; duplicates would merge groups and corrupt snapshot/diff
-   - File: apps/api/src/lib/pairing-capture.ts:43-74
+3. [medium] `bestGroups!` can still be null if penalty comparisons never succeed (NaN/Infinity edge cases), causing a runtime crash after restarts
+   - File: packages/engine/src/pairing.ts:143-214
    - Confidence: high
-   - Why it matters: `serializeGroups` groups rows into a `Map<number, number[]>` keyed solely on `groups.groupNumber` (lines 61–69). If a round ever has two `groups` rows with the same `group_number`, members from both DB groups will be merged into a single serialized group. The audit diff then becomes incorrect (players appear together when they weren’t). This is not prevented by schema: `groups` has no unique constraint on `(round_id, group_number)` (apps/api/src/db/schema.ts lines ~188–204), and the create-group endpoint (not shown here) would need to enforce it explicitly.
-   - Suggested fix: Enforce uniqueness in the DB with a unique index on `(round_id, group_number)` and/or validate in the group-creation endpoint. Alternatively, serialize by `groupId` (stable primary key) and include `groupNumber` only for display.
-
-4. [low] Audit balance script can print NaN/Infinity if there are no co-attendance>=2 pairs
-   - File: apps/api/src/scripts/_audit_pairing_balance.ts:146-214
-   - Confidence: high
-   - Why it matters: `repeatCapable.length` is used as the denominator for a percentage at line 213. On small datasets (e.g., 0–1 finalized rounds), `repeatCapable.length` can be 0, resulting in `NaN%`/`Infinity%` output. This doesn’t affect production, but it makes the script less robust for reuse on partial snapshots.
-   - Suggested fix: Guard the denominator: if `repeatCapable.length===0`, print “n/a” (or 0.0%) and skip the percentage computation.
-
-5. [medium] Tests don’t cover malformed-but-parseable snapshot and don’t exercise atomic set-once behavior under concurrency
-   - File: apps/api/src/routes/admin/pairing.test.ts:108-217
-   - Confidence: high
-   - Why it matters: Current integration tests cover: capture happened, idempotent sequential call, and moved player diff. They do not cover (a) parseable malformed snapshot causing 500 (currently possible), nor (b) the non-atomic set-once race (select-then-update). These are the two biggest “actively try to break” areas called out in the review request.
-   - Suggested fix: Add a pairing-diff test that manually sets `rounds.generatedPairing` to `'[{}]'` (or another wrong shape) and asserts 200 + tracked:false. For set-once, either refactor to an atomic update (preferred) and assert affected-row semantics, or add a stress test that triggers two captures in parallel (Promise.all) and asserts no overwrite when one snapshot differs.
+   - Why it matters: After the restart loop, the code unconditionally dereferences `bestGroups!` (line 210, 213). Under normal conditions it will be set on attempt 0 because `bestPenalty` starts at `Infinity` and penalty costs are finite. But if `penaltyCost` becomes `NaN` (e.g., matrix contains `NaN` values, or `undefined` IDs leak in via a bad RNG as above), then both `penaltyCost < bestPenalty` and `penaltyCost === bestPenalty` are false, so `bestGroups` never updates and the function throws. This is exactly the “bestGroups stays null” failure mode the review request called out.
+   - Suggested fix: Make the selection condition resilient: `if (bestGroups === null || penaltyCost < bestPenalty || (penaltyCost === bestPenalty && thisLoad < bestLoad)) { ... }`. Optionally also validate matrix counts are finite numbers before use (or coerce non-finite to 0) to avoid NaN propagation.
 
 ## Strengths
 
-- Capturing via `tx` inside from-attendance is the correct approach to see uncommitted `round_players` inserts (apps/api/src/routes/admin/rounds.ts around line 1329).
-- Diff logic is pure and unit-tested with good invariants (apps/api/src/lib/pairing-capture.test.ts).
-- pairing-diff endpoint has solid input validation for roundId and correctly guards the route with adminAuthMiddleware.
-- UI confirm guard matches the clarified requirement (only blocks re-apply when the round already has players assigned).
+- `totalCost` is recomputed RAW from the winning grouping for the normal return path, protecting the UI heatColor magnitude expectations (pairing.ts:207-216).
+- Greedy incremental objective and restart selection objective are consistent (both based on `pairPenalty` / `groupPenaltyCost`), so the engine is actually optimizing the intended convex function.
+- Worst-player tie-break is correctly implemented as a secondary criterion only on penalty ties (`penaltyCost === bestPenalty && thisLoad < bestLoad`).
+- RNG injection is localized to the shuffle (maintains prod behavior with `Math.random` default) and is covered by deterministic tests.
+- Added tests directly cover the key acceptance criteria: convex penalty shape, discrimination vs raw, worst-player tie-break behavior, and deterministic runs with a seeded PRNG.
 
 ## Warnings
 
-- Truncated file content for review: apps/api/src/routes/admin/rounds.ts
-- Truncated file content for review: apps/web/src/routes/admin/rounds.tsx
+None.

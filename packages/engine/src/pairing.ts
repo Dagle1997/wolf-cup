@@ -14,6 +14,15 @@ export interface SuggestGroupsInput {
   readonly pins?: ReadonlyMap<number, number>;
   /** Players per group (default 4) */
   readonly groupSize?: number;
+  /**
+   * Optional random source (default `Math.random`). Must return a float in
+   * `[0, 1)` (the `Math.random` contract). Injected only to make the
+   * Fisher-Yates shuffle deterministic for tests and the reproducible replay
+   * harness; production callers omit it and get `Math.random`. The shuffle
+   * index is clamped defensively, so an out-of-contract value can't corrupt
+   * the partition — it only skews the (already heuristic) shuffle.
+   */
+  readonly rng?: () => number;
 }
 
 export interface SuggestGroupsResult {
@@ -42,6 +51,68 @@ export function groupCost(matrix: PairingMatrix, groupPlayerIds: readonly number
 }
 
 /**
+ * Exponent for the convex repeat penalty. `2` (quadratic) makes the marginal
+ * cost of the 2nd/3rd/4th pairing +3/+5/+7, strongly discouraging *pair*
+ * concentration while leaving a brand-new pairing free. Named (not inlined) so
+ * it is the single retune escape hatch if worst-player protection underdelivers.
+ *
+ * MUST stay a positive INTEGER: penalties are summed and compared with exact
+ * `===` in the restart tie-break (`pairing.ts` selection). A non-integer
+ * exponent would make `count ** exp` a float and the equality tie-test
+ * unreliable. Retune by integer steps (2 → 3) only.
+ */
+export const REPEAT_PENALTY_EXP = 2;
+
+/**
+ * Convex penalty for a single pair given its HISTORICAL count `c`.
+ * `penalty(0) = 0` keeps first-time pairings free; `c²` makes re-pairing an
+ * already-high pair cost far more than a fresh one.
+ */
+export function pairPenalty(count: number): number {
+  return count <= 0 ? 0 : count ** REPEAT_PENALTY_EXP;
+}
+
+/**
+ * Sum of the convex `pairPenalty` over all C(n,2) pairs within a group.
+ * Mirrors `groupCost` but on the penalty transform — this is the objective the
+ * engine optimizes internally. `groupCost` (raw) is still what gets displayed.
+ */
+export function groupPenaltyCost(matrix: PairingMatrix, groupPlayerIds: readonly number[]): number {
+  let cost = 0;
+  for (let i = 0; i < groupPlayerIds.length; i++) {
+    for (let j = i + 1; j < groupPlayerIds.length; j++) {
+      cost += pairPenalty(matrix.get(pairKey(groupPlayerIds[i]!, groupPlayerIds[j]!)) ?? 0);
+    }
+  }
+  return cost;
+}
+
+/**
+ * Worst-player repeat load across an assignment: for each player, sum the
+ * RAW historical counts with each of its assigned groupmates, then return the
+ * maximum such load over all players (0 if none). This is the worst-off
+ * individual the tie-break protects — deliberately named to avoid collision
+ * with the per-group `maxPairCount` response field used elsewhere.
+ */
+export function maxPlayerRepeatLoad(
+  matrix: PairingMatrix,
+  groups: readonly (readonly number[])[],
+): number {
+  let worst = 0;
+  for (const group of groups) {
+    for (let i = 0; i < group.length; i++) {
+      let load = 0;
+      for (let j = 0; j < group.length; j++) {
+        if (i === j) continue;
+        load += matrix.get(pairKey(group[i]!, group[j]!)) ?? 0;
+      }
+      if (load > worst) worst = load;
+    }
+  }
+  return worst;
+}
+
+/**
  * Suggest groups that minimize repeat pairings using greedy assignment
  * with random restarts.
  *
@@ -53,6 +124,7 @@ export function groupCost(matrix: PairingMatrix, groupPlayerIds: readonly number
  */
 export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
   const { matrix, playerIds, pins, groupSize = 4 } = input;
+  const rng = input.rng ?? Math.random;
 
   if (playerIds.length === 0) {
     return { groups: [], remainder: [], totalCost: 0 };
@@ -77,7 +149,10 @@ export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
   const restarts = 10;
 
   let bestGroups: number[][] | null = null;
-  let bestCost = Infinity;
+  // Selection optimizes the convex PENALTY cost; ties broken by the lowest
+  // worst-player load (the lever that actually protects the worst-off regular).
+  let bestPenalty = Infinity;
+  let bestLoad = Infinity;
 
   for (let attempt = 0; attempt < restarts; attempt++) {
     // Initialize groups with pinned players
@@ -88,10 +163,13 @@ export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
       }
     }
 
-    // Shuffle unpinned players (Fisher-Yates)
+    // Shuffle unpinned players (Fisher-Yates). Clamp the index to [0, i] so an
+    // out-of-contract rng (returning <0, >=1, or NaN) can never index out of
+    // bounds — NaN floors to NaN, so fall back to 0 before clamping.
     const shuffled = [...unpinnedPlayers];
     for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const raw = Math.floor(rng() * (i + 1));
+      const j = Number.isFinite(raw) ? Math.min(i, Math.max(0, raw)) : 0;
       [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
     }
 
@@ -103,10 +181,13 @@ export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
 
       for (let g = 0; g < numGroups; g++) {
         if (currentGroups[g]!.length >= groupSize) continue;
-        // Incremental cost = sum of pair costs with existing members
+        // Incremental cost = sum of CONVEX pair penalties with existing members.
+        // pairPenalty(0)=0 ⇒ an all-fresh group still costs 0 (identical to the
+        // old raw greedy in low-history weeks); it only diverges once a candidate
+        // group already holds a prior partner.
         let incrCost = 0;
         for (const existing of currentGroups[g]!) {
-          incrCost += matrix.get(pairKey(pid, existing)) ?? 0;
+          incrCost += pairPenalty(matrix.get(pairKey(pid, existing)) ?? 0);
         }
         if (incrCost < bestIncrCost) {
           bestIncrCost = incrCost;
@@ -121,9 +202,12 @@ export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
       }
     }
 
-    const totalCost = currentGroups.reduce((sum, g) => sum + groupCost(matrix, g), 0);
-    if (totalCost < bestCost) {
-      bestCost = totalCost;
+    const penaltyCost = currentGroups.reduce((sum, g) => sum + groupPenaltyCost(matrix, g), 0);
+    const thisLoad = maxPlayerRepeatLoad(matrix, currentGroups);
+    // Lower convex penalty wins; on a tie, prefer the flatter-per-player option.
+    if (penaltyCost < bestPenalty || (penaltyCost === bestPenalty && thisLoad < bestLoad)) {
+      bestPenalty = penaltyCost;
+      bestLoad = thisLoad;
       bestGroups = currentGroups;
       // Track overflow on best
       remainderIds.clear();
@@ -131,9 +215,22 @@ export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
     }
   }
 
+  // Defensive: bestGroups is set on the first restart in practice (penaltyCost
+  // is always a finite, non-negative integer < Infinity), but guard the
+  // invariant rather than asserting non-null — a NaN penalty would otherwise
+  // crash here. Fall back to leaving everyone unassigned.
+  if (!bestGroups) {
+    return { groups: [], remainder: [...playerIds], totalCost: 0 };
+  }
+
+  // Return the RAW repeat-weight for display — the admin/attendance UIs and
+  // their heatColor thresholds are tuned to raw magnitudes. Optimization above
+  // happens on the convex penalty; totalCost is recomputed raw on the winner.
+  const totalCost = bestGroups.reduce((sum, g) => sum + groupCost(matrix, g), 0);
+
   return {
-    groups: bestGroups!,
+    groups: bestGroups,
     remainder: [...remainderIds],
-    totalCost: bestCost,
+    totalCost,
   };
 }

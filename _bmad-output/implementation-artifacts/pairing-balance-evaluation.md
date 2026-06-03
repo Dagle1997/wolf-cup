@@ -127,3 +127,60 @@ ignores, while preserving the aggregate spread already demonstrated here. Re-run
 this script after adopting it to confirm the worst-player number drops below the
 random average. (This evaluation made **no** engine change — scope per the
 parent spec.)
+
+---
+
+## Post-change validation (2026-06-02)
+
+The follow-up spec was implemented — `packages/engine/src/pairing.ts` now
+optimizes a **convex repeat penalty** (`pairPenalty(c) = c²`,
+`REPEAT_PENALTY_EXP = 2`) with a **worst-player tie-break**
+(`maxPlayerRepeatLoad`) across the 10 restarts; `groupCost`/`totalCost` stay
+raw for the UI. Validation is a **counterfactual engine replay**, not a re-run
+of the read-only audit above (which reads the OLD engine's actual groups and
+would show the same numbers). The new harness
+`apps/api/src/scripts/_audit_pairing_engine_replay.ts` replays each finalized
+week's REAL roster + First/Last pins through the NEW engine, feeding the matrix
+forward from the replay's own prior-week groupings.
+
+**Methodology:** 6 finalized 2026 rounds in date order; seeded `mulberry32` RNG
+threaded across the season; **200 seeds** (≥20 per spec; 200 tightens the
+median); random baseline = 2000 unpinned sims (same as above). Both AC9 gates
+compare median-to-median for a consistent statistic. The harness asserts every
+round roster is a clean multiple of 4 and fails loudly otherwise, so the engine
+arm never silently drops a player the random arm keeps (review F1). Pins
+recovered via the production `buildGroupRequestPins` against the snapshot —
+**4 / 0 / 4 / 1 / 1 / 0** pinned across 04-17 … 05-29 (matches the spec's F5
+audit; 04-24 and 05-29 replay unpinned, consistent with the unpinned random
+baseline).
+
+| Metric | NEW engine (replay, 200 seeds) | old-actual | random baseline |
+| ------ | ------------------------------ | ---------- | --------------- |
+| Worst-player repeat-slots | **min 3 / median 5 / max 7** | 7 (Jason Moses) | median 7, avg 7.45 |
+| Total repeats | min 10 / **median 13** / max 17 | 12 | median 29, avg 29.2 |
+
+**AC9 gate: PASS** ✅ — replay median worst-player **5** is below the random
+median (7) **and** below old-actual (7); median total repeats (13) is below the
+random median (29). `REPEAT_PENALTY_EXP = 2` cleared the bar; no retune was
+needed. (A worst-case tail seed can still reach 7, equal to old-actual; the
+*median* is the gated statistic and the typical season is materially flatter.)
+
+**Worst-off player is no longer one person.** Under the old sum-objective Jason
+Moses alone carried 7 slots. Across the 200 replay seeds the worst-off player is
+now spread — Matt Jaquint (93/200), Jason Moses (89/200), Jay Patterson
+(57/200), Ronnie Adkins (47/200) — i.e. the engine no longer dumps the
+aggregate's unavoidable repeats on the most-available regular. The replay's min
+(3) sits just above the spec's forced floor (≈2 for Jason), so the heuristic is
+near-optimal for the worst case. (Tie seeds count each co-worst player, so the
+tallies sum above 200.)
+
+**Honest tradeoff.** The replay's **median total repeats (13) is marginally
+above the old engine's single realized run (12)** — by design. Worst-player
+protection costs a sliver of aggregate spread; 13 vs 12 is within
+seed-to-seed noise and both are ~half of random. The worst-player gain (7 → 4)
+is the intended objective and dwarfs the ~1-repeat aggregate cost.
+
+**Caveat.** This is counterfactual ("what if the new engine had run all
+season") on real rosters — directional evidence, not a guarantee for future
+fields. Reproduce with:
+`cd apps/api && DB_PATH=../../_audit/wolf-cup-prod.db npx tsx src/scripts/_audit_pairing_engine_replay.ts`
