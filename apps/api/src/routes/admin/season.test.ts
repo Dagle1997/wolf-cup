@@ -563,6 +563,196 @@ describe('PATCH /seasons/:seasonId/weeks/:weekId', () => {
     expect(body.activeRounds).toBe(4);
   });
 
+  it('recomputes side-game rotation when a week is toggled (rainout hold)', async () => {
+    const { seasonId } = await createTestSeason();
+
+    // Weeks in Friday order: 04-10, 04-17, 04-24, 05-01
+    const weeks = await db
+      .select({ id: seasonWeeks.id, friday: seasonWeeks.friday })
+      .from(seasonWeeks)
+      .where(eq(seasonWeeks.seasonId, seasonId))
+      .orderBy(seasonWeeks.friday);
+    expect(weeks.length).toBe(4);
+    const [w0, w1, w2, w3] = weeks;
+
+    // Two side games — recompute will populate their (initially null) anchors
+    const [g1] = await db
+      .insert(sideGames)
+      .values({ seasonId, name: 'Game A', format: 'manual', createdAt: 1 })
+      .returning();
+    const [g2] = await db
+      .insert(sideGames)
+      .values({ seasonId, name: 'Game B', format: 'manual', createdAt: 2 })
+      .returning();
+
+    // An official round on w2's Friday (04-24) — starts on Game A in the
+    // full-rotation (g1 idx0 → [w0, w2]); after the hold it must move to Game B.
+    const [round] = await db
+      .insert(rounds)
+      .values({ seasonId, type: 'official', status: 'scheduled', scheduledDate: w2!.friday, createdAt: 1 })
+      .returning();
+
+    // Toggle w1 (04-17) inactive → rainout hold
+    const res = await seasonApp.request(`/seasons/${seasonId}/weeks/${w1!.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: false }),
+    });
+    expect(res.status).toBe(200);
+
+    const after = await db
+      .select({ id: sideGames.id, scheduledFridays: sideGames.scheduledFridays, scheduledRoundIds: sideGames.scheduledRoundIds })
+      .from(sideGames)
+      .where(eq(sideGames.seasonId, seasonId))
+      .orderBy(sideGames.id);
+    const gA = after.find((g) => g.id === g1!.id)!;
+    const gB = after.find((g) => g.id === g2!.id)!;
+
+    // Active Fridays now [w0, w2, w3]; g1(idx0) → [w0, w3], g2(idx1) → [w2]
+    expect(JSON.parse(gA.scheduledFridays!)).toEqual([w0!.friday, w3!.friday]);
+    expect(JSON.parse(gB.scheduledFridays!)).toEqual([w2!.friday]);
+    // The 04-24 round shifted off Game A and onto Game B
+    expect(JSON.parse(gA.scheduledRoundIds!)).toEqual([]);
+    expect(JSON.parse(gB.scheduledRoundIds!)).toEqual([round!.id]);
+
+    // Toggle w1 back active → rotation returns to the full cycle
+    await seasonApp.request(`/seasons/${seasonId}/weeks/${w1!.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: true }),
+    });
+    const restored = await db
+      .select({ id: sideGames.id, scheduledFridays: sideGames.scheduledFridays, scheduledRoundIds: sideGames.scheduledRoundIds })
+      .from(sideGames)
+      .where(eq(sideGames.seasonId, seasonId))
+      .orderBy(sideGames.id);
+    const rA = restored.find((g) => g.id === g1!.id)!;
+    const rB = restored.find((g) => g.id === g2!.id)!;
+    expect(JSON.parse(rA.scheduledFridays!)).toEqual([w0!.friday, w2!.friday]);
+    expect(JSON.parse(rB.scheduledFridays!)).toEqual([w1!.friday, w3!.friday]);
+    // Round on 04-24 is back on Game A
+    expect(JSON.parse(rA.scheduledRoundIds!)).toEqual([round!.id]);
+    expect(JSON.parse(rB.scheduledRoundIds!)).toEqual([]);
+  });
+
+  it('does NOT shift side games when a toggle would reassign an already-played round (guard)', async () => {
+    const { seasonId } = await createTestSeason();
+
+    const weeks = await db
+      .select({ id: seasonWeeks.id, friday: seasonWeeks.friday })
+      .from(seasonWeeks)
+      .where(eq(seasonWeeks.seasonId, seasonId))
+      .orderBy(seasonWeeks.friday);
+    const [w0, w1, w2, w3] = weeks;
+
+    // A FINALIZED (played) round on w2 (04-24)
+    const [round] = await db
+      .insert(rounds)
+      .values({ seasonId, type: 'official', status: 'finalized', scheduledDate: w2!.friday, createdAt: 1 })
+      .returning();
+
+    // Side games seeded with the FULL-rotation schedule: the played 04-24
+    // round currently belongs to Game A.
+    const fullA = { fridays: [w0!.friday, w2!.friday], roundIds: [round!.id] };
+    const fullB = { fridays: [w1!.friday, w3!.friday], roundIds: [] as number[] };
+    const [g1] = await db
+      .insert(sideGames)
+      .values({ seasonId, name: 'Game A', format: 'manual', createdAt: 1,
+        scheduledFridays: JSON.stringify(fullA.fridays), scheduledRoundIds: JSON.stringify(fullA.roundIds) })
+      .returning();
+    const [g2] = await db
+      .insert(sideGames)
+      .values({ seasonId, name: 'Game B', format: 'manual', createdAt: 2,
+        scheduledFridays: JSON.stringify(fullB.fridays), scheduledRoundIds: JSON.stringify(fullB.roundIds) })
+      .returning();
+
+    // Toggle w1 inactive — the new rotation would move the played 04-24 round
+    // from Game A to Game B. The guard must refuse and warn.
+    const res = await seasonApp.request(`/seasons/${seasonId}/weeks/${w1!.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: false }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { week: { isActive: number }; warning?: string; sideGameRotationSkipped?: boolean };
+
+    // Week toggle + tee recompute still succeed; only the side-game shift is skipped
+    expect(body.week.isActive).toBe(0);
+    expect(body.sideGameRotationSkipped).toBe(true);
+    expect(body.warning).toContain('already-played');
+
+    // Side-game schedule is untouched — played round stays on Game A
+    const after = await db
+      .select({ id: sideGames.id, scheduledFridays: sideGames.scheduledFridays, scheduledRoundIds: sideGames.scheduledRoundIds })
+      .from(sideGames)
+      .where(eq(sideGames.seasonId, seasonId))
+      .orderBy(sideGames.id);
+    const gA = after.find((g) => g.id === g1!.id)!;
+    const gB = after.find((g) => g.id === g2!.id)!;
+    expect(JSON.parse(gA.scheduledFridays!)).toEqual(fullA.fridays);
+    expect(JSON.parse(gA.scheduledRoundIds!)).toEqual([round!.id]);
+    expect(JSON.parse(gB.scheduledFridays!)).toEqual(fullB.fridays);
+  });
+
+  it('guard uses scheduledFridays anchor — locks a settled round even if scheduledRoundIds is out of sync', async () => {
+    const { seasonId } = await createTestSeason();
+    const weeks = await db
+      .select({ id: seasonWeeks.id, friday: seasonWeeks.friday })
+      .from(seasonWeeks)
+      .where(eq(seasonWeeks.seasonId, seasonId))
+      .orderBy(seasonWeeks.friday);
+    const [w0, w1, w2, w3] = weeks;
+
+    const [round] = await db
+      .insert(rounds)
+      .values({ seasonId, type: 'official', status: 'finalized', scheduledDate: w2!.friday, createdAt: 1 })
+      .returning();
+    // Game A owns 04-24 via scheduledFridays (authoritative) but its
+    // scheduledRoundIds is EMPTY (out of sync, e.g. backfill never ran).
+    await db.insert(sideGames).values({ seasonId, name: 'Game A', format: 'manual', createdAt: 1,
+      scheduledFridays: JSON.stringify([w0!.friday, w2!.friday]), scheduledRoundIds: JSON.stringify([]) });
+    await db.insert(sideGames).values({ seasonId, name: 'Game B', format: 'manual', createdAt: 2,
+      scheduledFridays: JSON.stringify([w1!.friday, w3!.friday]), scheduledRoundIds: JSON.stringify([]) });
+
+    const res = await seasonApp.request(`/seasons/${seasonId}/weeks/${w1!.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: false }),
+    });
+    const body = (await res.json()) as { sideGameRotationSkipped?: boolean; warning?: string };
+    expect(body.sideGameRotationSkipped).toBe(true);
+    expect(body.warning).toContain('already-played');
+    void round;
+  });
+
+  it('guard also locks an in-progress (active, not finalized) round', async () => {
+    const { seasonId } = await createTestSeason();
+    const weeks = await db
+      .select({ id: seasonWeeks.id, friday: seasonWeeks.friday })
+      .from(seasonWeeks)
+      .where(eq(seasonWeeks.seasonId, seasonId))
+      .orderBy(seasonWeeks.friday);
+    const [w0, w1, w2, w3] = weeks;
+
+    // 'active' = being scored right now, no results yet — must still be locked.
+    const [round] = await db
+      .insert(rounds)
+      .values({ seasonId, type: 'official', status: 'active', scheduledDate: w2!.friday, createdAt: 1 })
+      .returning();
+    await db.insert(sideGames).values({ seasonId, name: 'Game A', format: 'manual', createdAt: 1,
+      scheduledFridays: JSON.stringify([w0!.friday, w2!.friday]), scheduledRoundIds: JSON.stringify([round!.id]) });
+    await db.insert(sideGames).values({ seasonId, name: 'Game B', format: 'manual', createdAt: 2,
+      scheduledFridays: JSON.stringify([w1!.friday, w3!.friday]), scheduledRoundIds: JSON.stringify([]) });
+
+    const res = await seasonApp.request(`/seasons/${seasonId}/weeks/${w1!.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: false }),
+    });
+    const body = (await res.json()) as { sideGameRotationSkipped?: boolean };
+    expect(body.sideGameRotationSkipped).toBe(true);
+  });
+
   it('warns when all weeks are toggled inactive (zero active rounds)', async () => {
     const { seasonId, weekIds } = await createTestSeason();
 
