@@ -1,20 +1,20 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { vi } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { fileURLToPath } from 'node:url';
-import { resolve, dirname } from 'node:path';
+import { describe, it, expect, beforeAll, afterEach } from "vitest";
+import { vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { fileURLToPath } from "node:url";
+import { resolve, dirname } from "node:path";
 
-vi.mock('../db/index.js', async () => {
-  const { createClient } = await import('@libsql/client');
-  const { drizzle } = await import('drizzle-orm/libsql');
-  const schema = await import('../db/schema.js');
-  const client = createClient({ url: 'file::memory:?cache=shared' });
+vi.mock("../db/index.js", async () => {
+  const { createClient } = await import("@libsql/client");
+  const { drizzle } = await import("drizzle-orm/libsql");
+  const schema = await import("../db/schema.js");
+  const client = createClient({ url: "file::memory:?cache=shared" });
   const db = drizzle(client, { schema });
   return { db };
 });
 
-import leaderboardApp from './leaderboard.js';
-import { db } from '../db/index.js';
+import leaderboardApp from "./leaderboard.js";
+import { db } from "../db/index.js";
 import {
   seasons,
   rounds,
@@ -26,12 +26,12 @@ import {
   harveyResults,
   sideGames,
   sideGameResults,
-} from '../db/schema.js';
-import { migrate } from 'drizzle-orm/libsql/migrator';
+} from "../db/schema.js";
+import { migrate } from "drizzle-orm/libsql/migrator";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const migrationsFolder = resolve(__dirname, '../db/migrations');
+const migrationsFolder = resolve(__dirname, "../db/migrations");
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -50,12 +50,12 @@ beforeAll(async () => {
   const [season] = await db
     .insert(seasons)
     .values({
-      name: '2026',
+      name: "2026",
       year: 3020,
-      startDate: '2026-01-01',
-      endDate: '2026-12-31',
+      startDate: "2026-01-01",
+      endDate: "2026-12-31",
       totalRounds: 15,
-      playoffFormat: 'top-8',
+      playoffFormat: "top-8",
       harveyLiveEnabled: 0,
       createdAt: Date.now(),
     })
@@ -66,8 +66,8 @@ beforeAll(async () => {
     .insert(rounds)
     .values({
       seasonId,
-      type: 'official',
-      status: 'active',
+      type: "official",
+      status: "active",
       scheduledDate: TODAY,
       entryCodeHash: null,
       autoCalculateMoney: 1,
@@ -85,13 +85,18 @@ beforeAll(async () => {
   const playerInserts = await db
     .insert(players)
     .values([
-      { name: 'Alice', ghinNumber: null, isActive: 1, createdAt: Date.now() },
-      { name: 'Bob', ghinNumber: null, isActive: 1, createdAt: Date.now() },
-      { name: 'Carol', ghinNumber: null, isActive: 1, createdAt: Date.now() },
-      { name: 'Dan', ghinNumber: null, isActive: 1, createdAt: Date.now() },
+      { name: "Alice", ghinNumber: null, isActive: 1, createdAt: Date.now() },
+      { name: "Bob", ghinNumber: null, isActive: 1, createdAt: Date.now() },
+      { name: "Carol", ghinNumber: null, isActive: 1, createdAt: Date.now() },
+      { name: "Dan", ghinNumber: null, isActive: 1, createdAt: Date.now() },
     ])
     .returning({ id: players.id });
-  [p1Id, p2Id, p3Id, p4Id] = playerInserts.map((p) => p.id) as [number, number, number, number];
+  [p1Id, p2Id, p3Id, p4Id] = playerInserts.map((p) => p.id) as [
+    number,
+    number,
+    number,
+    number,
+  ];
 
   await db.insert(roundPlayers).values([
     { roundId, groupId, playerId: p1Id, handicapIndex: 10, isSub: 0 },
@@ -111,7 +116,7 @@ afterEach(async () => {
   // Restore round status/date in case a test changed them
   await db
     .update(rounds)
-    .set({ status: 'active', scheduledDate: TODAY, seasonId })
+    .set({ status: "active", scheduledDate: TODAY, seasonId })
     .where(eq(rounds.id, roundId));
   await db
     .update(seasons)
@@ -123,23 +128,31 @@ afterEach(async () => {
 // GET /leaderboard/live
 // ---------------------------------------------------------------------------
 
-describe('GET /leaderboard/live', () => {
-  it('returns 200 with round: null when no scheduled/active round today', async () => {
+describe("GET /leaderboard/live", () => {
+  it("returns 200 with round: null when no scheduled/active round today", async () => {
     // Temporarily mark round as finalized
-    await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, roundId));
-    const res = await leaderboardApp.request('/leaderboard/live');
+    await db
+      .update(rounds)
+      .set({ status: "finalized" })
+      .where(eq(rounds.id, roundId));
+    const res = await leaderboardApp.request("/leaderboard/live");
     expect(res.status).toBe(200);
-    const body = await res.json() as { round: null; leaderboard: unknown[] };
+    const body = (await res.json()) as { round: null; leaderboard: unknown[] };
     expect(body.round).toBeNull();
     expect(body.leaderboard).toHaveLength(0);
   });
 
-  it('returns 200 with all 4 players, totals=0, thruHole=0 when round has no scores', async () => {
-    const res = await leaderboardApp.request('/leaderboard/live');
+  it("returns 200 with all 4 players, totals=0, thruHole=0 when round has no scores", async () => {
+    const res = await leaderboardApp.request("/leaderboard/live");
     expect(res.status).toBe(200);
-    const body = await res.json() as {
+    const body = (await res.json()) as {
       round: { id: number };
-      leaderboard: Array<{ playerId: number; stablefordTotal: number; moneyTotal: number; thruHole: number }>;
+      leaderboard: Array<{
+        playerId: number;
+        stablefordTotal: number;
+        moneyTotal: number;
+        thruHole: number;
+      }>;
     };
     expect(body.round?.id).toBe(roundId);
     expect(body.leaderboard).toHaveLength(4);
@@ -150,15 +163,31 @@ describe('GET /leaderboard/live', () => {
     }
   });
 
-  it('returns correct thruHole from hole_scores MAX per group — all players in group show same value', async () => {
+  it("returns correct thruHole from hole_scores MAX per group — all players in group show same value", async () => {
     const now = Date.now();
     // Only Alice has scores, but thruHole is group-scoped (MAX for the group)
     await db.insert(holeScores).values([
-      { roundId, groupId, playerId: p1Id, holeNumber: 1, grossScore: 4, createdAt: now, updatedAt: now },
-      { roundId, groupId, playerId: p1Id, holeNumber: 5, grossScore: 5, createdAt: now, updatedAt: now },
+      {
+        roundId,
+        groupId,
+        playerId: p1Id,
+        holeNumber: 1,
+        grossScore: 4,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        groupId,
+        playerId: p1Id,
+        holeNumber: 5,
+        grossScore: 5,
+        createdAt: now,
+        updatedAt: now,
+      },
     ]);
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as {
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as {
       leaderboard: Array<{ playerId: number; thruHole: number }>;
     };
     // All 4 players in the same group must show thruHole=5 (group-scoped, not per-player)
@@ -167,17 +196,45 @@ describe('GET /leaderboard/live', () => {
     }
   });
 
-  it('returns stablefordTotal and moneyTotal from round_results', async () => {
+  it("returns stablefordTotal and moneyTotal from round_results", async () => {
     const now = Date.now();
     await db.insert(roundResults).values([
-      { roundId, playerId: p1Id, stablefordTotal: 22, moneyTotal: 3, updatedAt: now },
-      { roundId, playerId: p2Id, stablefordTotal: 18, moneyTotal: -1, updatedAt: now },
-      { roundId, playerId: p3Id, stablefordTotal: 18, moneyTotal: 2, updatedAt: now },
-      { roundId, playerId: p4Id, stablefordTotal: 15, moneyTotal: -4, updatedAt: now },
+      {
+        roundId,
+        playerId: p1Id,
+        stablefordTotal: 22,
+        moneyTotal: 3,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p2Id,
+        stablefordTotal: 18,
+        moneyTotal: -1,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p3Id,
+        stablefordTotal: 18,
+        moneyTotal: 2,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p4Id,
+        stablefordTotal: 15,
+        moneyTotal: -4,
+        updatedAt: now,
+      },
     ]);
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as {
-      leaderboard: Array<{ playerId: number; stablefordTotal: number; moneyTotal: number }>;
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as {
+      leaderboard: Array<{
+        playerId: number;
+        stablefordTotal: number;
+        moneyTotal: number;
+      }>;
     };
     const alice = body.leaderboard.find((r) => r.playerId === p1Id)!;
     expect(alice.stablefordTotal).toBe(22);
@@ -186,18 +243,46 @@ describe('GET /leaderboard/live', () => {
     expect(bob.stablefordTotal).toBe(18);
   });
 
-  it('assigns correct dense ranks: ties get same rank, next rank skips', async () => {
+  it("assigns correct dense ranks: ties get same rank, next rank skips", async () => {
     const now = Date.now();
     // p1=22, p2=18, p3=18, p4=15 → ranks: 1, 2, 2, 4
     await db.insert(roundResults).values([
-      { roundId, playerId: p1Id, stablefordTotal: 22, moneyTotal: 0, updatedAt: now },
-      { roundId, playerId: p2Id, stablefordTotal: 18, moneyTotal: 0, updatedAt: now },
-      { roundId, playerId: p3Id, stablefordTotal: 18, moneyTotal: 0, updatedAt: now },
-      { roundId, playerId: p4Id, stablefordTotal: 15, moneyTotal: 0, updatedAt: now },
+      {
+        roundId,
+        playerId: p1Id,
+        stablefordTotal: 22,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p2Id,
+        stablefordTotal: 18,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p3Id,
+        stablefordTotal: 18,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p4Id,
+        stablefordTotal: 15,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
     ]);
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as {
-      leaderboard: Array<{ playerId: number; stablefordRank: number; stablefordTotal: number }>;
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as {
+      leaderboard: Array<{
+        playerId: number;
+        stablefordRank: number;
+        stablefordTotal: number;
+      }>;
     };
     const alice = body.leaderboard.find((r) => r.playerId === p1Id)!;
     const bob = body.leaderboard.find((r) => r.playerId === p2Id)!;
@@ -209,27 +294,53 @@ describe('GET /leaderboard/live', () => {
     expect(dan.stablefordRank).toBe(4); // gap skip (dense)
   });
 
-  it('returns sorted by primary rank (netToPar) then name ascending', async () => {
+  it("returns sorted by primary rank (netToPar) then name ascending", async () => {
     const now = Date.now();
     // No hole_scores, so netToPar=0 for all → all tied at rank 1 → sort is purely alphabetical
     await db.insert(roundResults).values([
-      { roundId, playerId: p1Id, stablefordTotal: 18, moneyTotal: 0, updatedAt: now },
-      { roundId, playerId: p2Id, stablefordTotal: 22, moneyTotal: 0, updatedAt: now },
-      { roundId, playerId: p3Id, stablefordTotal: 18, moneyTotal: 0, updatedAt: now },
-      { roundId, playerId: p4Id, stablefordTotal: 15, moneyTotal: 0, updatedAt: now },
+      {
+        roundId,
+        playerId: p1Id,
+        stablefordTotal: 18,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p2Id,
+        stablefordTotal: 22,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p3Id,
+        stablefordTotal: 18,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p4Id,
+        stablefordTotal: 15,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
     ]);
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as { leaderboard: Array<{ playerId: number; name: string }> };
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as {
+      leaderboard: Array<{ playerId: number; name: string }>;
+    };
     // All netToPar=0 → all rank 1 → alphabetical: Alice, Bob, Carol, Dan
-    expect(body.leaderboard[0]!.name).toBe('Alice');
-    expect(body.leaderboard[1]!.name).toBe('Bob');
-    expect(body.leaderboard[2]!.name).toBe('Carol');
-    expect(body.leaderboard[3]!.name).toBe('Dan');
+    expect(body.leaderboard[0]!.name).toBe("Alice");
+    expect(body.leaderboard[1]!.name).toBe("Bob");
+    expect(body.leaderboard[2]!.name).toBe("Carol");
+    expect(body.leaderboard[3]!.name).toBe("Dan");
   });
 
-  it('returns harveyLiveEnabled: false and no harvey fields when disabled', async () => {
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as {
+  it("returns harveyLiveEnabled: false and no harvey fields when disabled", async () => {
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as {
       harveyLiveEnabled: boolean;
       leaderboard: Array<{ harveyStableford: unknown; harveyMoney: unknown }>;
     };
@@ -240,23 +351,54 @@ describe('GET /leaderboard/live', () => {
     }
   });
 
-  it('returns harvey fields when harveyLiveEnabled: true', async () => {
-    await db.update(seasons).set({ harveyLiveEnabled: 1 }).where(eq(seasons.id, seasonId));
+  it("returns harvey fields when harveyLiveEnabled: true", async () => {
+    await db
+      .update(seasons)
+      .set({ harveyLiveEnabled: 1 })
+      .where(eq(seasons.id, seasonId));
     const now = Date.now();
     // Insert round_results so live Harvey computation has meaningful rankings.
     // 4 players → Math.floor(4/4)=1 → bonusPerPlayer=8
     // Stableford [22,18,0,0] → ranks [4,3,1.5,1.5] → +8 → [12,11,9.5,9.5]
     // Money [3,-1,0,0] → ranks [4,1,2.5,2.5] → +8 → [12,9,10.5,10.5]
     await db.insert(roundResults).values([
-      { roundId, playerId: p1Id, stablefordTotal: 22, moneyTotal: 3, updatedAt: now },
-      { roundId, playerId: p2Id, stablefordTotal: 18, moneyTotal: -1, updatedAt: now },
-      { roundId, playerId: p3Id, stablefordTotal: 0, moneyTotal: 0, updatedAt: now },
-      { roundId, playerId: p4Id, stablefordTotal: 0, moneyTotal: 0, updatedAt: now },
+      {
+        roundId,
+        playerId: p1Id,
+        stablefordTotal: 22,
+        moneyTotal: 3,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p2Id,
+        stablefordTotal: 18,
+        moneyTotal: -1,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p3Id,
+        stablefordTotal: 0,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
+      {
+        roundId,
+        playerId: p4Id,
+        stablefordTotal: 0,
+        moneyTotal: 0,
+        updatedAt: now,
+      },
     ]);
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as {
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as {
       harveyLiveEnabled: boolean;
-      leaderboard: Array<{ playerId: number; harveyStableford: number | null; harveyMoney: number | null }>;
+      leaderboard: Array<{
+        playerId: number;
+        harveyStableford: number | null;
+        harveyMoney: number | null;
+      }>;
     };
     expect(body.harveyLiveEnabled).toBe(true);
     // Active round → stored harvey_results are skipped, live computation runs
@@ -272,50 +414,52 @@ describe('GET /leaderboard/live', () => {
     expect(carol.harveyMoney).toBe(10.5);
   });
 
-  it('returns sideGame when scheduledRoundIds includes current round', async () => {
+  it("returns sideGame when scheduledRoundIds includes current round", async () => {
     await db.insert(sideGames).values({
       seasonId,
-      name: 'Skins',
-      format: 'Low net per hole wins pot',
+      name: "Skins",
+      format: "Low net per hole wins pot",
       scheduledRoundIds: JSON.stringify([roundId]),
       createdAt: Date.now(),
     });
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as { sideGame: { name: string; format: string } | null };
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as {
+      sideGame: { name: string; format: string } | null;
+    };
     expect(body.sideGame).not.toBeNull();
-    expect(body.sideGame!.name).toBe('Skins');
-    expect(body.sideGame!.format).toBe('Low net per hole wins pot');
+    expect(body.sideGame!.name).toBe("Skins");
+    expect(body.sideGame!.format).toBe("Low net per hole wins pot");
   });
 
-  it('returns sideGame: null when scheduledRoundIds does not include current round', async () => {
+  it("returns sideGame: null when scheduledRoundIds does not include current round", async () => {
     await db.insert(sideGames).values({
       seasonId,
-      name: 'Closest to Pin',
-      format: 'Par 3s',
+      name: "Closest to Pin",
+      format: "Par 3s",
       scheduledRoundIds: JSON.stringify([999]),
       createdAt: Date.now(),
     });
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as { sideGame: null };
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as { sideGame: null };
     expect(body.sideGame).toBeNull();
   });
 
-  it('returns sideGame: null when no side games exist for season', async () => {
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as { sideGame: null };
+  it("returns sideGame: null when no side games exist for season", async () => {
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as { sideGame: null };
     expect(body.sideGame).toBeNull();
   });
 
-  it('response contains lastUpdated ISO string', async () => {
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as { lastUpdated: string };
-    expect(typeof body.lastUpdated).toBe('string');
+  it("response contains lastUpdated ISO string", async () => {
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as { lastUpdated: string };
+    expect(typeof body.lastUpdated).toBe("string");
     expect(() => new Date(body.lastUpdated)).not.toThrow();
   });
 
-  it('includes round info with correct shape', async () => {
-    const res = await leaderboardApp.request('/leaderboard/live');
-    const body = await res.json() as {
+  it("includes round info with correct shape", async () => {
+    const res = await leaderboardApp.request("/leaderboard/live");
+    const body = (await res.json()) as {
       round: {
         id: number;
         type: string;
@@ -325,20 +469,20 @@ describe('GET /leaderboard/live', () => {
       };
     };
     expect(body.round?.id).toBe(roundId);
-    expect(body.round?.type).toBe('official');
-    expect(body.round?.status).toBe('active');
+    expect(body.round?.type).toBe("official");
+    expect(body.round?.status).toBe("active");
     expect(body.round?.scheduledDate).toBe(TODAY);
     expect(body.round?.autoCalculateMoney).toBe(true);
   });
 
-  it('prefers active official round over newer active casual round', async () => {
+  it("prefers active official round over newer active casual round", async () => {
     // Simulate a leftover practice round with a higher id than today's official round
     const [casual] = await db
       .insert(rounds)
       .values({
         seasonId,
-        type: 'casual',
-        status: 'active',
+        type: "casual",
+        status: "active",
         scheduledDate: TODAY,
         entryCodeHash: null,
         autoCalculateMoney: 1,
@@ -347,20 +491,53 @@ describe('GET /leaderboard/live', () => {
       .returning({ id: rounds.id });
 
     try {
-      const res = await leaderboardApp.request('/leaderboard/live');
-      const body = await res.json() as { round: { id: number; type: string } };
+      const res = await leaderboardApp.request("/leaderboard/live");
+      const body = (await res.json()) as {
+        round: { id: number; type: string };
+      };
       // Must pick the official round, not the newer casual one
       expect(body.round?.id).toBe(roundId);
-      expect(body.round?.type).toBe('official');
+      expect(body.round?.type).toBe("official");
     } finally {
       await db.delete(rounds).where(eq(rounds.id, casual!.id));
+    }
+  });
+
+  it("shows a scheduled round whose date is not today (visible once set up)", async () => {
+    // No active round in play; only a scheduled round dated in the future.
+    await db
+      .update(rounds)
+      .set({ status: "finalized" })
+      .where(eq(rounds.id, roundId));
+    const [future] = await db
+      .insert(rounds)
+      .values({
+        seasonId,
+        type: "official",
+        status: "scheduled",
+        scheduledDate: "2099-12-25",
+        entryCodeHash: null,
+        autoCalculateMoney: 1,
+        createdAt: Date.now(),
+      })
+      .returning({ id: rounds.id });
+    try {
+      const res = await leaderboardApp.request("/leaderboard/live");
+      const body = (await res.json()) as {
+        round: { id: number; status: string; scheduledDate: string } | null;
+      };
+      expect(body.round?.id).toBe(future!.id);
+      expect(body.round?.status).toBe("scheduled");
+      expect(body.round?.scheduledDate).toBe("2099-12-25");
+    } finally {
+      await db.delete(rounds).where(eq(rounds.id, future!.id));
     }
   });
 
   // ---------------------------------------------------------------------------
   // Skins side game — list-display, computed live live + post-finalization
   // ---------------------------------------------------------------------------
-  describe('auto_skins (Skins side game)', () => {
+  describe("auto_skins (Skins side game)", () => {
     // Insert a complete hole-1 score row for all 4 players where Alice (p1)
     // birdies and everyone else pars. With blue-tee handicap math, Alice
     // earns the unique-low net and one skin on hole 1.
@@ -368,46 +545,83 @@ describe('GET /leaderboard/live', () => {
       const now = Date.now();
       await db.insert(holeScores).values([
         // hole 1 par 5 (Guyan #1) → Alice 4, others 5
-        { roundId, groupId, playerId: p1Id, holeNumber: 1, grossScore: 4, createdAt: now, updatedAt: now },
-        { roundId, groupId, playerId: p2Id, holeNumber: 1, grossScore: 5, createdAt: now, updatedAt: now },
-        { roundId, groupId, playerId: p3Id, holeNumber: 1, grossScore: 5, createdAt: now, updatedAt: now },
-        { roundId, groupId, playerId: p4Id, holeNumber: 1, grossScore: 5, createdAt: now, updatedAt: now },
+        {
+          roundId,
+          groupId,
+          playerId: p1Id,
+          holeNumber: 1,
+          grossScore: 4,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          roundId,
+          groupId,
+          playerId: p2Id,
+          holeNumber: 1,
+          grossScore: 5,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          roundId,
+          groupId,
+          playerId: p3Id,
+          holeNumber: 1,
+          grossScore: 5,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          roundId,
+          groupId,
+          playerId: p4Id,
+          holeNumber: 1,
+          grossScore: 5,
+          createdAt: now,
+          updatedAt: now,
+        },
       ]);
     }
 
-    it('live skins week emits sideGameSkinHolders; sideGameLeader/Winner stay null', async () => {
+    it("live skins week emits sideGameSkinHolders; sideGameLeader/Winner stay null", async () => {
       await seedSkinsScenarioHole1();
       await db.insert(sideGames).values({
         seasonId,
-        name: 'Skins',
-        format: 'Lowest unique net score on any hole',
-        calculationType: 'auto_skins',
+        name: "Skins",
+        format: "Lowest unique net score on any hole",
+        calculationType: "auto_skins",
         scheduledRoundIds: JSON.stringify([roundId]),
         createdAt: Date.now(),
       });
-      const res = await leaderboardApp.request('/leaderboard/live');
-      const body = await res.json() as {
+      const res = await leaderboardApp.request("/leaderboard/live");
+      const body = (await res.json()) as {
         sideGame: { name: string; calculationType: string };
         sideGameLeader: unknown;
         sideGameWinner: unknown;
         sideGameSkinHolders: { playerName: string; skins: number }[];
       };
-      expect(body.sideGame.calculationType).toBe('auto_skins');
+      expect(body.sideGame.calculationType).toBe("auto_skins");
       expect(body.sideGameLeader).toBeNull();
       expect(body.sideGameWinner).toBeNull();
-      expect(body.sideGameSkinHolders).toEqual([{ playerName: 'Alice', skins: 1 }]);
+      expect(body.sideGameSkinHolders).toEqual([
+        { playerName: "Alice", skins: 1 },
+      ]);
     });
 
-    it('finalized skins round still computes from holeScores (not persisted results)', async () => {
+    it("finalized skins round still computes from holeScores (not persisted results)", async () => {
       await seedSkinsScenarioHole1();
-      const [game] = await db.insert(sideGames).values({
-        seasonId,
-        name: 'Skins',
-        format: 'Lowest unique net score on any hole',
-        calculationType: 'auto_skins',
-        scheduledRoundIds: JSON.stringify([roundId]),
-        createdAt: Date.now(),
-      }).returning({ id: sideGames.id });
+      const [game] = await db
+        .insert(sideGames)
+        .values({
+          seasonId,
+          name: "Skins",
+          format: "Lowest unique net score on any hole",
+          calculationType: "auto_skins",
+          scheduledRoundIds: JSON.stringify([roundId]),
+          createdAt: Date.now(),
+        })
+        .returning({ id: sideGames.id });
       // Even if a stray side_game_results row exists for this skins game,
       // it should be ignored — skins computes live from scores.
       await db.insert(sideGameResults).values({
@@ -415,59 +629,84 @@ describe('GET /leaderboard/live', () => {
         roundId,
         winnerPlayerId: p4Id, // wrong winner — should NOT surface
         winnerName: null,
-        notes: 'stale row',
-        source: 'manual',
+        notes: "stale row",
+        source: "manual",
         createdAt: Date.now(),
       });
-      await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, roundId));
+      await db
+        .update(rounds)
+        .set({ status: "finalized" })
+        .where(eq(rounds.id, roundId));
 
       // Reach the finalized round via /:roundId since /live filters to active.
       const res = await leaderboardApp.request(`/leaderboard/${roundId}`);
-      const body = await res.json() as {
+      const body = (await res.json()) as {
         sideGameWinner: unknown;
         sideGameSkinHolders: { playerName: string; skins: number }[];
       };
       expect(body.sideGameWinner).toBeNull();
-      expect(body.sideGameSkinHolders).toEqual([{ playerName: 'Alice', skins: 1 }]);
+      expect(body.sideGameSkinHolders).toEqual([
+        { playerName: "Alice", skins: 1 },
+      ]);
     });
 
-    it('per-hole completeness gate: hole with missing field scores does not award a skin', async () => {
+    it("per-hole completeness gate: hole with missing field scores does not award a skin", async () => {
       const now = Date.now();
       // Only Alice posted hole 1 — p2/p3/p4 haven't gotten there yet.
-      await db.insert(holeScores).values([
-        { roundId, groupId, playerId: p1Id, holeNumber: 1, grossScore: 4, createdAt: now, updatedAt: now },
-      ]);
+      await db
+        .insert(holeScores)
+        .values([
+          {
+            roundId,
+            groupId,
+            playerId: p1Id,
+            holeNumber: 1,
+            grossScore: 4,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]);
       await db.insert(sideGames).values({
         seasonId,
-        name: 'Skins',
-        format: 'Lowest unique net score on any hole',
-        calculationType: 'auto_skins',
+        name: "Skins",
+        format: "Lowest unique net score on any hole",
+        calculationType: "auto_skins",
         scheduledRoundIds: JSON.stringify([roundId]),
         createdAt: Date.now(),
       });
-      const res = await leaderboardApp.request('/leaderboard/live');
-      const body = await res.json() as {
+      const res = await leaderboardApp.request("/leaderboard/live");
+      const body = (await res.json()) as {
         sideGameSkinHolders: { playerName: string; skins: number }[];
       };
       // Alice's solo birdie does NOT award a phantom skin — field hasn't fully posted hole 1.
       expect(body.sideGameSkinHolders).toEqual([]);
     });
 
-    it('non-skins game (auto_net_pars) keeps sideGameLeader, no sideGameSkinHolders', async () => {
+    it("non-skins game (auto_net_pars) keeps sideGameLeader, no sideGameSkinHolders", async () => {
       const now = Date.now();
-      await db.insert(holeScores).values([
-        { roundId, groupId, playerId: p1Id, holeNumber: 1, grossScore: 4, createdAt: now, updatedAt: now },
-      ]);
+      await db
+        .insert(holeScores)
+        .values([
+          {
+            roundId,
+            groupId,
+            playerId: p1Id,
+            holeNumber: 1,
+            grossScore: 4,
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]);
       await db.insert(sideGames).values({
         seasonId,
-        name: 'Most Net Pars',
-        format: 'Most holes at net par',
-        calculationType: 'auto_net_pars',
+        name: "Most Net Pars",
+        format: "Most holes at net par",
+        calculationType: "auto_net_pars",
         scheduledRoundIds: JSON.stringify([roundId]),
         createdAt: Date.now(),
       });
-      const res = await leaderboardApp.request('/leaderboard/live');
-      const body = await res.json() as {
+      const res = await leaderboardApp.request("/leaderboard/live");
+      const body = (await res.json()) as {
         sideGameLeader: { playerName: string } | null;
         sideGameSkinHolders: unknown;
       };
@@ -476,23 +715,29 @@ describe('GET /leaderboard/live', () => {
       // What matters: skinHolders is null (skins-only field).
     });
 
-    it('no-round response includes sideGameSkinHolders: null', async () => {
-      await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, roundId));
-      const res = await leaderboardApp.request('/leaderboard/live');
-      const body = await res.json() as { sideGameSkinHolders: unknown };
+    it("no-round response includes sideGameSkinHolders: null", async () => {
+      await db
+        .update(rounds)
+        .set({ status: "finalized" })
+        .where(eq(rounds.id, roundId));
+      const res = await leaderboardApp.request("/leaderboard/live");
+      const body = (await res.json()) as { sideGameSkinHolders: unknown };
       expect(body.sideGameSkinHolders).toBeNull();
     });
   });
 
-  it('falls back to active casual round when no official is active', async () => {
+  it("falls back to active casual round when no official is active", async () => {
     // Mark the official round as finalized so only a casual is active
-    await db.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, roundId));
+    await db
+      .update(rounds)
+      .set({ status: "finalized" })
+      .where(eq(rounds.id, roundId));
     const [casual] = await db
       .insert(rounds)
       .values({
         seasonId,
-        type: 'casual',
-        status: 'active',
+        type: "casual",
+        status: "active",
         scheduledDate: TODAY,
         entryCodeHash: null,
         autoCalculateMoney: 1,
@@ -501,10 +746,12 @@ describe('GET /leaderboard/live', () => {
       .returning({ id: rounds.id });
 
     try {
-      const res = await leaderboardApp.request('/leaderboard/live');
-      const body = await res.json() as { round: { id: number; type: string } };
+      const res = await leaderboardApp.request("/leaderboard/live");
+      const body = (await res.json()) as {
+        round: { id: number; type: string };
+      };
       expect(body.round?.id).toBe(casual!.id);
-      expect(body.round?.type).toBe('casual');
+      expect(body.round?.type).toBe("casual");
     } finally {
       await db.delete(rounds).where(eq(rounds.id, casual!.id));
     }
