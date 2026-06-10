@@ -1,30 +1,51 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { eq, and, desc, countDistinct, sql } from 'drizzle-orm';
-import bcrypt from 'bcrypt';
-import { db } from '../../db/index.js';
-import { seasons, rounds, groups, roundPlayers, players, holeScores, pairingHistory, seasonWeeks, attendance, subBench, scoreCorrections, wolfDecisions, harveyResults, roundResults, sideGameResults, sideGameCtpEntries, holeCompletions, galleryPhotos, sentEmails } from '../../db/schema.js';
-import { adminAuthMiddleware } from '../../middleware/admin-auth.js';
-import { suggestGroups, pairKey, type PairingMatrix } from '@wolf-cup/engine';
-import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
-import { captureGeneratedPairingIfAbsent } from '../../lib/pairing-capture.js';
-import { checkRoundCompleteness } from '../../lib/round-completeness.js';
+import { Hono } from "hono";
+import { z } from "zod";
+import { eq, and, desc, countDistinct, sql } from "drizzle-orm";
+import bcrypt from "bcrypt";
+import { db } from "../../db/index.js";
+import {
+  seasons,
+  rounds,
+  groups,
+  roundPlayers,
+  players,
+  holeScores,
+  pairingHistory,
+  seasonWeeks,
+  attendance,
+  subBench,
+  scoreCorrections,
+  wolfDecisions,
+  harveyResults,
+  roundResults,
+  sideGameResults,
+  sideGameCtpEntries,
+  holeCompletions,
+  galleryPhotos,
+  sentEmails,
+} from "../../db/schema.js";
+import { adminAuthMiddleware } from "../../middleware/admin-auth.js";
+import { suggestGroups, pairKey, type PairingMatrix } from "@wolf-cup/engine";
+import { buildGroupRequestPins } from "../../lib/group-request-pins.js";
+import { captureGeneratedPairingIfAbsent } from "../../lib/pairing-capture.js";
+import { checkRoundCompleteness } from "../../lib/round-completeness.js";
 import {
   createRoundSchema,
   updateRoundSchema,
   createGroupSchema,
   addGroupPlayerSchema,
   fromAttendanceSchema,
-} from '../../schemas/round.js';
-import { updateHandicapSchema } from '../../schemas/handicap.js';
-import { calculateHarveyPoints } from '@wolf-cup/engine';
-import type { Tee } from '@wolf-cup/engine';
-import { ghinClient } from '../../lib/ghin-client.js';
-import { computeSideGameWinnerForRound } from '../../lib/side-game-calc-db.js';
-import { backfillSideGameRoundId } from '../../lib/side-game-backfill.js';
-import { buildSeasonWorkbook } from '../../lib/season-export.js';
-import { sendRoundResultsEmail, emailConfigured } from '../../lib/email.js';
-import type { Variables } from '../../types.js';
+} from "../../schemas/round.js";
+import { updateHandicapSchema } from "../../schemas/handicap.js";
+import { calculateHarveyPoints } from "@wolf-cup/engine";
+import type { Tee } from "@wolf-cup/engine";
+import { ghinClient } from "../../lib/ghin-client.js";
+import { computeSideGameWinnerForRound } from "../../lib/side-game-calc-db.js";
+import { snapshotRoundOddsLine } from "../../lib/odds-line.js";
+import { backfillSideGameRoundId } from "../../lib/side-game-backfill.js";
+import { buildSeasonWorkbook } from "../../lib/season-export.js";
+import { sendRoundResultsEmail, emailConfigured } from "../../lib/email.js";
+import type { Variables } from "../../types.js";
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -35,7 +56,10 @@ function toRoundResponse(row: typeof rounds.$inferSelect) {
 }
 
 // Helper: record all C(n,2) pairings for each group in a finalized round
-async function recordPairings(seasonId: number, roundId: number): Promise<void> {
+async function recordPairings(
+  seasonId: number,
+  roundId: number,
+): Promise<void> {
   const allGroups = await db
     .select({ id: groups.id })
     .from(groups)
@@ -45,7 +69,12 @@ async function recordPairings(seasonId: number, roundId: number): Promise<void> 
     const groupPlayerRows = await db
       .select({ playerId: roundPlayers.playerId })
       .from(roundPlayers)
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, group.id)));
+      .where(
+        and(
+          eq(roundPlayers.roundId, roundId),
+          eq(roundPlayers.groupId, group.id),
+        ),
+      );
 
     const playerIds = groupPlayerRows.map((r) => r.playerId);
 
@@ -57,7 +86,11 @@ async function recordPairings(seasonId: number, roundId: number): Promise<void> 
           .insert(pairingHistory)
           .values({ seasonId, playerAId: a, playerBId: b, pairCount: 1 })
           .onConflictDoUpdate({
-            target: [pairingHistory.seasonId, pairingHistory.playerAId, pairingHistory.playerBId],
+            target: [
+              pairingHistory.seasonId,
+              pairingHistory.playerAId,
+              pairingHistory.playerBId,
+            ],
             set: { pairCount: sql`${pairingHistory.pairCount} + 1` },
           });
       }
@@ -109,12 +142,20 @@ async function computeAndStoreHarvey(roundId: number): Promise<void> {
   }));
 
   const bonusPerPlayer = harveyBonus(results.length);
-  const harveyOutput = calculateHarveyPoints(harveyInput, 'regular', bonusPerPlayer);
+  const harveyOutput = calculateHarveyPoints(
+    harveyInput,
+    "regular",
+    bonusPerPlayer,
+  );
   const now = Date.now();
 
   // Compute tie-aware ranks for storage
-  const stablefordRanks = computeRanks(results.map((r) => ({ playerId: r.playerId, value: r.stablefordTotal })));
-  const moneyRanks = computeRanks(results.map((r) => ({ playerId: r.playerId, value: r.moneyTotal })));
+  const stablefordRanks = computeRanks(
+    results.map((r) => ({ playerId: r.playerId, value: r.stablefordTotal })),
+  );
+  const moneyRanks = computeRanks(
+    results.map((r) => ({ playerId: r.playerId, value: r.moneyTotal })),
+  );
 
   for (let i = 0; i < results.length; i++) {
     const player = results[i]!;
@@ -150,7 +191,7 @@ async function computeAndStoreHarvey(roundId: number): Promise<void> {
 // GET /rounds — list all rounds (no entryCodeHash)
 // ---------------------------------------------------------------------------
 
-app.get('/rounds', adminAuthMiddleware, async (c) => {
+app.get("/rounds", adminAuthMiddleware, async (c) => {
   try {
     const allRounds = await db
       .select()
@@ -163,13 +204,21 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
       .from(groups);
 
     const holeCountRows = await db
-      .select({ groupId: holeScores.groupId, scored: countDistinct(holeScores.holeNumber) })
+      .select({
+        groupId: holeScores.groupId,
+        scored: countDistinct(holeScores.holeNumber),
+      })
       .from(holeScores)
       .groupBy(holeScores.groupId);
 
-    const holeCountMap = new Map(holeCountRows.map((r) => [r.groupId, r.scored]));
+    const holeCountMap = new Map(
+      holeCountRows.map((r) => [r.groupId, r.scored]),
+    );
 
-    const completionMap = new Map<number, { total: number; complete: number }>();
+    const completionMap = new Map<
+      number,
+      { total: number; complete: number }
+    >();
     for (const g of allGroups) {
       const entry = completionMap.get(g.roundId) ?? { total: 0, complete: 0 };
       entry.total++;
@@ -179,16 +228,23 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
 
     // Player count per round
     const playerCountRows = await db
-      .select({ roundId: roundPlayers.roundId, count: countDistinct(roundPlayers.playerId) })
+      .select({
+        roundId: roundPlayers.roundId,
+        count: countDistinct(roundPlayers.playerId),
+      })
       .from(roundPlayers)
       .groupBy(roundPlayers.roundId);
-    const playerCountMap = new Map(playerCountRows.map((r) => [r.roundId, r.count]));
+    const playerCountMap = new Map(
+      playerCountRows.map((r) => [r.roundId, r.count]),
+    );
 
     // Compute per-season round numbers (ordered by scheduledDate, excluding cancelled)
     const roundNumberMap = new Map<number, number>();
     const bySeasonDate = [...allRounds]
-      .filter((r) => r.status !== 'cancelled')
-      .sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate) || a.id - b.id);
+      .filter((r) => r.status !== "cancelled")
+      .sort(
+        (a, b) => a.scheduledDate.localeCompare(b.scheduledDate) || a.id - b.id,
+      );
     const seasonCounters = new Map<number, number>();
     for (const r of bySeasonDate) {
       const n = (seasonCounters.get(r.seasonId) ?? 0) + 1;
@@ -202,8 +258,11 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
     // flag so a pending wolf decision can't slip past the UI.
     const finalizableMap = new Map<number, boolean>();
     for (const r of allRounds) {
-      if (r.status === 'active' && r.type === 'official') {
-        const completeness = await checkRoundCompleteness(r.id, r.autoCalculateMoney === 1);
+      if (r.status === "active" && r.type === "official") {
+        const completeness = await checkRoundCompleteness(
+          r.id,
+          r.autoCalculateMoney === 1,
+        );
         finalizableMap.set(r.id, completeness.complete);
       }
     }
@@ -218,7 +277,7 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
 
     return c.json({ items }, 200);
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 });
 
@@ -226,13 +285,13 @@ app.get('/rounds', adminAuthMiddleware, async (c) => {
 // POST /rounds — create a round
 // ---------------------------------------------------------------------------
 
-app.post('/rounds', adminAuthMiddleware, async (c) => {
+app.post("/rounds", adminAuthMiddleware, async (c) => {
   let body: unknown;
   try {
     body = await c.req.json();
   } catch {
     return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] },
+      { error: "Validation error", code: "VALIDATION_ERROR", issues: [] },
       400,
     );
   }
@@ -240,7 +299,11 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
   const result = createRoundSchema.safeParse(body);
   if (!result.success) {
     return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: result.error.issues },
+      {
+        error: "Validation error",
+        code: "VALIDATION_ERROR",
+        issues: result.error.issues,
+      },
       400,
     );
   }
@@ -256,11 +319,11 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
       .where(eq(seasons.id, seasonId))
       .get();
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 
   if (!season) {
-    return c.json({ error: 'Season not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ error: "Season not found", code: "NOT_FOUND" }, 404);
   }
 
   // Hash entry code if provided
@@ -269,7 +332,7 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
     try {
       entryCodeHash = await bcrypt.hash(entryCode, 10);
     } catch {
-      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
     }
   }
 
@@ -280,7 +343,7 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
         seasonId,
         type,
         scheduledDate,
-        status: 'scheduled',
+        status: "scheduled",
         entryCodeHash,
         entryCode: entryCode ?? null,
         tee: tee ?? null,
@@ -292,14 +355,14 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
 
     const round = inserted[0];
     if (!round) {
-      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
     }
-    if (type === 'official') {
+    if (type === "official") {
       await backfillSideGameRoundId(round.id, seasonId, scheduledDate);
     }
     return c.json({ round: toRoundResponse(round) }, 201);
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 });
 
@@ -307,11 +370,11 @@ app.post('/rounds', adminAuthMiddleware, async (c) => {
 // PATCH /rounds/:id — update a round
 // ---------------------------------------------------------------------------
 
-app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
-  const idParam = c.req.param('id');
+app.patch("/rounds/:id", adminAuthMiddleware, async (c) => {
+  const idParam = c.req.param("id");
   const id = Number(idParam);
   if (!Number.isInteger(id) || id <= 0) {
-    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    return c.json({ error: "Invalid ID", code: "INVALID_ID" }, 400);
   }
 
   let body: unknown;
@@ -319,7 +382,7 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
     body = await c.req.json();
   } catch {
     return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] },
+      { error: "Validation error", code: "VALIDATION_ERROR", issues: [] },
       400,
     );
   }
@@ -327,7 +390,11 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
   const result = updateRoundSchema.safeParse(body);
   if (!result.success) {
     return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: result.error.issues },
+      {
+        error: "Validation error",
+        code: "VALIDATION_ERROR",
+        issues: result.error.issues,
+      },
       400,
     );
   }
@@ -340,20 +407,24 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
       .where(eq(rounds.id, id))
       .get();
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 
   if (!existing) {
-    return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
   }
 
   const updates: Partial<typeof rounds.$inferInsert> = {};
   if (result.data.status !== undefined) updates.status = result.data.status;
-  if (result.data.headcount !== undefined) updates.headcount = result.data.headcount;
-  if (result.data.scheduledDate !== undefined) updates.scheduledDate = result.data.scheduledDate;
-  if (result.data.autoCalculateMoney !== undefined) updates.autoCalculateMoney = result.data.autoCalculateMoney ? 1 : 0;
+  if (result.data.headcount !== undefined)
+    updates.headcount = result.data.headcount;
+  if (result.data.scheduledDate !== undefined)
+    updates.scheduledDate = result.data.scheduledDate;
+  if (result.data.autoCalculateMoney !== undefined)
+    updates.autoCalculateMoney = result.data.autoCalculateMoney ? 1 : 0;
   if (result.data.tee !== undefined) updates.tee = result.data.tee;
-  if (result.data.cancellationReason !== undefined) updates.cancellationReason = result.data.cancellationReason;
+  if (result.data.cancellationReason !== undefined)
+    updates.cancellationReason = result.data.cancellationReason;
 
   // Hash new entry code if provided
   if (result.data.entryCode !== undefined) {
@@ -361,12 +432,12 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
       updates.entryCodeHash = await bcrypt.hash(result.data.entryCode, 10);
       updates.entryCode = result.data.entryCode;
     } catch {
-      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
     }
   }
 
   // Cancellation also clears the entry code (NFR23)
-  if (updates.status === 'cancelled') {
+  if (updates.status === "cancelled") {
     updates.entryCodeHash = null;
     updates.entryCode = null;
   }
@@ -380,11 +451,11 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
 
     const round = updated[0];
     if (!round) {
-      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
     }
     return c.json({ round: toRoundResponse(round) }, 200);
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 });
 
@@ -392,29 +463,39 @@ app.patch('/rounds/:id', adminAuthMiddleware, async (c) => {
 // DELETE /rounds/:id — permanently delete a round and all dependent data
 // ---------------------------------------------------------------------------
 
-app.delete('/rounds/:id', adminAuthMiddleware, async (c) => {
-  const id = Number(c.req.param('id'));
+app.delete("/rounds/:id", adminAuthMiddleware, async (c) => {
+  const id = Number(c.req.param("id"));
   if (!Number.isInteger(id) || id <= 0) {
-    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    return c.json({ error: "Invalid ID", code: "INVALID_ID" }, 400);
   }
 
   try {
     const round = await db
-      .select({ id: rounds.id, status: rounds.status, scheduledDate: rounds.scheduledDate })
+      .select({
+        id: rounds.id,
+        status: rounds.status,
+        scheduledDate: rounds.scheduledDate,
+      })
       .from(rounds)
       .where(eq(rounds.id, id))
       .get();
 
     if (!round) {
-      return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+      return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
     }
 
-    if (round.status === 'finalized') {
-      return c.json({ error: 'Cannot delete a finalized round', code: 'VALIDATION_ERROR' }, 422);
+    if (round.status === "finalized") {
+      return c.json(
+        { error: "Cannot delete a finalized round", code: "VALIDATION_ERROR" },
+        422,
+      );
     }
 
     await db.transaction(async (tx) => {
-      await tx.update(galleryPhotos).set({ roundId: null }).where(eq(galleryPhotos.roundId, id));
+      await tx
+        .update(galleryPhotos)
+        .set({ roundId: null })
+        .where(eq(galleryPhotos.roundId, id));
       await tx.delete(scoreCorrections).where(eq(scoreCorrections.roundId, id));
       await tx.delete(wolfDecisions).where(eq(wolfDecisions.roundId, id));
       await tx.delete(harveyResults).where(eq(harveyResults.roundId, id));
@@ -422,7 +503,9 @@ app.delete('/rounds/:id', adminAuthMiddleware, async (c) => {
       await tx.delete(holeScores).where(eq(holeScores.roundId, id));
       await tx.delete(roundPlayers).where(eq(roundPlayers.roundId, id));
       // Delete CTP-related rows before groups to keep FKs clean.
-      await tx.delete(sideGameCtpEntries).where(eq(sideGameCtpEntries.roundId, id));
+      await tx
+        .delete(sideGameCtpEntries)
+        .where(eq(sideGameCtpEntries.roundId, id));
       await tx.delete(holeCompletions).where(eq(holeCompletions.roundId, id));
       await tx.delete(groups).where(eq(groups.roundId, id));
       await tx.delete(sideGameResults).where(eq(sideGameResults.roundId, id));
@@ -431,7 +514,7 @@ app.delete('/rounds/:id', adminAuthMiddleware, async (c) => {
 
     return c.json({ deleted: true }, 200);
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 });
 
@@ -439,11 +522,11 @@ app.delete('/rounds/:id', adminAuthMiddleware, async (c) => {
 // GET /rounds/:roundId/groups — list groups for a round
 // ---------------------------------------------------------------------------
 
-app.get('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
-  const roundIdParam = c.req.param('roundId');
+app.get("/rounds/:roundId/groups", adminAuthMiddleware, async (c) => {
+  const roundIdParam = c.req.param("roundId");
   const roundId = Number(roundIdParam);
   if (!Number.isInteger(roundId) || roundId <= 0) {
-    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
+    return c.json({ error: "Invalid round ID", code: "INVALID_ID" }, 400);
   }
 
   // Verify round exists
@@ -455,10 +538,10 @@ app.get('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
       .where(eq(rounds.id, roundId))
       .get();
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
   if (!round) {
-    return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
   }
 
   try {
@@ -473,7 +556,7 @@ app.get('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
       .orderBy(groups.groupNumber);
     return c.json({ items: allGroups }, 200);
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 });
 
@@ -481,11 +564,11 @@ app.get('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
 // POST /rounds/:roundId/groups — create a group
 // ---------------------------------------------------------------------------
 
-app.post('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
-  const roundIdParam = c.req.param('roundId');
+app.post("/rounds/:roundId/groups", adminAuthMiddleware, async (c) => {
+  const roundIdParam = c.req.param("roundId");
   const roundId = Number(roundIdParam);
   if (!Number.isInteger(roundId) || roundId <= 0) {
-    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
+    return c.json({ error: "Invalid round ID", code: "INVALID_ID" }, 400);
   }
 
   // Verify round exists
@@ -497,11 +580,11 @@ app.post('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
       .where(eq(rounds.id, roundId))
       .get();
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 
   if (!round) {
-    return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
   }
 
   let body: unknown;
@@ -509,7 +592,7 @@ app.post('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
     body = await c.req.json();
   } catch {
     return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] },
+      { error: "Validation error", code: "VALIDATION_ERROR", issues: [] },
       400,
     );
   }
@@ -517,7 +600,11 @@ app.post('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
   const result = createGroupSchema.safeParse(body);
   if (!result.success) {
     return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: result.error.issues },
+      {
+        error: "Validation error",
+        code: "VALIDATION_ERROR",
+        issues: result.error.issues,
+      },
       400,
     );
   }
@@ -525,16 +612,29 @@ app.post('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
   try {
     const inserted = await db
       .insert(groups)
-      .values({ roundId, groupNumber: result.data.groupNumber, battingOrder: null })
+      .values({
+        roundId,
+        groupNumber: result.data.groupNumber,
+        battingOrder: null,
+      })
       .returning();
 
     const group = inserted[0];
     if (!group) {
-      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
     }
-    return c.json({ group: { id: group.id, roundId: group.roundId, groupNumber: group.groupNumber } }, 201);
+    return c.json(
+      {
+        group: {
+          id: group.id,
+          roundId: group.roundId,
+          groupNumber: group.groupNumber,
+        },
+      },
+      201,
+    );
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 });
 
@@ -542,206 +642,275 @@ app.post('/rounds/:roundId/groups', adminAuthMiddleware, async (c) => {
 // POST /rounds/:roundId/groups/:groupId/players — add player to group
 // ---------------------------------------------------------------------------
 
-app.post('/rounds/:roundId/groups/:groupId/players', adminAuthMiddleware, async (c) => {
-  const roundIdParam = c.req.param('roundId');
-  const groupIdParam = c.req.param('groupId');
-  const roundId = Number(roundIdParam);
-  const groupId = Number(groupIdParam);
+app.post(
+  "/rounds/:roundId/groups/:groupId/players",
+  adminAuthMiddleware,
+  async (c) => {
+    const roundIdParam = c.req.param("roundId");
+    const groupIdParam = c.req.param("groupId");
+    const roundId = Number(roundIdParam);
+    const groupId = Number(groupIdParam);
 
-  if (!Number.isInteger(roundId) || roundId <= 0) {
-    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
-  }
-  if (!Number.isInteger(groupId) || groupId <= 0) {
-    return c.json({ error: 'Invalid group ID', code: 'INVALID_ID' }, 400);
-  }
+    if (!Number.isInteger(roundId) || roundId <= 0) {
+      return c.json({ error: "Invalid round ID", code: "INVALID_ID" }, 400);
+    }
+    if (!Number.isInteger(groupId) || groupId <= 0) {
+      return c.json({ error: "Invalid group ID", code: "INVALID_ID" }, 400);
+    }
 
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(
+        { error: "Validation error", code: "VALIDATION_ERROR", issues: [] },
+        400,
+      );
+    }
+
+    const result = addGroupPlayerSchema.safeParse(body);
+    if (!result.success) {
+      return c.json(
+        {
+          error: "Validation error",
+          code: "VALIDATION_ERROR",
+          issues: result.error.issues,
+        },
+        400,
+      );
+    }
+
+    const { playerId, handicapIndex, isSub } = result.data;
+
+    // Verify round exists
+    let round: { id: number } | undefined;
+    try {
+      round = await db
+        .select({ id: rounds.id })
+        .from(rounds)
+        .where(eq(rounds.id, roundId))
+        .get();
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+    if (!round) {
+      return c.json({ error: "Not found", code: "NOT_FOUND" }, 404);
+    }
+
+    // Verify group exists AND belongs to this round
+    let group: { id: number } | undefined;
+    try {
+      group = await db
+        .select({ id: groups.id })
+        .from(groups)
+        .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
+        .get();
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+    if (!group) {
+      return c.json({ error: "Not found", code: "NOT_FOUND" }, 404);
+    }
+
+    // Verify player exists
+    let player: { id: number } | undefined;
+    try {
+      player = await db
+        .select({ id: players.id })
+        .from(players)
+        .where(eq(players.id, playerId))
+        .get();
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+    if (!player) {
+      return c.json({ error: "Not found", code: "NOT_FOUND" }, 404);
+    }
+
+    // Check if player is already in this round (unique constraint: round_id + player_id)
+    let existingRoundPlayer: { id: number } | undefined;
+    try {
+      existingRoundPlayer = await db
+        .select({ id: roundPlayers.id })
+        .from(roundPlayers)
+        .where(
+          and(
+            eq(roundPlayers.roundId, roundId),
+            eq(roundPlayers.playerId, playerId),
+          ),
+        )
+        .get();
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+    if (existingRoundPlayer) {
+      return c.json(
+        { error: "Player already in round", code: "CONFLICT" },
+        409,
+      );
+    }
+
+    // Insert round_players row
+    try {
+      await db.insert(roundPlayers).values({
+        roundId,
+        groupId,
+        playerId,
+        handicapIndex,
+        isSub: isSub ? 1 : 0,
+      });
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+
     return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] },
-      400,
+      {
+        roundPlayer: {
+          roundId,
+          groupId,
+          playerId,
+          handicapIndex,
+          isSub: isSub ? 1 : 0,
+        },
+      },
+      201,
     );
-  }
-
-  const result = addGroupPlayerSchema.safeParse(body);
-  if (!result.success) {
-    return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: result.error.issues },
-      400,
-    );
-  }
-
-  const { playerId, handicapIndex, isSub } = result.data;
-
-  // Verify round exists
-  let round: { id: number } | undefined;
-  try {
-    round = await db
-      .select({ id: rounds.id })
-      .from(rounds)
-      .where(eq(rounds.id, roundId))
-      .get();
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-  if (!round) {
-    return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
-  }
-
-  // Verify group exists AND belongs to this round
-  let group: { id: number } | undefined;
-  try {
-    group = await db
-      .select({ id: groups.id })
-      .from(groups)
-      .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
-      .get();
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-  if (!group) {
-    return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
-  }
-
-  // Verify player exists
-  let player: { id: number } | undefined;
-  try {
-    player = await db
-      .select({ id: players.id })
-      .from(players)
-      .where(eq(players.id, playerId))
-      .get();
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-  if (!player) {
-    return c.json({ error: 'Not found', code: 'NOT_FOUND' }, 404);
-  }
-
-  // Check if player is already in this round (unique constraint: round_id + player_id)
-  let existingRoundPlayer: { id: number } | undefined;
-  try {
-    existingRoundPlayer = await db
-      .select({ id: roundPlayers.id })
-      .from(roundPlayers)
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId)))
-      .get();
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-  if (existingRoundPlayer) {
-    return c.json({ error: 'Player already in round', code: 'CONFLICT' }, 409);
-  }
-
-  // Insert round_players row
-  try {
-    await db.insert(roundPlayers).values({ roundId, groupId, playerId, handicapIndex, isSub: isSub ? 1 : 0 });
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-
-  return c.json({ roundPlayer: { roundId, groupId, playerId, handicapIndex, isSub: isSub ? 1 : 0 } }, 201);
-});
+  },
+);
 
 // ---------------------------------------------------------------------------
 // DELETE /rounds/:roundId/groups/:groupId/players/:playerId — remove player
 // ---------------------------------------------------------------------------
 
-app.delete('/rounds/:roundId/groups/:groupId/players/:playerId', adminAuthMiddleware, async (c) => {
-  const roundId = Number(c.req.param('roundId'));
-  const groupId = Number(c.req.param('groupId'));
-  const playerId = Number(c.req.param('playerId'));
+app.delete(
+  "/rounds/:roundId/groups/:groupId/players/:playerId",
+  adminAuthMiddleware,
+  async (c) => {
+    const roundId = Number(c.req.param("roundId"));
+    const groupId = Number(c.req.param("groupId"));
+    const playerId = Number(c.req.param("playerId"));
 
-  if (!Number.isInteger(roundId) || roundId <= 0 ||
-      !Number.isInteger(groupId) || groupId <= 0 ||
-      !Number.isInteger(playerId) || playerId <= 0) {
-    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
-  }
+    if (
+      !Number.isInteger(roundId) ||
+      roundId <= 0 ||
+      !Number.isInteger(groupId) ||
+      groupId <= 0 ||
+      !Number.isInteger(playerId) ||
+      playerId <= 0
+    ) {
+      return c.json({ error: "Invalid ID", code: "INVALID_ID" }, 400);
+    }
 
-  let rp: { id: number } | undefined;
-  try {
-    rp = await db
-      .select({ id: roundPlayers.id })
-      .from(roundPlayers)
-      .where(
-        and(
-          eq(roundPlayers.roundId, roundId),
-          eq(roundPlayers.groupId, groupId),
-          eq(roundPlayers.playerId, playerId),
-        ),
-      )
-      .get();
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
+    let rp: { id: number } | undefined;
+    try {
+      rp = await db
+        .select({ id: roundPlayers.id })
+        .from(roundPlayers)
+        .where(
+          and(
+            eq(roundPlayers.roundId, roundId),
+            eq(roundPlayers.groupId, groupId),
+            eq(roundPlayers.playerId, playerId),
+          ),
+        )
+        .get();
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
 
-  if (!rp) return c.json({ error: 'Player not in group', code: 'NOT_FOUND' }, 404);
+    if (!rp)
+      return c.json({ error: "Player not in group", code: "NOT_FOUND" }, 404);
 
-  try {
-    await db.delete(roundPlayers).where(eq(roundPlayers.id, rp.id));
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
+    try {
+      await db.delete(roundPlayers).where(eq(roundPlayers.id, rp.id));
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
 
-  return c.json({ success: true }, 200);
-});
+    return c.json({ success: true }, 200);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // DELETE /rounds/:roundId/groups/:groupId — delete an empty group
 // ---------------------------------------------------------------------------
 
-app.delete('/rounds/:roundId/groups/:groupId', adminAuthMiddleware, async (c) => {
-  const roundId = Number(c.req.param('roundId'));
-  const groupId = Number(c.req.param('groupId'));
+app.delete(
+  "/rounds/:roundId/groups/:groupId",
+  adminAuthMiddleware,
+  async (c) => {
+    const roundId = Number(c.req.param("roundId"));
+    const groupId = Number(c.req.param("groupId"));
 
-  if (!Number.isInteger(roundId) || roundId <= 0 ||
-      !Number.isInteger(groupId) || groupId <= 0) {
-    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
-  }
-
-  try {
-    const group = await db
-      .select({ id: groups.id })
-      .from(groups)
-      .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
-      .get();
-
-    if (!group) {
-      return c.json({ error: 'Group not found', code: 'NOT_FOUND' }, 404);
+    if (
+      !Number.isInteger(roundId) ||
+      roundId <= 0 ||
+      !Number.isInteger(groupId) ||
+      groupId <= 0
+    ) {
+      return c.json({ error: "Invalid ID", code: "INVALID_ID" }, 400);
     }
 
-    // Check if group has players
-    const playerCount = await db
-      .select({ id: roundPlayers.id })
-      .from(roundPlayers)
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId)))
-      .all();
+    try {
+      const group = await db
+        .select({ id: groups.id })
+        .from(groups)
+        .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
+        .get();
 
-    if (playerCount.length > 0) {
-      return c.json({ error: 'Group still has players — remove them first', code: 'VALIDATION_ERROR' }, 422);
+      if (!group) {
+        return c.json({ error: "Group not found", code: "NOT_FOUND" }, 404);
+      }
+
+      // Check if group has players
+      const playerCount = await db
+        .select({ id: roundPlayers.id })
+        .from(roundPlayers)
+        .where(
+          and(
+            eq(roundPlayers.roundId, roundId),
+            eq(roundPlayers.groupId, groupId),
+          ),
+        )
+        .all();
+
+      if (playerCount.length > 0) {
+        return c.json(
+          {
+            error: "Group still has players — remove them first",
+            code: "VALIDATION_ERROR",
+          },
+          422,
+        );
+      }
+
+      await db.delete(groups).where(eq(groups.id, groupId));
+      return c.json({ success: true }, 200);
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
     }
-
-    await db.delete(groups).where(eq(groups.id, groupId));
-    return c.json({ success: true }, 200);
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-});
+  },
+);
 
 // ---------------------------------------------------------------------------
 // POST /rounds/:id/finalize — lock an active official round
 // ---------------------------------------------------------------------------
 
-app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
-  const id = Number(c.req.param('id'));
+app.post("/rounds/:id/finalize", adminAuthMiddleware, async (c) => {
+  const id = Number(c.req.param("id"));
   if (!Number.isInteger(id) || id <= 0) {
-    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    return c.json({ error: "Invalid ID", code: "INVALID_ID" }, 400);
   }
 
   let round:
-    | { id: number; seasonId: number; type: string; status: string; tee: string | null; autoCalculateMoney: number }
+    | {
+        id: number;
+        seasonId: number;
+        type: string;
+        status: string;
+        tee: string | null;
+        autoCalculateMoney: number;
+      }
     | undefined;
   try {
     round = await db
@@ -757,15 +926,22 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
       .where(eq(rounds.id, id))
       .get();
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 
-  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-  if (round.type === 'casual') {
-    return c.json({ error: 'Casual rounds cannot be finalized', code: 'CASUAL_ROUND' }, 422);
+  if (!round)
+    return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
+  if (round.type === "casual") {
+    return c.json(
+      { error: "Casual rounds cannot be finalized", code: "CASUAL_ROUND" },
+      422,
+    );
   }
-  if (round.status !== 'active') {
-    return c.json({ error: 'Round must be active to finalize', code: 'ROUND_NOT_ACTIVE' }, 422);
+  if (round.status !== "active") {
+    return c.json(
+      { error: "Round must be active to finalize", code: "ROUND_NOT_ACTIVE" },
+      422,
+    );
   }
 
   // Strict server-side completeness gate. The admin UI's "X/Y scored" count is
@@ -780,8 +956,8 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
     if (!completeness.complete) {
       return c.json(
         {
-          error: 'Round is not fully scored — cannot finalize',
-          code: 'ROUND_INCOMPLETE',
+          error: "Round is not fully scored — cannot finalize",
+          code: "ROUND_INCOMPLETE",
           totalGroups: completeness.totalGroups,
           completeGroups: completeness.completeGroups,
           incompleteGroups: completeness.incompleteGroups,
@@ -790,12 +966,15 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
       );
     }
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 
   try {
     await db.transaction(async (tx) => {
-      await tx.update(rounds).set({ status: 'finalized' }).where(eq(rounds.id, id));
+      await tx
+        .update(rounds)
+        .set({ status: "finalized" })
+        .where(eq(rounds.id, id));
     });
 
     // Compute Harvey Cup points — must succeed for standings integrity
@@ -803,25 +982,45 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
   } catch (err) {
     // Roll back finalization if Harvey computation failed
     try {
-      await db.update(rounds).set({ status: 'active' }).where(eq(rounds.id, id));
-    } catch { /* best-effort rollback */ }
-    console.error('Finalization failed:', err);
-    return c.json({ error: 'Failed to finalize round — Harvey computation error', code: 'INTERNAL_ERROR' }, 500);
+      await db
+        .update(rounds)
+        .set({ status: "active" })
+        .where(eq(rounds.id, id));
+    } catch {
+      /* best-effort rollback */
+    }
+    console.error("Finalization failed:", err);
+    return c.json(
+      {
+        error: "Failed to finalize round — Harvey computation error",
+        code: "INTERNAL_ERROR",
+      },
+      500,
+    );
   }
 
   // Record pairings for group suggestion history (non-fatal — doesn't affect standings)
   try {
     await recordPairings(round.seasonId, id);
   } catch (err) {
-    console.error('Failed to record pairings (non-fatal):', err);
+    console.error("Failed to record pairings (non-fatal):", err);
+  }
+
+  // Freeze "The Line" odds snapshot (non-fatal — doesn't affect standings). Taken
+  // here so the graded retrospective stays stable across future model changes and
+  // a candidate model has a fixed baseline to backtest against.
+  try {
+    await snapshotRoundOddsLine(id, Date.now());
+  } catch (err) {
+    console.error("Failed to snapshot odds line (non-fatal):", err);
   }
 
   // Auto-calculate side game results (non-fatal — doesn't affect standings)
   try {
-    const roundTee = (round.tee as Tee) ?? 'blue';
+    const roundTee = (round.tee as Tee) ?? "blue";
     await computeSideGameWinnerForRound(id, round.seasonId, roundTee);
   } catch (err) {
-    console.error('Failed to compute side game results (non-fatal):', err);
+    console.error("Failed to compute side game results (non-fatal):", err);
   }
 
   // Lock CTP entries for this round so late offline drains can't mutate them
@@ -833,7 +1032,7 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
       .set({ finalizedAt: Date.now() })
       .where(eq(sideGameCtpEntries.roundId, id));
   } catch (err) {
-    console.error('Failed to lock CTP entries (non-fatal):', err);
+    console.error("Failed to lock CTP entries (non-fatal):", err);
   }
 
   // Email updated season workbook to Jason (non-fatal — doesn't affect
@@ -842,7 +1041,7 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
   if (emailConfigured) {
     void (async () => {
       const subject = `Wolf Cup — round results`;
-      let recipients = '';
+      let recipients = "";
       try {
         const season = await db
           .select({ year: seasons.year })
@@ -856,7 +1055,7 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
           .get();
         if (!season || !roundRow) return;
 
-        recipients = (process.env['EMAIL_RECIPIENTS'] ?? '').trim();
+        recipients = (process.env["EMAIL_RECIPIENTS"] ?? "").trim();
         const subjectFinal = `Wolf Cup — ${roundRow.scheduledDate} results`;
         const { buffer, filename } = await buildSeasonWorkbook(season.year);
         const info = await sendRoundResultsEmail({
@@ -866,57 +1065,64 @@ app.post('/rounds/:id/finalize', adminAuthMiddleware, async (c) => {
           xlsxFilename: filename,
         });
         if (info) {
-          console.log(`Round-results email sent: accepted=${info.accepted.length} rejected=${info.rejected.length}`);
+          console.log(
+            `Round-results email sent: accepted=${info.accepted.length} rejected=${info.rejected.length}`,
+          );
           await db.insert(sentEmails).values({
             roundId: id,
-            kind: 'round_results',
+            kind: "round_results",
             subject: subjectFinal,
             recipients,
-            status: 'sent',
+            status: "sent",
             acceptedCount: info.accepted.length,
             rejectedCount: info.rejected.length,
             sentAt: Date.now(),
           });
         }
       } catch (err) {
-        console.error('Failed to send round-results email (non-fatal):', err);
+        console.error("Failed to send round-results email (non-fatal):", err);
         try {
           await db.insert(sentEmails).values({
             roundId: id,
-            kind: 'round_results',
+            kind: "round_results",
             subject,
             recipients,
-            status: 'failed',
+            status: "failed",
             errorMessage: err instanceof Error ? err.message : String(err),
             sentAt: Date.now(),
           });
         } catch (logErr) {
-          console.error('Also failed to log sent_emails row:', logErr);
+          console.error("Also failed to log sent_emails row:", logErr);
         }
       }
     })();
   }
 
-  return c.json({ id, status: 'finalized' }, 200);
+  return c.json({ id, status: "finalized" }, 200);
 });
 
 // ---------------------------------------------------------------------------
 // GET /rounds/:roundId/players — list all players in a round with their HI
 // ---------------------------------------------------------------------------
 
-app.get('/rounds/:roundId/players', adminAuthMiddleware, async (c) => {
-  const roundId = Number(c.req.param('roundId'));
+app.get("/rounds/:roundId/players", adminAuthMiddleware, async (c) => {
+  const roundId = Number(c.req.param("roundId"));
   if (!Number.isInteger(roundId) || roundId <= 0) {
-    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
+    return c.json({ error: "Invalid round ID", code: "INVALID_ID" }, 400);
   }
 
   let round: { id: number } | undefined;
   try {
-    round = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.id, roundId)).get();
+    round = await db
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(eq(rounds.id, roundId))
+      .get();
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
-  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
+  if (!round)
+    return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
 
   try {
     const rows = await db
@@ -936,7 +1142,7 @@ app.get('/rounds/:roundId/players', adminAuthMiddleware, async (c) => {
       .orderBy(groups.groupNumber, players.name);
     return c.json({ items: rows }, 200);
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 });
 
@@ -944,126 +1150,178 @@ app.get('/rounds/:roundId/players', adminAuthMiddleware, async (c) => {
 // PATCH /rounds/:roundId/players/:playerId/handicap — set HI for a player
 // ---------------------------------------------------------------------------
 
-app.patch('/rounds/:roundId/players/:playerId/handicap', adminAuthMiddleware, async (c) => {
-  const roundId = Number(c.req.param('roundId'));
-  const playerId = Number(c.req.param('playerId'));
-  if (!Number.isInteger(roundId) || roundId <= 0) {
-    return c.json({ error: 'Invalid round ID', code: 'INVALID_ID' }, 400);
-  }
-  if (!Number.isInteger(playerId) || playerId <= 0) {
-    return c.json({ error: 'Invalid player ID', code: 'INVALID_ID' }, 400);
-  }
+app.patch(
+  "/rounds/:roundId/players/:playerId/handicap",
+  adminAuthMiddleware,
+  async (c) => {
+    const roundId = Number(c.req.param("roundId"));
+    const playerId = Number(c.req.param("playerId"));
+    if (!Number.isInteger(roundId) || roundId <= 0) {
+      return c.json({ error: "Invalid round ID", code: "INVALID_ID" }, 400);
+    }
+    if (!Number.isInteger(playerId) || playerId <= 0) {
+      return c.json({ error: "Invalid player ID", code: "INVALID_ID" }, 400);
+    }
 
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
-  }
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(
+        { error: "Validation error", code: "VALIDATION_ERROR", issues: [] },
+        400,
+      );
+    }
 
-  const result = updateHandicapSchema.safeParse(body);
-  if (!result.success) {
+    const result = updateHandicapSchema.safeParse(body);
+    if (!result.success) {
+      return c.json(
+        {
+          error: "Validation error",
+          code: "VALIDATION_ERROR",
+          issues: result.error.issues,
+        },
+        400,
+      );
+    }
+
+    let round: { id: number; status: string } | undefined;
+    try {
+      round = await db
+        .select({ id: rounds.id, status: rounds.status })
+        .from(rounds)
+        .where(eq(rounds.id, roundId))
+        .get();
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+    if (!round)
+      return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
+    if (round.status === "finalized") {
+      return c.json(
+        {
+          error: "Use corrections flow for finalized rounds",
+          code: "ROUND_FINALIZED",
+        },
+        422,
+      );
+    }
+
+    let rp: { id: number } | undefined;
+    try {
+      rp = await db
+        .select({ id: roundPlayers.id })
+        .from(roundPlayers)
+        .where(
+          and(
+            eq(roundPlayers.roundId, roundId),
+            eq(roundPlayers.playerId, playerId),
+          ),
+        )
+        .get();
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+    if (!rp)
+      return c.json({ error: "Player not in round", code: "NOT_FOUND" }, 404);
+
+    try {
+      await db
+        .update(roundPlayers)
+        .set({ handicapIndex: result.data.handicapIndex })
+        .where(
+          and(
+            eq(roundPlayers.roundId, roundId),
+            eq(roundPlayers.playerId, playerId),
+          ),
+        );
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+
     return c.json(
-      { error: 'Validation error', code: 'VALIDATION_ERROR', issues: result.error.issues },
-      400,
+      { playerId, roundId, handicapIndex: result.data.handicapIndex },
+      200,
     );
-  }
-
-  let round: { id: number; status: string } | undefined;
-  try {
-    round = await db
-      .select({ id: rounds.id, status: rounds.status })
-      .from(rounds)
-      .where(eq(rounds.id, roundId))
-      .get();
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-  if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-  if (round.status === 'finalized') {
-    return c.json(
-      { error: 'Use corrections flow for finalized rounds', code: 'ROUND_FINALIZED' },
-      422,
-    );
-  }
-
-  let rp: { id: number } | undefined;
-  try {
-    rp = await db
-      .select({ id: roundPlayers.id })
-      .from(roundPlayers)
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId)))
-      .get();
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-  if (!rp) return c.json({ error: 'Player not in round', code: 'NOT_FOUND' }, 404);
-
-  try {
-    await db
-      .update(roundPlayers)
-      .set({ handicapIndex: result.data.handicapIndex })
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, playerId)));
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-
-  return c.json({ playerId, roundId, handicapIndex: result.data.handicapIndex }, 200);
-});
+  },
+);
 
 // ---------------------------------------------------------------------------
 // POST /rounds/:roundId/refresh-handicaps — bulk GHIN refresh
 // ---------------------------------------------------------------------------
 
-app.post('/rounds/:roundId/refresh-handicaps', adminAuthMiddleware, async (c) => {
-  const roundId = Number(c.req.param('roundId'));
-  if (!Number.isInteger(roundId) || roundId <= 0) {
-    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
-  }
-
-  if (!ghinClient) {
-    return c.json({ error: 'GHIN not configured', code: 'GHIN_NOT_CONFIGURED' }, 503);
-  }
-
-  try {
-    const round = await db.select({ id: rounds.id }).from(rounds).where(eq(rounds.id, roundId)).get();
-    if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-
-    const rps = await db
-      .select({
-        rpId: roundPlayers.id,
-        playerId: roundPlayers.playerId,
-        ghinNumber: players.ghinNumber,
-      })
-      .from(roundPlayers)
-      .innerJoin(players, eq(roundPlayers.playerId, players.id))
-      .where(eq(roundPlayers.roundId, roundId));
-
-    let refreshed = 0;
-    let failed = 0;
-
-    for (const rp of rps) {
-      if (!rp.ghinNumber) continue;
-      try {
-        const { handicapIndex } = await ghinClient.getHandicap(Number(rp.ghinNumber));
-        if (handicapIndex !== null) {
-          await db.update(players).set({ handicapIndex }).where(eq(players.id, rp.playerId));
-          await db.update(roundPlayers).set({ handicapIndex }).where(eq(roundPlayers.id, rp.rpId));
-          refreshed++;
-        }
-      } catch {
-        failed++;
-      }
+app.post(
+  "/rounds/:roundId/refresh-handicaps",
+  adminAuthMiddleware,
+  async (c) => {
+    const roundId = Number(c.req.param("roundId"));
+    if (!Number.isInteger(roundId) || roundId <= 0) {
+      return c.json({ error: "Invalid ID", code: "INVALID_ID" }, 400);
     }
 
-    const now = Date.now();
-    await db.update(rounds).set({ handicapUpdatedAt: now }).where(eq(rounds.id, roundId));
+    if (!ghinClient) {
+      return c.json(
+        { error: "GHIN not configured", code: "GHIN_NOT_CONFIGURED" },
+        503,
+      );
+    }
 
-    return c.json({ refreshed, failed, handicapUpdatedAt: now }, 200);
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-});
+    try {
+      const round = await db
+        .select({ id: rounds.id })
+        .from(rounds)
+        .where(eq(rounds.id, roundId))
+        .get();
+      if (!round)
+        return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
+
+      const rps = await db
+        .select({
+          rpId: roundPlayers.id,
+          playerId: roundPlayers.playerId,
+          ghinNumber: players.ghinNumber,
+        })
+        .from(roundPlayers)
+        .innerJoin(players, eq(roundPlayers.playerId, players.id))
+        .where(eq(roundPlayers.roundId, roundId));
+
+      let refreshed = 0;
+      let failed = 0;
+
+      for (const rp of rps) {
+        if (!rp.ghinNumber) continue;
+        try {
+          const { handicapIndex } = await ghinClient.getHandicap(
+            Number(rp.ghinNumber),
+          );
+          if (handicapIndex !== null) {
+            await db
+              .update(players)
+              .set({ handicapIndex })
+              .where(eq(players.id, rp.playerId));
+            await db
+              .update(roundPlayers)
+              .set({ handicapIndex })
+              .where(eq(roundPlayers.id, rp.rpId));
+            refreshed++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+
+      const now = Date.now();
+      await db
+        .update(rounds)
+        .set({ handicapUpdatedAt: now })
+        .where(eq(rounds.id, roundId));
+
+      return c.json({ refreshed, failed, handicapUpdatedAt: now }, 200);
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // POST /rounds/:roundId/groups/:groupId/swap — swap a player in a group
@@ -1076,164 +1334,329 @@ const swapPlayerSchema = z.object({
   isSub: z.boolean().optional(),
 });
 
-app.post('/rounds/:roundId/groups/:groupId/swap', adminAuthMiddleware, async (c) => {
-  const roundId = Number(c.req.param('roundId'));
-  const groupId = Number(c.req.param('groupId'));
-  if (!Number.isInteger(roundId) || roundId <= 0 || !Number.isInteger(groupId) || groupId <= 0) {
-    return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
-  }
-
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
-  }
-
-  const parsed = swapPlayerSchema.safeParse(body);
-  if (!parsed.success) {
-    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
-  }
-
-  const { removePlayerId, addPlayerId, handicapIndex, isSub } = parsed.data;
-
-  try {
-    // Verify round and group exist
-    const round = await db.select({ id: rounds.id, seasonId: rounds.seasonId, scheduledDate: rounds.scheduledDate })
-      .from(rounds).where(eq(rounds.id, roundId)).get();
-    if (!round) return c.json({ error: 'Round not found', code: 'NOT_FOUND' }, 404);
-
-    const group = await db.select({ id: groups.id }).from(groups)
-      .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId))).get();
-    if (!group) return c.json({ error: 'Group not found', code: 'NOT_FOUND' }, 404);
-
-    // Verify player to remove is in this group
-    const existing = await db.select().from(roundPlayers)
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, removePlayerId), eq(roundPlayers.groupId, groupId))).get();
-    if (!existing) return c.json({ error: 'Player not in this group', code: 'NOT_FOUND' }, 404);
-
-    // Check replacement not already in round
-    const duplicate = await db.select({ id: roundPlayers.id }).from(roundPlayers)
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, addPlayerId))).get();
-    if (duplicate) return c.json({ error: 'Replacement already in round', code: 'VALIDATION_ERROR', issues: [{ message: 'Player is already in this round' }] }, 400);
-
-    // Determine isSub if not explicitly provided
-    let subFlag = isSub ?? false;
-    if (isSub === undefined) {
-      const benchEntry = await db.select({ id: subBench.id }).from(subBench)
-        .where(and(eq(subBench.seasonId, round.seasonId), eq(subBench.playerId, addPlayerId))).get();
-      subFlag = !!benchEntry;
+app.post(
+  "/rounds/:roundId/groups/:groupId/swap",
+  adminAuthMiddleware,
+  async (c) => {
+    const roundId = Number(c.req.param("roundId"));
+    const groupId = Number(c.req.param("groupId"));
+    if (
+      !Number.isInteger(roundId) ||
+      roundId <= 0 ||
+      !Number.isInteger(groupId) ||
+      groupId <= 0
+    ) {
+      return c.json({ error: "Invalid ID", code: "INVALID_ID" }, 400);
     }
 
-    await db.transaction(async (tx) => {
-      // Remove old player
-      await tx.delete(roundPlayers).where(
-        and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.playerId, removePlayerId)),
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(
+        { error: "Validation error", code: "VALIDATION_ERROR", issues: [] },
+        400,
       );
+    }
 
-      // Add replacement to same group
-      await tx.insert(roundPlayers).values({
-        roundId,
-        playerId: addPlayerId,
-        groupId,
-        handicapIndex,
-        isSub: subFlag ? 1 : 0,
+    const parsed = swapPlayerSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: "Validation error",
+          code: "VALIDATION_ERROR",
+          issues: parsed.error.issues,
+        },
+        400,
+      );
+    }
+
+    const { removePlayerId, addPlayerId, handicapIndex, isSub } = parsed.data;
+
+    try {
+      // Verify round and group exist
+      const round = await db
+        .select({
+          id: rounds.id,
+          seasonId: rounds.seasonId,
+          scheduledDate: rounds.scheduledDate,
+        })
+        .from(rounds)
+        .where(eq(rounds.id, roundId))
+        .get();
+      if (!round)
+        return c.json({ error: "Round not found", code: "NOT_FOUND" }, 404);
+
+      const group = await db
+        .select({ id: groups.id })
+        .from(groups)
+        .where(and(eq(groups.id, groupId), eq(groups.roundId, roundId)))
+        .get();
+      if (!group)
+        return c.json({ error: "Group not found", code: "NOT_FOUND" }, 404);
+
+      // Verify player to remove is in this group
+      const existing = await db
+        .select()
+        .from(roundPlayers)
+        .where(
+          and(
+            eq(roundPlayers.roundId, roundId),
+            eq(roundPlayers.playerId, removePlayerId),
+            eq(roundPlayers.groupId, groupId),
+          ),
+        )
+        .get();
+      if (!existing)
+        return c.json(
+          { error: "Player not in this group", code: "NOT_FOUND" },
+          404,
+        );
+
+      // Check replacement not already in round
+      const duplicate = await db
+        .select({ id: roundPlayers.id })
+        .from(roundPlayers)
+        .where(
+          and(
+            eq(roundPlayers.roundId, roundId),
+            eq(roundPlayers.playerId, addPlayerId),
+          ),
+        )
+        .get();
+      if (duplicate)
+        return c.json(
+          {
+            error: "Replacement already in round",
+            code: "VALIDATION_ERROR",
+            issues: [{ message: "Player is already in this round" }],
+          },
+          400,
+        );
+
+      // Determine isSub if not explicitly provided
+      let subFlag = isSub ?? false;
+      if (isSub === undefined) {
+        const benchEntry = await db
+          .select({ id: subBench.id })
+          .from(subBench)
+          .where(
+            and(
+              eq(subBench.seasonId, round.seasonId),
+              eq(subBench.playerId, addPlayerId),
+            ),
+          )
+          .get();
+        subFlag = !!benchEntry;
+      }
+
+      await db.transaction(async (tx) => {
+        // Remove old player
+        await tx
+          .delete(roundPlayers)
+          .where(
+            and(
+              eq(roundPlayers.roundId, roundId),
+              eq(roundPlayers.playerId, removePlayerId),
+            ),
+          );
+
+        // Add replacement to same group
+        await tx.insert(roundPlayers).values({
+          roundId,
+          playerId: addPlayerId,
+          groupId,
+          handicapIndex,
+          isSub: subFlag ? 1 : 0,
+        });
+
+        // Update attendance if we can find the season week
+        const week = await tx
+          .select({ id: seasonWeeks.id })
+          .from(seasonWeeks)
+          .where(
+            and(
+              eq(seasonWeeks.seasonId, round.seasonId),
+              eq(seasonWeeks.friday, round.scheduledDate),
+            ),
+          )
+          .get();
+
+        if (week) {
+          // Mark removed player as 'out'
+          await tx
+            .insert(attendance)
+            .values({
+              seasonWeekId: week.id,
+              playerId: removePlayerId,
+              status: "out",
+              updatedAt: Date.now(),
+            })
+            .onConflictDoUpdate({
+              target: [attendance.seasonWeekId, attendance.playerId],
+              set: { status: "out", updatedAt: Date.now() },
+            });
+
+          // Mark added player as 'in'
+          await tx
+            .insert(attendance)
+            .values({
+              seasonWeekId: week.id,
+              playerId: addPlayerId,
+              status: "in",
+              updatedAt: Date.now(),
+            })
+            .onConflictDoUpdate({
+              target: [attendance.seasonWeekId, attendance.playerId],
+              set: { status: "in", updatedAt: Date.now() },
+            });
+        }
       });
 
-      // Update attendance if we can find the season week
-      const week = await tx.select({ id: seasonWeeks.id }).from(seasonWeeks)
-        .where(and(eq(seasonWeeks.seasonId, round.seasonId), eq(seasonWeeks.friday, round.scheduledDate))).get();
+      // Return updated group
+      const updatedPlayers = await db
+        .select({
+          playerId: roundPlayers.playerId,
+          handicapIndex: roundPlayers.handicapIndex,
+          isSub: roundPlayers.isSub,
+          name: players.name,
+        })
+        .from(roundPlayers)
+        .innerJoin(players, eq(roundPlayers.playerId, players.id))
+        .where(
+          and(
+            eq(roundPlayers.roundId, roundId),
+            eq(roundPlayers.groupId, groupId),
+          ),
+        );
 
-      if (week) {
-        // Mark removed player as 'out'
-        await tx.insert(attendance).values({ seasonWeekId: week.id, playerId: removePlayerId, status: 'out', updatedAt: Date.now() })
-          .onConflictDoUpdate({ target: [attendance.seasonWeekId, attendance.playerId], set: { status: 'out', updatedAt: Date.now() } });
-
-        // Mark added player as 'in'
-        await tx.insert(attendance).values({ seasonWeekId: week.id, playerId: addPlayerId, status: 'in', updatedAt: Date.now() })
-          .onConflictDoUpdate({ target: [attendance.seasonWeekId, attendance.playerId], set: { status: 'in', updatedAt: Date.now() } });
-      }
-    });
-
-    // Return updated group
-    const updatedPlayers = await db.select({
-      playerId: roundPlayers.playerId,
-      handicapIndex: roundPlayers.handicapIndex,
-      isSub: roundPlayers.isSub,
-      name: players.name,
-    }).from(roundPlayers)
-      .innerJoin(players, eq(roundPlayers.playerId, players.id))
-      .where(and(eq(roundPlayers.roundId, roundId), eq(roundPlayers.groupId, groupId)));
-
-    return c.json({ players: updatedPlayers }, 200);
-  } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
-  }
-});
+      return c.json({ players: updatedPlayers }, 200);
+    } catch {
+      return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // POST /rounds/from-attendance — create round from confirmed attendance
 // ---------------------------------------------------------------------------
 
-app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
+app.post("/rounds/from-attendance", adminAuthMiddleware, async (c) => {
   let body: unknown;
   try {
     body = await c.req.json();
   } catch {
-    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] }, 400);
+    return c.json(
+      { error: "Validation error", code: "VALIDATION_ERROR", issues: [] },
+      400,
+    );
   }
 
   const parsed = fromAttendanceSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues }, 400);
+    return c.json(
+      {
+        error: "Validation error",
+        code: "VALIDATION_ERROR",
+        issues: parsed.error.issues,
+      },
+      400,
+    );
   }
 
   const { seasonWeekId } = parsed.data;
 
   try {
     // Get week info
-    const week = await db.select().from(seasonWeeks).where(eq(seasonWeeks.id, seasonWeekId)).get();
+    const week = await db
+      .select()
+      .from(seasonWeeks)
+      .where(eq(seasonWeeks.id, seasonWeekId))
+      .get();
     if (!week) {
-      return c.json({ error: 'Week not found', code: 'NOT_FOUND' }, 404);
+      return c.json({ error: "Week not found", code: "NOT_FOUND" }, 404);
     }
     if (week.isActive === 0) {
-      return c.json({ error: 'Week is inactive', code: 'VALIDATION_ERROR', issues: [{ message: 'Cannot create round for inactive week' }] }, 400);
+      return c.json(
+        {
+          error: "Week is inactive",
+          code: "VALIDATION_ERROR",
+          issues: [{ message: "Cannot create round for inactive week" }],
+        },
+        400,
+      );
     }
 
     // Check if round already exists for this date/season
     const existingRound = await db
       .select({ id: rounds.id })
       .from(rounds)
-      .where(and(eq(rounds.seasonId, week.seasonId), eq(rounds.scheduledDate, week.friday)))
+      .where(
+        and(
+          eq(rounds.seasonId, week.seasonId),
+          eq(rounds.scheduledDate, week.friday),
+        ),
+      )
       .get();
     if (existingRound) {
-      return c.json({ error: 'Round already exists for this date', code: 'VALIDATION_ERROR', issues: [{ message: 'A round already exists for this Friday' }] }, 400);
+      return c.json(
+        {
+          error: "Round already exists for this date",
+          code: "VALIDATION_ERROR",
+          issues: [{ message: "A round already exists for this Friday" }],
+        },
+        400,
+      );
     }
 
     // Get confirmed players
     const attendanceRows = await db
       .select({ playerId: attendance.playerId })
       .from(attendance)
-      .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.status, 'in')));
+      .where(
+        and(
+          eq(attendance.seasonWeekId, seasonWeekId),
+          eq(attendance.status, "in"),
+        ),
+      );
 
     const confirmedIds = attendanceRows.map((a) => a.playerId);
     if (confirmedIds.length === 0) {
-      return c.json({ error: 'No confirmed players', code: 'VALIDATION_ERROR', issues: [{ message: 'No players confirmed for this week' }] }, 400);
+      return c.json(
+        {
+          error: "No confirmed players",
+          code: "VALIDATION_ERROR",
+          issues: [{ message: "No players confirmed for this week" }],
+        },
+        400,
+      );
     }
     if (confirmedIds.length % 4 !== 0) {
       const needed = 4 - (confirmedIds.length % 4);
-      return c.json({
-        error: 'Validation error',
-        code: 'VALIDATION_ERROR',
-        issues: [{ message: `${needed} more player${needed !== 1 ? 's' : ''} needed for groups of 4` }],
-      }, 400);
+      return c.json(
+        {
+          error: "Validation error",
+          code: "VALIDATION_ERROR",
+          issues: [
+            {
+              message: `${needed} more player${needed !== 1 ? "s" : ""} needed for groups of 4`,
+            },
+          ],
+        },
+        400,
+      );
     }
 
     // Get player details
     const playerRows = await db
       .select({ id: players.id, handicapIndex: players.handicapIndex })
       .from(players)
-      .where(sql`${players.id} IN (${sql.join(confirmedIds.map((id) => sql`${id}`), sql`, `)})`);
+      .where(
+        sql`${players.id} IN (${sql.join(
+          confirmedIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})`,
+      );
 
     // Determine subs
     const subRows = await db
@@ -1251,7 +1674,11 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
 
     // Build pairing matrix from history for this season — minimizes repeats.
     const historyRows = await db
-      .select({ playerAId: pairingHistory.playerAId, playerBId: pairingHistory.playerBId, pairCount: pairingHistory.pairCount })
+      .select({
+        playerAId: pairingHistory.playerAId,
+        playerBId: pairingHistory.playerBId,
+        pairCount: pairingHistory.pairCount,
+      })
       .from(pairingHistory)
       .where(eq(pairingHistory.seasonId, week.seasonId));
     const pidSet = new Set(confirmedIds);
@@ -1263,7 +1690,11 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
     }
 
     // Honor First/Last requests from the Attend page as hard pins.
-    const { pins, warnings: requestWarnings, honoredRequests } = await buildGroupRequestPins({
+    const {
+      pins,
+      warnings: requestWarnings,
+      honoredRequests,
+    } = await buildGroupRequestPins({
       seasonId: week.seasonId,
       scheduledDate: week.friday,
       playerIds: confirmedIds,
@@ -1287,8 +1718,8 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
         .insert(rounds)
         .values({
           seasonId: week.seasonId,
-          type: 'official',
-          status: 'scheduled',
+          type: "official",
+          status: "scheduled",
           scheduledDate: week.friday,
           entryCodeHash,
           entryCode,
@@ -1299,7 +1730,7 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
         })
         .returning();
 
-      if (!round) throw new Error('Round insert failed');
+      if (!round) throw new Error("Round insert failed");
 
       // Create groups
       const groupIds: number[] = [];
@@ -1353,7 +1784,7 @@ app.post('/rounds/from-attendance', adminAuthMiddleware, async (c) => {
       201,
     );
   } catch {
-    return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
   }
 });
 
