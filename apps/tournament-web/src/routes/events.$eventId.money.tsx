@@ -70,6 +70,15 @@ async function fetchMoney(eventId: string): Promise<FetchOutcome> {
 
 // ---- Matrix table (reused per ledger) -------------------------------------
 
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
+}
+function cellColor(cents: number): string | undefined {
+  if (cents > 0) return 'var(--color-money-pos)';
+  if (cents < 0) return 'var(--color-money-neg)';
+  return 'var(--color-text-muted)';
+}
+
 function LedgerMatrix({
   label,
   players,
@@ -83,32 +92,32 @@ function LedgerMatrix({
 }) {
   const { matrix, totals } = ledger;
   return (
-    <section style={{ marginBottom: 20 }} aria-label={label}>
-      <h2 style={{ fontSize: 'var(--font-md, 1rem)', marginBottom: 6 }}>{label}</h2>
+    <section style={{ marginBottom: 'var(--space-5)' }} aria-label={label}>
+      <h2 style={{ fontSize: 'var(--font-md)', marginBottom: 'var(--space-2)' }}>{label}</h2>
       <ScrollableTable label={label}>
         <table>
           <thead>
             <tr>
               <th></th>
               {players.map((p) => (
-                <th key={p.id}>{p.name}</th>
+                <th key={p.id} style={{ textAlign: 'right' }}>{firstName(p.name)}</th>
               ))}
-              <th>Total</th>
+              <th style={{ textAlign: 'right' }}>Total</th>
             </tr>
           </thead>
           <tbody>
             {players.map((rowPlayer) => {
               const isViewer = viewerId === rowPlayer.id;
               return (
-                <tr key={rowPlayer.id} style={isViewer ? { backgroundColor: '#eff6ff' } : undefined}>
-                  <th>{rowPlayer.name}</th>
+                <tr key={rowPlayer.id} style={isViewer ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}>
+                  <th style={{ whiteSpace: 'nowrap' }}>{firstName(rowPlayer.name)}</th>
                   {players.map((colPlayer) => {
-                    if (rowPlayer.id === colPlayer.id) return <td key={colPlayer.id}>—</td>;
+                    if (rowPlayer.id === colPlayer.id) return <td key={colPlayer.id} style={{ textAlign: 'right', color: 'var(--color-border)' }}>—</td>;
                     const cents = matrix[rowPlayer.id]?.[colPlayer.id] ?? 0;
-                    return <td key={colPlayer.id}>{formatCents(cents)}</td>;
+                    return <td key={colPlayer.id} style={{ textAlign: 'right', color: cellColor(cents) }}>{cents === 0 ? '—' : formatCents(cents)}</td>;
                   })}
-                  <td>
-                    <strong>{formatCents(totals[rowPlayer.id] ?? 0)}</strong>
+                  <td style={{ textAlign: 'right' }}>
+                    <strong style={{ color: cellColor(totals[rowPlayer.id] ?? 0) }}>{formatCents(totals[rowPlayer.id] ?? 0)}</strong>
                   </td>
                 </tr>
               );
@@ -176,28 +185,34 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
     );
   }
 
+  const standings = [...players].sort((a, b) => (totals[b.id] ?? 0) - (totals[a.id] ?? 0));
+
   return (
     <PageShell title="Money">
       <BackLink to="/events/$eventId" params={{ eventId }} />
-      <p style={{ color: '#555', fontSize: '0.85rem' }}>
-        Each cell is what the row player is up on the column player. The team and
-        individual ledgers are kept separate; the combined total is what settles
-        across the whole event.
+
+      {/* Headline: where everyone stands overall (what settles). */}
+      <section aria-label="Combined total" style={{ marginBottom: 'var(--space-5)' }}>
+        <h2 style={{ fontSize: 'var(--font-md)', marginBottom: 'var(--space-2)' }}>Standings</h2>
+        <div className="card" style={{ padding: 'var(--space-2) var(--space-4)' }}>
+          {standings.map((p, i) => {
+            const t = totals[p.id] ?? 0;
+            return (
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'var(--space-2) 0', borderBottom: i < standings.length - 1 ? '1px solid var(--color-border-subtle)' : 'none', fontWeight: viewerId === p.id ? 700 : 400 }}>
+                <span>{p.name}{viewerId === p.id ? ' (you)' : ''}</span>
+                <strong style={{ color: cellColor(t), fontVariantNumeric: 'tabular-nums' }}>{formatCents(t)}</strong>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)', marginBottom: 'var(--space-3)' }}>
+        Team and individual money are kept separate below; each cell is what the row player is up on the column player.
       </p>
 
       <LedgerMatrix label="Team / Ball money" players={players} ledger={teamLedger} viewerId={viewerId} />
       <LedgerMatrix label="Individual bets" players={players} ledger={individualLedger} viewerId={viewerId} />
-
-      <section aria-label="Combined total" style={{ marginTop: 8 }}>
-        <h2 style={{ fontSize: 'var(--font-md, 1rem)', marginBottom: 6 }}>Combined (settle)</h2>
-        <ul style={{ paddingLeft: 16 }}>
-          {players.map((p) => (
-            <li key={p.id} style={viewerId === p.id ? { fontWeight: 600 } : undefined}>
-              {p.name}: {formatCents(totals[p.id] ?? 0)}
-            </li>
-          ))}
-        </ul>
-      </section>
     </PageShell>
   );
 }

@@ -51,7 +51,7 @@ const NONZERO_SUM_FIXTURE = {
 };
 
 describe('SettleUpPage', () => {
-  it('renders balances + pairwise breakdown ordered by total descending', async () => {
+  it('leads with who-pays-whom transfers; balances + pairwise in a disclosure', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify(ZERO_SUM_FIXTURE), {
         status: 200,
@@ -61,10 +61,10 @@ describe('SettleUpPage', () => {
     renderWithQueryClient('evt-1', 'pA');
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /balances/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /who pays whom/i })).toBeInTheDocument();
     });
-    expect(screen.getByRole('heading', { name: /pairwise breakdown/i })).toBeInTheDocument();
-    // Both players appear.
+    // Bob (−$5) pays Alice (+$5): one transfer card.
+    expect(screen.getAllByTestId('settle-transfer').length).toBe(1);
     expect(screen.getAllByText(/Alice/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Bob/).length).toBeGreaterThan(0);
   });
@@ -91,7 +91,7 @@ describe('SettleUpPage', () => {
     );
     renderWithQueryClient('evt-1', 'pA');
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /balances/i })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /who pays whom/i })).toBeInTheDocument();
     });
     expect(screen.queryByRole('alert')).toBeNull();
   });

@@ -107,41 +107,44 @@ export function MyMoneyPage({ eventId }: { eventId: string }) {
     <PageShell title="My Money">
       <BackLink to="/events/$eventId" params={{ eventId }} />
 
-      <div
-        data-testid="my-money-grand-total"
-        style={{ fontSize: 'var(--font-lg)', fontWeight: 'bold', marginBottom: 16 }}
-      >
-        Total: <span style={{ color: netColor(totalNetCents) }}>{formatCents(totalNetCents)}</span>
+      {/* Hero: the one number anyone actually wants. */}
+      <div className="card" data-testid="my-money-grand-total" style={{ textAlign: 'center', padding: 'var(--space-5)', marginBottom: 'var(--space-4)' }}>
+        <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Your money this event</div>
+        <div style={{ fontSize: 'var(--font-2xl)', fontWeight: 800, color: netColor(totalNetCents), marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+          {formatCents(totalNetCents)}
+        </div>
       </div>
 
+      {/* One collapsible card per game — scannable; tap to see hole-by-hole. */}
       {games.map((game) => (
-        <section
+        <details
           key={game.key}
           data-testid={`my-money-game-${game.key}`}
           aria-label={game.label}
-          style={{ border: '1px solid var(--color-border, #ddd)', borderRadius: 8, padding: 12, marginBottom: 16 }}
+          className="card"
+          style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-            <h2 style={{ fontSize: 'var(--font-md, 1rem)', margin: 0 }}>{game.label}</h2>
-            <strong data-testid={`my-money-game-total-${game.key}`} style={{ color: netColor(game.netToViewerCents) }}>
+          <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', listStyle: 'none' }}>
+            <span style={{ fontSize: 'var(--font-md)', fontWeight: 600 }}>{game.label}</span>
+            <strong data-testid={`my-money-game-total-${game.key}`} style={{ color: netColor(game.netToViewerCents), fontVariantNumeric: 'tabular-nums' }}>
               {formatCents(game.netToViewerCents)}
             </strong>
+          </summary>
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            {game.perRound.map((r) => (
+              <div key={r.eventRoundId} style={{ marginBottom: 'var(--space-2)' }}>
+                {game.perRound.length > 1 ? (
+                  <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}>Round {r.roundNumber}</div>
+                ) : null}
+                <HeadToHeadCard
+                  opponentLabel={game.kind === 'individual' ? game.opponentName ?? 'Opponent' : 'Other team'}
+                  showOpponentScore={game.kind === 'individual'}
+                  perHole={r.perHole}
+                />
+              </div>
+            ))}
           </div>
-          {game.perRound.map((r) => (
-            <div key={r.eventRoundId} style={{ marginBottom: 8 }}>
-              {game.perRound.length > 1 ? (
-                <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted, #666)' }}>
-                  Round {r.roundNumber}
-                </div>
-              ) : null}
-              <HeadToHeadCard
-                opponentLabel={game.kind === 'individual' ? game.opponentName ?? 'Opponent' : 'Other team'}
-                showOpponentScore={game.kind === 'individual'}
-                perHole={r.perHole}
-              />
-            </div>
-          ))}
-        </section>
+        </details>
       ))}
     </PageShell>
   );
