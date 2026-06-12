@@ -68,10 +68,20 @@ import { buildTeeByPlayer } from './per-player-tee.js';
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-export type MoneyMatrix = {
-  players: Array<{ id: string; name: string }>;
+export type Ledger = {
   matrix: Record<string, Record<string, number>>;
   totals: Record<string, number>;
+};
+
+export type MoneyMatrix = {
+  players: Array<{ id: string; name: string }>;
+  /** COMBINED ledger: 2v2 + individual bets + skins. */
+  matrix: Record<string, Record<string, number>>;
+  totals: Record<string, number>;
+  /** T13-5 split: 2v2 best-ball ("Team / Ball money"). */
+  teamLedger: Ledger;
+  /** T13-5 split: 1v1 individual bets ("Individual bets"). */
+  individualLedger: Ledger;
   computedAt: string;
   visibilityMode: 'open' | 'participant' | 'self_only';
 };
@@ -166,7 +176,16 @@ export async function computeMoneyMatrix(
       ),
     );
   if (memberRows.length === 0) {
-    return { players: [], matrix: {}, totals: {}, computedAt, visibilityMode: 'open' };
+    const emptyLedger: Ledger = { matrix: {}, totals: {} };
+    return {
+      players: [],
+      matrix: {},
+      totals: {},
+      teamLedger: emptyLedger,
+      individualLedger: emptyLedger,
+      computedAt,
+      visibilityMode: 'open',
+    };
   }
   // Distinct player ids; visibility mode from the first group (v1 single-group convention).
   const playerIds = Array.from(new Set(memberRows.map((r) => r.playerId)));
@@ -184,13 +203,21 @@ export async function computeMoneyMatrix(
   }
 
   // ── (2) Initialize matrix + totals. ──
-  const matrix: Record<string, Record<string, number>> = {};
-  for (const a of playerIds) {
-    matrix[a] = {};
-    for (const b of playerIds) {
-      matrix[a]![b] = 0;
+  // `matrix` is the COMBINED ledger (2v2 + bets + skins) — unchanged behavior.
+  // teamMatrix / individualMatrix are parallel SPLITS (T13-5) so the money page
+  // can present "Team / Ball money" and "Individual bets" separately instead of
+  // one blurred total. Skins stays folded into combined only (v1).
+  const zeroMatrix = (): Record<string, Record<string, number>> => {
+    const m: Record<string, Record<string, number>> = {};
+    for (const a of playerIds) {
+      m[a] = {};
+      for (const b of playerIds) m[a]![b] = 0;
     }
-  }
+    return m;
+  };
+  const matrix = zeroMatrix();
+  const teamMatrix = zeroMatrix();
+  const individualMatrix = zeroMatrix();
 
   // ── (3) Aggregate 2v2 best ball per round. ──
   const config = await fetchActive2v2Config(txOrDb, tenantId);
@@ -357,12 +384,14 @@ export async function computeMoneyMatrix(
           continue;  // engine error on a foursome — skip; don't fail entire matrix
         }
 
-        // Accumulate perPair into matrix.
+        // Accumulate perPair into combined + team ledgers.
         for (const a of Object.keys(bbResult.perPair)) {
           if (!matrix[a]) continue;
           for (const b of Object.keys(bbResult.perPair[a]!)) {
             if (!matrix[a]![b] && matrix[a]![b] !== 0) continue;
-            matrix[a]![b] = (matrix[a]![b] ?? 0) + (bbResult.perPair[a]![b] ?? 0);
+            const delta = bbResult.perPair[a]![b] ?? 0;
+            matrix[a]![b] = (matrix[a]![b] ?? 0) + delta;
+            teamMatrix[a]![b] = (teamMatrix[a]![b] ?? 0) + delta;
           }
         }
       }
@@ -539,11 +568,13 @@ export async function computeMoneyMatrix(
       continue;
     }
 
-    // Add to matrix: A is up netToPlayerACents on B; B is down by same.
+    // Add to combined + individual ledgers: A up netToPlayerACents on B.
     const a = bet.playerAId;
     const b = bet.playerBId;
     matrix[a]![b] = (matrix[a]![b] ?? 0) + betResult.netToPlayerACents;
     matrix[b]![a] = (matrix[b]![a] ?? 0) - betResult.netToPlayerACents;
+    individualMatrix[a]![b] = (individualMatrix[a]![b] ?? 0) + betResult.netToPlayerACents;
+    individualMatrix[b]![a] = (individualMatrix[b]![a] ?? 0) - betResult.netToPlayerACents;
   }
 
   // ── (5) Skins (T6-5a closes T6-5's deferred scope). ──
@@ -575,16 +606,20 @@ export async function computeMoneyMatrix(
     }
   }
 
-  // ── (6) Compute totals. ──
-  const totals: Record<string, number> = {};
-  for (const a of playerIds) {
-    let total = 0;
-    for (const b of playerIds) {
-      if (a === b) continue;
-      total += matrix[a]![b] ?? 0;
+  // ── (6) Compute totals (combined + each split). ──
+  const totalsFor = (m: Record<string, Record<string, number>>): Record<string, number> => {
+    const t: Record<string, number> = {};
+    for (const a of playerIds) {
+      let total = 0;
+      for (const b of playerIds) {
+        if (a === b) continue;
+        total += m[a]![b] ?? 0;
+      }
+      t[a] = total;
     }
-    totals[a] = total;
-  }
+    return t;
+  };
+  const totals = totalsFor(matrix);
 
   // ── (7) Build players list. ──
   const playersList = playerIds.map((id) => ({
@@ -596,6 +631,8 @@ export async function computeMoneyMatrix(
     players: playersList,
     matrix,
     totals,
+    teamLedger: { matrix: teamMatrix, totals: totalsFor(teamMatrix) },
+    individualLedger: { matrix: individualMatrix, totals: totalsFor(individualMatrix) },
     computedAt,
     visibilityMode,
   };

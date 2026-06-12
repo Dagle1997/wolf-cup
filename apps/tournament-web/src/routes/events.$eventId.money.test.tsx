@@ -48,6 +48,15 @@ const MATRIX_FIXTURE = {
     pB: { pA: -500, pB: 0 },
   },
   totals: { pA: 500, pB: -500 },
+  // T13-5 split: the 2v2 lives in the team ledger; no individual bets here.
+  teamLedger: {
+    matrix: { pA: { pA: 0, pB: 500 }, pB: { pA: -500, pB: 0 } },
+    totals: { pA: 500, pB: -500 },
+  },
+  individualLedger: {
+    matrix: { pA: { pA: 0, pB: 0 }, pB: { pA: 0, pB: 0 } },
+    totals: { pA: 0, pB: 0 },
+  },
   computedAt: '2026-05-04T00:00:00.000Z',
   visibilityMode: 'open' as const,
 };

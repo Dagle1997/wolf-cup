@@ -33,10 +33,17 @@ import { formatCents } from '../lib/format-cents';
 
 // ---- Types ----------------------------------------------------------------
 
+type Ledger = {
+  matrix: Record<string, Record<string, number>>;
+  totals: Record<string, number>;
+};
+
 type MoneyMatrixResponse = {
   players: Array<{ id: string; name: string }>;
   matrix: Record<string, Record<string, number>>;
   totals: Record<string, number>;
+  teamLedger: Ledger;
+  individualLedger: Ledger;
   computedAt: string;
   visibilityMode: 'open' | 'participant' | 'self_only';
 };
@@ -59,6 +66,58 @@ async function fetchMoney(eventId: string): Promise<FetchOutcome> {
   if (!res.ok) throw new Error(`money_fetch_failed_${res.status}`);
   const body = (await res.json()) as MoneyMatrixResponse;
   return { kind: 'ok', data: body };
+}
+
+// ---- Matrix table (reused per ledger) -------------------------------------
+
+function LedgerMatrix({
+  label,
+  players,
+  ledger,
+  viewerId,
+}: {
+  label: string;
+  players: Array<{ id: string; name: string }>;
+  ledger: Ledger;
+  viewerId: string | undefined;
+}) {
+  const { matrix, totals } = ledger;
+  return (
+    <section style={{ marginBottom: 20 }} aria-label={label}>
+      <h2 style={{ fontSize: 'var(--font-md, 1rem)', marginBottom: 6 }}>{label}</h2>
+      <ScrollableTable label={label}>
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              {players.map((p) => (
+                <th key={p.id}>{p.name}</th>
+              ))}
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {players.map((rowPlayer) => {
+              const isViewer = viewerId === rowPlayer.id;
+              return (
+                <tr key={rowPlayer.id} style={isViewer ? { backgroundColor: '#eff6ff' } : undefined}>
+                  <th>{rowPlayer.name}</th>
+                  {players.map((colPlayer) => {
+                    if (rowPlayer.id === colPlayer.id) return <td key={colPlayer.id}>—</td>;
+                    const cents = matrix[rowPlayer.id]?.[colPlayer.id] ?? 0;
+                    return <td key={colPlayer.id}>{formatCents(cents)}</td>;
+                  })}
+                  <td>
+                    <strong>{formatCents(totals[rowPlayer.id] ?? 0)}</strong>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </ScrollableTable>
+    </section>
+  );
 }
 
 // ---- Component ------------------------------------------------------------
@@ -107,7 +166,7 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
     );
   }
 
-  const { players, matrix, totals } = outcome.data;
+  const { players, totals, teamLedger, individualLedger } = outcome.data;
   if (players.length === 0) {
     return (
       <PageShell title="Money">
@@ -121,42 +180,24 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
     <PageShell title="Money">
       <BackLink to="/events/$eventId" params={{ eventId }} />
       <p style={{ color: '#555', fontSize: '0.85rem' }}>
-        Cell shows what the row player is up on the column player.
+        Each cell is what the row player is up on the column player. The team and
+        individual ledgers are kept separate; the combined total is what settles
+        across the whole event.
       </p>
-      <ScrollableTable label="Money matrix"><table>
-        <thead>
-          <tr>
-            <th></th>
-            {players.map((p) => (
-              <th key={p.id}>{p.name}</th>
-            ))}
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {players.map((rowPlayer) => {
-            const isViewer = viewerId === rowPlayer.id;
-            return (
-              <tr
-                key={rowPlayer.id}
-                style={isViewer ? { backgroundColor: '#eff6ff' } : undefined}
-              >
-                <th>{rowPlayer.name}</th>
-                {players.map((colPlayer) => {
-                  if (rowPlayer.id === colPlayer.id) {
-                    return <td key={colPlayer.id}>—</td>;
-                  }
-                  const cents = matrix[rowPlayer.id]?.[colPlayer.id] ?? 0;
-                  return <td key={colPlayer.id}>{formatCents(cents)}</td>;
-                })}
-                <td>
-                  <strong>{formatCents(totals[rowPlayer.id] ?? 0)}</strong>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table></ScrollableTable>
+
+      <LedgerMatrix label="Team / Ball money" players={players} ledger={teamLedger} viewerId={viewerId} />
+      <LedgerMatrix label="Individual bets" players={players} ledger={individualLedger} viewerId={viewerId} />
+
+      <section aria-label="Combined total" style={{ marginTop: 8 }}>
+        <h2 style={{ fontSize: 'var(--font-md, 1rem)', marginBottom: 6 }}>Combined (settle)</h2>
+        <ul style={{ paddingLeft: 16 }}>
+          {players.map((p) => (
+            <li key={p.id} style={viewerId === p.id ? { fontWeight: 600 } : undefined}>
+              {p.name}: {formatCents(totals[p.id] ?? 0)}
+            </li>
+          ))}
+        </ul>
+      </section>
     </PageShell>
   );
 }

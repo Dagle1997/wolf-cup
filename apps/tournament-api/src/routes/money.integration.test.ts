@@ -392,6 +392,42 @@ describe('GET /api/events/:eventId/money', () => {
       expect(Number.isInteger(body.totals[a]!)).toBe(true);
     }
   });
+
+  test('(h) T13-5 split: team + individual ledgers reconcile to combined (no skins)', async () => {
+    const s = await seed({ withScores: true });
+    // Add a cross-team 1v1 bet so both ledgers are non-trivial.
+    const betId = randomUUID();
+    await db.insert(individualBets).values({
+      id: betId, eventId: s.eventId, playerAId: s.playerIds[0]!, playerBId: s.playerIds[2]!,
+      betType: 'match_play_per_hole', stakePerHoleCents: 100, configJson: '{}',
+      createdByPlayerId: s.playerIds[0]!, createdAt: Date.now(),
+      tenantId: TENANT_ID, contextId: `event:${s.eventId}`,
+    });
+    await db.insert(individualBetRounds).values({
+      betId, eventRoundId: s.eventRoundId, tenantId: TENANT_ID, contextId: `event:${s.eventId}`,
+    });
+
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getMoney(app, s.eventId);
+    const body = (await res.json()) as {
+      matrix: Record<string, Record<string, number>>;
+      totals: Record<string, number>;
+      teamLedger: { totals: Record<string, number>; matrix: Record<string, Record<string, number>> };
+      individualLedger: { totals: Record<string, number>; matrix: Record<string, Record<string, number>> };
+    };
+    // Combined = team + individual, cell-by-cell AND on totals (no skins seeded).
+    for (const a of s.playerIds) {
+      for (const b of s.playerIds) {
+        expect(body.teamLedger.matrix[a]![b]! + body.individualLedger.matrix[a]![b]!).toBe(
+          body.matrix[a]![b]!,
+        );
+      }
+      expect(body.teamLedger.totals[a]! + body.individualLedger.totals[a]!).toBe(body.totals[a]!);
+    }
+    // The bet shows up in the individual ledger; the team ledger carries the 2v2.
+    expect(body.individualLedger.totals[s.playerIds[0]!]!).not.toBe(0);
+    expect(body.teamLedger.totals[s.playerIds[0]!]!).not.toBe(0);
+  });
 });
 
 // ── T13-5: foursome-results endpoint ──────────────────────────────────────
