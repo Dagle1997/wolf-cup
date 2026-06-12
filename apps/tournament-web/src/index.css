@@ -25,28 +25,58 @@
  */
 :root {
   /* Colors (12 tokens; collapsed from 117 hex literals) */
-  --color-surface: #fff;                /* card / input background; 23 uses */
-  --color-text-primary: #0f172a;        /* primary text; 3 uses + form-reset base */
-  --color-text-secondary: #475569;      /* secondary text (slate-600); 3 uses */
-  --color-text-muted: #555;             /* muted body / metadata; 21 uses */
-  --color-border: #cbd5e1;              /* standard input/card border; 5 uses + form-reset base */
-  --color-border-subtle: #ddd;          /* lighter divider; 7 uses */
-  --color-brand-primary: #1d4ed8;       /* primary CTA; 7 uses; collapses #1e3a8a (2) + #3b82f6 brand-blue drift */
-  --color-brand-tint: #eff6ff;          /* selected-state tint / brand accent bg; 4 uses */
-  --color-success: #16a34a;             /* confirmation / positive; collapses #0a5 (4) + #16a34a (2) */
-  --color-warning-bg: #fef3c7;          /* warning-state background; 3 uses */
-  --color-warning-text: #92400e;        /* warning-state text; 3 uses */
-  --color-danger: #dc2626;              /* destructive / error; collapses #c33 + #f87171 + #dc2626 family */
+  --color-surface: #fff;                /* card / input background */
+  --color-surface-sunken: #f1f5f9;      /* PAGE background (body) so cards read as cards */
+  --color-text-primary: #0f172a;        /* primary text */
+  --color-text-secondary: #475569;      /* secondary text (slate-600) */
+  --color-text-muted: #475569;          /* muted body / metadata (darkened from #555 for sunlight AA) */
+  --color-border: #cbd5e1;              /* standard input/card border */
+  --color-border-subtle: #e2e8f0;       /* lighter divider */
+  /* T13-UI: golf identity — fairway green replaces the generic blue. Everything
+     consuming --color-brand-primary (buttons, focus rings, selected states)
+     inherits the new look for free. */
+  --color-brand-primary: #166534;       /* fairway green (green-800); 7.4:1 on white */
+  --color-brand-strong: #14532d;        /* pressed/active + dark headings (green-900) */
+  --color-brand-tint: #f0fdf4;          /* selected-state tint (green-50) */
+  --color-accent: #b45309;              /* warm sand/amber-700 — badges, press-fired, live */
+  --color-success: #15803d;             /* confirmation / positive */
+  --color-warning-bg: #fef3c7;          /* warning-state background */
+  --color-warning-text: #92400e;        /* warning-state text */
+  --color-danger: #b91c1c;              /* destructive / error (darkened for sunlight) */
+  --color-money-pos: #15803d;           /* winnings */
+  --color-money-neg: #b91c1c;           /* losses */
 
-  /* Font sizes (4-step scale; collapsed from 9 ad-hoc values) */
-  --font-xs: 0.75rem;                   /* smallest annotation; 1-use floor */
-  --font-sm: 0.875rem;                  /* small text; replaces 0.85em/0.85rem/0.9rem/0.95rem family (~14 uses) */
-  --font-base: 1rem;                    /* body default; 3 uses + implicit inherit */
-  --font-lg: 1.25rem;                   /* section heading; replaces 1.05/1.1/1.5/1.6/1.75rem family (~6 uses) */
+  /* Font sizes */
+  --font-xs: 0.75rem;
+  --font-sm: 0.875rem;
+  --font-base: 1rem;                    /* body / control floor (also prevents iOS auto-zoom) */
+  --font-md: 1.125rem;
+  --font-lg: 1.25rem;
+  --font-xl: 1.5rem;                    /* page titles */
+  --font-2xl: 2.25rem;                  /* hole number, scores, money totals */
+
+  /* Spacing scale */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px;  --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px;
+
+  /* Radius + elevation */
+  --radius-sm: 6px;  --radius-md: 10px;  --radius-lg: 16px;
+  --shadow-card: 0 1px 3px rgb(15 23 42 / 0.08), 0 1px 2px rgb(15 23 42 / 0.04);
+  --shadow-raised: 0 4px 12px rgb(15 23 42 / 0.15);
+
+  /* Controls */
+  --control-height: 48px;               /* tap-target floor for older fingers */
+  --control-height-lg: 56px;            /* primary CTAs, steppers, sticky Save */
 
   /* Layout (consumed by PageShell) */
-  --page-padding: 16px;                 /* default page edge padding */
-  --page-max-width: 960px;              /* default page max content width */
+  --page-padding: 16px;
+  --page-max-width: 960px;
+}
+
+/* Page background so white cards have something to sit on. */
+body {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-primary);
 }
 
 /*
@@ -67,71 +97,127 @@
 @layer base {
   :where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='button']):not([type='submit']):not([type='reset']):not([type='hidden']):not([type='file'])) {
     appearance: auto;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    padding: 8px 10px;
-    background: #fff;
-    color: #0f172a;
+    display: block;             /* block + full-width fixes label/input misalignment on phones */
+    width: 100%;
+    max-width: 420px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0 12px;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
     font: inherit;
-    margin: 4px 8px 12px 0;
-    min-height: 44px;
+    font-size: var(--font-base); /* 16px floor — prevents iOS auto-zoom */
+    margin: 0 0 var(--space-3) 0;
+    min-height: var(--control-height);
     box-sizing: border-box;
   }
-  :where(input:not([type='checkbox']):not([type='radio']):not([type='range'])):focus-visible {
-    outline: 2px solid #1d4ed8;
+  :where(input:not([type='checkbox']):not([type='radio']):not([type='range'])):focus-visible,
+  :where(select):focus-visible,
+  :where(textarea):focus-visible {
+    outline: 3px solid var(--color-brand-primary);
     outline-offset: 1px;
-    border-color: #1d4ed8;
+    border-color: var(--color-brand-primary);
   }
   :where(textarea) {
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    padding: 8px 10px;
-    background: #fff;
-    color: #0f172a;
-    font: inherit;
-    margin: 4px 8px 12px 0;
-    min-height: 80px;
-    box-sizing: border-box;
+    display: block;
     width: 100%;
     max-width: 480px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: var(--font-base);
+    margin: 0 0 var(--space-3) 0;
+    min-height: 80px;
+    box-sizing: border-box;
   }
   :where(select) {
     appearance: auto;
-    border: 1px solid #cbd5e1;
-    border-radius: 6px;
-    padding: 8px 28px 8px 10px;
-    background: #fff;
-    color: #0f172a;
+    display: block;
+    width: 100%;
+    max-width: 420px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    padding: 0 32px 0 12px;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
     font: inherit;
-    margin: 4px 8px 12px 0;
-    min-height: 44px;
+    font-size: var(--font-base);
+    margin: 0 0 var(--space-3) 0;
+    min-height: var(--control-height);
     box-sizing: border-box;
   }
   :where(button:not([data-skip-base-style])) {
     appearance: auto;
-    border: 1px solid #1d4ed8;
-    border-radius: 6px;
-    padding: 8px 14px;
-    background: #1d4ed8;
+    border: 1px solid var(--color-brand-primary);
+    border-radius: var(--radius-md);
+    padding: 0 16px;
+    background: var(--color-brand-primary);
     color: #fff;
     font: inherit;
     font-weight: 600;
     cursor: pointer;
-    margin: 4px 8px 8px 0;
-    min-height: 44px;
+    margin: 0 var(--space-2) var(--space-2) 0;
+    min-height: var(--control-height);
     box-sizing: border-box;
+    transition: background 80ms ease, transform 80ms ease;
+  }
+  :where(button:not([data-skip-base-style])):active {
+    background: var(--color-brand-strong);
+    border-color: var(--color-brand-strong);
+    transform: scale(0.98);   /* tactile feedback for taps in sunlight */
+  }
+  :where(button:not([data-skip-base-style])):focus-visible {
+    outline: 3px solid var(--color-brand-strong);
+    outline-offset: 2px;
   }
   :where(button:not([data-skip-base-style])):disabled {
-    background: #cbd5e1;
-    border-color: #cbd5e1;
-    color: #475569;
+    background: var(--color-border);
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
     cursor: not-allowed;
+    transform: none;
   }
   :where(label) {
-    display: inline-block;
-    margin-right: 8px;
-    color: #334155;
+    display: block;            /* block label fixes the create-event wizard misalignment */
+    margin-bottom: var(--space-1);
+    color: var(--color-text-secondary);
+    font-weight: 600;
   }
+
+  /* Base table styling — there was none, so headers crammed ("HCPThruGross").
+     Tabular figures keep score/money columns from wobbling. */
+  :where(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  :where(th), :where(td) {
+    padding: 10px 12px;
+    text-align: left;
+  }
+  :where(thead th) {
+    font-size: var(--font-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
+    border-bottom: 2px solid var(--color-border);
+    white-space: nowrap;
+  }
+  :where(tbody tr) {
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+}
+
+/* Reusable surface card (score-entry already emits className="card" — now real). */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
 }
 
 /*
@@ -144,6 +230,6 @@
  * the border box, so the region's own overflow-x:auto does not clip it.
  */
 .scroll-region:focus-visible {
-  outline: 2px solid var(--color-brand-primary);
+  outline: 3px solid var(--color-brand-primary);
   outline-offset: 1px;
 }
