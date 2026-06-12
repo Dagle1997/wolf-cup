@@ -120,13 +120,66 @@ function formatSkins(cents: number | null): string {
   return `$${dollars}.${remainder.toString().padStart(2, '0')}`;
 }
 
+/** A medallion for the top three, plain numerals otherwise. */
+function rankBadge(row: LeaderboardRow): string {
+  if (row.tiedWith === 1 && row.rank <= 3) {
+    return ['🥇', '🥈', '🥉'][row.rank - 1]!;
+  }
+  return rankCell(row);
+}
+
+/** Map a round state to a player-facing status pill. Null → no pill. */
+function statusPill(
+  status: string | null,
+): { label: string; live: boolean } | null {
+  switch (status) {
+    case 'in_progress':
+      return { label: 'Live', live: true };
+    case 'finalized':
+      return { label: 'Final', live: false };
+    case 'complete_editable':
+      return { label: 'Complete', live: false };
+    case 'cancelled':
+      return { label: 'Cancelled', live: false };
+    case 'not_started':
+      return { label: 'Not started', live: false };
+    default:
+      return null;
+  }
+}
+
+function StatusPill({ status }: { status: string | null }) {
+  const pill = statusPill(status);
+  if (!pill) return null;
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 'var(--font-xs)',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.04em',
+        padding: '2px 8px',
+        borderRadius: 'var(--radius-sm)',
+        color: pill.live ? 'var(--color-brand-strong)' : 'var(--color-text-muted)',
+        backgroundColor: pill.live ? 'var(--color-brand-tint)' : 'var(--color-surface-sunken)',
+      }}
+    >
+      {pill.live ? <span aria-hidden style={{ color: 'var(--color-money-pos)' }}>●</span> : null}
+      {pill.label}
+    </span>
+  );
+}
+
 // ---- Component ------------------------------------------------------------
 
-export type LeaderboardPageProps = { eventId: string };
+export type LeaderboardPageProps = { eventId: string; viewerId?: string };
 
 import { useState } from 'react';
 
-export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
+export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   const [scope, setScope] = useState<ScopeMode>('current');
 
   const query = useQuery<FetchOutcome>({
@@ -183,43 +236,70 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
 
   const data = outcome.data;
   const allUnscored = data.rows.every((r) => r.grossThroughHole === null);
+  // Hide the Skins column entirely until a round finalizes and a share exists —
+  // an all-dashes column is noise during live play.
+  const showSkins = data.rows.some((r) => r.skinsCents !== null);
 
   return (
     <PageShell title="Leaderboard">
       <BackLink to="/events/$eventId" params={{ eventId }} />
-      <div>
-        <label htmlFor="scope-select">Scope: </label>
-        <select
-          id="scope-select"
-          value={scope}
-          onChange={(e) => setScope(e.target.value as ScopeMode)}
-        >
-          <option value="current">Current round</option>
-          <option value="event">All rounds (event)</option>
-        </select>
+
+      {/* Scope: a two-option segmented control (bigger tap target than a select). */}
+      <div
+        role="tablist"
+        aria-label="Leaderboard scope"
+        style={{ display: 'flex', gap: 0, marginBottom: 'var(--space-3)', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--color-border)' }}
+      >
+        {([['current', 'Current round'], ['event', 'All rounds']] as const).map(([val, label]) => {
+          const active = scope === val;
+          return (
+            <button
+              key={val}
+              role="tab"
+              aria-selected={active}
+              data-testid={`scope-${val}`}
+              onClick={() => setScope(val)}
+              style={{
+                flex: 1,
+                border: 'none',
+                borderRadius: 0,
+                minHeight: 'var(--control-height)',
+                fontWeight: 600,
+                cursor: 'pointer',
+                color: active ? '#fff' : 'var(--color-text-secondary)',
+                backgroundColor: active ? 'var(--color-brand-primary)' : 'var(--color-surface)',
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
-      {data.round !== null ? (
-        <p>
-          {data.round.name}
-          {data.round.status !== null ? ` — ${data.round.status}` : ''}
-          {data.round.eventRoundId !== null ? (
-            <>
-              {' · '}
+
+      {/* Round header: name + status pill + foursome-results link. */}
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+        {data.round !== null ? (
+          <>
+            <strong style={{ fontSize: 'var(--font-md)' }}>{data.round.name}</strong>
+            <StatusPill status={data.round.status} />
+            {data.round.eventRoundId !== null ? (
               <Link
                 data-testid="foursome-results-link"
                 to="/events/$eventId/event-rounds/$eventRoundId/foursome-results"
                 params={{ eventId, eventRoundId: data.round.eventRoundId }}
+                style={{ marginLeft: 'auto', fontSize: 'var(--font-sm)' }}
               >
-                Foursome results
+                Foursome results →
               </Link>
-            </>
-          ) : null}
-        </p>
-      ) : data.scope === 'event' ? (
-        <p>All rounds aggregated.</p>
-      ) : (
-        <p>No rounds yet.</p>
-      )}
+            ) : null}
+          </>
+        ) : data.scope === 'event' ? (
+          <span style={{ color: 'var(--color-text-muted)' }}>All rounds aggregated.</span>
+        ) : (
+          <span style={{ color: 'var(--color-text-muted)' }}>No rounds yet.</span>
+        )}
+      </div>
+
       {data.rows.length === 0 ? (
         <EmptyState title="No participants yet." />
       ) : allUnscored ? (
@@ -234,29 +314,27 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
               <th scope="col">Thru</th>
               <th scope="col">Gross</th>
               <th scope="col">Net</th>
-              <th scope="col" title="Skins compute on round finalize">Skins</th>
+              {showSkins ? <th scope="col">Skins</th> : null}
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((row) => (
-              <tr key={row.playerId}>
-                <td>{rankCell(row)}</td>
-                <td>{row.playerName}</td>
-                <td>{formatHandicap(row.handicapIndex)}</td>
-                <td>{row.throughHole}</td>
-                <td>{formatScore(row.grossThroughHole)}</td>
-                <td>{formatScore(row.netThroughHole)}</td>
-                <td
-                  title={
-                    row.skinsCents === null
-                      ? 'Skins compute on round finalize'
-                      : undefined
-                  }
+            {data.rows.map((row) => {
+              const isViewer = viewerId === row.playerId;
+              return (
+                <tr
+                  key={row.playerId}
+                  style={isViewer ? { backgroundColor: 'var(--color-brand-tint)', fontWeight: 700 } : undefined}
                 >
-                  {formatSkins(row.skinsCents)}
-                </td>
-              </tr>
-            ))}
+                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{rankBadge(row)}</td>
+                  <td>{row.playerName}{isViewer ? ' (you)' : ''}</td>
+                  <td>{formatHandicap(row.handicapIndex)}</td>
+                  <td>{row.throughHole}</td>
+                  <td>{formatScore(row.grossThroughHole)}</td>
+                  <td>{formatScore(row.netThroughHole)}</td>
+                  {showSkins ? <td>{formatSkins(row.skinsCents)}</td> : null}
+                </tr>
+              );
+            })}
           </tbody>
         </table></ScrollableTable>
       )}
@@ -275,5 +353,6 @@ export const Route = createFileRoute('/events/$eventId/leaderboard')({
 
 function RouteComponent() {
   const { eventId } = Route.useParams();
-  return <LeaderboardPage eventId={eventId} />;
+  const ctx = Route.useRouteContext();
+  return <LeaderboardPage eventId={eventId} viewerId={ctx.player.id} />;
 }
