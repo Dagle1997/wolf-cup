@@ -59,6 +59,9 @@ export interface Handoff {
   /** A foursome member designated as scorer — the realistic scoring path. */
   scorerPlayerId: string;
   scorerSessionId: string;
+  /** A SECOND foursome member with a session — the "I'll score" claimer. */
+  scorer2PlayerId: string;
+  scorer2SessionId: string;
   inviteToken: string;
   memberIds: string[];
   memberNames: string[];

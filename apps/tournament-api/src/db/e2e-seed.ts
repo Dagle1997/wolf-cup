@@ -212,6 +212,14 @@ async function main(): Promise<void> {
     ip: '127.0.0.1',
   });
 
+  // A SECOND foursome member with a session — used by the T13-4 "I'll score"
+  // self-claim browser spec (a non-active member taps over from scorer #1).
+  const scorer2PlayerId = memberIds[1]!;
+  const { sessionId: scorer2SessionId } = await createSession(scorer2PlayerId, {
+    userAgent: 'e2e-seed',
+    ip: '127.0.0.1',
+  });
+
   const handoff = {
     eventId,
     eventRoundId,
@@ -220,6 +228,8 @@ async function main(): Promise<void> {
     sessionId,
     scorerPlayerId,
     scorerSessionId,
+    scorer2PlayerId,
+    scorer2SessionId,
     inviteToken,
     memberIds,
     memberNames,
