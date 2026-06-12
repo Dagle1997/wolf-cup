@@ -41,6 +41,21 @@ async function fetchPairings(eventId: string): Promise<PairingsResponse> {
   return (await res.json()) as PairingsResponse;
 }
 
+type Policy = 'foursome' | 'designated' | 'open';
+type ScorerPolicyResponse = {
+  policy: Policy;
+  designatedPlayerIds: string[];
+  roster: Array<{ playerId: string; name: string | null }>;
+};
+
+async function fetchScorerPolicy(eventId: string): Promise<ScorerPolicyResponse> {
+  const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}/scorer-policy`, {
+    credentials: 'same-origin',
+  });
+  if (!res.ok) throw new Error(`http_${res.status}`);
+  return (await res.json()) as ScorerPolicyResponse;
+}
+
 const ORGANIZER = '__organizer__';
 
 export function StartRoundPage({ eventId, organizerId }: { eventId: string; organizerId: string }) {
@@ -48,6 +63,14 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
   const query = useQuery<PairingsResponse, Error>({
     queryKey: ['start-round-pairings', eventId],
     queryFn: () => fetchPairings(eventId),
+    retry: false,
+  });
+  // The policy decides which players are offered as a foursome's scorer. The
+  // server still validates; this keeps the picker honest (e.g. shows the
+  // designated caddie pool under 'designated', the whole roster under 'open').
+  const policyQuery = useQuery<ScorerPolicyResponse, Error>({
+    queryKey: ['scorer-policy', eventId],
+    queryFn: () => fetchScorerPolicy(eventId),
     retry: false,
   });
 
@@ -151,11 +174,20 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
                       onChange={(e) => setPicks((prev) => ({ ...prev, [key]: e.target.value }))}
                     >
                       <option value={ORGANIZER}>You (organizer)</option>
-                      {p.members.map((m) => (
-                        <option key={m.playerId} value={m.playerId}>
-                          {m.name}
-                        </option>
-                      ))}
+                      {(() => {
+                        const pol = policyQuery.data;
+                        let opts: Array<{ playerId: string; name: string | null }> = p.members;
+                        if (pol) {
+                          if (pol.policy === 'open') opts = pol.roster;
+                          else if (pol.policy === 'designated')
+                            opts = pol.roster.filter((r) => pol.designatedPlayerIds.includes(r.playerId));
+                        }
+                        return opts.map((m) => (
+                          <option key={m.playerId} value={m.playerId}>
+                            {m.name ?? '—'}
+                          </option>
+                        ));
+                      })()}
                     </select>
                   </div>
                 );
