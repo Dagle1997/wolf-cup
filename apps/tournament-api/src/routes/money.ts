@@ -19,7 +19,7 @@ import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
 import { computeMoneyMatrix } from '../services/money.js';
-import { computeFoursomeResults } from '../services/money-detail.js';
+import { computeFoursomeResults, computeMyMoney } from '../services/money-detail.js';
 
 const TENANT_ID = 'guyan';
 
@@ -50,6 +50,29 @@ moneyRouter.get(
         { error: 'internal', code: 'money_compute_failed', requestId },
         500,
       );
+    }
+  },
+);
+
+// T13-5: the viewer's entire event P&L, decomposed by game (2-ball foursome
+// match + each individual side bet), every value viewer-signed. Powers the
+// "My Money" board.
+moneyRouter.get(
+  '/:eventId/my-money',
+  requireSession,
+  requireEventParticipant,
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const log = c.get('logger') ?? moduleLogger;
+    const player = c.get('player')!;
+    const eventId = c.req.param('eventId');
+    try {
+      const result = await computeMyMoney(db, eventId, player.id, TENANT_ID);
+      c.header('cache-control', 'no-store');
+      return c.json(result, 200);
+    } catch (err) {
+      log.error({ msg: 'GET /my-money threw', requestId, eventId, err: String(err) });
+      return c.json({ error: 'internal', code: 'my_money_failed', requestId }, 500);
     }
   },
 );

@@ -483,3 +483,100 @@ describe('GET /api/events/:eventId/event-rounds/:eventRoundId/foursome-results',
     expect(((await res.json()) as { code: string }).code).toBe('event_round_not_found');
   });
 });
+
+// ── T13-5: my-money endpoint (viewer-centric P&L by game) ──────────────────
+
+interface MyMoneyBody {
+  viewerId: string;
+  totalNetCents: number;
+  games: Array<{
+    kind: 'foursome' | 'individual';
+    key: string;
+    label: string;
+    opponentName: string | null;
+    netToViewerCents: number;
+    perRound: Array<{
+      eventRoundId: string;
+      roundNumber: number;
+      netToViewerCents: number;
+      perHole: Array<{ holeNumber: number; moneyToViewerCents: number; winner: string | null }>;
+    }>;
+  }>;
+}
+
+describe('GET /api/events/:eventId/my-money', () => {
+  test('decomposes the viewer P&L by game; games sum to the combined matrix total', async () => {
+    const s = await seed({ withScores: true });
+    // Add a cross-team 1v1 bet: teamA[0] vs teamB[0] (playerIds[0] vs [2]).
+    const now = Date.now();
+    const betId = randomUUID();
+    await db.insert(individualBets).values({
+      id: betId,
+      eventId: s.eventId,
+      playerAId: s.playerIds[0]!,
+      playerBId: s.playerIds[2]!,
+      betType: 'match_play_per_hole',
+      stakePerHoleCents: 100,
+      configJson: '{}',
+      createdByPlayerId: s.playerIds[0]!,
+      createdAt: now,
+      tenantId: TENANT_ID,
+      contextId: `event:${s.eventId}`,
+    });
+    await db.insert(individualBetRounds).values({
+      betId,
+      eventRoundId: s.eventRoundId,
+      tenantId: TENANT_ID,
+      contextId: `event:${s.eventId}`,
+    });
+
+    const viewer = s.playerIds[0]!;
+    const app = buildApp(viewer);
+    const res = await app.request(`/api/events/${s.eventId}/my-money`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = (await res.json()) as MyMoneyBody;
+
+    // A foursome game + an individual game (vs the bet opponent).
+    const foursome = body.games.find((g) => g.kind === 'foursome');
+    const individual = body.games.find((g) => g.kind === 'individual');
+    expect(foursome).toBeTruthy();
+    expect(individual).toBeTruthy();
+    expect(individual!.key).toBe(betId);
+    expect(individual!.label.startsWith('Match vs ')).toBe(true);
+    // teamA[0] won both games (better scores 1-12).
+    expect(foursome!.netToViewerCents).toBeGreaterThan(0);
+    expect(individual!.netToViewerCents).toBeGreaterThan(0);
+
+    // Per-hole money sums to round net; round nets sum to game net.
+    for (const g of body.games) {
+      for (const r of g.perRound) {
+        const holeSum = r.perHole.reduce((a, h) => a + h.moneyToViewerCents, 0);
+        expect(holeSum).toBe(r.netToViewerCents);
+      }
+      const roundSum = g.perRound.reduce((a, r) => a + r.netToViewerCents, 0);
+      expect(roundSum).toBe(g.netToViewerCents);
+    }
+    // Games sum to grand total.
+    expect(body.games.reduce((a, g) => a + g.netToViewerCents, 0)).toBe(body.totalNetCents);
+
+    // LOSS-LESS DECOMPOSITION: viewer's my-money total === their combined
+    // matrix total (no skins in this seed, so the two ledgers fully reconcile).
+    const moneyRes = await getMoney(app, s.eventId);
+    const matrixBody = (await moneyRes.json()) as { totals: Record<string, number> };
+    expect(body.totalNetCents).toBe(matrixBody.totals[viewer]);
+  });
+
+  test('viewer with no bets → only a foursome game; non-participant → 403', async () => {
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[1]!);
+    const res = await app.request(`/api/events/${s.eventId}/my-money`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MyMoneyBody;
+    expect(body.games.every((g) => g.kind === 'foursome')).toBe(true);
+
+    const outApp = buildApp(s.outsiderId);
+    const outRes = await outApp.request(`/api/events/${s.eventId}/my-money`);
+    expect(outRes.status).toBe(403);
+  });
+});
