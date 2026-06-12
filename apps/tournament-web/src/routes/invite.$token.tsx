@@ -239,7 +239,7 @@ export function InvitePage({ token }: { token: string }) {
           ))}
         </ul>
         {data.roster.length === 0 ? (
-          <EmptyState title="The event roster is empty." body="Ask Josh to add players first." />
+          <EmptyState icon="👥" title="The event roster is empty." body="Ask Josh to add players first." />
         ) : null}
       </div>
     </div>

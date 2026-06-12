@@ -180,7 +180,7 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
     return (
       <PageShell title="Money">
         <BackLink to="/events/$eventId" params={{ eventId }} />
-        <EmptyState title="No participants yet." />
+        <EmptyState icon="💰" title="No participants yet." />
       </PageShell>
     );
   }

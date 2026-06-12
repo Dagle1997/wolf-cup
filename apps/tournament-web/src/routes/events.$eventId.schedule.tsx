@@ -163,7 +163,7 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
     return (
       <PageShell title="Schedule">
         <BackLink to="/events/$eventId" params={{ eventId }} />
-        <EmptyState title="No rounds scheduled yet." />
+        <EmptyState icon="📅" title="No rounds scheduled yet." />
       </PageShell>
     );
   }

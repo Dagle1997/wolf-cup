@@ -128,7 +128,7 @@ export function SettleUpPage({ eventId, viewerId }: SettleUpPageProps) {
     return (
       <PageShell title="Settle Up">
         <BackLink to="/events/$eventId" params={{ eventId }} />
-        <EmptyState title="No participants yet." />
+        <EmptyState icon="🤝" title="No participants yet." />
       </PageShell>
     );
   }

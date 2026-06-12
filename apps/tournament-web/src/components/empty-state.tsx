@@ -12,6 +12,8 @@ export type EmptyStateProps = {
   title: string;
   body?: string;
   action?: ReactNode;
+  /** Decorative icon shown above the title. Defaults to ⛳ (golf context). */
+  icon?: ReactNode;
 };
 
 const cardStyle: CSSProperties = {
@@ -22,9 +24,12 @@ const cardStyle: CSSProperties = {
   borderRadius: 8,
 };
 
-export function EmptyState({ title, body, action }: EmptyStateProps) {
+export function EmptyState({ title, body, action, icon = '⛳' }: EmptyStateProps) {
   return (
     <div style={cardStyle}>
+      <div aria-hidden style={{ fontSize: '2.5rem', lineHeight: 1, marginBottom: 8 }}>
+        {icon}
+      </div>
       <h2 style={{ margin: 0, fontSize: 'var(--font-lg)', color: 'var(--color-text-primary)' }}>
         {title}
       </h2>

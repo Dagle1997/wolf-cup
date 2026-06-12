@@ -251,7 +251,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
       )}
 
       {groups.length === 0 && !progress && (
-        <EmptyState title="Tap the camera button to add the first photo." />
+        <EmptyState icon="📸" title="Tap the camera button to add the first photo." />
       )}
 
       {groups.map((g) => (

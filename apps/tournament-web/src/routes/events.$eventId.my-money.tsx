@@ -98,7 +98,7 @@ export function MyMoneyPage({ eventId }: { eventId: string }) {
     return (
       <PageShell title="My Money">
         <BackLink to="/events/$eventId" params={{ eventId }} />
-        <EmptyState title="No money games yet." body="Once your round is scored, your team match and any side bets show up here." />
+        <EmptyState icon="💰" title="No money games yet." body="Once your round is scored, your team match and any side bets show up here." />
       </PageShell>
     );
   }

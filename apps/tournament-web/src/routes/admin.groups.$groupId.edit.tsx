@@ -329,7 +329,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
       <section>
         <h2>Members ({group.members.length})</h2>
         {group.members.length === 0 ? (
-          <EmptyState title="No members yet." body="Add players below." />
+          <EmptyState icon="👥" title="No members yet." body="Add players below." />
         ) : (
           <ScrollableTable label="Group members"><table>
             <thead>

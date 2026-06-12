@@ -139,7 +139,7 @@ export function BetsPage({ eventId }: BetsPageProps) {
     return (
       <PageShell title="Bets">
         <BackLink to="/events/$eventId" params={{ eventId }} />
-        <EmptyState title="No bets yet — organizer can add via admin." />
+        <EmptyState icon="🎲" title="No bets yet — organizer can add via admin." />
       </PageShell>
     );
   }
