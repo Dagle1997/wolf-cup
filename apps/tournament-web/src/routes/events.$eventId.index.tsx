@@ -143,6 +143,7 @@ export type EventHomePageProps = {
 const ENTRY_CARDS = [
   SCHEDULE_CARD,
   { to: '/events/$eventId/leaderboard' as const, title: 'Leaderboard',    desc: 'See live standings' },
+  { to: '/events/$eventId/my-money' as const,    title: 'My Money',       desc: 'Your money, by game' },
   { to: '/events/$eventId/money' as const,       title: 'Money',          desc: 'Head-to-head money matrix' },
   { to: '/events/$eventId/bets' as const,        title: 'Bets',           desc: 'Your bets' },
   { to: '/events/$eventId/settle-up' as const,   title: 'Settle Up',      desc: 'End-of-trip settle' },

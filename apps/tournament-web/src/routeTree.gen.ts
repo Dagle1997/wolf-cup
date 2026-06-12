@@ -19,6 +19,7 @@ import { Route as EventsEventIdIndexRouteImport } from './routes/events.$eventId
 import { Route as RoundsRoundIdScoreEntryRouteImport } from './routes/rounds.$roundId.score-entry'
 import { Route as EventsEventIdSettleUpRouteImport } from './routes/events.$eventId.settle-up'
 import { Route as EventsEventIdScheduleRouteImport } from './routes/events.$eventId.schedule'
+import { Route as EventsEventIdMyMoneyRouteImport } from './routes/events.$eventId.my-money'
 import { Route as EventsEventIdMoneyRouteImport } from './routes/events.$eventId.money'
 import { Route as EventsEventIdLeaderboardRouteImport } from './routes/events.$eventId.leaderboard'
 import { Route as EventsEventIdGalleryRouteImport } from './routes/events.$eventId.gallery'
@@ -33,6 +34,7 @@ import { Route as AdminGroupsGroupIdEditRouteImport } from './routes/admin.group
 import { Route as AdminEventsEventIdStartRoundRouteImport } from './routes/admin.events.$eventId.start-round'
 import { Route as AdminEventsEventIdPairingsRouteImport } from './routes/admin.events.$eventId.pairings'
 import { Route as AdminEventRoundsEventRoundIdSubGamesRouteImport } from './routes/admin.event-rounds.$eventRoundId.sub-games'
+import { Route as EventsEventIdEventRoundsEventRoundIdFoursomeResultsRouteImport } from './routes/events.$eventId.event-rounds.$eventRoundId.foursome-results'
 
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
@@ -82,6 +84,11 @@ const EventsEventIdSettleUpRoute = EventsEventIdSettleUpRouteImport.update({
 const EventsEventIdScheduleRoute = EventsEventIdScheduleRouteImport.update({
   id: '/events/$eventId/schedule',
   path: '/events/$eventId/schedule',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EventsEventIdMyMoneyRoute = EventsEventIdMyMoneyRouteImport.update({
+  id: '/events/$eventId/my-money',
+  path: '/events/$eventId/my-money',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EventsEventIdMoneyRoute = EventsEventIdMoneyRouteImport.update({
@@ -159,6 +166,12 @@ const AdminEventRoundsEventRoundIdSubGamesRoute =
     path: '/admin/event-rounds/$eventRoundId/sub-games',
     getParentRoute: () => rootRouteImport,
   } as any)
+const EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute =
+  EventsEventIdEventRoundsEventRoundIdFoursomeResultsRouteImport.update({
+    id: '/events/$eventId/event-rounds/$eventRoundId/foursome-results',
+    path: '/events/$eventId/event-rounds/$eventRoundId/foursome-results',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -174,6 +187,7 @@ export interface FileRoutesByFullPath {
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
   '/events/$eventId/money': typeof EventsEventIdMoneyRoute
+  '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
   '/events/$eventId/settle-up': typeof EventsEventIdSettleUpRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
@@ -185,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
   '/events/$eventId/courses/$courseId': typeof EventsEventIdCoursesCourseIdRoute
   '/admin/events/$eventId/': typeof AdminEventsEventIdIndexRoute
+  '/events/$eventId/event-rounds/$eventRoundId/foursome-results': typeof EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -200,6 +215,7 @@ export interface FileRoutesByTo {
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
   '/events/$eventId/money': typeof EventsEventIdMoneyRoute
+  '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
   '/events/$eventId/settle-up': typeof EventsEventIdSettleUpRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
@@ -211,6 +227,7 @@ export interface FileRoutesByTo {
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
   '/events/$eventId/courses/$courseId': typeof EventsEventIdCoursesCourseIdRoute
   '/admin/events/$eventId': typeof AdminEventsEventIdIndexRoute
+  '/events/$eventId/event-rounds/$eventRoundId/foursome-results': typeof EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -227,6 +244,7 @@ export interface FileRoutesById {
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
   '/events/$eventId/money': typeof EventsEventIdMoneyRoute
+  '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
   '/events/$eventId/settle-up': typeof EventsEventIdSettleUpRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
@@ -238,6 +256,7 @@ export interface FileRoutesById {
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
   '/events/$eventId/courses/$courseId': typeof EventsEventIdCoursesCourseIdRoute
   '/admin/events/$eventId/': typeof AdminEventsEventIdIndexRoute
+  '/events/$eventId/event-rounds/$eventRoundId/foursome-results': typeof EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -255,6 +274,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
     | '/events/$eventId/money'
+    | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
     | '/events/$eventId/settle-up'
     | '/rounds/$roundId/score-entry'
@@ -266,6 +286,7 @@ export interface FileRouteTypes {
     | '/admin/rule-sets/$id/edit'
     | '/events/$eventId/courses/$courseId'
     | '/admin/events/$eventId/'
+    | '/events/$eventId/event-rounds/$eventRoundId/foursome-results'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -281,6 +302,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
     | '/events/$eventId/money'
+    | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
     | '/events/$eventId/settle-up'
     | '/rounds/$roundId/score-entry'
@@ -292,6 +314,7 @@ export interface FileRouteTypes {
     | '/admin/rule-sets/$id/edit'
     | '/events/$eventId/courses/$courseId'
     | '/admin/events/$eventId'
+    | '/events/$eventId/event-rounds/$eventRoundId/foursome-results'
   id:
     | '__root__'
     | '/'
@@ -307,6 +330,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
     | '/events/$eventId/money'
+    | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
     | '/events/$eventId/settle-up'
     | '/rounds/$roundId/score-entry'
@@ -318,6 +342,7 @@ export interface FileRouteTypes {
     | '/admin/rule-sets/$id/edit'
     | '/events/$eventId/courses/$courseId'
     | '/admin/events/$eventId/'
+    | '/events/$eventId/event-rounds/$eventRoundId/foursome-results'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -334,6 +359,7 @@ export interface RootRouteChildren {
   EventsEventIdGalleryRoute: typeof EventsEventIdGalleryRoute
   EventsEventIdLeaderboardRoute: typeof EventsEventIdLeaderboardRoute
   EventsEventIdMoneyRoute: typeof EventsEventIdMoneyRoute
+  EventsEventIdMyMoneyRoute: typeof EventsEventIdMyMoneyRoute
   EventsEventIdScheduleRoute: typeof EventsEventIdScheduleRoute
   EventsEventIdSettleUpRoute: typeof EventsEventIdSettleUpRoute
   RoundsRoundIdScoreEntryRoute: typeof RoundsRoundIdScoreEntryRoute
@@ -345,6 +371,7 @@ export interface RootRouteChildren {
   AdminRuleSetsIdEditRoute: typeof AdminRuleSetsIdEditRoute
   EventsEventIdCoursesCourseIdRoute: typeof EventsEventIdCoursesCourseIdRoute
   AdminEventsEventIdIndexRoute: typeof AdminEventsEventIdIndexRoute
+  EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute: typeof EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -417,6 +444,13 @@ declare module '@tanstack/react-router' {
       path: '/events/$eventId/schedule'
       fullPath: '/events/$eventId/schedule'
       preLoaderRoute: typeof EventsEventIdScheduleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events/$eventId/my-money': {
+      id: '/events/$eventId/my-money'
+      path: '/events/$eventId/my-money'
+      fullPath: '/events/$eventId/my-money'
+      preLoaderRoute: typeof EventsEventIdMyMoneyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/$eventId/money': {
@@ -517,6 +551,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventRoundsEventRoundIdSubGamesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/events/$eventId/event-rounds/$eventRoundId/foursome-results': {
+      id: '/events/$eventId/event-rounds/$eventRoundId/foursome-results'
+      path: '/events/$eventId/event-rounds/$eventRoundId/foursome-results'
+      fullPath: '/events/$eventId/event-rounds/$eventRoundId/foursome-results'
+      preLoaderRoute: typeof EventsEventIdEventRoundsEventRoundIdFoursomeResultsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -534,6 +575,7 @@ const rootRouteChildren: RootRouteChildren = {
   EventsEventIdGalleryRoute: EventsEventIdGalleryRoute,
   EventsEventIdLeaderboardRoute: EventsEventIdLeaderboardRoute,
   EventsEventIdMoneyRoute: EventsEventIdMoneyRoute,
+  EventsEventIdMyMoneyRoute: EventsEventIdMyMoneyRoute,
   EventsEventIdScheduleRoute: EventsEventIdScheduleRoute,
   EventsEventIdSettleUpRoute: EventsEventIdSettleUpRoute,
   RoundsRoundIdScoreEntryRoute: RoundsRoundIdScoreEntryRoute,
@@ -546,6 +588,8 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRuleSetsIdEditRoute: AdminRuleSetsIdEditRoute,
   EventsEventIdCoursesCourseIdRoute: EventsEventIdCoursesCourseIdRoute,
   AdminEventsEventIdIndexRoute: AdminEventsEventIdIndexRoute,
+  EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute:
+    EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

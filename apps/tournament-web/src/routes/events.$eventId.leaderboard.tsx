@@ -19,7 +19,7 @@
  * `LeaderboardPage` for direct test rendering.
  */
 
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
@@ -202,6 +202,18 @@ export function LeaderboardPage({ eventId }: LeaderboardPageProps) {
         <p>
           {data.round.name}
           {data.round.status !== null ? ` — ${data.round.status}` : ''}
+          {data.round.eventRoundId !== null ? (
+            <>
+              {' · '}
+              <Link
+                data-testid="foursome-results-link"
+                to="/events/$eventId/event-rounds/$eventRoundId/foursome-results"
+                params={{ eventId, eventRoundId: data.round.eventRoundId }}
+              >
+                Foursome results
+              </Link>
+            </>
+          ) : null}
         </p>
       ) : data.scope === 'event' ? (
         <p>All rounds aggregated.</p>
