@@ -70,14 +70,33 @@ function renderPage(node: ReactNode) {
   );
 }
 
+const JSON_HEADERS = { 'content-type': 'application/json' };
+const POLICY = { policy: 'foursome', designatedPlayerIds: [], roster: [] };
+
+/**
+ * URL-aware fetch mock: the page fetches BOTH /pairings and /scorer-policy on
+ * mount (order not guaranteed) and /start on click — so a flat `mockResolvedValue`
+ * or ordered `…Once` chain races. Route by URL instead.
+ */
+function setFetch(pairings: unknown, startStatus = 201): void {
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes('/scorer-policy')) {
+      return new Response(JSON.stringify(POLICY), { status: 200, headers: JSON_HEADERS });
+    }
+    if (url.includes('/start')) {
+      return new Response(JSON.stringify({ roundId: 'round-1' }), { status: startStatus, headers: JSON_HEADERS });
+    }
+    return new Response(JSON.stringify(pairings), { status: 200, headers: JSON_HEADERS });
+  });
+}
+
 beforeEach(() => vi.stubGlobal('fetch', vi.fn()));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('StartRoundPage', () => {
   it('renders a scorer picker per foursome for a locked round', async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify(STARTABLE), { status: 200, headers: { 'content-type': 'application/json' } }),
-    );
+    setFetch(STARTABLE);
     renderPage(<StartRoundPage eventId="evt-1" organizerId={ORG_ID} />);
     await waitFor(() => expect(screen.getByTestId('scorer-er-1:1')).toBeInTheDocument());
     expect(screen.getByTestId('start-btn-er-1')).toBeInTheDocument();
@@ -88,13 +107,7 @@ describe('StartRoundPage', () => {
   });
 
   it('Start posts the designated scorers (defaults to the organizer)', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify(STARTABLE), { status: 200, headers: { 'content-type': 'application/json' } }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ roundId: 'round-1' }), { status: 201, headers: { 'content-type': 'application/json' } }),
-      );
+    setFetch(STARTABLE, 201);
     renderPage(<StartRoundPage eventId="evt-1" organizerId={ORG_ID} />);
     await waitFor(() => expect(screen.getByTestId('start-btn-er-1')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('start-btn-er-1'));
@@ -109,9 +122,7 @@ describe('StartRoundPage', () => {
   });
 
   it('shows an empty state when no round has all-locked pairings', async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify(UNLOCKED), { status: 200, headers: { 'content-type': 'application/json' } }),
-    );
+    setFetch(UNLOCKED);
     renderPage(<StartRoundPage eventId="evt-1" organizerId={ORG_ID} />);
     await waitFor(() => expect(screen.getByText(/No round is ready to start/i)).toBeInTheDocument());
   });
