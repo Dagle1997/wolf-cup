@@ -109,6 +109,52 @@ type SaveState =
   | { kind: 'success'; eventId: string; inviteToken: string }
   | { kind: 'error'; userMessage: string };
 
+// ---- Progress dots --------------------------------------------------------
+
+/** A 3-step progress indicator. Keeps the "Step N of 3" text (a11y + tests). */
+function StepDots({ step }: { step: 1 | 2 | 3 }) {
+  const labels = ['Basics', 'Rounds', 'Review'];
+  return (
+    <div style={{ marginBottom: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        {[1, 2, 3].map((n) => {
+          const done = n < step;
+          const active = n === step;
+          return (
+            <div key={n} style={{ display: 'flex', alignItems: 'center', flex: n < 3 ? 1 : '0 0 auto' }}>
+              <span
+                aria-hidden
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  flexShrink: 0,
+                  fontSize: 'var(--font-sm)',
+                  fontWeight: 700,
+                  color: active || done ? '#fff' : 'var(--color-text-muted)',
+                  background: active || done ? 'var(--color-brand-primary)' : 'var(--color-surface-sunken)',
+                  border: active ? '2px solid var(--color-brand-strong)' : '1px solid var(--color-border)',
+                }}
+              >
+                {done ? '✓' : n}
+              </span>
+              {n < 3 ? (
+                <span style={{ flex: 1, height: 2, margin: '0 6px', background: done ? 'var(--color-brand-primary)' : 'var(--color-border)' }} />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <p style={{ margin: 'var(--space-2) 0 0', fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', fontWeight: 600 }}>
+        Step {step} of 3 · {labels[step - 1]}
+      </p>
+    </div>
+  );
+}
+
 // ---- Component ------------------------------------------------------------
 
 export function NewEventWizard() {
@@ -338,7 +384,7 @@ export function NewEventWizard() {
 
   return (
     <PageShell title="New Event">
-      <p>Step {form.step} of 3</p>
+      <StepDots step={form.step} />
 
       {form.step === 1 ? (
         <section>
@@ -347,6 +393,7 @@ export function NewEventWizard() {
           <input
             id="event-name"
             type="text"
+            placeholder="e.g. Pinehurst 2026"
             value={form.name}
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
           />
@@ -364,14 +411,32 @@ export function NewEventWizard() {
             value={form.end_date}
             onChange={(e) => setForm((p) => ({ ...p, end_date: e.target.value }))}
           />
-          <label htmlFor="event-timezone">Timezone (IANA)</label>
-          <input
-            id="event-timezone"
-            type="text"
-            value={form.timezone}
-            onChange={(e) => setForm((p) => ({ ...p, timezone: e.target.value }))}
-          />
-          <button type="button" onClick={next} disabled={!step1Valid()}>
+
+          {/* Timezone is auto-detected from the device. Non-technical users
+              never see the raw IANA string unless they open "Change". */}
+          <div style={{ margin: 'var(--space-3) 0', fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}>
+            <span aria-hidden>🕓 </span>Times shown in <strong>{form.timezone}</strong> (detected)
+          </div>
+          <details style={{ marginBottom: 'var(--space-3)' }}>
+            <summary style={{ cursor: 'pointer', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)' }}>Change timezone</summary>
+            <label htmlFor="event-timezone" style={{ marginTop: 'var(--space-2)' }}>Timezone (IANA)</label>
+            <input
+              id="event-timezone"
+              type="text"
+              value={form.timezone}
+              onChange={(e) => setForm((p) => ({ ...p, timezone: e.target.value }))}
+            />
+            {form.timezone.trim() && !isValidIanaTimezone(form.timezone.trim()) ? (
+              <p role="alert" style={{ color: 'var(--color-money-neg)', fontSize: 'var(--font-sm)' }}>Not a valid IANA timezone (e.g. America/New_York).</p>
+            ) : null}
+          </details>
+
+          <button
+            type="button"
+            onClick={next}
+            disabled={!step1Valid()}
+            style={{ width: '100%', minHeight: 'var(--control-height-lg)', background: step1Valid() ? 'var(--color-brand-primary)' : undefined, color: step1Valid() ? '#fff' : undefined, fontWeight: 700, border: step1Valid() ? 'none' : undefined }}
+          >
             Next
           </button>
         </section>
@@ -452,14 +517,19 @@ export function NewEventWizard() {
               ))}
             </tbody>
           </table></ScrollableTable>
-          <button type="button" onClick={addRound}>
-            Add round
+          <button type="button" onClick={addRound} style={{ minHeight: 'var(--control-height)', marginTop: 'var(--space-2)' }}>
+            + Add round
           </button>
-          <div>
-            <button type="button" onClick={back}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
+            <button type="button" onClick={back} style={{ minHeight: 'var(--control-height-lg)' }}>
               Back
             </button>
-            <button type="button" onClick={next} disabled={!step2Valid()}>
+            <button
+              type="button"
+              onClick={next}
+              disabled={!step2Valid()}
+              style={{ flex: 1, minHeight: 'var(--control-height-lg)', background: step2Valid() ? 'var(--color-brand-primary)' : undefined, color: step2Valid() ? '#fff' : undefined, fontWeight: 700, border: step2Valid() ? 'none' : undefined }}
+            >
               Next
             </button>
           </div>
@@ -493,14 +563,15 @@ export function NewEventWizard() {
               </ul>
             </li>
           </ul>
-          <div>
-            <button type="button" onClick={back}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
+            <button type="button" onClick={back} style={{ minHeight: 'var(--control-height-lg)' }}>
               Back
             </button>
             <button
               type="button"
               onClick={() => void onSubmit()}
               disabled={saveState.kind === 'saving'}
+              style={{ flex: 1, minHeight: 'var(--control-height-lg)', background: 'var(--color-brand-primary)', color: '#fff', fontWeight: 700, border: 'none' }}
             >
               {saveState.kind === 'saving' ? 'Submitting…' : 'Submit'}
             </button>
