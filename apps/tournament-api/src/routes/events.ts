@@ -16,13 +16,16 @@
 
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
-import { and, asc, desc, eq, or, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, or, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   eventRounds,
   events,
   groupMembers,
   groups,
+  players,
+  rounds,
+  roundStates,
 } from '../db/schema/index.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
@@ -119,6 +122,7 @@ eventsRouter.get(
     const requestId = c.get('requestId') ?? randomUUID();
     const log = c.get('logger') ?? moduleLogger;
     const eventId = c.req.param('eventId')!;
+    const player = c.get('player')!;
 
     try {
       const eventRows = await db
@@ -159,11 +163,53 @@ eventsRouter.get(
         )
         .orderBy(asc(eventRounds.roundNumber));
 
+      // Viewer's display name — the session/auth-status payload omits it, so
+      // the home greeting fetches it here (falls back to null → "friend" in UI).
+      const nameRows = await db
+        .select({ name: players.name })
+        .from(players)
+        .where(and(eq(players.id, player.id), eq(players.tenantId, TENANT_ID)))
+        .limit(1);
+      const rawName = nameRows[0]?.name?.trim();
+      const viewerName = rawName ? rawName : null;
+
+      // Live scoring round (if any) — powers the home "Round N is live →
+      // Enter scores" CTA. Only `in_progress` qualifies (complete_editable =
+      // scoring done, no CTA). Most-recent by opened/created. `roundId` is the
+      // scoring round id consumed by /rounds/:roundId/score-entry.
+      const liveRows = await db
+        .select({
+          roundId: rounds.id,
+          eventRoundId: rounds.eventRoundId,
+          roundNumber: eventRounds.roundNumber,
+        })
+        .from(rounds)
+        .innerJoin(eventRounds, eq(eventRounds.id, rounds.eventRoundId))
+        .innerJoin(roundStates, eq(roundStates.roundId, rounds.id))
+        .where(
+          and(
+            eq(eventRounds.eventId, eventId),
+            eq(roundStates.state, 'in_progress'),
+            eq(rounds.tenantId, TENANT_ID),
+            eq(eventRounds.tenantId, TENANT_ID),
+            eq(roundStates.tenantId, TENANT_ID),
+          ),
+        )
+        .orderBy(
+          sql`${rounds.openedAt} DESC NULLS LAST`,
+          desc(rounds.createdAt),
+          desc(rounds.id),
+        )
+        .limit(1);
+      const liveRound = liveRows.length > 0 ? liveRows[0]! : null;
+
       c.header('cache-control', 'no-store');
       return c.json(
         {
           event: eventRows[0]!,
           rounds: roundRows,
+          viewerName,
+          liveRound,
         },
         200,
       );

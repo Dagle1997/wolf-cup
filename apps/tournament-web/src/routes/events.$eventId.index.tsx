@@ -43,6 +43,14 @@ type EventDetailResponse = {
     roundDate: number;
     holesToPlay: 9 | 18;
   }>;
+  /** Viewer's display name (auth status omits it). Null → "friend". */
+  viewerName?: string | null;
+  /** The in-progress scoring round, if any — powers the "Enter scores" CTA. */
+  liveRound?: {
+    roundId: string;
+    eventRoundId: string;
+    roundNumber: number;
+  } | null;
 };
 
 type FetchOutcome =
@@ -188,10 +196,12 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
     );
   }
 
-  const { event, rounds } = outcome.data;
+  const { event, rounds, liveRound } = outcome.data;
   const now = nowMs ?? Date.now();
   const countdown = computeCountdown(rounds, now);
   const dateRange = formatDateRange(event.startDate, event.endDate, event.timezone);
+  // Real name from the API takes precedence; the `viewerName` prop is a test seam.
+  const greetName = outcome.data.viewerName ?? viewerName;
 
   return (
     <PageShell title={event.name}>
@@ -208,9 +218,38 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
         <div style={{ fontSize: 'var(--font-sm)', opacity: 0.9 }}>{dateRange}</div>
         <div style={{ marginTop: 4, fontSize: 'var(--font-lg)', fontWeight: 800 }}>{countdown}</div>
         <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--font-sm)', opacity: 0.95 }}>
-          <span aria-hidden>✓ </span>You&apos;re in, {firstName(viewerName)}.
+          <span aria-hidden>✓ </span>You&apos;re in, {firstName(greetName)}.
         </div>
       </div>
+
+      {/* Live round → the one action that matters mid-event: enter scores. */}
+      {liveRound ? (
+        <Link
+          to="/rounds/$roundId/score-entry"
+          params={{ roundId: liveRound.roundId }}
+          data-testid="event-home-live-cta"
+          className="card"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+            minHeight: 'var(--control-height-lg)',
+            padding: 'var(--space-3) var(--space-4)',
+            marginBottom: 'var(--space-4)',
+            textDecoration: 'none',
+            color: '#fff',
+            background: 'var(--color-accent)',
+            fontWeight: 700,
+          }}
+        >
+          <span aria-hidden style={{ fontSize: '1.25rem' }}>●</span>
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontSize: 'var(--font-md)' }}>Round {liveRound.roundNumber} is live</span>
+            <span style={{ fontSize: 'var(--font-sm)', opacity: 0.95, fontWeight: 400 }}>Tap to enter scores</span>
+          </span>
+          <span aria-hidden>→</span>
+        </Link>
+      ) : null}
 
       <nav aria-label="Event sections">
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>

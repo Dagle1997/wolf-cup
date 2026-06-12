@@ -193,6 +193,21 @@ describe('GET /api/events/:eventId', () => {
     expect(body.rounds[2]!.holesToPlay).toBe(9);
   });
 
+  test('(f) returns viewerName + liveRound (null when no round is in progress)', async () => {
+    const s = await seed();
+    const app = buildApp(s.participantId);
+    const res = await getEvent(app, s.eventId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      viewerName: string | null;
+      liveRound: { roundId: string; roundNumber: number } | null;
+    };
+    // The participant player was seeded with name 'Participant'.
+    expect(body.viewerName).toBe('Participant');
+    // No scoring round started → no live CTA.
+    expect(body.liveRound).toBeNull();
+  });
+
   test('(b) 403 non-participant (outsider)', async () => {
     const s = await seed();
     const app = buildApp(s.outsiderId);

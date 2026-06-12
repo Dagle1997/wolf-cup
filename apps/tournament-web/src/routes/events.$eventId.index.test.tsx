@@ -85,6 +85,7 @@ function renderWithRouter(props: {
     '/events/$eventId/settle-up',
     '/events/$eventId/gallery',
     '/admin/events/$eventId',
+    '/rounds/$roundId/score-entry',
   ] as const;
   const stubs = childPaths.map((p) =>
     createRoute({
@@ -137,6 +138,42 @@ describe('EventHomePage', () => {
     // T8-3: ActivityFeed mounts below the entry cards. Mocked hook
     // returns empty rows → the feed renders its empty-state card.
     expect(screen.getByTestId('activity-feed-empty')).toBeInTheDocument();
+  });
+
+  it('prefers the API-supplied viewerName over the prop, and shows the live-round CTA', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...EVENT_FIXTURE,
+          viewerName: 'Ronnie Adkins',
+          liveRound: { roundId: 'rnd-9', eventRoundId: 'er-2', roundNumber: 2 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    // Prop says "Josh" but the API says "Ronnie" — the API wins.
+    renderWithRouter({ eventId: 'evt-1', viewerName: 'Josh Stoll', nowMs: MAY_8_NY_MIDNIGHT });
+    await waitFor(() => {
+      expect(screen.getByText(/You're in, Ronnie\./)).toBeInTheDocument();
+    });
+    const cta = screen.getByTestId('event-home-live-cta');
+    expect(cta).toBeInTheDocument();
+    expect(cta.getAttribute('href')).toBe('/rounds/rnd-9/score-entry');
+    expect(screen.getByText(/Round 2 is live/)).toBeInTheDocument();
+  });
+
+  it('no live-round CTA when liveRound is absent', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify(EVENT_FIXTURE), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    renderWithRouter({ eventId: 'evt-1', nowMs: MAY_8_NY_MIDNIGHT });
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Pinehurst 2026' })).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('event-home-live-cta')).toBeNull();
   });
 
   it('renders forbidden state on 403', async () => {
