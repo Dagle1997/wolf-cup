@@ -33,6 +33,7 @@ import { db } from '../db/index.js';
 import {
   events,
   eventRounds,
+  eventScorerDesignees,
   invites,
   groups,
   groupMembers,
@@ -44,6 +45,7 @@ import {
   courseTees,
   ruleSets,
 } from '../db/schema/index.js';
+import { isScorerPolicy } from '../lib/scorer-eligibility.js';
 import { suggestPairings } from '../engine/pairings/suggest.js';
 
 const SAVE_BODY_LIMIT_BYTES = 16 * 1024;
@@ -1212,5 +1214,107 @@ adminEventsRouter.post(
       warnings,
       requestId,
     });
+  },
+);
+
+// ── T13-4: scorer policy (who may be a foursome's designated scorer) ───────
+
+const ScorerPolicyBodySchema = z
+  .object({
+    policy: z.enum(['foursome', 'designated', 'open']),
+    designatedPlayerIds: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+// GET the event's scorer policy + designee pool.
+adminEventsRouter.get(
+  '/events/:eventId/scorer-policy',
+  requireSession,
+  requireOrganizer,
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const eventId = c.req.param('eventId');
+    const rows = await db
+      .select({ scorerPolicy: events.scorerPolicy })
+      .from(events)
+      .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)))
+      .limit(1);
+    if (rows.length === 0) {
+      return c.json({ error: 'not_found', code: 'event_not_found', requestId }, 404);
+    }
+    const designees = await db
+      .select({ playerId: eventScorerDesignees.playerId })
+      .from(eventScorerDesignees)
+      .where(and(eq(eventScorerDesignees.eventId, eventId), eq(eventScorerDesignees.tenantId, TENANT_ID)));
+    const policy = isScorerPolicy(rows[0]!.scorerPolicy) ? rows[0]!.scorerPolicy : 'foursome';
+    return c.json({ policy, designatedPlayerIds: designees.map((d) => d.playerId), requestId }, 200);
+  },
+);
+
+// PUT the scorer policy. For 'designated', replaces the designee pool (each
+// must be an event participant). Idempotent DELETE-then-INSERT in a tx.
+adminEventsRouter.put(
+  '/events/:eventId/scorer-policy',
+  requireSession,
+  requireOrganizer,
+  bodyLimit({ maxSize: 16 * 1024, onError: (c) => c.json({ error: 'bad_request', code: 'body_too_large' }, 400) }),
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const eventId = c.req.param('eventId');
+
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'bad_request', code: 'invalid_body', requestId }, 400);
+    }
+    const parsed = ScorerPolicyBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: 'bad_request', code: 'invalid_body', issues: parsed.error.issues, requestId }, 400);
+    }
+    const { policy } = parsed.data;
+    const designatedPlayerIds = Array.from(new Set(parsed.data.designatedPlayerIds ?? []));
+
+    const evtRows = await db
+      .select({ id: events.id })
+      .from(events)
+      .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)))
+      .limit(1);
+    if (evtRows.length === 0) {
+      return c.json({ error: 'not_found', code: 'event_not_found', requestId }, 404);
+    }
+
+    // Every designee must be an event participant (group member).
+    if (designatedPlayerIds.length > 0) {
+      const participantRows = await db
+        .select({ playerId: groupMembers.playerId })
+        .from(groupMembers)
+        .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+        .where(and(eq(groups.eventId, eventId), eq(groups.tenantId, TENANT_ID), eq(groupMembers.tenantId, TENANT_ID)));
+      const participants = new Set(participantRows.map((r) => r.playerId));
+      const stranger = designatedPlayerIds.find((id) => !participants.has(id));
+      if (stranger !== undefined) {
+        return c.json({ error: 'bad_request', code: 'designee_not_in_event', playerId: stranger, requestId }, 400);
+      }
+    }
+
+    const ctx = `event:${eventId}`;
+    await db.transaction(async (tx) => {
+      await tx.update(events).set({ scorerPolicy: policy }).where(
+        and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)),
+      );
+      await tx.delete(eventScorerDesignees).where(
+        and(eq(eventScorerDesignees.eventId, eventId), eq(eventScorerDesignees.tenantId, TENANT_ID)),
+      );
+      if (policy === 'designated' && designatedPlayerIds.length > 0) {
+        for (const playerId of designatedPlayerIds) {
+          await tx.insert(eventScorerDesignees).values({
+            eventId, playerId, tenantId: TENANT_ID, contextId: ctx,
+          });
+        }
+      }
+    });
+
+    return c.json({ ok: true, policy, designatedPlayerIds, requestId }, 200);
   },
 );

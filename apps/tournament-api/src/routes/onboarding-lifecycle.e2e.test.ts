@@ -59,6 +59,7 @@ const { adminEventRoundsRouter } = await import('./admin-event-rounds.js');
 const { eventsRouter } = await import('./events.js');
 const { eventsLeaderboardRouter } = await import('./events-leaderboard.js');
 const { scoresRouter } = await import('./scores.js');
+const { scorerAssignmentsRouter } = await import('./scorer-assignments.js');
 const { requestIdMiddleware } = await import('../middleware/request-id.js');
 const { rounds, roundStates, scorerAssignments, pairings, pairingMembers, holeScores, activity, auditLog } =
   await import('../db/schema/index.js');
@@ -102,6 +103,7 @@ function buildApp(): Hono {
   app.route('/api/events', eventsRouter);
   app.route('/api/events', eventsLeaderboardRouter);
   app.route('/api/rounds', scoresRouter);
+  app.route('/api/rounds', scorerAssignmentsRouter);
   return app;
 }
 
@@ -115,6 +117,19 @@ function asPlayer(id: string) {
 async function postJson(app: Hono, path: string, body: unknown): Promise<Response> {
   return app.request(path, {
     method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function postJsonMethod(
+  app: Hono,
+  method: 'POST' | 'PUT',
+  path: string,
+  body: unknown,
+): Promise<Response> {
+  return app.request(path, {
+    method,
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
@@ -506,5 +521,115 @@ describe('E2E: T13-2 start round + score lifecycle', () => {
     expect(detail.myFoursome.foursomeNumber).toBe(1);
     expect(detail.myFoursome.isScorer).toBe(true);
     expect(detail.myFoursome.members.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// =====================================================================
+// T13-4: scorer policy (who may be a foursome's designated scorer).
+// =====================================================================
+
+describe('E2E: T13-4 scorer policy', () => {
+  async function addCaddie(app: Hono, groupId: string, organizerId: string): Promise<string> {
+    asOrganizer(organizerId);
+    const r = await postJson(app, `/api/admin/groups/${groupId}/members`, { mode: 'manual', name: 'Caddie' });
+    expect([200, 201]).toContain(r.status);
+    const rows = await db
+      .select({ playerId: groupMembers.playerId, name: players.name })
+      .from(groupMembers)
+      .innerJoin(players, eq(groupMembers.playerId, players.id))
+      .where(eq(groupMembers.groupId, groupId));
+    return rows.find((m) => m.name === 'Caddie')!.playerId;
+  }
+
+  test('PUT/GET scorer-policy; a designee must be an event participant', async () => {
+    const app = buildApp();
+    const { eventId, organizerId } = await buildToLockedPairings(app, 1);
+    const groupId = (await db.select().from(groups).where(eq(groups.eventId, eventId)))[0]!.id;
+    const caddieId = await addCaddie(app, groupId, organizerId);
+
+    asOrganizer(organizerId);
+    const putRes = await postJsonMethod(app, 'PUT', `/api/admin/events/${eventId}/scorer-policy`, {
+      policy: 'designated',
+      designatedPlayerIds: [caddieId],
+    });
+    expect(putRes.status, await putRes.clone().text()).toBe(200);
+
+    const getRes = await app.request(`/api/admin/events/${eventId}/scorer-policy`);
+    expect(getRes.status).toBe(200);
+    const got = (await getRes.json()) as { policy: string; designatedPlayerIds: string[] };
+    expect(got.policy).toBe('designated');
+    expect(got.designatedPlayerIds).toEqual([caddieId]);
+
+    // A non-participant designee is rejected.
+    const bad = await postJsonMethod(app, 'PUT', `/api/admin/events/${eventId}/scorer-policy`, {
+      policy: 'designated',
+      designatedPlayerIds: [randomUUID()],
+    });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { code: string }).code).toBe('designee_not_in_event');
+  });
+
+  test('designated policy: a caddie (designee, non-member) can be the scorer; a non-designee member cannot', async () => {
+    const app = buildApp();
+    const { eventId, eventRoundId, organizerId, foursomeMembers } = await buildToLockedPairings(app, 1);
+    const groupId = (await db.select().from(groups).where(eq(groups.eventId, eventId)))[0]!.id;
+    const caddieId = await addCaddie(app, groupId, organizerId);
+
+    asOrganizer(organizerId);
+    await postJsonMethod(app, 'PUT', `/api/admin/events/${eventId}/scorer-policy`, {
+      policy: 'designated',
+      designatedPlayerIds: [caddieId],
+    });
+
+    // Caddie (designee, NOT a foursome member) is a valid scorer now.
+    const ok = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, {
+      scorers: [{ foursomeNumber: 1, scorerPlayerId: caddieId }],
+    });
+    expect(ok.status, await ok.clone().text()).toBe(201);
+
+    // A foursome member who is NOT a designee is rejected under 'designated'.
+    await db.delete(rounds); // reset the started round so we can re-start
+    await db.delete(roundStates);
+    await db.delete(scorerAssignments);
+    const bad = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, {
+      scorers: [{ foursomeNumber: 1, scorerPlayerId: foursomeMembers[0]![0]! }],
+    });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { code: string }).code).toBe('invalid_scorer');
+  });
+
+  test('foursome policy (default): a non-active member can self-claim scoring ("I\'ll score")', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId, foursomeMembers } = await buildToLockedPairings(app, 1);
+    const [m0, m1] = foursomeMembers[0]! as [string, string, string];
+
+    // Start with m0 as the active scorer.
+    asOrganizer(organizerId);
+    const startRes = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, {
+      scorers: [{ foursomeNumber: 1, scorerPlayerId: m0 }],
+    });
+    expect(startRes.status).toBe(201);
+    const { roundId } = (await startRes.json()) as { roundId: string };
+
+    // m1 (a foursome member, not the active scorer, not organizer) self-claims.
+    asPlayer(m1);
+    const claim = await postJson(app, `/api/rounds/${roundId}/scorer-assignments/transfer`, {
+      foursomeNumber: 1,
+      toPlayerId: m1,
+    });
+    expect(claim.status, await claim.clone().text()).toBe(200);
+
+    // And a non-member, non-organizer cannot self-claim (not eligible).
+    const outsider = randomUUID();
+    await db.insert(players).values({
+      id: outsider, isOrganizer: false, createdAt: Date.now(), name: 'Outsider',
+      tenantId: TENANT_ID, contextId: CTX,
+    });
+    asPlayer(outsider);
+    const denied = await postJson(app, `/api/rounds/${roundId}/scorer-assignments/transfer`, {
+      foursomeNumber: 1,
+      toPlayerId: outsider,
+    });
+    expect(denied.status).toBe(403);
   });
 });

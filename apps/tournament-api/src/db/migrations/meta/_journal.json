@@ -99,6 +99,13 @@
       "when": 1779486744839,
       "tag": "0013_loose_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1781270217147,
+      "tag": "0014_slippery_giant_girl",
+      "breakpoints": true
     }
   ]
 }

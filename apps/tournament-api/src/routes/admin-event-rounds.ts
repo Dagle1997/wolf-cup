@@ -53,6 +53,7 @@ import { db } from '../db/index.js';
 import {
   eventRounds,
   events,
+  eventScorerDesignees,
   groups,
   groupMembers,
   players,
@@ -65,6 +66,7 @@ import {
   scorerAssignments,
 } from '../db/schema/index.js';
 import { INITIAL_ROUND_STATE } from '../services/round-state.js';
+import { isEligibleScorer, isScorerPolicy } from '../lib/scorer-eligibility.js';
 
 const SAVE_BODY_LIMIT_BYTES = 8 * 1024;
 const TENANT_ID = 'guyan';
@@ -586,11 +588,48 @@ adminEventRoundsRouter.post(
         return c.json({ error: 'bad_request', code: 'missing_scorer_for_foursome', requestId, foursomeNumber: fn }, 400);
       }
     }
+    // T13-4: scorer eligibility is policy-driven. Fetch the event's policy +
+    // organizer + (for 'designated') the designee pool + (for 'open') the
+    // participant set. 'foursome' default reproduces the prior member-or-
+    // organizer rule exactly.
+    const evtRows = await db
+      .select({ scorerPolicy: events.scorerPolicy, organizerPlayerId: events.organizerPlayerId })
+      .from(events)
+      .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)))
+      .limit(1);
+    const policy = isScorerPolicy(evtRows[0]?.scorerPolicy) ? evtRows[0]!.scorerPolicy : 'foursome';
+    const organizerPlayerId = evtRows[0]?.organizerPlayerId ?? player.id;
+
+    const designatedIds = new Set<string>();
+    if (policy === 'designated') {
+      const rows = await db
+        .select({ playerId: eventScorerDesignees.playerId })
+        .from(eventScorerDesignees)
+        .where(and(eq(eventScorerDesignees.eventId, eventId), eq(eventScorerDesignees.tenantId, TENANT_ID)));
+      for (const r of rows) designatedIds.add(r.playerId);
+    }
+
+    const participantIds = new Set<string>();
+    if (policy === 'open') {
+      const rows = await db
+        .select({ playerId: groupMembers.playerId })
+        .from(groupMembers)
+        .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+        .where(and(eq(groups.eventId, eventId), eq(groups.tenantId, TENANT_ID), eq(groupMembers.tenantId, TENANT_ID)));
+      for (const r of rows) participantIds.add(r.playerId);
+    }
+
     for (const s of scorers) {
       const members = foursomeMembers.get(s.foursomeNumber) ?? new Set<string>();
-      const isMember = members.has(s.scorerPlayerId);
-      const isOrganizer = s.scorerPlayerId === player.id;
-      if (!isMember && !isOrganizer) {
+      const eligible = isEligibleScorer({
+        policy,
+        designatedIds,
+        foursomeMemberIds: members,
+        organizerPlayerId,
+        candidateId: s.scorerPlayerId,
+        candidateIsParticipant: participantIds.has(s.scorerPlayerId) || members.has(s.scorerPlayerId),
+      });
+      if (!eligible) {
         return c.json({ error: 'bad_request', code: 'invalid_scorer', requestId, foursomeNumber: s.foursomeNumber }, 400);
       }
     }

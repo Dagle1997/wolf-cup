@@ -29,11 +29,15 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   events,
+  eventScorerDesignees,
+  groupMembers,
+  groups,
   pairingMembers,
   pairings,
   rounds,
   scorerAssignments,
 } from '../db/schema/index.js';
+import { isEligibleScorer, isScorerPolicy } from '../lib/scorer-eligibility.js';
 import { getRoundState } from '../services/round-state.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
@@ -205,9 +209,12 @@ scorerAssignmentsRouter.post(
         }
         const fromPlayerId = scorerRows[0]!.scorerPlayerId;
 
-        // AC-3 (ii): in-tx SELECT event organizer.
+        // AC-3 (ii): in-tx SELECT event organizer (+ T13-4 scorer policy).
         const orgRows = await tx
-          .select({ organizerPlayerId: events.organizerPlayerId })
+          .select({
+            organizerPlayerId: events.organizerPlayerId,
+            scorerPolicy: events.scorerPolicy,
+          })
           .from(events)
           .where(
             and(eq(events.id, round.eventId!), eq(events.tenantId, TENANT_ID)),
@@ -233,11 +240,73 @@ scorerAssignmentsRouter.post(
           };
         }
         const organizerPlayerId = orgRows[0]!.organizerPlayerId;
+        const policy = isScorerPolicy(orgRows[0]!.scorerPolicy)
+          ? orgRows[0]!.scorerPolicy
+          : 'foursome';
 
-        // AC-3 (iii): re-check authorization at write-time.
+        // T13-4: gather the foursome's members + (per policy) the designee pool
+        // and the event participant set — to evaluate scorer eligibility.
+        const foursomeMemberRows = await tx
+          .select({ playerId: pairingMembers.playerId })
+          .from(pairingMembers)
+          .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
+          .where(
+            and(
+              eq(pairings.eventRoundId, round.eventRoundId!),
+              eq(pairings.foursomeNumber, foursomeNumber),
+              eq(pairings.tenantId, TENANT_ID),
+              eq(pairingMembers.tenantId, TENANT_ID),
+            ),
+          );
+        const foursomeMemberIds = new Set(foursomeMemberRows.map((r) => r.playerId));
+
+        const designatedIds = new Set<string>();
+        if (policy === 'designated') {
+          const rows = await tx
+            .select({ playerId: eventScorerDesignees.playerId })
+            .from(eventScorerDesignees)
+            .where(
+              and(
+                eq(eventScorerDesignees.eventId, round.eventId!),
+                eq(eventScorerDesignees.tenantId, TENANT_ID),
+              ),
+            );
+          for (const r of rows) designatedIds.add(r.playerId);
+        }
+        const participantIds = new Set<string>();
+        if (policy === 'open') {
+          const rows = await tx
+            .select({ playerId: groupMembers.playerId })
+            .from(groupMembers)
+            .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+            .where(
+              and(
+                eq(groups.eventId, round.eventId!),
+                eq(groups.tenantId, TENANT_ID),
+                eq(groupMembers.tenantId, TENANT_ID),
+              ),
+            );
+          for (const r of rows) participantIds.add(r.playerId);
+        }
+
+        const eligibilityFor = (candidateId: string): boolean =>
+          isEligibleScorer({
+            policy,
+            designatedIds,
+            foursomeMemberIds,
+            organizerPlayerId,
+            candidateId,
+            candidateIsParticipant:
+              participantIds.has(candidateId) || foursomeMemberIds.has(candidateId),
+          });
+
+        // AC-3 (iii) + T13-4: re-check authorization at write-time. The current
+        // scorer or the organizer may hand off; an eligible player may also
+        // CLAIM the role for THEMSELVES ("I'll score" one-tap handoff).
         const isCurrentScorer = fromPlayerId === player.id;
         const isEventOrganizer = organizerPlayerId === player.id;
-        if (!isCurrentScorer && !isEventOrganizer) {
+        const isSelfClaim = toPlayerId === player.id && eligibilityFor(player.id);
+        if (!isCurrentScorer && !isEventOrganizer && !isSelfClaim) {
           return {
             kind: 'error' as const,
             status: 403 as const,
@@ -249,22 +318,9 @@ scorerAssignmentsRouter.post(
           };
         }
 
-        // AC-4: foursome-membership validation for toPlayerId.
-        const membershipRows = await tx
-          .select({ playerId: pairingMembers.playerId })
-          .from(pairingMembers)
-          .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
-          .where(
-            and(
-              eq(pairings.eventRoundId, round.eventRoundId!),
-              eq(pairings.foursomeNumber, foursomeNumber),
-              eq(pairingMembers.playerId, toPlayerId),
-              eq(pairings.tenantId, TENANT_ID),
-              eq(pairingMembers.tenantId, TENANT_ID),
-            ),
-          )
-          .limit(1);
-        if (membershipRows.length === 0) {
+        // AC-4 + T13-4: the assignee must be an ELIGIBLE scorer under the policy
+        // (was foursome-member-only). Keeps the 422 assignee code.
+        if (!eligibilityFor(toPlayerId)) {
           return {
             kind: 'error' as const,
             status: 422 as const,

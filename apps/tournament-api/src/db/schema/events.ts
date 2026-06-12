@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, index, uniqueIndex, check } from 'drizzle-orm/sqlite-core';
+import { integer, sqliteTable, text, index, uniqueIndex, check, primaryKey } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import { ecosystemColumns } from './_columns.js';
 import { players } from './players.js';
@@ -37,18 +37,33 @@ import { courseRevisions } from './courses.js';
  * code stamps `events.context_id = 'event:' + events.id` at insert; child
  * rows (event_rounds, invites) inherit the parent event's context_id.
  */
-export const events = sqliteTable('events', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  startDate: integer('start_date').notNull(),
-  endDate: integer('end_date').notNull(),
-  timezone: text('timezone').notNull(),
-  organizerPlayerId: text('organizer_player_id')
-    .notNull()
-    .references(() => players.id, { onDelete: 'restrict' }),
-  createdAt: integer('created_at').notNull(),
-  ...ecosystemColumns(),
-});
+export const events = sqliteTable(
+  'events',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    startDate: integer('start_date').notNull(),
+    endDate: integer('end_date').notNull(),
+    timezone: text('timezone').notNull(),
+    organizerPlayerId: text('organizer_player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'restrict' }),
+    createdAt: integer('created_at').notNull(),
+    // T13-4 scorer policy: who is ELIGIBLE to be a foursome's designated
+    // scorer. 'foursome' (default = today's behavior: members + organizer),
+    // 'designated' (an organizer-curated pool in event_scorer_designees +
+    // organizer; how a walking caddie is allowed), 'open' (any participant).
+    // Single-writer is unchanged — this only gates who may BECOME the scorer.
+    scorerPolicy: text('scorer_policy').notNull().default('foursome'),
+    ...ecosystemColumns(),
+  },
+  (t) => ({
+    scorerPolicyCheck: check(
+      'check_events_scorer_policy',
+      sql`${t.scorerPolicy} IN ('foursome', 'designated', 'open')`,
+    ),
+  }),
+);
 
 export type Event = typeof events.$inferSelect;
 
@@ -102,3 +117,29 @@ export const invites = sqliteTable(
 );
 
 export type Invite = typeof invites.$inferSelect;
+
+/**
+ * T13-4 — the per-event pool of allowed scorers when `events.scorer_policy =
+ * 'designated'`. A designee is any roster player the organizer approves to
+ * score (incl. a non-playing walking caddie added via the normal roster
+ * tools). Ignored under 'foursome' / 'open' policies. PK (event_id, player_id)
+ * makes membership idempotent.
+ */
+export const eventScorerDesignees = sqliteTable(
+  'event_scorer_designees',
+  {
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    ...ecosystemColumns(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.eventId, t.playerId] }),
+    eventIdx: index('idx_event_scorer_designees_event_id').on(t.eventId),
+  }),
+);
+
+export type EventScorerDesignee = typeof eventScorerDesignees.$inferSelect;
