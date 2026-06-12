@@ -18,7 +18,6 @@ import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
-import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Loader ---------------------------------------------------------------
 
@@ -475,9 +474,11 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
   return (
     <PageShell title={`Pairings — ${data.event.name}`}>
       <BackLink to="/admin/events/$eventId" params={{ eventId }} label="Event admin" />
-      <div>
-        <label>
-          Foursomes per round:{' '}
+
+      {/* Controls: count on its own row; Save is the only primary action. */}
+      <div className="card" style={{ padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-3)' }}>
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', fontWeight: 600 }}>
+          Foursomes per round
           <input
             type="number"
             min="1"
@@ -490,38 +491,44 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
               }
             }}
             data-testid="foursomes-per-round"
+            style={{ width: 72, textAlign: 'center' }}
           />
         </label>
-        <button
-          type="button"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending || !isDirty}
-          data-testid="save-button"
-        >
-          {saveMutation.isPending ? 'Saving…' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={() => query.refetch()}
-          disabled={query.isFetching}
-          data-testid="refresh-button"
-        >
-          Refresh
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
+          <button
+            type="button"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || !isDirty}
+            data-testid="save-button"
+            style={{ flex: 1, minHeight: 'var(--control-height)', background: 'var(--color-brand-primary)', color: '#fff', fontWeight: 700, border: 'none' }}
+          >
+            {saveMutation.isPending ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            onClick={() => query.refetch()}
+            disabled={query.isFetching}
+            data-testid="refresh-button"
+            style={{ minHeight: 'var(--control-height)' }}
+          >
+            Refresh
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => regenMutation.mutate()}
           disabled={regenMutation.isPending}
           data-testid="regenerate-button"
+          style={{ width: '100%', minHeight: 'var(--control-height)', marginTop: 'var(--space-2)' }}
         >
           {regenMutation.isPending ? 'Regenerating…' : '🔀 Regenerate unpinned'}
         </button>
       </div>
 
       {warnings.length > 0 ? (
-        <div role="alert" data-testid="warnings-banner">
+        <div role="alert" data-testid="warnings-banner" className="card" style={{ borderColor: 'var(--color-accent)', marginBottom: 'var(--space-3)' }}>
           <strong>Warnings:</strong>
-          <ul>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
             {warnings.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
@@ -529,47 +536,54 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
         </div>
       ) : null}
 
-      {savedAt !== null ? <p role="status">Saved.</p> : null}
-      {errorText !== null ? <p role="alert">{errorText}</p> : null}
+      {savedAt !== null ? <p role="status" style={{ color: 'var(--color-money-pos)', fontWeight: 600 }}>Saved.</p> : null}
+      {errorText !== null ? <p role="alert" style={{ color: 'var(--color-money-neg)', fontWeight: 600 }}>{errorText}</p> : null}
 
-      <ScrollableTable label="Pairings"><table>
-        <thead>
-          <tr>
-            <th>Round</th>
-            <th>Lock</th>
-            {Array.from({ length: foursomesPerRound }, (_, fIdx) => (
-              <th key={fIdx} colSpan={FOURSOME_SIZE}>
-                Foursome {fIdx + 1}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {grid.map((r, rIdx) => (
-            <tr key={r.eventRoundId} data-testid={`round-row-${rIdx}`}>
-              <td>{r.roundNumber}</td>
-              <td>
-                <button
-                  type="button"
-                  onClick={() => toggleRoundLock(rIdx)}
-                  data-testid={`lock-round-${rIdx}`}
-                >
-                  {r.locked ? '🔒 Locked' : '🔓 Lock round'}
-                </button>
-              </td>
-              {r.foursomes.map((slots, fIdx) =>
-                slots.map((cell, sIdx) => {
+      {/* One stacked card per round; within it, one card per foursome with its
+          four player slots stacked vertically — no horizontal overflow. */}
+      {grid.map((r, rIdx) => (
+        <section
+          key={r.eventRoundId}
+          data-testid={`round-row-${rIdx}`}
+          style={{ marginBottom: 'var(--space-4)' }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+            <strong style={{ fontSize: 'var(--font-md)' }}>Round {r.roundNumber}</strong>
+            <button
+              type="button"
+              onClick={() => toggleRoundLock(rIdx)}
+              data-testid={`lock-round-${rIdx}`}
+              style={{ minHeight: 'var(--control-height)', background: r.locked ? 'var(--color-brand-tint)' : undefined, fontWeight: 600 }}
+            >
+              {r.locked ? '🔒 Locked' : '🔓 Lock round'}
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+            {r.foursomes.map((slots, fIdx) => (
+              <div key={fIdx} className="card" style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                <div style={{ fontSize: 'var(--font-sm)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
+                  Foursome {fIdx + 1}
+                </div>
+                {slots.map((cell, sIdx) => {
                   const cellKey = `${rIdx}-${fIdx}-${sIdx}`;
                   const pinned = pins.has(cellKey);
                   const teeSelectValue = cell.teeColor ?? '';
+                  const filled = cell.playerId !== EMPTY;
                   return (
-                    <td key={cellKey} data-testid={`cell-${rIdx}-${fIdx}-${sIdx}`}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div
+                      key={cellKey}
+                      data-testid={`cell-${rIdx}-${fIdx}-${sIdx}`}
+                      style={{ padding: 'var(--space-2) 0', borderTop: sIdx > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <span aria-hidden style={{ width: 18, flexShrink: 0, fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{sIdx + 1}</span>
                         <select
                           value={cell.playerId}
                           onChange={(e) => setCell(rIdx, fIdx, sIdx, e.target.value)}
                           disabled={r.locked}
                           data-testid={`select-${rIdx}-${fIdx}-${sIdx}`}
+                          style={{ flex: 1, minWidth: 0, minHeight: 'var(--control-height)' }}
                         >
                           <option value={EMPTY}>(empty)</option>
                           {data.roster.map((p) => (
@@ -578,15 +592,27 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
                             </option>
                           ))}
                         </select>
+                        <button
+                          type="button"
+                          onClick={() => togglePin(rIdx, fIdx, sIdx)}
+                          disabled={r.locked || !filled}
+                          data-testid={`pin-${rIdx}-${fIdx}-${sIdx}`}
+                          title={pinned ? 'Pinned — kept on Regenerate' : 'Pin to keep on Regenerate'}
+                          aria-label={pinned ? 'Pinned' : 'Pin'}
+                          style={{ flexShrink: 0, minHeight: 'var(--control-height)', minWidth: 'var(--control-height)', opacity: filled ? 1 : 0.4 }}
+                        >
+                          {pinned ? '📌' : '📍'}
+                        </button>
+                      </div>
+                      {/* Per-player tee override — only meaningful for a filled slot. */}
+                      {filled ? (
                         <select
                           value={teeSelectValue}
-                          onChange={(e) =>
-                            setCellTee(rIdx, fIdx, sIdx, e.target.value)
-                          }
-                          disabled={r.locked || cell.playerId === EMPTY}
+                          onChange={(e) => setCellTee(rIdx, fIdx, sIdx, e.target.value)}
+                          disabled={r.locked}
                           data-testid={`tee-${rIdx}-${fIdx}-${sIdx}`}
                           title={`Round default: ${r.defaultTeeColor}`}
-                          style={{ fontSize: '0.85em' }}
+                          style={{ marginTop: 4, marginLeft: 26, fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}
                         >
                           <option value="">{`tee: ${r.defaultTeeColor} (default)`}</option>
                           {r.availableTees
@@ -597,24 +623,15 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
                               </option>
                             ))}
                         </select>
-                        <button
-                          type="button"
-                          onClick={() => togglePin(rIdx, fIdx, sIdx)}
-                          disabled={r.locked}
-                          data-testid={`pin-${rIdx}-${fIdx}-${sIdx}`}
-                          title={pinned ? 'Pinned' : 'Pin'}
-                        >
-                          {pinned ? '📌' : '📍'}
-                        </button>
-                      </div>
-                    </td>
+                      ) : null}
+                    </div>
                   );
-                }),
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table></ScrollableTable>
+                })}
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </PageShell>
   );
 }
