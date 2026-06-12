@@ -122,18 +122,17 @@ export function InvitePage({ token }: { token: string }) {
   if (claimedPlayer) {
     const event = inviteQuery.data?.event;
     return (
-      <div>
-        <h1>Welcome, {claimedPlayer.name}!</h1>
-        {event ? (
-          <p>
-            Event: {event.name}
+      <div style={{ maxWidth: 'var(--page-max-width)', margin: '0 auto', padding: 'var(--space-4)' }}>
+        <div className="card" style={{ textAlign: 'center', padding: 'var(--space-6) var(--space-4)' }}>
+          <div aria-hidden="true" style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--color-brand-tint)', color: 'var(--color-brand-primary)', fontSize: 'var(--font-2xl)', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto var(--space-3)' }}>
+            ✓
+          </div>
+          <h1 style={{ fontSize: 'var(--font-xl)', margin: 0 }}>Welcome, {claimedPlayer.name}!</h1>
+          {event ? <p style={{ color: 'var(--color-text-secondary)', margin: 'var(--space-2) 0 0' }}>{event.name}</p> : null}
+          <p style={{ color: 'var(--color-text-muted)', marginTop: 'var(--space-3)' }}>
+            Your device is registered — you&apos;re all set.
           </p>
-        ) : null}
-        <p>Your device is registered. You can now view the event schedule.</p>
-        <p>
-          {/* Placeholder — T7's schedule view doesn't exist yet. */}
-          <a href={`/event/${event?.id ?? ''}`}>Event schedule (coming soon)</a>
-        </p>
+        </div>
       </div>
     );
   }
@@ -186,39 +185,63 @@ export function InvitePage({ token }: { token: string }) {
   const claimError = claimMutation.error;
 
   return (
-    <div>
-      <h1>You're invited: {data.event.name}</h1>
-      <p>Tap your name to register this device.</p>
-      {claimError ? (
-        <p role="alert">
-          {claimError.code === 'player_not_in_event'
-            ? "That name isn't on this event's roster — please pick again."
-            : claimError.code === 'invite_expired'
-              ? 'This invite has expired. Ask Josh for a new one.'
-              : claimError.code === 'invite_not_found'
-                ? 'Invite not found.'
-                : 'Something went wrong. Please try again.'}
-        </p>
-      ) : null}
-      <ul>
-        {data.roster.map((entry) => (
-          <li key={entry.playerId}>
-            <button
-              type="button"
-              onClick={() => claimMutation.mutate(entry.playerId)}
-              disabled={claimMutation.isPending}
-            >
-              {entry.name}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {data.roster.length === 0 ? (
-        <EmptyState
-          title="The event roster is empty."
-          body="Ask Josh to add players first."
-        />
-      ) : null}
+    <div style={{ maxWidth: 'var(--page-max-width)', margin: '0 auto', paddingBottom: 'var(--space-6)' }}>
+      <header
+        style={{
+          background: 'var(--color-brand-primary)', color: '#fff',
+          padding: 'var(--space-6) var(--space-4)', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
+          marginBottom: 'var(--space-4)',
+        }}
+      >
+        <h1 style={{ fontSize: 'var(--font-sm)', fontWeight: 600, opacity: 0.85, margin: 0, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          You&apos;re invited
+        </h1>
+        <div style={{ fontSize: 'var(--font-xl)', fontWeight: 700, marginTop: 4 }}>{data.event.name}</div>
+        <p style={{ margin: 'var(--space-2) 0 0', opacity: 0.9 }}>Tap your name to join.</p>
+      </header>
+
+      <div style={{ padding: '0 var(--space-4)' }}>
+        {claimError ? (
+          <p role="alert" style={{ color: 'var(--color-danger)', fontWeight: 600 }}>
+            {claimError.code === 'player_not_in_event'
+              ? "That name isn't on this event's roster — please pick again."
+              : claimError.code === 'invite_expired'
+                ? 'This invite has expired. Ask Josh for a new one.'
+                : claimError.code === 'invite_not_found'
+                  ? 'Invite not found.'
+                  : 'Something went wrong. Please try again.'}
+          </p>
+        ) : null}
+
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          {data.roster.map((entry) => (
+            <li key={entry.playerId}>
+              <button
+                type="button"
+                data-skip-base-style
+                onClick={() => claimMutation.mutate(entry.playerId)}
+                disabled={claimMutation.isPending}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                  minHeight: 'var(--control-height-lg)', padding: '0 var(--space-4)',
+                  background: 'var(--color-surface)', border: '1px solid var(--color-border-subtle)',
+                  borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-card)', cursor: 'pointer',
+                  textAlign: 'left', font: 'inherit', color: 'var(--color-text-primary)',
+                }}
+              >
+                <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-brand-tint)', color: 'var(--color-brand-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flex: '0 0 auto' }}>
+                  {(entry.name ?? '?').trim().charAt(0).toUpperCase()}
+                </span>
+                <span style={{ flex: 1, fontSize: 'var(--font-md)', fontWeight: 600 }}>{entry.name}</span>
+                <span aria-hidden="true" style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-lg)' }}>›</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {data.roster.length === 0 ? (
+          <EmptyState title="The event roster is empty." body="Ask Josh to add players first." />
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -60,10 +60,10 @@ describe('InvitePage', () => {
     renderWithQueryClient();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('heading', { name: /you're invited: pinehurst 2026/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /you're invited/i })).toBeInTheDocument();
     });
+    // Event name is shown beneath the "You're invited" heading (not in it).
+    expect(screen.getByText(/pinehurst 2026/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Alice Anderson' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Bob Brown' })).toBeInTheDocument();
   });
