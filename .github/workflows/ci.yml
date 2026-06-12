@@ -40,6 +40,24 @@ jobs:
       - name: Test (tournament-web)
         run: pnpm --filter @tournament/web test
 
+      # Browser E2E (T14-1): first real-browser coverage — score entry, the
+      # IndexedDB offline queue, start-round picker, invite-claim. Playwright
+      # boots the seeded tournament-api (via tsx) + tournament-web (vite) itself.
+      # Kept a distinct step so a browser flake is diagnosable apart from units.
+      - name: Install Playwright browser (chromium)
+        run: pnpm --filter @tournament/web exec playwright install --with-deps chromium
+
+      - name: E2E (tournament-web, browser)
+        run: pnpm --filter @tournament/web e2e
+
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/tournament-web/playwright-report/
+          retention-days: 7
+
       - name: Lint
         run: pnpm -r lint
 

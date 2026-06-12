@@ -482,4 +482,29 @@ describe('E2E: T13-2 start round + score lifecycle', () => {
     expect(res.status).toBe(422);
     expect(((await res.json()) as { code: string }).code).toBe('pairings_not_ready');
   });
+
+  // T13-3 regression: a DESIGNATED SCORER who is NOT a pairing member (the
+  // organizer running a foursome they aren't playing in — also the basis for a
+  // walking-caddie scorer) must be able to OPEN score-entry, not just POST.
+  // Before the fix, GET /api/rounds/:roundId 404'd them (foursome resolved by
+  // membership only) so the web UI showed "This round isn't available to you".
+  test('T13-3: non-member designated scorer (organizer) can open score-entry', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 1);
+    asOrganizer(organizerId);
+    const startRes = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`,
+      startBody([{ foursomeNumber: 1, scorerPlayerId: organizerId }]));
+    expect(startRes.status).toBe(201);
+    const { roundId } = (await startRes.json()) as { roundId: string };
+
+    // Organizer is the designated scorer but NOT in any pairing.
+    const detailRes = await app.request(`/api/rounds/${roundId}`);
+    expect(detailRes.status).toBe(200);
+    const detail = (await detailRes.json()) as {
+      myFoursome: { foursomeNumber: number; isScorer: boolean; members: unknown[] };
+    };
+    expect(detail.myFoursome.foursomeNumber).toBe(1);
+    expect(detail.myFoursome.isScorer).toBe(true);
+    expect(detail.myFoursome.members.length).toBeGreaterThanOrEqual(3);
+  });
 });

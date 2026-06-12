@@ -160,13 +160,33 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
       ),
     )
     .limit(1);
-  if (myFoursomeRows.length === 0) {
+  let myFoursomeNumber = myFoursomeRows[0]?.foursomeNumber;
+  if (myFoursomeNumber === undefined) {
+    // T13-3: a DESIGNATED SCORER who is not a pairing member (e.g. the event
+    // organizer running a foursome they aren't playing in) still resolves to
+    // the foursome they score. Mirrors requireScorerForRound, which already
+    // authorizes the POST path this exact way (scorer_assignments, not
+    // membership) — without this fallback, score-entry 404s an organizer-scorer
+    // that the start endpoint explicitly allowed, leaving them unable to score.
+    const scorerFoursomeRows = await db
+      .select({ foursomeNumber: scorerAssignments.foursomeNumber })
+      .from(scorerAssignments)
+      .where(
+        and(
+          eq(scorerAssignments.roundId, roundId),
+          eq(scorerAssignments.scorerPlayerId, player.id),
+          eq(scorerAssignments.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    myFoursomeNumber = scorerFoursomeRows[0]?.foursomeNumber;
+  }
+  if (myFoursomeNumber === undefined) {
     return c.json(
       { error: 'not_found', code: 'round_not_found', requestId },
       404,
     );
   }
-  const myFoursomeNumber = myFoursomeRows[0]!.foursomeNumber;
 
   // (4) Members of my foursome (ordered by slot_number ASC — load-bearing
   // for ref-positional indexing in the UI).

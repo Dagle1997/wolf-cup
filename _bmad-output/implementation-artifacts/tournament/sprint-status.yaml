@@ -423,3 +423,94 @@ development_status:
   # (event organizer per T13-1 Option B, or requireOrganizer interim until the
   # multi-org auth pass). tournament-api + tournament-web only.
   T13-2-start-round-instantiate-scoring: done
+
+  # T13-3: ORGANIZER-AS-SCORER CANNOT SCORE (E2E-surfaced 2026-06-11). The
+  # T13-2 start endpoint explicitly accepts the event organizer as a foursome's
+  # designated scorer ("foursome member OR the organizer"), but score-entry's
+  # round-detail endpoint (scores.ts:150-168) resolves the caller's foursome
+  # SOLELY by pairing membership — a non-member organizer-scorer gets 404
+  # round_not_found, and the web UI shows "This round isn't available to you."
+  # So the organizer-scorer path the start endpoint permits is non-functional:
+  # they can start a round designating themselves, navigate to score-entry, and
+  # be unable to score. Surfaced by the T14-1 browser E2E (the realistic path —
+  # a logged-in foursome MEMBER as scorer — works; the organizer-not-in-foursome
+  # path does not). DECISION NEEDED (Josh): either (a) make round-detail resolve
+  # the foursome by scorer_assignments when the caller is the designated scorer
+  # but not a member, OR (b) reject organizer-as-scorer at start unless the
+  # organizer is also a pairing member (tighten T13-2 to match score-entry).
+  # Evidence: scores.ts:150-168; onboarding-lifecycle.e2e line ~416 (start
+  # accepts organizer-scorer); reproduced live in lifecycle.spec.ts iteration.
+  # FIXED 2026-06-11: GET round-detail (scores.ts) now falls back to
+  # scorer_assignments when the caller isn't a pairing member — mirrors
+  # requireScorerForRound (which already authorized the POST path this way). So
+  # any DESIGNATED scorer (organizer / walking caddie / non-player) can open
+  # score-entry, not just POST. Regression test in onboarding-lifecycle.e2e
+  # ('T13-3: non-member designated scorer can open score-entry'). This is the
+  # enabling primitive for T13-4 (scorer-policy setup option).
+  T13-3-organizer-scorer-cannot-score: done
+
+  # T13-4: SCORER POLICY as an event setup option (Josh request 2026-06-11).
+  # The organizer should choose, at tournament setup, WHO may score each
+  # foursome: (a) OPEN — anyone signed in; (b) FOURSOME MEMBERS — any player in
+  # the foursome; (c) DESIGNATED — only specific people the organizer names
+  # (incl. a non-playing "walking party caddie"); default could be foursome+
+  # organizer (today's behavior). Touches: event/round schema (scorer_policy
+  # enum + optional allowed-scorer list / caddie identities), the event-creation
+  # wizard UI, the start-round picker (honor the policy), and the auth surfaces
+  # (requireScorerForRound + the T13-3 GET fallback) which must enforce it. The
+  # "walking caddie" case needs a way to add a non-playing scorer identity
+  # (the T13-3 fix already lets a non-member designated scorer score). NEEDS
+  # DESIGN before build — schema + UX + auth scoping. tournament-api + -web.
+  T13-4-scorer-policy-setup-option: backlog
+
+  # ---------------------------------------------------------------------------
+  # Epic T14: Test & Validation Hardening
+  # Opened 2026-06-11. The CODE backlog (T1-T8, T10-T13) was complete but the
+  # app had been exercised end-to-end by real people on real devices ~once
+  # (the T13 run-through), and that once found two show-stoppers. T14 closes the
+  # validation gap with a durable, CI-enforced regression net: the FIRST browser
+  # E2E (the structural blind spot unit/jsdom tests can't reach), a full HTTP
+  # lifecycle chain through the money layer, the real-auth path every other test
+  # mocks away, and the resurrected T9 operational checklists. See the plan at
+  # ~/.claude/plans/fuzzy-noodling-goblet.md and T14-run-through-script.md.
+  # ---------------------------------------------------------------------------
+  epic-T14: in-progress
+
+  # T14-1: Browser E2E foundation + first specs (tournament-web). Playwright
+  # against a REAL seeded api (tsx-from-source — avoids the stale-dist trap) +
+  # vite. Specs: invite-claim (device binding), start-round (member-scorer
+  # picker), score-entry + offline queue (enqueue → reconnect → drain → server,
+  # API-verified). Harness: e2e-seed.ts drives the real app in-process with a
+  # real minted session; FAKE_STANDALONE_INIT defeats the installed-PWA gate.
+  # Surfaced T13-3 (organizer-scorer cannot score). 3 specs green + typechecked
+  # (tsconfig.e2e.json). tournament-web + a tournament-api seed script.
+  T14-1-browser-e2e-foundation: done
+
+  # T14-2: API lifecycle-chain e2e (tournament-api). lifecycle-full.e2e.test.ts
+  # extends the onboarding chain through the MONEY layer over real HTTP: score
+  # 18 holes → manual press → scorer handoff → score correction → money matrix
+  # (directional + anti-symmetric on real data) → bet create+read → complete →
+  # finalize. Proves the SEAMS the per-route integration tests don't (they seed
+  # rows directly). Per-pid temp-file DB isolation (the shared :memory: cache
+  # leaks across reused forks → money=0 only under the full suite).
+  T14-2-api-lifecycle-chain-e2e: done
+
+  # T14-3: Real-auth e2e (tournament-api). auth-invite-rebind.e2e.test.ts is the
+  # ONLY test that does NOT mock requireSession: invite-claim (binds device,
+  # session_id NULL) → Google OAuth callback (arctic stubbed, crafted id_token)
+  # → device_binding consolidates onto the real session (T3-7) → a gated route
+  # authenticates via the UNMOCKED requireSession, and a bogus session is 401'd.
+  T14-3-real-auth-invite-rebind-e2e: done
+
+  # T14-4: CI gate. ci.yml runs `playwright install --with-deps chromium` + a
+  # distinct "E2E (tournament-web, browser)" step after the unit tests, with a
+  # report artifact uploaded on failure. T14-2/3 run under the existing vitest
+  # steps. tsconfig.e2e.json wired into `typecheck` so e2e code is type-guarded.
+  T14-4-ci-playwright-gate: done
+
+  # T14-5: Operational artifacts (docs, not code). Resurrects the deferred T9
+  # validation as fill-in checklists (T9-2 pre-event walkthrough, T9-4 per-device
+  # PWA install verification) + a full-lifecycle manual run-through script with a
+  # bug-log table feeding new T13/T14 stories. The on-course drill itself remains
+  # Josh's operational work; this only structures it.
+  T14-5-operational-artifacts: done

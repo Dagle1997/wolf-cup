@@ -46,6 +46,13 @@ reference/2025 Playoff Media/
 # Scratch / work-in-progress scorecards (use reference/ for canonical copies)
 _tmp_scorecards/
 
+# E2E (Playwright) — temp seeded DB, handoff, reports, artifacts
+apps/tournament-web/e2e/.tmp/
+apps/tournament-api/.e2e-tmp/
+apps/tournament-web/playwright-report/
+apps/tournament-web/test-results/
+playwright/.cache/
+
 # Claude Code local config (not source) — except orchestrator commands worth versioning.
 # Use glob form (.claude/*) not directory form (.claude/) so git descends and the
 # negations below can take effect.
