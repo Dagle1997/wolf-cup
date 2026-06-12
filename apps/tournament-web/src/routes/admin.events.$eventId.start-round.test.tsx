@@ -110,7 +110,10 @@ describe('StartRoundPage', () => {
     setFetch(STARTABLE, 201);
     renderPage(<StartRoundPage eventId="evt-1" organizerId={ORG_ID} />);
     await waitFor(() => expect(screen.getByTestId('start-btn-er-1')).toBeInTheDocument());
+    // Start is a one-way action → a confirm step gates the POST.
     fireEvent.click(screen.getByTestId('start-btn-er-1'));
+    await waitFor(() => expect(screen.getByTestId('confirm-start-er-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('confirm-start-er-1'));
     await waitFor(() => {
       const startCall = vi.mocked(fetch).mock.calls.find(
         (c) => typeof c[0] === 'string' && c[0].includes('/event-rounds/er-1/start'),

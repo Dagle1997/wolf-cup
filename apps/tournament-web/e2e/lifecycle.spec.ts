@@ -62,6 +62,8 @@ test('start-round: organizer designates a scorer and starts scoring', async ({ b
     .getByTestId(`scorer-${fx.eventRoundId}:1`)
     .selectOption(fx.scorerPlayerId);
   await page.getByTestId(`start-btn-${fx.eventRoundId}`).click();
+  // Start is a one-way action → confirm before it posts.
+  await page.getByTestId(`confirm-start-${fx.eventRoundId}`).click();
 
   // Navigates to score-entry for the new round.
   await page.waitForURL(/\/rounds\/[^/]+\/score-entry/);

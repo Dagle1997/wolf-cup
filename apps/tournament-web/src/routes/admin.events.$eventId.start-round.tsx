@@ -78,6 +78,8 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
+  // The eventRoundId the organizer is confirming (one-way action → confirm step).
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   if (query.isPending) {
     return (
@@ -154,10 +156,16 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
           }
         />
       ) : (
-        startableRounds.map((r) => (
-          <section key={r.eventRoundId} style={{ marginBottom: 24 }} data-testid={`start-round-${r.eventRoundId}`}>
-            <h2 style={{ fontSize: 'var(--font-lg)' }}>Round {r.roundNumber}</h2>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)' }}>
+        startableRounds.map((r) => {
+          const isConfirming = confirming === r.eventRoundId;
+          const foursomeCount = r.pairings.length;
+          return (
+          <section key={r.eventRoundId} className="card" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-4)' }} data-testid={`start-round-${r.eventRoundId}`}>
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+              <h2 style={{ fontSize: 'var(--font-lg)', margin: 0 }}>Round {r.roundNumber}</h2>
+              <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}>{foursomeCount} foursome{foursomeCount === 1 ? '' : 's'}</span>
+            </div>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)', marginTop: 4 }}>
               Pick who scores each foursome (they must be able to sign in). Defaults to you.
             </p>
             {r.pairings
@@ -165,13 +173,22 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
               .sort((a, b) => a.foursomeNumber - b.foursomeNumber)
               .map((p) => {
                 const key = `${r.eventRoundId}:${p.foursomeNumber}`;
+                const memberNames = p.members.map((m) => m.name).filter(Boolean).join(', ');
                 return (
-                  <div key={key} style={{ margin: '8px 0' }}>
-                    <label style={{ marginRight: 8 }}>Foursome {p.foursomeNumber} scorer:</label>
+                  <div key={key} style={{ margin: 'var(--space-3) 0', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--font-sm)', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-muted)' }}>
+                      Foursome {p.foursomeNumber}
+                    </div>
+                    {/* Context: who's actually playing in this foursome. */}
+                    <div style={{ fontSize: 'var(--font-sm)', margin: '2px 0 var(--space-2)' }}>{memberNames || '—'}</div>
+                    <label htmlFor={`scorer-sel-${key}`} style={{ display: 'block', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>Scorer</label>
                     <select
+                      id={`scorer-sel-${key}`}
                       data-testid={`scorer-${key}`}
                       value={picks[key] ?? ORGANIZER}
                       onChange={(e) => setPicks((prev) => ({ ...prev, [key]: e.target.value }))}
+                      disabled={isConfirming}
+                      style={{ width: '100%', minHeight: 'var(--control-height)' }}
                     >
                       <option value={ORGANIZER}>You (organizer)</option>
                       {(() => {
@@ -192,16 +209,46 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
                   </div>
                 );
               })}
-            <button
-              type="button"
-              data-testid={`start-btn-${r.eventRoundId}`}
-              disabled={busy === r.eventRoundId}
-              onClick={() => start(r.eventRoundId, r.pairings)}
-            >
-              {busy === r.eventRoundId ? 'Starting…' : 'Start round'}
-            </button>
+
+            {isConfirming ? (
+              <div style={{ marginTop: 'var(--space-4)' }}>
+                <div role="alert" style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
+                  <span aria-hidden>⚠ </span>This opens scoring for Round {r.roundNumber} and locks the lineup. You can&apos;t undo it.
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(null)}
+                    disabled={busy === r.eventRoundId}
+                    style={{ minHeight: 'var(--control-height-lg)' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`confirm-start-${r.eventRoundId}`}
+                    disabled={busy === r.eventRoundId}
+                    onClick={() => start(r.eventRoundId, r.pairings)}
+                    style={{ flex: 1, minHeight: 'var(--control-height-lg)', background: 'var(--color-brand-primary)', color: '#fff', fontWeight: 700, border: 'none' }}
+                  >
+                    {busy === r.eventRoundId ? 'Starting…' : `Yes, start Round ${r.roundNumber}`}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                data-testid={`start-btn-${r.eventRoundId}`}
+                disabled={busy === r.eventRoundId}
+                onClick={() => setConfirming(r.eventRoundId)}
+                style={{ width: '100%', minHeight: 'var(--control-height-lg)', marginTop: 'var(--space-3)', background: 'var(--color-brand-primary)', color: '#fff', fontWeight: 700, border: 'none' }}
+              >
+                Start round
+              </button>
+            )}
           </section>
-        ))
+          );
+        })
       )}
     </PageShell>
   );
