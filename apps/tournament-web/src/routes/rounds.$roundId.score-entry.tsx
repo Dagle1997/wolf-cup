@@ -531,20 +531,29 @@ export function ScoreEntryRoute() {
           </button>
         </div>
       )}
-      <HandoffControl
-        roundId={roundId}
-        foursomeNumber={data.myFoursome.foursomeNumber}
-        members={data.myFoursome.members}
-        myPlayerId={data.myFoursome.scorerPlayerId}
-        queueDrain={queue.drain}
-        queueRefreshCount={queue.refreshCount}
-      />
-      <PressControl roundId={roundId} />
       <ScoreEntryForm
         data={data}
         queue={queue}
         course={courseQuery.data ?? null}
       />
+      {/* Once-or-twice-a-round actions live behind a disclosure so they don't
+          outrank the 18×-a-round scoring controls. */}
+      <details className="card" style={{ marginTop: 'var(--space-4)' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+          More — hand off scorer, presses
+        </summary>
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          <HandoffControl
+            roundId={roundId}
+            foursomeNumber={data.myFoursome.foursomeNumber}
+            members={data.myFoursome.members}
+            myPlayerId={data.myFoursome.scorerPlayerId}
+            queueDrain={queue.drain}
+            queueRefreshCount={queue.refreshCount}
+          />
+          <PressControl roundId={roundId} />
+        </div>
+      </details>
     </>
   );
 }
@@ -1341,79 +1350,122 @@ function ScoreEntryForm({
 
   // Scorecard-shell: par + SI for the current hole, populated from course data.
   const currentHoleInfo = course?.holes.find((h) => h.holeNumber === currentHole);
+  const par = currentHoleInfo?.par ?? 4;
+  const enteredCount = members.filter((m) => SCORE_RE.test(currentInputs[m.playerId] ?? '')).length;
 
   return (
     <div data-testid="score-entry-form">
-      <header>
-        <span data-testid="current-hole">Hole {currentHole}</span>
-        <span data-testid="sync-chip">
+      {/* Sticky hole header — big hole number, par/SI, sync pill (no more
+          "Hole 4All synced" run-together). */}
+      <header
+        style={{
+          position: 'sticky', top: 0, zIndex: 10, background: 'var(--color-surface)',
+          boxShadow: 'var(--shadow-card)', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
+          padding: 'var(--space-3) var(--space-4)', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', gap: 'var(--space-3)',
+        }}
+      >
+        <div>
+          <span
+            data-testid="current-hole"
+            style={{ fontSize: 'var(--font-2xl)', fontWeight: 800, color: 'var(--color-brand-primary)', textTransform: 'uppercase', lineHeight: 1 }}
+          >
+            Hole {currentHole}
+          </span>
+          {currentHoleInfo && (
+            <div data-testid="scorecard-shell-strip" style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-sm)', marginTop: 2 }}>
+              Par {currentHoleInfo.par} · SI {currentHoleInfo.si}
+            </div>
+          )}
+        </div>
+        <span
+          data-testid="sync-chip"
+          style={{
+            fontSize: 'var(--font-xs)', fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--radius-md)', whiteSpace: 'nowrap',
+            background: queue.pendingCount > 0 ? 'var(--color-warning-bg)' : 'var(--color-brand-tint)',
+            color: queue.pendingCount > 0 ? 'var(--color-accent)' : 'var(--color-success)',
+          }}
+        >
           {queue.pendingCount > 0 ? `${queue.pendingCount} queued` : 'All synced'}
         </span>
       </header>
 
-      {currentHoleInfo && (
-        <div data-testid="scorecard-shell-strip">
-          <span>Hole {currentHoleInfo.holeNumber}</span>
-          <span> • Par {currentHoleInfo.par}</span>
-          <span> • SI {currentHoleInfo.si}</span>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-2">
-        {members.map((member, idx) => (
-          <div key={member.playerId} className="card">
-            <div className="member-name">{member.name}</div>
-            <input
-              ref={(el) => {
-                scoreInputRefs.current[idx] = el;
-              }}
-              data-testid={`score-input-${idx}`}
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={2}
-              aria-label={`Score for ${member.name}`}
-              value={currentInputs[member.playerId] ?? ''}
-              onChange={(e) => handleScoreChange(member, idx, e.target.value)}
-              onBlur={() => handleBlur(idx)}
-            />
-            <input
-              data-testid={`putts-input-${idx}`}
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={2}
-              aria-label={`Putts for ${member.name}`}
-              placeholder="Putts"
-              value={currentPutts[member.playerId] ?? ''}
-              onChange={(e) => handlePuttsChange(member, e.target.value)}
-            />
-          </div>
-        ))}
+      {/* Hole progress strip — orientation across the round. */}
+      <div aria-hidden="true" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: 'var(--space-2) 0', justifyContent: 'center' }}>
+        {Array.from({ length: holesToPlay }, (_, k) => k + 1).map((h) => {
+          const filled = serverFilledHoles.has(h); const skipped = skippedHoles.has(h); const cur = h === currentHole;
+          return (
+            <span key={h} style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: cur ? 'var(--color-brand-primary)' : filled ? 'var(--color-success)' : 'transparent',
+              border: cur ? 'none' : skipped ? '1px solid var(--color-accent)' : filled ? 'none' : '1px solid var(--color-border)',
+            }} />
+          );
+        })}
       </div>
 
-      {!allValid && (
-        <div data-testid="validation-banner">
-          All {members.length} scores required to advance.{' '}
-          <button data-testid="skip-hole" onClick={handleSkipHole}>
-            Skip hole
-          </button>
-        </div>
-      )}
+      {/* One row per player: name + putts on the left, − [score] + stepper on the right. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
+        {members.map((member, idx) => {
+          const raw = currentInputs[member.playerId] ?? '';
+          const sc = parseInt(raw, 10);
+          const step = (delta: number) => {
+            const next = Math.min(20, Math.max(1, Number.isNaN(sc) ? par : sc + delta));
+            handleScoreChange(member, idx, String(next));
+          };
+          const scoreColor = Number.isNaN(sc)
+            ? 'var(--color-text-muted)'
+            : sc < par ? 'var(--color-success)' : sc > par ? 'var(--color-accent)' : 'var(--color-text-primary)';
+          return (
+            <div key={member.playerId} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 'var(--font-md)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.name}</div>
+                <input
+                  data-testid={`putts-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
+                  aria-label={`Putts for ${member.name}`} placeholder="Putts"
+                  value={currentPutts[member.playerId] ?? ''} onChange={(e) => handlePuttsChange(member, e.target.value)}
+                  style={{ width: 92, minHeight: 36, marginTop: 6, marginBottom: 0, fontSize: 'var(--font-sm)', padding: '0 8px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <button type="button" aria-label={`Lower ${member.name}'s score`} onClick={() => step(-1)} style={{ width: 56, minHeight: 56, fontSize: 'var(--font-xl)', borderRadius: 'var(--radius-md)', margin: 0, padding: 0 }}>−</button>
+                <input
+                  ref={(el) => { scoreInputRefs.current[idx] = el; }}
+                  data-testid={`score-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
+                  aria-label={`Score for ${member.name}`}
+                  value={raw} onChange={(e) => handleScoreChange(member, idx, e.target.value)} onBlur={() => handleBlur(idx)}
+                  style={{ width: 64, minHeight: 56, textAlign: 'center', fontSize: 'var(--font-2xl)', fontWeight: 800, color: scoreColor, margin: 0, padding: 0 }}
+                />
+                <button type="button" aria-label={`Raise ${member.name}'s score`} onClick={() => step(1)} style={{ width: 56, minHeight: 56, fontSize: 'var(--font-xl)', borderRadius: 'var(--radius-md)', margin: 0, padding: 0 }}>+</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {saveError !== null && (
-        <div data-testid="save-error" role="alert">
+        <div data-testid="save-error" role="alert" style={{ color: 'var(--color-danger)', marginTop: 'var(--space-3)' }}>
           {saveError}
         </div>
       )}
 
-      <button
-        data-testid="save-button"
-        disabled={!allValid || isSaving}
-        onClick={handleSave}
-      >
-        {isSaving ? 'Saving…' : `Save Hole ${currentHole}`}
-      </button>
+      {/* Sticky bottom Save bar with live progress. */}
+      <div style={{ position: 'sticky', bottom: 0, marginTop: 'var(--space-4)', paddingTop: 'var(--space-2)', paddingBottom: 'calc(var(--space-2) + env(safe-area-inset-bottom))', background: 'var(--color-surface-sunken)' }}>
+        {!allValid && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
+            <span>{enteredCount} of {members.length} entered</span>
+            <button data-testid="skip-hole" data-skip-base-style onClick={handleSkipHole} style={{ background: 'none', border: 'none', color: 'var(--color-brand-primary)', fontWeight: 600, padding: 4, margin: 0, cursor: 'pointer' }}>
+              Skip hole
+            </button>
+          </div>
+        )}
+        <button
+          data-testid="save-button" disabled={!allValid || isSaving} onClick={handleSave}
+          style={{ width: '100%', minHeight: 'var(--control-height-lg)', fontSize: 'var(--font-md)', borderRadius: 'var(--radius-md)', margin: 0, boxShadow: 'var(--shadow-raised)' }}
+        >
+          {isSaving ? 'Saving…' : `Save Hole ${currentHole}`}
+        </button>
+      </div>
     </div>
   );
 }

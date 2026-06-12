@@ -523,8 +523,9 @@ describe('ScoreEntryRoute', () => {
     await renderRoute();
     await waitFor(() => screen.getByTestId('score-entry-form'));
     await waitFor(() => screen.getByTestId('scorecard-shell-strip'));
+    // The strip no longer repeats the hole number (the big HOLE header shows it).
     expect(screen.getByTestId('scorecard-shell-strip').textContent).toMatch(
-      /Hole 1.*Par 4.*SI 1/,
+      /Par 4.*SI 1/,
     );
     expect(screen.queryByTestId('offline-chip')).not.toBeInTheDocument();
     // Cache populated.
@@ -556,8 +557,9 @@ describe('ScoreEntryRoute', () => {
     expect(screen.getByTestId('offline-chip')).toBeInTheDocument();
     // Par/SI strip still renders from cache.
     await waitFor(() => screen.getByTestId('scorecard-shell-strip'));
+    // The strip no longer repeats the hole number (the big HOLE header shows it).
     expect(screen.getByTestId('scorecard-shell-strip').textContent).toMatch(
-      /Hole 1.*Par 4.*SI 1/,
+      /Par 4.*SI 1/,
     );
   });
 
