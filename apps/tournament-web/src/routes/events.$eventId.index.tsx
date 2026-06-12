@@ -51,6 +51,7 @@ type FetchOutcome =
 
 const SCHEDULE_CARD = {
   to: '/events/$eventId/schedule' as const,
+  icon: '📅',
   title: 'Schedule',
   desc: 'Rounds, courses, your foursome, your tee',
 };
@@ -142,12 +143,12 @@ export type EventHomePageProps = {
 
 const ENTRY_CARDS = [
   SCHEDULE_CARD,
-  { to: '/events/$eventId/leaderboard' as const, title: 'Leaderboard',    desc: 'See live standings' },
-  { to: '/events/$eventId/my-money' as const,    title: 'My Money',       desc: 'Your money, by game' },
-  { to: '/events/$eventId/money' as const,       title: 'Money',          desc: 'Head-to-head money matrix' },
-  { to: '/events/$eventId/bets' as const,        title: 'Bets',           desc: 'Your bets' },
-  { to: '/events/$eventId/settle-up' as const,   title: 'Settle Up',      desc: 'End-of-trip settle' },
-  { to: '/events/$eventId/gallery' as const,     title: 'Photo Gallery',  desc: 'Trip photos' },
+  { to: '/events/$eventId/leaderboard' as const, icon: '🏆', title: 'Leaderboard',    desc: 'See live standings' },
+  { to: '/events/$eventId/my-money' as const,    icon: '💰', title: 'My Money',       desc: 'Your money, by game' },
+  { to: '/events/$eventId/money' as const,       icon: '🆚', title: 'Money',          desc: 'Head-to-head money matrix' },
+  { to: '/events/$eventId/bets' as const,        icon: '🎲', title: 'Bets',           desc: 'Your bets' },
+  { to: '/events/$eventId/settle-up' as const,   icon: '🤝', title: 'Settle Up',      desc: 'End-of-trip settle' },
+  { to: '/events/$eventId/gallery' as const,     icon: '📸', title: 'Photo Gallery',  desc: 'Trip photos' },
 ] as const;
 
 export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: EventHomePageProps) {
@@ -194,31 +195,47 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
 
   return (
     <PageShell title={event.name}>
-      <div style={{ color: '#555', fontSize: '0.95rem' }}>{dateRange}</div>
-      <div style={{ marginTop: 4, marginBottom: 16, fontWeight: 'bold' }}>{countdown}</div>
-
-      <p style={{ marginBottom: 16 }}>
-        You&apos;re in, {firstName(viewerName)}.
-      </p>
+      {/* Hero: date range + the one line that says "what's next". */}
+      <div
+        className="card"
+        style={{
+          background: 'linear-gradient(135deg, var(--color-brand-primary), var(--color-brand-strong))',
+          color: '#fff',
+          padding: 'var(--space-4) var(--space-5)',
+          marginBottom: 'var(--space-4)',
+        }}
+      >
+        <div style={{ fontSize: 'var(--font-sm)', opacity: 0.9 }}>{dateRange}</div>
+        <div style={{ marginTop: 4, fontSize: 'var(--font-lg)', fontWeight: 800 }}>{countdown}</div>
+        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--font-sm)', opacity: 0.95 }}>
+          <span aria-hidden>✓ </span>You&apos;re in, {firstName(viewerName)}.
+        </div>
+      </div>
 
       <nav aria-label="Event sections">
-        <ul style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 8 }}>
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>
           {ENTRY_CARDS.map((card) => (
             <li key={card.to}>
               <Link
                 to={card.to}
                 params={{ eventId }}
+                className="card"
                 style={{
-                  display: 'block',
-                  padding: 12,
-                  border: '1px solid #ddd',
-                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                  minHeight: 'var(--control-height-lg)',
+                  padding: 'var(--space-3) var(--space-4)',
                   textDecoration: 'none',
                   color: 'inherit',
                 }}
               >
-                <strong>{card.title}</strong>
-                <div style={{ fontSize: '0.85rem', color: '#555' }}>{card.desc}</div>
+                <span aria-hidden style={{ fontSize: '1.5rem', lineHeight: 1, width: '1.75rem', textAlign: 'center', flexShrink: 0 }}>{card.icon}</span>
+                <span style={{ flex: 1 }}>
+                  <strong style={{ display: 'block', fontSize: 'var(--font-md)' }}>{card.title}</strong>
+                  <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}>{card.desc}</span>
+                </span>
+                <span aria-hidden style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>›</span>
               </Link>
             </li>
           ))}
@@ -227,15 +244,14 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
 
       {isOrganizer === true ? (
         <div
+          className="card"
           style={{
-            marginTop: 16,
-            padding: 12,
-            border: '1px dashed #c7d2fe',
-            borderRadius: 8,
-            background: '#f5f3ff',
+            marginTop: 'var(--space-4)',
+            padding: 'var(--space-3) var(--space-4)',
+            background: 'var(--color-surface-sunken)',
           }}
         >
-          <strong style={{ display: 'block', marginBottom: 4 }}>Admin tools</strong>
+          <strong style={{ display: 'block', marginBottom: 4, fontSize: 'var(--font-sm)', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--color-text-muted)' }}>Admin tools</strong>
           <Link
             to="/admin/events/$eventId"
             params={{ eventId }}
