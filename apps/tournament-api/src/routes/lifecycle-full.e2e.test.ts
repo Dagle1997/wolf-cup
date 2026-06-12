@@ -248,14 +248,15 @@ async function buildAndStart(app: Hono): Promise<Built> {
     expect([200, 201]).toContain(r.status);
   }
   const memberRows = await db
-    .select({ playerId: groupMembers.playerId, name: players.name })
+    .select({ playerId: groupMembers.playerId })
     .from(groupMembers)
-    .innerJoin(players, eq(groupMembers.playerId, players.id))
     .where(eq(groupMembers.groupId, groupId));
-  const members = memberRows
-    .slice()
-    .sort((a, b) => Number((a.name ?? 'P9').slice(1)) - Number((b.name ?? 'P9').slice(1)))
-    .map((m) => m.playerId);
+  // Sort by playerId (UUID) to MATCH the money engine, which forms teams via
+  // `playerIds.sort()` → teamA = first two (money.ts:302-304). Sorting by name
+  // instead made the designated winners land on the engine's teamA only ~8% of
+  // runs (random UUIDs) → flaky money=0. With UUID order, members[0,1] ARE the
+  // engine's teamA, so scoring them lower is a deterministic teamA win.
+  const members = memberRows.map((m) => m.playerId).sort();
   expect(members.length).toBe(4);
 
   // Lock one foursome; slot order = array order → teamA = members[0,1].
