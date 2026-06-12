@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wolf Cup — Score Entry: Keyboard vs Pills mockup</title>
+<style>
+  :root{
+    --bg:#0b1220; --card:#131c2e; --card2:#0f1726; --border:#26334a;
+    --fg:#e7edf6; --muted:#8aa0bd; --muted2:#5e708c; --ring:#3b82f6;
+    --green:#22c55e; --greenbg:#14321f; --amber:#f59e0b; --amberbg:#3a2c0a;
+    --wolf:#a78bfa;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:#070c16;color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:18px}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 18px;max-width:760px;line-height:1.5}
+  .row{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+  .col{flex:0 0 auto}
+  .label{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;display:flex;gap:8px;align-items:center}
+  .tag{font-size:10px;padding:2px 7px;border-radius:999px;font-weight:700}
+  .tag.win{background:var(--greenbg);color:#4ade80}
+  .tag.warn{background:var(--amberbg);color:#fbbf24}
+  /* phone frame */
+  .phone{width:375px;background:var(--bg);border:1px solid var(--border);border-radius:26px;padding:14px 12px 12px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+  .hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:13px}
+  .hdr .h{font-weight:800}
+  .hdr .meta{color:var(--muted);font-size:12px}
+  .wolfpill{color:var(--wolf);font-weight:700;font-size:12px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px}
+  .pname{font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px}
+  .pname .n{color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  /* current: number box */
+  .numbox{width:100%;border:1px solid var(--border);border-radius:10px;background:var(--card2);
+    text-align:center;font-size:22px;font-weight:800;padding:8px 0}
+  .numbox.filled{border-color:var(--ring);color:#fff}
+  .numbox.empty{color:#3c4a63}
+  /* faux keyboard */
+  .kb{margin-top:10px;background:#1c2536;border-radius:12px;padding:8px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .kb div{background:#2a3650;border-radius:8px;text-align:center;padding:12px 0;font-size:18px;font-weight:700}
+  .kbnote{color:var(--amber);font-size:11px;text-align:center;margin-top:6px}
+  /* pills */
+  .pillrow{display:flex;gap:5px;flex-wrap:wrap}
+  .pill{min-width:34px;height:38px;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--border);border-radius:9px;background:var(--card2);font-size:15px;font-weight:700;color:var(--fg);flex:1}
+  .pill.par{border-color:var(--amber);color:var(--amber)}
+  .pill.sel{background:var(--green);border-color:var(--green);color:#04210f}
+  .pill.more{color:var(--muted);flex:0 0 34px}
+  .save{margin-top:12px;background:var(--green);color:#04210f;border:none;border-radius:12px;
+    padding:14px;width:100%;font-size:15px;font-weight:800}
+  .note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;max-width:360px}
+  .pro{color:#4ade80}.con{color:#fb7185}
+  .verdict{max-width:760px;margin-top:26px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;font-size:13px;line-height:1.6;color:#cbd5e1}
+  .verdict b{color:#fff}
+  code{background:#1c2536;padding:1px 5px;border-radius:5px;font-size:12px}
+</style>
+</head>
+<body>
+  <h1>🐺 Score Entry — Keyboard (today) vs. Pills (proposed P2)</h1>
+  <p class="sub">Both shown at real phone width (375px), Hole 4 · Par 4, Matt's wolf hole. The question: do tap-pills beat the number box + keyboard? Look at the <b>footprint</b> and decide.</p>
+
+  <div class="row">
+
+    <!-- CURRENT -->
+    <div class="col">
+      <p class="label">A · Today — number box + keyboard</p>
+      <div class="phone">
+        <div class="hdr"><span class="h">Hole 4 <span class="meta">Par 4 · SI 5</span></span><span class="wolfpill">🐺 Matt</span></div>
+        <div class="grid2">
+          <div class="card"><div class="pname"><span class="n">1.</span> Josh</div><div class="numbox filled">5</div></div>
+          <div class="card" style="outline:2px solid var(--ring)"><div class="pname"><span class="n">2.</span> Tim ◀</div><div class="numbox empty">–</div></div>
+          <div class="card"><div class="pname"><span class="n">3.</span> Jeff</div><div class="numbox empty">–</div></div>
+          <div class="card"><div class="pname"><span class="n">4.</span> Matt</div><div class="numbox empty">–</div></div>
+        </div>
+        <div class="kb">
+          <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div></div><div>0</div><div>⌫</div>
+        </div>
+        <div class="kbnote">▲ keyboard eats ~45% of the screen · Save button is below it, off-screen</div>
+      </div>
+      <div class="note">
+        <span class="pro">+ Familiar; one tap per player; auto-advances.</span><br>
+        <span class="con">– Keyboard covers the Save button (needs an iOS focus hack).</span><br>
+        <span class="con">– <code>maxLength=1</code> → a 10 or 11 can't be typed at all.</span><br>
+        <span class="con">– Tiny target, gloves/sun-glare unfriendly.</span>
+      </div>
+    </div>
+
+    <!-- PILLS 2-col -->
+    <div class="col">
+      <p class="label">B · Pills, 2-col <span class="tag warn">cramped</span></p>
+      <div class="phone">
+        <div class="hdr"><span class="h">Hole 4 <span class="meta">Par 4 · SI 5</span></span><span class="wolfpill">🐺 Matt</span></div>
+        <div class="grid2">
+          <div class="card"><div class="pname"><span class="n">1.</span> Josh</div>
+            <div class="pillrow"><div class="pill">2</div><div class="pill">3</div><div class="pill par">4</div><div class="pill sel">5</div><div class="pill">6</div><div class="pill more">+</div></div></div>
+          <div class="card" style="outline:2px solid var(--ring)"><div class="pname"><span class="n">2.</span> Tim ◀</div>
+            <div class="pillrow"><div class="pill">2</div><div class="pill">3</div><div class="pill par">4</div><div class="pill">5</div><div class="pill">6</div><div class="pill more">+</div></div></div>
+          <div class="card"><div class="pname"><span class="n">3.</span> Jeff</div>
+            <div class="pillrow"><div class="pill">2</div><div class="pill">3</div><div class="pill par">4</div><div class="pill">5</div><div class="pill">6</div><div class="pill more">+</div></div></div>
+          <div class="card"><div class="pname"><span class="n">4.</span> Matt</div>
+            <div class="pillrow"><div class="pill">2</div><div class="pill">3</div><div class="pill par">4</div><div class="pill">5</div><div class="pill">6</div><div class="pill more">+</div></div></div>
+        </div>
+        <button class="save">Save Hole 4</button>
+      </div>
+      <div class="note">
+        <span class="pro">+ No keyboard; Save always visible.</span><br>
+        <span class="con">– 6 pills in a 187px card = ~28px each → <b>your "cramped/cumbersome" worry, confirmed.</b></span>
+      </div>
+    </div>
+
+    <!-- PILLS 1-col -->
+    <div class="col">
+      <p class="label">C · Pills, 1-col (full width) <span class="tag warn">more scroll</span></p>
+      <div class="phone">
+        <div class="hdr"><span class="h">Hole 4 <span class="meta">Par 4 · SI 5</span></span><span class="wolfpill">🐺 Matt</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+          <div class="card"><div class="pname"><span class="n">1.</span> Josh</div>
+            <div class="pillrow"><div class="pill">2</div><div class="pill">3</div><div class="pill par">4</div><div class="pill sel">5</div><div class="pill">6</div><div class="pill">7</div><div class="pill more">+</div></div></div>
+          <div class="card" style="outline:2px solid var(--ring)"><div class="pname"><span class="n">2.</span> Tim ◀ next</div>
+            <div class="pillrow"><div class="pill">2</div><div class="pill">3</div><div class="pill par">4</div><div class="pill">5</div><div class="pill">6</div><div class="pill">7</div><div class="pill more">+</div></div></div>
+          <div class="card"><div class="pname"><span class="n">3.</span> Jeff</div>
+            <div class="pillrow"><div class="pill">2</div><div class="pill">3</div><div class="pill par">4</div><div class="pill">5</div><div class="pill">6</div><div class="pill">7</div><div class="pill more">+</div></div></div>
+          <div class="card"><div class="pname"><span class="n">4.</span> Matt</div>
+            <div class="pillrow"><div class="pill">2</div><div class="pill">3</div><div class="pill par">4</div><div class="pill">5</div><div class="pill">6</div><div class="pill">7</div><div class="pill more">+</div></div></div>
+        </div>
+        <button class="save">Save Hole 4</button>
+        <div class="kbnote" style="color:var(--muted)">▲ comfortable 44px targets, but 4 full-width rows = more vertical scroll than today</div>
+      </div>
+      <div class="note">
+        <span class="pro">+ Big comfy targets; par outlined; selected = green.</span><br>
+        <span class="con">– Taller than the keyboard layout on putts weeks (adds a putts pill row each).</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="verdict">
+    <b>Honest read:</b> Variant <b>B (2-col pills)</b> confirms your gut — 6 numbers don't fit a 187px card without feeling cramped. Variant <b>C (1-col)</b> is genuinely comfortable but <b>scrolls more</b> than today, especially on putts weeks (each player needs a second pill row).<br><br>
+    <b>So P2 is a real tradeoff, not a clear win</b> — which is exactly why it's the one I said to prototype, not assume. Two lighter alternatives that keep today's compact box but kill the keyboard's downsides:<br>
+    • <b>Keep the 2-col number box, fix its two real bugs only:</b> allow 2 digits (so a 10/11 is typeable) and update the cache on save so re-focus doesn't wipe inputs. No layout change at all.<br>
+    • <b>Hybrid:</b> number box stays, but a tiny inline <code>–/+</code> stepper under each for one-handed nudge near par, keyboard optional.<br><br>
+    My recommendation: <b>don't do full pills.</b> Do the compact-box bug-fixes (2-digit + cache) which you'd never even notice as a redesign — they just remove the papercuts. Open this file on your <b>phone</b> to feel the real widths before deciding.
+  </div>
+</body>
+</html>
