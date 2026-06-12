@@ -81,7 +81,7 @@ export type MoneyMatrix = {
  * Mirrors press-orchestrator.ts pattern (Followup T6-4f / T6-5f tracks
  * proper effective-from-hole-aware lookup).
  */
-async function fetchActive2v2Config(
+export async function fetchActive2v2Config(
   txOrDb: Tx | Db,
   tenantId: string,
 ): Promise<{

@@ -11,12 +11,15 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
+import { eventRounds } from '../db/schema/index.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
 import { computeMoneyMatrix } from '../services/money.js';
+import { computeFoursomeResults } from '../services/money-detail.js';
 
 const TENANT_ID = 'guyan';
 
@@ -45,6 +48,58 @@ moneyRouter.get(
       });
       return c.json(
         { error: 'internal', code: 'money_compute_failed', requestId },
+        500,
+      );
+    }
+  },
+);
+
+// T13-5: per-foursome 2v2 team results (hole by hole) for one event round —
+// the "Foursome results" view reached from the leaderboard at round-end.
+moneyRouter.get(
+  '/:eventId/event-rounds/:eventRoundId/foursome-results',
+  requireSession,
+  requireEventParticipant,
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const log = c.get('logger') ?? moduleLogger;
+    const eventId = c.req.param('eventId');
+    const eventRoundId = c.req.param('eventRoundId');
+
+    // Event-scope guard: the event_round must belong to THIS event (a
+    // participant of event X must not read event Y's round via its id).
+    const erRows = await db
+      .select({ id: eventRounds.id })
+      .from(eventRounds)
+      .where(
+        and(
+          eq(eventRounds.id, eventRoundId),
+          eq(eventRounds.eventId, eventId),
+          eq(eventRounds.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (erRows.length === 0) {
+      return c.json(
+        { error: 'not_found', code: 'event_round_not_found', requestId },
+        404,
+      );
+    }
+
+    try {
+      const results = await computeFoursomeResults(db, eventRoundId, TENANT_ID);
+      c.header('cache-control', 'no-store');
+      return c.json(results, 200);
+    } catch (err) {
+      log.error({
+        msg: 'GET /foursome-results threw',
+        requestId,
+        eventId,
+        eventRoundId,
+        err: String(err),
+      });
+      return c.json(
+        { error: 'internal', code: 'foursome_results_failed', requestId },
         500,
       );
     }

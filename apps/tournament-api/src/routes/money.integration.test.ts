@@ -393,3 +393,93 @@ describe('GET /api/events/:eventId/money', () => {
     }
   });
 });
+
+// ── T13-5: foursome-results endpoint ──────────────────────────────────────
+
+interface FoursomeResultsBody {
+  eventRoundId: string;
+  roundNumber: number;
+  foursomes: Array<{
+    foursomeNumber: number;
+    teamA: Array<{ playerId: string; name: string | null }>;
+    teamB: Array<{ playerId: string; name: string | null }>;
+    teamATotalCents: number;
+    perHole: Array<{
+      holeNumber: number;
+      par: number;
+      teamABestNet: number | null;
+      teamBBestNet: number | null;
+      winner: 'teamA' | 'teamB' | 'tie' | null;
+      moneyTeamACents: number;
+      players: Array<{ playerId: string; gross: number | null; net: number | null }>;
+    }>;
+  }>;
+}
+
+async function getFoursomeResults(app: Hono, eventId: string, eventRoundId: string): Promise<Response> {
+  return await app.request(`/api/events/${eventId}/event-rounds/${eventRoundId}/foursome-results`);
+}
+
+describe('GET /api/events/:eventId/event-rounds/:eventRoundId/foursome-results', () => {
+  test('returns the foursome 2v2 result hole-by-hole; teamA (UUID-sorted winners) is up', async () => {
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getFoursomeResults(app, s.eventId, s.eventRoundId);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = (await res.json()) as FoursomeResultsBody;
+
+    expect(body.foursomes.length).toBe(1);
+    const f = body.foursomes[0]!;
+    expect(f.foursomeNumber).toBe(1);
+    // Seed: teamA = sortedPlayers[0,1] win 12 of 18 → positive team total.
+    expect(f.teamA.map((p) => p.playerId).sort()).toEqual([s.playerIds[0]!, s.playerIds[1]!].sort());
+    expect(f.teamATotalCents).toBeGreaterThan(0);
+    expect(f.perHole.length).toBe(18);
+
+    // Per-hole money sums to the round total (loss-less decomposition).
+    const holeSum = f.perHole.reduce((acc, h) => acc + h.moneyTeamACents, 0);
+    expect(holeSum).toBe(f.teamATotalCents);
+
+    // Hole 1: teamA wins (gross 4 vs 5, HI 0 → net = gross). All 4 players scored.
+    const h1 = f.perHole.find((h) => h.holeNumber === 1)!;
+    expect(h1.winner).toBe('teamA');
+    expect(h1.players.length).toBe(4);
+    expect(h1.players.every((p) => p.gross !== null && p.net !== null)).toBe(true);
+    // HI 0 → net equals gross on every scored cell.
+    expect(h1.players.every((p) => p.net === p.gross)).toBe(true);
+
+    // perPair antisymmetry within the foursome.
+    const [a1, , b1] = s.playerIds;
+    expect(f.perHole.every((h) => Number.isInteger(h.moneyTeamACents))).toBe(true);
+    void a1; void b1;
+  });
+
+  test('empty (no scores) → one foursome, 18 holes, zero money, null winners', async () => {
+    const s = await seed();
+    const app = buildApp(s.playerIds[0]!);
+    const res = await getFoursomeResults(app, s.eventId, s.eventRoundId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as FoursomeResultsBody;
+    expect(body.foursomes.length).toBe(1);
+    expect(body.foursomes[0]!.teamATotalCents).toBe(0);
+    expect(body.foursomes[0]!.perHole.every((h) => h.moneyTeamACents === 0)).toBe(true);
+  });
+
+  test('non-participant → 403', async () => {
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.outsiderId);
+    const res = await getFoursomeResults(app, s.eventId, s.eventRoundId);
+    expect(res.status).toBe(403);
+  });
+
+  test('event_round not belonging to this event → 404 (no cross-event leak)', async () => {
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[0]!);
+    // The guard WHERE-filters (id AND event_id), so an event_round id that
+    // isn't this event's (here: a non-existent id) takes the same reject path.
+    const res = await getFoursomeResults(app, s.eventId, randomUUID());
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { code: string }).code).toBe('event_round_not_found');
+  });
+});

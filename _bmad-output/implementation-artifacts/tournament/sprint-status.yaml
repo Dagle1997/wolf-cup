@@ -463,6 +463,28 @@ development_status:
   # DESIGN before build — schema + UX + auth scoping. tournament-api + -web.
   T13-4-scorer-policy-setup-option: backlog
 
+  # T13-5: MONEY PRESENTATION — two ledgers + results views (Josh, 2026-06-12).
+  # The settle-up matrix today COMBINES 2v2 best-ball (per-foursome, zero-sum
+  # within the foursome) and 1v1 individual "cards" bets (pairwise, may cross
+  # foursomes) into ONE pairwise total (services/money.ts §3 + §4). Combining
+  # them into a single number is misleading: it blurs team money with cross-
+  # group card money and double-shows the same holes. DECISION (Josh): split
+  # into TWO presented ledgers with a GLOBAL settle. UI requirements:
+  #   (a) end-of-round "Foursome results" button → the 2v2 team/ball ledger
+  #       (per-foursome, balances internally).
+  #   (b) "Individual bet results" → per-bet 1v1 CARDS: player A's round vs
+  #       player B's round, hole-by-hole, who won each hole, running + final
+  #       total. GOOD NEWS: the engine ALREADY computes this — individual-bets.ts
+  #       `BetHoleResult` (line 98) carries {holeNumber, par, netA, netB,
+  #       winner} per hole + the round net. It's just not surfaced: bets.ts
+  #       returns only perRoundStanding net, not `perHole`. So this is mostly
+  #       API surfacing (expose perHole) + a web scorecard view, NOT new scoring.
+  # Scope: bets API (surface perHole), a foursome-results endpoint/view for the
+  # 2v2 ledger, web result screens, and decompose the combined total so each
+  # ledger balances in its own scope (global settle, never per-foursome).
+  # NEEDS DESIGN. tournament-api + -web.
+  T13-5-money-presentation-two-ledgers: backlog
+
   # ---------------------------------------------------------------------------
   # Epic T14: Test & Validation Hardening
   # Opened 2026-06-11. The CODE backlog (T1-T8, T10-T13) was complete but the
