@@ -330,10 +330,11 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
     expect(bs(r)).toEqual([-9, 3, 3, 3]);
   });
 
-  it('two opp net birdies, both NATURAL → double birdie bonus = 2 skins (wolf −6, each opp +2)', () => {
-    // gross == net means both opp birdies are natural — double birdie bonus fires
+  it('two opp net birdies, both NATURAL → double birdie bonus = 3 skins (wolf −9, each opp +3)', () => {
+    // gross == net means both opp birdies are natural — double birdie bonus fires.
+    // 1 birdie skin + 2 (double-birdie bonus) = 3, matching the 2v2 path's 1→3.
     const r = applyBonusModifiers(zeroBase(), [5, 3, 3, 5], [5, 3, 3, 5], NO_BONUS, WOLF(0), ALONE, par);
-    expect(bs(r)).toEqual([-6, 2, 2, 2]);
+    expect(bs(r)).toEqual([-9, 3, 3, 3]);
   });
 
   it('two opp net birdies, NEITHER natural (via strokes) → 1 group skin (wolf −3, each opp +1)', () => {
@@ -342,10 +343,17 @@ describe('applyBonusModifiers — 1v3 lone wolf', () => {
     expect(bs(r)).toEqual([-3, 1, 1, 1]);
   });
 
-  it('two opp net birdies, ONE natural → double birdie bonus = 2 skins', () => {
+  it('two opp net birdies, ONE natural → double birdie bonus = 3 skins (wolf −9, each opp +3)', () => {
     // pos1 natural birdie (gross 3), pos2 net birdie via stroke (gross 4) — natural present, bonus fires
     const r = applyBonusModifiers(zeroBase(), [5, 3, 3, 5], [5, 3, 4, 5], NO_BONUS, WOLF(0), ALONE, par);
-    expect(bs(r)).toEqual([-6, 2, 2, 2]);
+    expect(bs(r)).toEqual([-9, 3, 3, 3]);
+  });
+
+  it('THREE opp net birdies (≥1 natural) → still 3 skins — no triple-birdie escalation', () => {
+    // All three opps net birdie, pos1 natural. Double-birdie bonus is flat +2,
+    // so 1 + 2 = 3 regardless of the third birdie.
+    const r = applyBonusModifiers(zeroBase(), [5, 3, 3, 3], [5, 3, 4, 4], NO_BONUS, WOLF(0), ALONE, par);
+    expect(bs(r)).toEqual([-9, 3, 3, 3]);
   });
 
   it('wolf net birdie + opp net birdie → tied levels, no blood', () => {
@@ -447,6 +455,29 @@ describe('applyBonusModifiers — $21 wolf loss verification', () => {
 
     const totalSum = r[0].total + r[1].total + r[2].total + r[3].total;
     expect(totalSum).toBe(0);
+  });
+
+  it('hole-11 regression (par 5): lone wolf vs double-birdie + opp polie = −21', () => {
+    // Real 2026-06-12 round-47 hole: Josh (wolf, pos0) net 7. Ronnie (pos1) net 4
+    // (gross 5, stroke birdie). Glenn (pos2) natural 4 (gross birdie). Matt White
+    // (pos3) net 6 with a polie. Double-birdie fires (2 net birdies, 1 natural,
+    // wolf none) → 3 score skins; polie adds 1; all ×3 for lone wolf.
+    const net: readonly [number, number, number, number] = [7, 4, 4, 6];
+    const gross: readonly [number, number, number, number] = [7, 5, 4, 6];
+    const base = calculateHoleMoney(net, WOLF(0), ALONE, 5);
+    expect(base[0].total).toBe(-9);
+
+    const r = applyBonusModifiers(
+      base, net, gross,
+      { greenies: [], polies: [3], sandies: [] },
+      WOLF(0), ALONE, 5,
+    );
+
+    // score bonus = -(3)×3 = -9 to wolf; polie = -1×3 = -3 to wolf → -12 bonus
+    expect(r[0].bonusSkins).toBe(-12);
+    expect(r[0].total).toBe(-21);
+    expect([r[1].total, r[2].total, r[3].total]).toEqual([7, 7, 7]);
+    expect(r[0].total + r[1].total + r[2].total + r[3].total).toBe(0);
   });
 });
 

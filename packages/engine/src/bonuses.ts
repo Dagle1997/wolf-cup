@@ -201,7 +201,11 @@ function apply1v3(
   // SCORE-BASED bonus skin: 1 skin per hole based on max LEVEL on each side
   // (mirrors competitiveScoreSkins for 2v2). Tied levels = no blood.
   // Double birdie bonus (1v3 variant): when opps win, ≥2 opp net birdie+,
-  // ≥1 natural (gross) birdie, AND wolf has no net birdie → +1 skin.
+  // ≥1 natural (gross) birdie, AND wolf has no net birdie → +2 skins.
+  // The double-birdie bonus is TWO extra skins (league rule), so a single
+  // birdie pays 1 and a double pays 1+2 = 3 — matching the 2v2 path, where a
+  // single→double also goes 1→3. There is NO triple-birdie escalation: the +2
+  // is flat regardless of how many opponents birdied (2 or 3 → same +2).
   const wolfLevel = skinCount(detectBonusLevel(netScores[wolfIdx], par));
   const oppLevels = opps.map((i) => skinCount(detectBonusLevel(netScores[i], par)));
   const maxOppLevel = Math.max(oppLevels[0]!, oppLevels[1]!, oppLevels[2]!);
@@ -215,7 +219,7 @@ function apply1v3(
     const oppNaturalBirdies = opps.filter((i) => grossScores[i] <= par - 1).length;
     const wolfHasBirdie = netScores[wolfIdx] <= par - 1;
     if (oppNetBirdies >= 2 && oppNaturalBirdies >= 1 && !wolfHasBirdie) {
-      oppSkins += 1;
+      oppSkins += 2; // double-birdie bonus = TWO extra skins (league rule)
     }
     scoreSkinsToWolf = -oppSkins;
   }
