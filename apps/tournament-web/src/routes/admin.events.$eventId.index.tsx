@@ -88,6 +88,20 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
 
         <li>
           <Link
+            to="/admin/events/$eventId/scorer-policy"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-scorer-policy"
+          >
+            <strong>Who can score?</strong>
+            <div style={{ fontSize: '0.85em', color: '#555' }}>
+              Foursome members, designated scorers (caddie), or open.
+            </div>
+          </Link>
+        </li>
+
+        <li>
+          <Link
             to="/admin/events/$eventId/start-round"
             params={{ eventId }}
             style={cardStyle}

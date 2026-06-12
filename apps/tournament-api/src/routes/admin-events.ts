@@ -1246,8 +1246,23 @@ adminEventsRouter.get(
       .select({ playerId: eventScorerDesignees.playerId })
       .from(eventScorerDesignees)
       .where(and(eq(eventScorerDesignees.eventId, eventId), eq(eventScorerDesignees.tenantId, TENANT_ID)));
+    // The event roster (participants) — for the designee picker in the UI.
+    const roster = await db
+      .select({ playerId: groupMembers.playerId, name: players.name })
+      .from(groupMembers)
+      .innerJoin(groups, eq(groupMembers.groupId, groups.id))
+      .innerJoin(players, eq(groupMembers.playerId, players.id))
+      .where(and(eq(groups.eventId, eventId), eq(groups.tenantId, TENANT_ID), eq(groupMembers.tenantId, TENANT_ID)));
     const policy = isScorerPolicy(rows[0]!.scorerPolicy) ? rows[0]!.scorerPolicy : 'foursome';
-    return c.json({ policy, designatedPlayerIds: designees.map((d) => d.playerId), requestId }, 200);
+    return c.json(
+      {
+        policy,
+        designatedPlayerIds: designees.map((d) => d.playerId),
+        roster: roster.map((r) => ({ playerId: r.playerId, name: r.name })),
+        requestId,
+      },
+      200,
+    );
   },
 );
 

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "86ba7a7a-e94e-421f-81e9-44dec82a4f06",
+  "id": "948f7072-cfcb-4afa-ac9d-a89507736922",
   "prevId": "f399b1ba-45cb-4261-866f-7fcf2b927a38",
   "tables": {
     "activity": {
@@ -1027,12 +1027,7 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {
-        "check_events_scorer_policy": {
-          "name": "check_events_scorer_policy",
-          "value": "\"events\".\"scorer_policy\" IN ('foursome', 'designated', 'open')"
-        }
-      }
+      "checkConstraints": {}
     },
     "gallery_photos": {
       "name": "gallery_photos",

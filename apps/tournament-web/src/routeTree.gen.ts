@@ -32,6 +32,7 @@ import { Route as EventsEventIdCoursesCourseIdRouteImport } from './routes/event
 import { Route as AdminRuleSetsIdEditRouteImport } from './routes/admin.rule-sets.$id.edit'
 import { Route as AdminGroupsGroupIdEditRouteImport } from './routes/admin.groups.$groupId.edit'
 import { Route as AdminEventsEventIdStartRoundRouteImport } from './routes/admin.events.$eventId.start-round'
+import { Route as AdminEventsEventIdScorerPolicyRouteImport } from './routes/admin.events.$eventId.scorer-policy'
 import { Route as AdminEventsEventIdPairingsRouteImport } from './routes/admin.events.$eventId.pairings'
 import { Route as AdminEventRoundsEventRoundIdSubGamesRouteImport } from './routes/admin.event-rounds.$eventRoundId.sub-games'
 import { Route as EventsEventIdEventRoundsEventRoundIdFoursomeResultsRouteImport } from './routes/events.$eventId.event-rounds.$eventRoundId.foursome-results'
@@ -154,6 +155,12 @@ const AdminEventsEventIdStartRoundRoute =
     path: '/admin/events/$eventId/start-round',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminEventsEventIdScorerPolicyRoute =
+  AdminEventsEventIdScorerPolicyRouteImport.update({
+    id: '/admin/events/$eventId/scorer-policy',
+    path: '/admin/events/$eventId/scorer-policy',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminEventsEventIdPairingsRoute =
   AdminEventsEventIdPairingsRouteImport.update({
     id: '/admin/events/$eventId/pairings',
@@ -194,6 +201,7 @@ export interface FileRoutesByFullPath {
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
+  '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
   '/admin/events/$eventId/start-round': typeof AdminEventsEventIdStartRoundRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
@@ -222,6 +230,7 @@ export interface FileRoutesByTo {
   '/events/$eventId': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
+  '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
   '/admin/events/$eventId/start-round': typeof AdminEventsEventIdStartRoundRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
@@ -251,6 +260,7 @@ export interface FileRoutesById {
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
+  '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
   '/admin/events/$eventId/start-round': typeof AdminEventsEventIdStartRoundRoute
   '/admin/groups/$groupId/edit': typeof AdminGroupsGroupIdEditRoute
   '/admin/rule-sets/$id/edit': typeof AdminRuleSetsIdEditRoute
@@ -281,6 +291,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/pairings'
+    | '/admin/events/$eventId/scorer-policy'
     | '/admin/events/$eventId/start-round'
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
@@ -309,6 +320,7 @@ export interface FileRouteTypes {
     | '/events/$eventId'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/pairings'
+    | '/admin/events/$eventId/scorer-policy'
     | '/admin/events/$eventId/start-round'
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
@@ -337,6 +349,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/pairings'
+    | '/admin/events/$eventId/scorer-policy'
     | '/admin/events/$eventId/start-round'
     | '/admin/groups/$groupId/edit'
     | '/admin/rule-sets/$id/edit'
@@ -366,6 +379,7 @@ export interface RootRouteChildren {
   EventsEventIdIndexRoute: typeof EventsEventIdIndexRoute
   AdminEventRoundsEventRoundIdSubGamesRoute: typeof AdminEventRoundsEventRoundIdSubGamesRoute
   AdminEventsEventIdPairingsRoute: typeof AdminEventsEventIdPairingsRoute
+  AdminEventsEventIdScorerPolicyRoute: typeof AdminEventsEventIdScorerPolicyRoute
   AdminEventsEventIdStartRoundRoute: typeof AdminEventsEventIdStartRoundRoute
   AdminGroupsGroupIdEditRoute: typeof AdminGroupsGroupIdEditRoute
   AdminRuleSetsIdEditRoute: typeof AdminRuleSetsIdEditRoute
@@ -537,6 +551,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventsEventIdStartRoundRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/events/$eventId/scorer-policy': {
+      id: '/admin/events/$eventId/scorer-policy'
+      path: '/admin/events/$eventId/scorer-policy'
+      fullPath: '/admin/events/$eventId/scorer-policy'
+      preLoaderRoute: typeof AdminEventsEventIdScorerPolicyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/events/$eventId/pairings': {
       id: '/admin/events/$eventId/pairings'
       path: '/admin/events/$eventId/pairings'
@@ -583,6 +604,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminEventRoundsEventRoundIdSubGamesRoute:
     AdminEventRoundsEventRoundIdSubGamesRoute,
   AdminEventsEventIdPairingsRoute: AdminEventsEventIdPairingsRoute,
+  AdminEventsEventIdScorerPolicyRoute: AdminEventsEventIdScorerPolicyRoute,
   AdminEventsEventIdStartRoundRoute: AdminEventsEventIdStartRoundRoute,
   AdminGroupsGroupIdEditRoute: AdminGroupsGroupIdEditRoute,
   AdminRuleSetsIdEditRoute: AdminRuleSetsIdEditRoute,

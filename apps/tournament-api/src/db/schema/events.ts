@@ -37,33 +37,29 @@ import { courseRevisions } from './courses.js';
  * code stamps `events.context_id = 'event:' + events.id` at insert; child
  * rows (event_rounds, invites) inherit the parent event's context_id.
  */
-export const events = sqliteTable(
-  'events',
-  {
-    id: text('id').primaryKey(),
-    name: text('name').notNull(),
-    startDate: integer('start_date').notNull(),
-    endDate: integer('end_date').notNull(),
-    timezone: text('timezone').notNull(),
-    organizerPlayerId: text('organizer_player_id')
-      .notNull()
-      .references(() => players.id, { onDelete: 'restrict' }),
-    createdAt: integer('created_at').notNull(),
-    // T13-4 scorer policy: who is ELIGIBLE to be a foursome's designated
-    // scorer. 'foursome' (default = today's behavior: members + organizer),
-    // 'designated' (an organizer-curated pool in event_scorer_designees +
-    // organizer; how a walking caddie is allowed), 'open' (any participant).
-    // Single-writer is unchanged — this only gates who may BECOME the scorer.
-    scorerPolicy: text('scorer_policy').notNull().default('foursome'),
-    ...ecosystemColumns(),
-  },
-  (t) => ({
-    scorerPolicyCheck: check(
-      'check_events_scorer_policy',
-      sql`${t.scorerPolicy} IN ('foursome', 'designated', 'open')`,
-    ),
-  }),
-);
+export const events = sqliteTable('events', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  startDate: integer('start_date').notNull(),
+  endDate: integer('end_date').notNull(),
+  timezone: text('timezone').notNull(),
+  organizerPlayerId: text('organizer_player_id')
+    .notNull()
+    .references(() => players.id, { onDelete: 'restrict' }),
+  createdAt: integer('created_at').notNull(),
+  // T13-4 scorer policy: who is ELIGIBLE to be a foursome's designated
+  // scorer. 'foursome' (default = today's behavior: members + organizer),
+  // 'designated' (an organizer-curated pool in event_scorer_designees +
+  // organizer; how a walking caddie is allowed), 'open' (any participant).
+  // Single-writer is unchanged — this only gates who may BECOME the scorer.
+  // NO DB CHECK constraint on purpose: a CHECK forces drizzle into a
+  // table-REBUILD migration (DROP + RENAME events), which on SQLite
+  // intermittently corrupts the FK-referencing `rounds` table on the shared
+  // in-memory test cache ("no such table: rounds"). The enum is validated by
+  // env/Zod at the route + isScorerPolicy() at every read.
+  scorerPolicy: text('scorer_policy').notNull().default('foursome'),
+  ...ecosystemColumns(),
+});
 
 export type Event = typeof events.$inferSelect;
 

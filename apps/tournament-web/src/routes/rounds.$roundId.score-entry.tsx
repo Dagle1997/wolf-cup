@@ -43,6 +43,7 @@ import {
 } from '../lib/round-cache.js';
 import { useIsInstalledPWA } from '../lib/display-mode';
 import { InstallPrompt } from '../components/install-prompt';
+import { useAuthSession } from '../hooks/use-auth-session';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -471,6 +472,7 @@ export function ScoreEntryRoute() {
           <strong>{data.myFoursome.scorerName}</strong> is currently scoring
           foursome {data.myFoursome.foursomeNumber}.
         </div>
+        <ClaimScoringButton roundId={roundId} foursomeNumber={data.myFoursome.foursomeNumber} />
       </>
     );
   }
@@ -1412,6 +1414,62 @@ function ScoreEntryForm({
       >
         {isSaving ? 'Saving…' : `Save Hole ${currentHole}`}
       </button>
+    </div>
+  );
+}
+
+/**
+ * T13-4 "I'll score" — one-tap self-claim of the active scorer role, shown to a
+ * non-active foursome member in the read-only state. Calls the transfer
+ * endpoint assigning the role to the viewer; the server enforces eligibility
+ * per the event's scorer policy (a non-eligible member gets a clear message).
+ * On success it invalidates round-detail so the score form renders.
+ */
+function ClaimScoringButton({ roundId, foursomeNumber }: { roundId: string; foursomeNumber: number }) {
+  const { player } = useAuthSession();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!player) return null;
+
+  async function claim(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/rounds/${roundId}/scorer-assignments/transfer`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ foursomeNumber, toPlayerId: player!.id }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { code?: string };
+        setError(
+          body.code === 'assignee_not_in_foursome' || body.code === 'not_authorized_for_handoff'
+            ? "You aren't allowed to score this round."
+            : `Couldn't take over (${body.code ?? res.status}).`,
+        );
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ['round-detail', roundId] });
+    } catch {
+      setError('Network error — try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button type="button" data-testid="claim-scoring" disabled={busy} onClick={() => void claim()}>
+        {busy ? 'Taking over…' : "I'll score"}
+      </button>
+      {error !== null ? (
+        <p role="alert" data-testid="claim-error" style={{ color: 'var(--color-danger, #dc2626)' }}>
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
