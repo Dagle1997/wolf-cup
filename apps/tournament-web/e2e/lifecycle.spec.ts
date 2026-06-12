@@ -90,9 +90,9 @@ test('score-entry + offline queue: a score entered offline survives and drains t
 
   // --- Enter hole 1 OFFLINE: the save must enqueue to IndexedDB, not error. ---
   await context.setOffline(true);
-  const scores = ['4', '5', '4'];
-  for (let i = 0; i < scores.length; i++) {
-    await page.getByTestId(`score-input-${i}`).fill(scores[i]!);
+  // Fill every foursome member's score (the seed now builds a full foursome).
+  for (let i = 0; i < fx.memberIds.length; i++) {
+    await page.getByTestId(`score-input-${i}`).fill(String(4 + (i % 3)));
   }
   await page.getByTestId('save-button').click();
   // The sync chip reports pending mutations held in the offline queue.

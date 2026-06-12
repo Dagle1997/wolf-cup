@@ -73,10 +73,16 @@ async function main(): Promise<void> {
     players,
     courses,
     courseRevisions,
+    courseTees,
+    courseHoles,
     eventRounds,
     groups,
     invites,
     groupMembers,
+    ruleSets,
+    ruleSetRevisions,
+    individualBets,
+    individualBetRounds,
   } = await import('./schema/index.js');
 
   await migrate(db, { migrationsFolder });
@@ -117,6 +123,35 @@ async function main(): Promise<void> {
     createdAt: now,
     tenantId: TENANT_ID,
     contextId: CTX,
+  });
+  // Tee + 18 holes so score-entry shows Par/SI and money can compute.
+  await db.insert(courseTees).values({
+    id: randomUUID(), courseRevisionId: courseRevId, teeColor: 'blue',
+    rating: 720, slope: 113, tenantId: TENANT_ID, contextId: CTX,
+  });
+  for (let h = 1; h <= 18; h++) {
+    await db.insert(courseHoles).values({
+      id: randomUUID(), courseRevisionId: courseRevId, holeNumber: h,
+      par: h % 6 === 0 ? 5 : h % 4 === 0 ? 3 : 4, si: ((h * 7) % 18) + 1,
+      yardagePerTeeJson: '{}', tenantId: TENANT_ID, contextId: CTX,
+    });
+  }
+  // A tenant rule set so the money engine has a base stake.
+  const ruleSetId = randomUUID();
+  await db.insert(ruleSets).values({
+    id: ruleSetId, name: 'Standard', createdAt: now,
+    tenantId: TENANT_ID, contextId: `library:${TENANT_ID}`,
+  });
+  await db.insert(ruleSetRevisions).values({
+    id: randomUUID(), ruleSetId, revisionNumber: 1,
+    configJson: JSON.stringify({
+      basePerHoleCents: 100, sandies: false, sandiesBonusPerHoleCents: 0,
+      greenieCarryover: false, greenieValidation: 'none', greenieBaseCents: 0,
+      autoPressTriggerAtNDown: null, pressMultiplier: 2,
+    }),
+    effectiveFromRoundId: null, effectiveFromHole: 1,
+    createdByPlayerId: organizerId, reason: null, createdAt: now,
+    tenantId: TENANT_ID, contextId: `library:${TENANT_ID}`,
   });
 
   // --- Real organizer session (the cookie the browser will reuse) ---
@@ -159,8 +194,8 @@ async function main(): Promise<void> {
   const inviteToken = (await db.select().from(invites).where(eq(invites.eventId, eventId)))[0]!
     .token;
 
-  // --- Add 3 accountless manual members (foursome 1 with the organizer) ---
-  const memberNames = ['Matt Jaquint', 'Chris McNeely', 'Ronnie Adkins'];
+  // --- Add 4 accountless manual members (a full foursome) ---
+  const memberNames = ['Matt Jaquint', 'Chris McNeely', 'Ronnie Adkins', 'Ben McGinnis'];
   for (const name of memberNames) {
     const res = await postJson(
       app,
@@ -181,7 +216,7 @@ async function main(): Promise<void> {
     .filter((m) => memberNames.includes(m.name ?? ''))
     .map((m) => m.playerId);
 
-  // --- Lock one foursome (the 3 members) via the REAL pairings route ---
+  // --- Lock one foursome (the 4 members) via the REAL pairings route ---
   const pairRes = await postJson(
     app,
     `/api/admin/events/${eventId}/pairings`,
@@ -198,6 +233,21 @@ async function main(): Promise<void> {
   if (pairRes.status >= 300) {
     throw new Error(`pairings lock failed: ${pairRes.status} ${await pairRes.text()}`);
   }
+
+  // A cross-player 1v1 "cards" bet so the money screens have an individual
+  // ledger to render. Inserted directly (bet POST validates participants).
+  await db.insert(individualBets).values({
+    id: randomUUID(), eventId, playerAId: memberIds[0]!, playerBId: memberIds[2]!,
+    betType: 'match_play_per_hole', stakePerHoleCents: 100, configJson: '{}',
+    createdByPlayerId: organizerId, createdAt: now,
+    tenantId: TENANT_ID, contextId: `event:${eventId}`,
+  });
+  const betId = (
+    await db.select().from(individualBets).where(eq(individualBets.eventId, eventId))
+  )[0]!.id;
+  await db.insert(individualBetRounds).values({
+    betId, eventRoundId, tenantId: TENANT_ID, contextId: `event:${eventId}`,
+  });
 
   // Mint a session for one foursome MEMBER — the realistic scoring path is a
   // logged-in member scoring for the group (the 3 accountless players have no
