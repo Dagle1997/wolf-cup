@@ -482,8 +482,19 @@ development_status:
   # Scope: bets API (surface perHole), a foursome-results endpoint/view for the
   # 2v2 ledger, web result screens, and decompose the combined total so each
   # ledger balances in its own scope (global settle, never per-foursome).
-  # NEEDS DESIGN. tournament-api + -web.
-  T13-5-money-presentation-two-ledgers: backlog
+  # DONE 2026-06-12 (commits 182331d/acf8f94/fcf1ccd/28e1710, pushed, CI green):
+  #   - GET /event-rounds/:id/foursome-results (per-foursome 2v2 hole-by-hole).
+  #   - GET /my-money (viewer P&L by game; loss-lessly reconciles to the matrix
+  #     total — the invariant caught a foursome HALF-share bug pre-commit).
+  #   - computeMoneyMatrix now also returns teamLedger + individualLedger
+  #     (combined unchanged); Money page renders the two as labeled sections.
+  #   - Web: HeadToHeadCard, My Money board (event nav), Foursome results
+  #     (linked from leaderboard). Both engines already produced perHole — this
+  #     surfaced + presented it; no new scoring math.
+  # FOLLOWUPS (minor, deferred): browser E2E for the new views (component-
+  # tested); skins as a 3rd presented ledger; settle-up split (kept as the
+  # global combined settle by design); a ranked cross-player money board.
+  T13-5-money-presentation-two-ledgers: done
 
   # ---------------------------------------------------------------------------
   # Epic T14: Test & Validation Hardening
