@@ -126,26 +126,43 @@ export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
   const { matrix, playerIds, pins, groupSize = 4 } = input;
   const rng = input.rng ?? Math.random;
 
-  if (playerIds.length === 0) {
+  // Dedupe defensively: a duplicate id would otherwise be placed twice and the
+  // self-pair (pairKey(p,p)) costs 0, so the greedy phase would never discourage
+  // assigning the same player to two groups.
+  const uniquePlayerIds = [...new Set(playerIds)];
+
+  if (uniquePlayerIds.length === 0) {
     return { groups: [], remainder: [], totalCost: 0 };
   }
 
-  const numGroups = Math.floor(playerIds.length / groupSize);
+  const numGroups = Math.floor(uniquePlayerIds.length / groupSize);
   if (numGroups === 0) {
-    return { groups: [], remainder: [...playerIds], totalCost: 0 };
+    return { groups: [], remainder: [...uniquePlayerIds], totalCost: 0 };
   }
 
+  const playerSet = new Set(uniquePlayerIds);
   const remainderIds = new Set<number>();
   const pinnedPlayers = new Set<number>();
   const pinMap = pins ?? new Map<number, number>();
 
-  // Validate pins
+  // Validate pins. Keep only pins whose player is a real, in-range member, drop
+  // phantom/NaN ids and out-of-range group indexes, never pin the same player
+  // twice, and never let pins overfill a group past groupSize (excess pins fall
+  // through to the greedy phase as if unpinned). This guarantees the engine can
+  // never emit an invalid partition from bad pin input.
+  const validPins: Array<[number, number]> = [];
+  const pinnedPerGroup = new Array<number>(numGroups).fill(0);
   for (const [pid, gIdx] of pinMap) {
+    if (!Number.isInteger(pid) || !playerSet.has(pid)) continue;
     if (gIdx < 0 || gIdx >= numGroups) continue;
+    if (pinnedPlayers.has(pid)) continue;
+    if (pinnedPerGroup[gIdx]! >= groupSize) continue;
     pinnedPlayers.add(pid);
+    pinnedPerGroup[gIdx]!++;
+    validPins.push([pid, gIdx]);
   }
 
-  const unpinnedPlayers = playerIds.filter((id) => !pinnedPlayers.has(id));
+  const unpinnedPlayers = uniquePlayerIds.filter((id) => !pinnedPlayers.has(id));
   const restarts = 10;
 
   let bestGroups: number[][] | null = null;
@@ -155,12 +172,11 @@ export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
   let bestLoad = Infinity;
 
   for (let attempt = 0; attempt < restarts; attempt++) {
-    // Initialize groups with pinned players
+    // Initialize groups with the validated pins (membership/range/capacity
+    // already enforced above).
     const currentGroups: number[][] = Array.from({ length: numGroups }, () => []);
-    for (const [pid, gIdx] of pinMap) {
-      if (gIdx >= 0 && gIdx < numGroups) {
-        currentGroups[gIdx]!.push(pid);
-      }
+    for (const [pid, gIdx] of validPins) {
+      currentGroups[gIdx]!.push(pid);
     }
 
     // Shuffle unpinned players (Fisher-Yates). Clamp the index to [0, i] so an
@@ -220,7 +236,7 @@ export function suggestGroups(input: SuggestGroupsInput): SuggestGroupsResult {
   // invariant rather than asserting non-null — a NaN penalty would otherwise
   // crash here. Fall back to leaving everyone unassigned.
   if (!bestGroups) {
-    return { groups: [], remainder: [...playerIds], totalCost: 0 };
+    return { groups: [], remainder: [...uniquePlayerIds], totalCost: 0 };
   }
 
   // Return the RAW repeat-weight for display — the admin/attendance UIs and

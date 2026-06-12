@@ -434,11 +434,12 @@ function sortPlayers(
       sorted.sort(bucketed((a, b) => (b.birdies + b.eagles) - (a.birdies + a.eagles) || a.name.localeCompare(b.name)));
       break;
     case 'wolf': {
-      // Sort by win%, then total alone/blind calls desc
+      // Sort by win%, then total alone/blind calls desc. Win% divides by DECIDED
+      // calls only (wins+losses) — pushes don't penalize (league convention).
       const wolfScore = (p: PlayerStats) => {
-        const total = p.wolfCallsWolf + p.wolfCallsBlindWolf;
-        if (total === 0) return -1; // no calls = bottom
-        return p.wolfWins / total;
+        const decided = p.wolfWins + p.wolfLosses;
+        if (decided === 0) return -1; // no decided calls = bottom
+        return p.wolfWins / decided;
       };
       sorted.sort(bucketed((a, b) => {
         const diff = wolfScore(b) - wolfScore(a);
@@ -1082,7 +1083,10 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                     </div>
                   );
                   const wolfTotal = bp.wolfRecord.wins + bp.wolfRecord.losses + bp.wolfRecord.pushes;
-                  const wolfPct = wolfTotal > 0 ? Math.round((bp.wolfRecord.wins / wolfTotal) * 100) : 0;
+                  // Win% divides by DECIDED calls only — pushes don't penalize
+                  // (league convention; matches the API + chemistry/vs-win cards).
+                  const wolfDecided = bp.wolfRecord.wins + bp.wolfRecord.losses;
+                  const wolfPct = wolfDecided > 0 ? Math.round((bp.wolfRecord.wins / wolfDecided) * 100) : 0;
                   const moneyColor = bp.avgMoney > 0 ? 'text-green-600' : bp.avgMoney < 0 ? 'text-destructive' : '';
                   return (
                     <div key={bp.position} className="bg-muted/30 rounded-lg p-2 text-center">

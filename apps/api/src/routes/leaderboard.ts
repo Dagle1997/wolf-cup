@@ -241,7 +241,8 @@ async function buildLeaderboard(round: RoundRow) {
       scheduledRoundIds: sideGames.scheduledRoundIds,
     })
     .from(sideGames)
-    .where(eq(sideGames.seasonId, round.seasonId));
+    .where(eq(sideGames.seasonId, round.seasonId))
+    .orderBy(sideGames.id); // deterministic: lowest-id match wins if several target this round
   const activeSideGame = allSideGames.find((sg) => {
     try {
       const ids = JSON.parse(sg.scheduledRoundIds ?? "[]") as number[];
@@ -515,8 +516,16 @@ app.get("/leaderboard/live", async (c) => {
       .orderBy(desc(rounds.id))
       .all();
 
+    // Preference order: an ACTIVE official round (being played right now) must
+    // win over a newer SCHEDULED official round (e.g. next week already set up),
+    // otherwise desc(id) would hijack the live board to the future round. Before
+    // game day (no active round) the scheduled official still shows.
     const round =
-      candidates.find((r) => r.type === "official") ?? candidates[0] ?? null;
+      candidates.find((r) => r.type === "official" && r.status === "active") ??
+      candidates.find((r) => r.type === "official") ??
+      candidates.find((r) => r.status === "active") ??
+      candidates[0] ??
+      null;
 
     if (!round) {
       return c.json(

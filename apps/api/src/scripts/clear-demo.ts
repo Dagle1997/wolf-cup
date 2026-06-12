@@ -16,6 +16,13 @@ import {
   wolfDecisions,
   roundResults,
   harveyResults as harveyResultsTable,
+  scoreCorrections,
+  sideGameResults,
+  sideGameCtpEntries,
+  holeCompletions,
+  oddsLines,
+  sentEmails,
+  galleryPhotos,
 } from '../db/schema.js';
 
 async function clearDemoData() {
@@ -49,6 +56,15 @@ async function clearDemoData() {
     .where(inArray(groups.roundId, roundIds));
   const groupIds = seasonGroups.map(g => g.id);
 
+  // Clear ALL tables that FK rounds(id) before deleting rounds, or the final
+  // delete hits a FK constraint (keep in sync with admin season-delete).
+  await db.delete(scoreCorrections).where(inArray(scoreCorrections.roundId, roundIds));
+  await db.delete(sideGameResults).where(inArray(sideGameResults.roundId, roundIds));
+  await db.delete(sideGameCtpEntries).where(inArray(sideGameCtpEntries.roundId, roundIds));
+  await db.delete(holeCompletions).where(inArray(holeCompletions.roundId, roundIds));
+  await db.delete(oddsLines).where(inArray(oddsLines.roundId, roundIds));
+  await db.delete(sentEmails).where(inArray(sentEmails.roundId, roundIds));
+  await db.update(galleryPhotos).set({ roundId: null }).where(inArray(galleryPhotos.roundId, roundIds));
   if (groupIds.length > 0) {
     await db.delete(holeScores).where(inArray(holeScores.groupId, groupIds));
     await db.delete(wolfDecisions).where(inArray(wolfDecisions.groupId, groupIds));

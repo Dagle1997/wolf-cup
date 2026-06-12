@@ -65,6 +65,60 @@ describe('getHandicapStrokes', () => {
       expect(getHandicapStrokes(18.4, 1)).toBe(1);
     });
   });
+
+  // Plus / negative course handicaps (near-scratch players on white/blue tees).
+  // USGA allocation: strokes are GIVEN BACK starting from the easiest hole
+  // (highest stroke index). Regression for the negative-CH bug where `ch % 18`
+  // kept its sign and charged −1 on all 18 holes.
+  describe('handicap −1: gives back 1 stroke on SI 18 only', () => {
+    it('SI 18 → −1 stroke', () => {
+      expect(getHandicapStrokes(-1, 18)).toBe(-1);
+    });
+    for (let si = 1; si <= 17; si++) {
+      it(`SI ${si} → 0 strokes`, () => {
+        expect(getHandicapStrokes(-1, si)).toBe(0);
+      });
+    }
+  });
+
+  describe('handicap −2: gives back 1 stroke on SI 17 and 18', () => {
+    it('SI 17 → −1, SI 18 → −1, SI 16 → 0', () => {
+      expect(getHandicapStrokes(-2, 17)).toBe(-1);
+      expect(getHandicapStrokes(-2, 18)).toBe(-1);
+      expect(getHandicapStrokes(-2, 16)).toBe(0);
+    });
+  });
+
+  describe('handicap −19: −1 on every hole plus a 2nd give-back on SI 18', () => {
+    it('SI 18 → −2', () => {
+      expect(getHandicapStrokes(-19, 18)).toBe(-2);
+    });
+    for (let si = 1; si <= 17; si++) {
+      it(`SI ${si} → −1 stroke`, () => {
+        expect(getHandicapStrokes(-19, si)).toBe(-1);
+      });
+    }
+  });
+
+  describe('invariant: per-hole strokes sum to the course handicap over 18 holes', () => {
+    for (const ch of [-19, -2, -1, 0, 1, 9, 18, 19, 27, 36]) {
+      it(`ch ${ch} → strokes sum to ${ch}`, () => {
+        let sum = 0;
+        for (let si = 1; si <= 18; si++) sum += getHandicapStrokes(ch, si);
+        expect(sum).toBe(ch);
+      });
+    }
+  });
+
+  describe('plus handicap Stableford: a scratch-plus player nets +1 only on the easiest hole', () => {
+    it('ch −1, par-4 SI 18, gross 4 → net 5 (bogey) → 1 pt', () => {
+      // SI 18 gives back a stroke: net = 4 − (−1) = 5 = +1 vs par → 1 pt
+      expect(calculateStablefordPoints(4, -1, 4, 18)).toBe(1);
+    });
+    it('ch −1, par-4 SI 1, gross 4 → net 4 (par) → 2 pts (no give-back on hardest hole)', () => {
+      expect(calculateStablefordPoints(4, -1, 4, 1)).toBe(2);
+    });
+  });
 });
 
 describe('calculateStablefordPoints', () => {

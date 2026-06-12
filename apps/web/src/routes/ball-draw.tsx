@@ -681,20 +681,30 @@ function BattingOrderForm({
   const [order, setOrder] = useState<(number | null)[]>([null, null, null, null]);
   const [rolling, setRolling] = useState(false);
   const usedIds = new Set(order.filter((id): id is number => id !== null));
+  const rollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clear any in-flight roll interval on unmount so it can't fire setState after
+  // the component is gone.
+  useEffect(() => () => {
+    if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
+  }, []);
 
   const rollForOrder = useCallback(() => {
     setRolling(true);
     let ticks = 0;
     const totalTicks = 12;
+    if (rollIntervalRef.current) clearInterval(rollIntervalRef.current);
     const interval = setInterval(() => {
       const shuffled = shuffle(players);
       setOrder(shuffled.map((p) => p.id));
       ticks++;
       if (ticks >= totalTicks) {
         clearInterval(interval);
+        rollIntervalRef.current = null;
         setRolling(false);
       }
     }, 80);
+    rollIntervalRef.current = interval;
   }, [players]);
 
   return (

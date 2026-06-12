@@ -609,7 +609,9 @@ function HighlightReel({ roundId }: { roundId: number }) {
 
   if (items.length === 0) return null;
 
-  const item = items[current]!;
+  // Clamp with modulo — a refetch can shrink the list below `current`, which
+  // would otherwise index past the end and crash on the property access below.
+  const item = items[current % items.length]!;
   // Rare achievements (Eagle, Perfect Day, Round of the Day, Pack of One,
   // Leap of Faith, Apex Predator) get a gold gradient border + warmer fill
   // to set them apart from the routine slides.
@@ -713,7 +715,10 @@ function LeaderboardTable({
     : null;
 
   // Accordion state: single-open in All view, all-4-open by default in Group view.
-  // Reset whenever viewMode changes so All never shows 4 cards simultaneously.
+  // Reset only when viewMode/myGroupId changes — NOT on data.leaderboard identity,
+  // otherwise every 5s poll (which changes the array reference whenever any group
+  // submits a hole) would snap shut whatever scorecard the viewer had open.
+  // (data.leaderboard is intentionally read but omitted from deps.)
   useEffect(() => {
     if (viewMode === 'group' && myGroupId !== null) {
       const ids = data.leaderboard
@@ -723,7 +728,7 @@ function LeaderboardTable({
     } else {
       setExpandedPlayerIds(new Set());
     }
-  }, [viewMode, myGroupId, data.leaderboard]);
+  }, [viewMode, myGroupId]);
 
   // Sort field + rank field per active sort. Server ranks are authoritative.
   const sortedLeaderboard = sortLeaderboard(data.leaderboard, effectiveSortMode);

@@ -3,7 +3,7 @@ import { serve } from '@hono/node-server';
 import { and, eq, inArray, lt } from 'drizzle-orm';
 import type { Variables } from './types.js';
 import { db } from './db/index.js';
-import { rounds, groups, roundPlayers, holeScores, wolfDecisions, roundResults, players, sideGameCtpEntries, holeCompletions } from './db/schema.js';
+import { rounds, groups, roundPlayers, holeScores, wolfDecisions, roundResults, players, sideGameCtpEntries, holeCompletions, galleryPhotos } from './db/schema.js';
 import publicRoundsRouter from './routes/rounds.js';
 import leaderboardRouter from './routes/leaderboard.js';
 import standingsRouter from './routes/standings.js';
@@ -115,6 +115,9 @@ async function cleanupCancelledRounds(): Promise<void> {
       // ON DELETE CASCADE; must be cleared before groups/rounds are deleted.
       await tx.delete(sideGameCtpEntries).where(inArray(sideGameCtpEntries.roundId, roundIds));
       await tx.delete(holeCompletions).where(inArray(holeCompletions.roundId, roundIds));
+      // Detach any gallery photos (nullable FK) — otherwise a photo attached to a
+      // cancelled practice round permanently blocks its cleanup on the FK.
+      await tx.update(galleryPhotos).set({ roundId: null }).where(inArray(galleryPhotos.roundId, roundIds));
       await tx.delete(groups).where(inArray(groups.roundId, roundIds));
       await tx.delete(rounds).where(inArray(rounds.id, roundIds));
 

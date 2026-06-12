@@ -41,6 +41,7 @@ app.post('/gallery/upload', async (c) => {
     return c.json({ error: 'STORAGE_NOT_CONFIGURED' }, 503);
   }
 
+  try {
   const formData = await c.req.formData();
   const file = formData.get('photo');
   const caption = formData.get('caption');
@@ -84,11 +85,14 @@ app.post('/gallery/upload', async (c) => {
     if (round.status !== 'active' && round.status !== 'completed') {
       return c.json({ error: 'ROUND_NOT_ACTIVE' }, 422);
     }
-    if (round.entryCodeHash) {
-      const codeValid = await bcrypt.compare(entryCode, round.entryCodeHash);
-      if (!codeValid) {
-        return c.json({ error: 'INVALID_ENTRY_CODE' }, 401);
-      }
+    // A round with no entry code hash cannot be validated against — deny rather
+    // than silently allow an anonymous upload (mirrors the active-round branch).
+    if (!round.entryCodeHash) {
+      return c.json({ error: 'ROUND_NOT_ACCEPTING_UPLOADS' }, 422);
+    }
+    const codeValid = await bcrypt.compare(entryCode, round.entryCodeHash);
+    if (!codeValid) {
+      return c.json({ error: 'INVALID_ENTRY_CODE' }, 401);
     }
     roundId = round.id;
   } else {
@@ -140,6 +144,10 @@ app.post('/gallery/upload', async (c) => {
     publicUrl,
     roundId,
   });
+  } catch (err) {
+    console.error('Gallery upload failed:', err);
+    return c.json({ error: 'UPLOAD_FAILED', code: 'UPLOAD_FAILED' }, 500);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -148,11 +156,14 @@ app.post('/gallery/upload', async (c) => {
 
 app.get('/gallery', async (c) => {
   const roundIdParam = c.req.query('roundId');
-  const limit = Math.min(Number(c.req.query('limit') ?? 50), 100);
-  const offset = Number(c.req.query('offset') ?? 0);
+  const rawLimit = Number(c.req.query('limit') ?? 50);
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100) : 50;
+  const rawOffset = Number(c.req.query('offset') ?? 0);
+  const offset = Number.isFinite(rawOffset) ? Math.max(Math.trunc(rawOffset), 0) : 0;
 
-  const conditions = roundIdParam
-    ? and(eq(galleryPhotos.roundId, Number(roundIdParam)))
+  const roundIdNum = roundIdParam !== undefined ? Number(roundIdParam) : undefined;
+  const conditions = roundIdNum !== undefined && Number.isInteger(roundIdNum)
+    ? and(eq(galleryPhotos.roundId, roundIdNum))
     : undefined;
 
   const [photoRows, countResult] = await Promise.all([

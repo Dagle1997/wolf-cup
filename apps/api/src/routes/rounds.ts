@@ -613,6 +613,9 @@ app.post('/rounds/practice', async (c) => {
         .insert(seasons)
         .values({
           name: 'Practice',
+          // Derive the year from the start date so the season sorts correctly in
+          // year-ordered history (the column default is 0, which pollutes it).
+          year: Number(today.slice(0, 4)),
           startDate: today,
           endDate: today,
           totalRounds: 0,
@@ -1570,17 +1573,21 @@ app.post('/rounds/:roundId/groups/:groupId/holes/:holeNumber/wolf-decision', asy
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
 
-  // Upsert round_results moneyTotal for each player
+  // Upsert round_results moneyTotal for each player — atomically, so a partial
+  // failure can't leave some players' money updated and others stale (mirrors
+  // the score-correction path).
   try {
-    for (const [playerId, moneyTotal] of playerMoneyTotals) {
-      await db
-        .insert(roundResults)
-        .values({ roundId, playerId, stablefordTotal: 0, moneyTotal, updatedAt: now })
-        .onConflictDoUpdate({
-          target: [roundResults.roundId, roundResults.playerId],
-          set: { moneyTotal, updatedAt: now },
-        });
-    }
+    await db.transaction(async (tx) => {
+      for (const [playerId, moneyTotal] of playerMoneyTotals) {
+        await tx
+          .insert(roundResults)
+          .values({ roundId, playerId, stablefordTotal: 0, moneyTotal, updatedAt: now })
+          .onConflictDoUpdate({
+            target: [roundResults.roundId, roundResults.playerId],
+            set: { moneyTotal, updatedAt: now },
+          });
+      }
+    });
   } catch {
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }

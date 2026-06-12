@@ -231,7 +231,17 @@ app.delete('/players/:id', adminAuthMiddleware, async (c) => {
 
   try {
     await db.delete(players).where(eq(players.id, id));
-  } catch {
+  } catch (err) {
+    // The round_players check above catches the common case, but a player can be
+    // referenced by other historical tables (attendance, championships, etc.).
+    // Surface a clean 409 rather than an opaque 500 on a FK constraint failure.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/FOREIGN KEY|SQLITE_CONSTRAINT/i.test(msg)) {
+      return c.json(
+        { error: 'Player is referenced by historical data — deactivate instead', code: 'HAS_REFERENCES' },
+        409,
+      );
+    }
     return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
   }
 

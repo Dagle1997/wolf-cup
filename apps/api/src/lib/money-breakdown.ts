@@ -188,6 +188,10 @@ export async function computeRoundMoneyBreakdown(roundId: number): Promise<Round
     for (let holeNum = 1; holeNum <= 18; holeNum++) {
       const scoreMap = scoresByHole.get(holeNum);
       if (!scoreMap || scoreMap.size < 4) continue; // incomplete hole — skip
+      // Every batting-order player must have a score for this hole. Without this,
+      // a missing entry would be read as gross 0 below (mirrors recalculateMoney's
+      // stronger guard); size>=4 alone doesn't guarantee the right 4 players.
+      if (battingOrder.some((pid) => !scoreMap.has(pid))) continue;
 
       const courseHole = getCourseHole(holeNum as HoleNumber);
       const assignment: HoleAssignment = getWolfAssignment([0, 1, 2, 3], holeNum as HoleNumber);
@@ -209,8 +213,11 @@ export async function computeRoundMoneyBreakdown(roundId: number): Promise<Round
       // Compute base (skins or wolf-settlement without bonuses)
       const baseResult = calculateHoleMoney(netScores, assignment, wolfDec, courseHole.par);
 
-      // Apply bonuses on wolf holes only (applyBonusModifiers is a no-op on skins in the engine,
-      // but we skip the call entirely to mirror recalculateMoney's behavior).
+      // Apply bonuses on wolf holes only. Skins holes (1 & 3) carry NO bonus
+      // money per the league rule (see commit 477c4c3 + help page) — base skin
+      // only. We skip applyBonusModifiers entirely on skins holes to mirror
+      // recalculateMoney; the engine's skins branch encodes a superseded rule
+      // and is intentionally never invoked from production.
       const withBonuses = assignment.type === 'wolf'
         ? applyBonusModifiers(
             baseResult,

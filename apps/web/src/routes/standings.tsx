@@ -197,7 +197,11 @@ function StandingsPage() {
                 onTogglePin={togglePin}
               />
               <StandingsList
-                players={data.fullMembers.filter((p) => p.rank !== 1)}
+                // Exclude only the SPOTLIGHTED player, not every rank-1 row —
+                // otherwise a co-leader tied for 1st would vanish from the board.
+                players={data.fullMembers.filter(
+                  (p) => p.playerId !== (data.fullMembers.find((q) => q.rank === 1)?.playerId),
+                )}
                 leader={data.fullMembers.find((p) => p.rank === 1) ?? null}
                 pairs={pairingData?.pairs ?? []}
                 pinnedId={pinnedId}
@@ -298,7 +302,16 @@ function LeaderSpotlight({
   return (
     <div
       ref={ref}
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
       onClick={() => setExpanded((v) => !v)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setExpanded((v) => !v);
+        }
+      }}
       className={`relative rounded-xl border bg-gradient-to-br from-amber-100 via-amber-50 to-yellow-50 dark:from-amber-950/40 dark:via-amber-950/20 dark:to-yellow-950/20 p-3 mb-3 overflow-hidden cursor-pointer transition-all ${
         isPinned ? 'border-blue-400 ring-2 ring-blue-400/30' : 'border-amber-300 dark:border-amber-700/60'
       }`}
@@ -575,7 +588,16 @@ function PlayerCard({
   return (
     <div
       ref={ref}
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
       onClick={() => setExpanded((v) => !v)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          setExpanded((v) => !v);
+        }
+      }}
       className={`rounded-xl border px-3 py-2.5 transition-all cursor-pointer ${cardTone} ${borderTone}`}
     >
       {/* Top row: rank pill · name · total */}

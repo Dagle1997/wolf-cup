@@ -14,6 +14,11 @@ import {
   scoreCorrections,
   sideGames,
   sideGameResults,
+  sideGameCtpEntries,
+  holeCompletions,
+  oddsLines,
+  sentEmails,
+  galleryPhotos,
   pairingHistory,
   attendance,
   subBench,
@@ -575,12 +580,22 @@ app.delete('/seasons/:id', adminAuthMiddleware, async (c) => {
       const roundIds = seasonRounds.map((r) => r.id);
 
       if (roundIds.length > 0) {
-        // Delete round-dependent leaf tables
+        // Delete round-dependent leaf tables. ALL tables that FK rounds(id) must
+        // be cleared here or the final `delete(rounds)` hits a FK constraint and
+        // the whole transaction rolls back with a generic 500 (FKs are enforced
+        // at runtime). Keep this list in sync with admin round-delete.
         await tx.delete(scoreCorrections).where(inArray(scoreCorrections.roundId, roundIds));
         await tx.delete(wolfDecisions).where(inArray(wolfDecisions.roundId, roundIds));
         await tx.delete(harveyResults).where(inArray(harveyResults.roundId, roundIds));
         await tx.delete(roundResults).where(inArray(roundResults.roundId, roundIds));
         await tx.delete(holeScores).where(inArray(holeScores.roundId, roundIds));
+        await tx.delete(holeCompletions).where(inArray(holeCompletions.roundId, roundIds));
+        await tx.delete(sideGameCtpEntries).where(inArray(sideGameCtpEntries.roundId, roundIds));
+        await tx.delete(oddsLines).where(inArray(oddsLines.roundId, roundIds));
+        await tx.delete(sentEmails).where(inArray(sentEmails.roundId, roundIds));
+        // Detach (don't delete) gallery photos so the images survive the season
+        // deletion, mirroring admin round-delete. R2 binaries are untouched.
+        await tx.update(galleryPhotos).set({ roundId: null }).where(inArray(galleryPhotos.roundId, roundIds));
         await tx.delete(roundPlayers).where(inArray(roundPlayers.roundId, roundIds));
         await tx.delete(groups).where(inArray(groups.roundId, roundIds));
         await tx.delete(sideGameResults).where(inArray(sideGameResults.roundId, roundIds));

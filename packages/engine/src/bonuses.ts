@@ -265,6 +265,12 @@ export function applyBonusModifiers(
   const bonusSkins: [number, number, number, number] = [0, 0, 0, 0];
 
   if (holeAssignment.type === 'skins') {
+    // NOTE: This branch encodes the SUPERSEDED pre-2026-03-09 rule where skins
+    // holes paid individual bonus skins. The live league rule (commit 477c4c3)
+    // is that skins holes 1 & 3 carry NO bonus money — base skin only. Every
+    // production path (rounds.ts, money-breakdown.ts) gates applyBonusModifiers
+    // to wolf holes, so this branch is NEVER reached in prod. Do NOT "fix" an
+    // API path to call this on skins holes — it would reintroduce the 477c4c3 bug.
     applyIndividual(bonusSkins, netScores, bonusInput, par);
   } else if (wolfDecision?.type === 'partner') {
     apply2v2(

@@ -12,7 +12,7 @@ export type BattingOrder<TPlayerId = string> = [TPlayerId, TPlayerId, TPlayerId,
 /** Holes 1 and 3 are skins holes */
 export type SkinsHoleAssignment = { readonly type: 'skins' };
 
-/** Holes 3–18: one batter is wolf */
+/** Holes 2 and 4–18: one batter is wolf (holes 1 and 3 are skins) */
 export type WolfHoleAssignment = {
   readonly type: 'wolf';
   /** Index into BattingOrder that identifies the wolf player this hole */

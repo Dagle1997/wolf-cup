@@ -970,12 +970,23 @@ app.post("/rounds/:id/finalize", adminAuthMiddleware, async (c) => {
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await tx
+    // Compare-and-swap: only flip active→finalized if it is STILL active. If a
+    // concurrent finalize already moved it, no row matches and we abort here —
+    // preventing double-firing of the non-idempotent side effects below
+    // (Harvey recompute, recordPairings, odds snapshot, side games, email).
+    const flipped = await db.transaction(async (tx) =>
+      tx
         .update(rounds)
         .set({ status: "finalized" })
-        .where(eq(rounds.id, id));
-    });
+        .where(and(eq(rounds.id, id), eq(rounds.status, "active")))
+        .returning({ id: rounds.id }),
+    );
+    if (flipped.length === 0) {
+      return c.json(
+        { error: "Round must be active to finalize", code: "ROUND_NOT_ACTIVE" },
+        422,
+      );
+    }
 
     // Compute Harvey Cup points — must succeed for standings integrity
     await computeAndStoreHarvey(id);

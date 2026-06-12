@@ -253,6 +253,27 @@ export function computeSideGameLeaderLive(input: LiveLeaderInput): SideGameResul
     case 'auto_putts': {
       const anyPutts = scores.some((s) => s.putts !== null && s.putts !== undefined);
       if (!anyPutts) return null;
+      // On a live round, only rank COMPLETE putt cards (all 18 holes entered) so
+      // a player who has logged putts on fewer holes can't win on a smaller sum.
+      // Finalized rounds are authoritative and rank whatever is recorded.
+      const isLive = roundStatus === 'active' || roundStatus === 'scheduled';
+      if (isLive) {
+        const holesWithPutts = new Map<number, number>();
+        for (const s of scores) {
+          if (s.putts !== null && s.putts !== undefined) {
+            holesWithPutts.set(s.playerId, (holesWithPutts.get(s.playerId) ?? 0) + 1);
+          }
+        }
+        const complete = new Set(
+          [...holesWithPutts].filter(([, n]) => n >= 18).map(([pid]) => pid),
+        );
+        if (complete.size === 0) return null;
+        const eligibleComplete = eligible
+          ? new Set([...eligible].filter((p) => complete.has(p)))
+          : complete;
+        if (eligibleComplete.size === 0) return null;
+        return calcLeastPutts(scores, eligibleComplete);
+      }
       return calcLeastPutts(scores, eligible);
     }
     case 'auto_net_under_par':

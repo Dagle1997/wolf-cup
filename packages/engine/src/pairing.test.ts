@@ -153,6 +153,42 @@ describe('suggestGroups', () => {
     expect(result.groups[0]).toHaveLength(4);
   });
 
+  it('drops a pin for a player not in playerIds (no phantom in any group)', () => {
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const pins = new Map([[9999, 0]]); // 9999 is not a participant
+    const result = suggestGroups({ matrix: new Map(), playerIds: ids, pins });
+    const everyone = result.groups.flat();
+    expect(everyone).not.toContain(9999);
+    // All real players still placed, no group over capacity
+    expect(result.groups).toHaveLength(2);
+    for (const g of result.groups) expect(g.length).toBeLessThanOrEqual(4);
+  });
+
+  it('drops a NaN pin key without injecting NaN into a group', () => {
+    const ids = [1, 2, 3, 4];
+    const pins = new Map([[Number('abc'), 0]]); // NaN key
+    const result = suggestGroups({ matrix: new Map(), playerIds: ids, pins });
+    const everyone = result.groups.flat();
+    expect(everyone.some((p) => Number.isNaN(p))).toBe(false);
+    expect(result.groups[0]).toHaveLength(4);
+  });
+
+  it('never overfills a group past groupSize from excess pins', () => {
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const pins = new Map([[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]); // 5 pinned to group 0
+    const result = suggestGroups({ matrix: new Map(), playerIds: ids, pins });
+    for (const g of result.groups) expect(g.length).toBeLessThanOrEqual(4);
+  });
+
+  it('dedupes duplicate playerIds — no player in two groups', () => {
+    const ids = [1, 1, 2, 3, 4, 5, 6, 7]; // 1 appears twice
+    const result = suggestGroups({ matrix: new Map(), playerIds: ids });
+    const everyone = result.groups.flat().concat(result.remainder);
+    const counts = new Map<number, number>();
+    for (const p of everyone) counts.set(p, (counts.get(p) ?? 0) + 1);
+    for (const [, c] of counts) expect(c).toBe(1);
+  });
+
   it('zero history → any valid partition accepted', () => {
     const ids = [1, 2, 3, 4, 5, 6, 7, 8];
     const result = suggestGroups({ matrix: new Map(), playerIds: ids });

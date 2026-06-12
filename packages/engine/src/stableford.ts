@@ -7,12 +7,21 @@ import { calcCourseHandicap, type Tee } from './course.js';
  * from the raw handicap index. Without `tee`, the first argument is treated as
  * an already-rounded course handicap (legacy; preserved for callers that pass
  * relative CH).
+ *
+ * Handles both positive and negative (plus-handicap) course handicaps:
+ *   - ch >= 0: a base stroke on every hole, plus one extra on the `ch % 18`
+ *     hardest holes (lowest stroke indexes, SI 1..rem).
+ *   - ch < 0 (plus handicap): strokes are *given back* starting from the
+ *     EASIEST hole (highest stroke index), mirroring USGA allocation. A hole
+ *     gives back a stroke when its stroke index > 18 + rem.
+ * In all cases the per-hole strokes sum to `ch` over the 18 holes.
  */
 export function getHandicapStrokes(handicapIndex: number, strokeIndex: number, tee?: Tee): number {
   const ch = tee !== undefined ? calcCourseHandicap(handicapIndex, tee) : Math.round(handicapIndex);
-  const base = Math.floor(ch / 18);
-  const extra = ch % 18;
-  return base + (strokeIndex <= extra ? 1 : 0);
+  const base = Math.trunc(ch / 18);
+  const rem = ch % 18; // JS `%` keeps the dividend's sign, so rem has the sign of ch
+  const strokes = rem >= 0 ? base + (strokeIndex <= rem ? 1 : 0) : base - (strokeIndex > 18 + rem ? 1 : 0);
+  return strokes === 0 ? 0 : strokes; // normalise -0 (Math.trunc of a small negative) to +0
 }
 
 /**
