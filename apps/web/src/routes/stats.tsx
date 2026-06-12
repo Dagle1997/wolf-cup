@@ -125,6 +125,8 @@ type PartnerChemistry = {
   losses: number;
   pushes: number;
   winRate: number;
+  // 2v2-only subset (the "Best 2v2 Partnership" record), null when never 2v2 partners.
+  partner2v2: { holes: number; wins: number; losses: number; pushes: number; winRate: number } | null;
 };
 
 type StatEvent = {
@@ -516,7 +518,6 @@ function StatsPage() {
   }, [standingsData]);
 
   const [sortKey, setSortKey] = useState<SortKey>('standings');
-  const [compareIds, setCompareIds] = useState<[number, number] | null>(null);
 
   const sortedPlayers = useMemo(
     () => data ? sortPlayers(data.players, sortKey, standingsRankMap, avgMap, subIds) : [],
@@ -595,13 +596,6 @@ function StatsPage() {
             </div>
           ) : (
             <>
-              {compareIds && (() => {
-                const pA = data.players.find((pl) => pl.playerId === compareIds[0]);
-                const pB = data.players.find((pl) => pl.playerId === compareIds[1]);
-                if (!pA || !pB) return null;
-                return <CompareView playerA={pA} playerB={pB} allNames={data.players.map((pl) => pl.name)} onClose={() => setCompareIds(null)} />;
-              })()}
-
               <div className="flex flex-col gap-3">
                 {sortedPlayers.map((p, i) => (
                   <PlayerCard
@@ -609,7 +603,6 @@ function StatsPage() {
                     player={p}
                     rank={i + 1}
                     allPlayers={data.players}
-                    onCompare={(otherId) => setCompareIds([p.playerId, otherId])}
                   />
                 ))}
               </div>
@@ -625,9 +618,13 @@ function StatsPage() {
 // Player Card — mobile-optimized
 // ---------------------------------------------------------------------------
 
-function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: PlayerStats; rank: number; allPlayers: PlayerStats[]; onCompare: (otherId: number) => void }) {
+function PlayerCard({ player: p, rank, allPlayers }: { player: PlayerStats; rank: number; allPlayers: PlayerStats[] }) {
   const [expanded, setExpanded] = useState(false);
   const [showCompareSelect, setShowCompareSelect] = useState(false);
+  // Compare renders INLINE on this card (not a detached panel at the page top,
+  // which scrolled out of view and read as "nothing happened").
+  const [compareWithId, setCompareWithId] = useState<number | null>(null);
+  const [showAllRelations, setShowAllRelations] = useState(false);
   const allNames = useMemo(() => allPlayers.map((pl) => pl.name), [allPlayers]);
   const sn = (name: string) => shortName(name, allNames);
 
@@ -765,7 +762,7 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
                   className="flex-1 rounded-md border bg-background px-2 py-1.5 text-xs"
                   onChange={(e) => {
                     if (e.target.value) {
-                      onCompare(Number(e.target.value));
+                      setCompareWithId(Number(e.target.value));
                       setShowCompareSelect(false);
                     }
                   }}
@@ -784,53 +781,17 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             )}
           </div>
 
-          {/* Rivalry callouts
-              Lucky Charm — net $ across rounds where they were in your group.
-                            Gated on roundsTogether >= 3 to avoid early-season noise.
-              Dominate    — money you took from them on opponent holes (per-hole).
-              Rival       — money they took from you on opponent holes (per-hole). */}
-          {detail.rivals.length >= 2 && (() => {
-            const LUCKY_CHARM_MIN_ROUNDS = 3;
-            const charmList = [...detail.rivals]
-              .filter((r) => r.luckyCharm > 0 && r.roundsTogether >= LUCKY_CHARM_MIN_ROUNDS)
-              .sort((a, b) => b.luckyCharm - a.luckyCharm);
-            const dominateList = [...detail.rivals]
-              .filter((r) => r.dominate > 0)
-              .sort((a, b) => b.dominate - a.dominate);
-            const rivalList = [...detail.rivals]
-              .filter((r) => r.rival > 0)
-              .sort((a, b) => b.rival - a.rival);
-            const charm = charmList[0];
-            const dominate = dominateList[0];
-            const rivalBest = rivalList[0];
-            if (!charm && !dominate && !rivalBest) return null;
+          {/* Inline comparison — renders right here on the card, where you tapped */}
+          {compareWithId !== null && (() => {
+            const other = allPlayers.find((o) => o.playerId === compareWithId);
+            if (!other) return null;
             return (
-              <div className="px-4 py-2 border-b bg-muted/10">
-                <div className="flex items-center justify-between gap-1 text-[10px]">
-                  {charm ? (
-                    <span className="text-green-500" title={`Net money across ${charm.roundsTogether} rounds they were in your group`}>
-                      🍀 <span className="font-bold">{sn(charm.name)}</span> <span className="tabular-nums">+${charm.luckyCharm}</span>
-                    </span>
-                  ) : <span />}
-                  {rivalBest ? (
-                    <span className="text-red-500" title="Player who has taken the most money from you on opp-team holes">
-                      🎯 <span className="font-bold">{sn(rivalBest.name)}</span> <span className="tabular-nums">-${rivalBest.rival}</span>
-                    </span>
-                  ) : <span />}
-                  {dominate ? (
-                    <span className="text-amber-500" title="Money you've taken from them on opponent-only holes">
-                      👑 <span className="font-bold">{sn(dominate.name)}</span> <span className="tabular-nums">+${dominate.dominate}</span>
-                    </span>
-                  ) : <span />}
-                </div>
-                <div className="flex items-center justify-between gap-1 text-[8px] text-muted-foreground/50 mt-0.5">
-                  <span>{charm ? 'Lucky Charm' : ''}</span>
-                  <span>{rivalBest ? 'Nemesis' : ''}</span>
-                  <span>{dominate ? 'Dominate' : ''}</span>
-                </div>
+              <div className="border-b bg-muted/10">
+                <CompareView playerA={p} playerB={other} allNames={allNames} onClose={() => setCompareWithId(null)} />
               </div>
             );
           })()}
+
 
           {/* Per-hole averages — scorecard style */}
           {detail.holeAverages.length > 0 && (
@@ -1109,77 +1070,124 @@ function PlayerCard({ player: p, rank, allPlayers, onCompare }: { player: Player
             </div>
           )}
 
-          {/* Chemistry — best/worst teammates across every same-team wolf hole */}
-          {detail.chemistry?.length > 0 && (() => {
-            const minHoles = 3;
-            const qualified = detail.chemistry.filter((c) => c.holes >= minHoles);
-            if (qualified.length < 2) return null;
-            const byWinRate = [...qualified].sort((a, b) => b.winRate - a.winRate);
-            const best = byWinRate[0]!;
-            const worst = byWinRate[byWinRate.length - 1]!;
+          {/* Partners & Rivals — unified relationship view. Merges chemistry
+              (With), rivals (Vs) and lucky charm into one row per groupmate so the
+              same pair no longer shows conflicting numbers across separate cards.
+              The 2v2 sub-record is surfaced inside the With line so the "Best 2v2
+              Partnership" highlight reads as a labeled subset, not a contradiction. */}
+          {(detail.chemistry.length > 0 || detail.rivals.length > 0) && (() => {
+            const MIN_WITH_HOLES = 3;
+            const LUCKY_MIN_ROUNDS = 3;
+            type Row = { playerId: number; name: string; chem?: PartnerChemistry; riv?: Rival };
+            const byId = new Map<number, Row>();
+            for (const c of detail.chemistry) byId.set(c.playerId, { playerId: c.playerId, name: c.name, chem: c });
+            for (const r of detail.rivals) {
+              const e = byId.get(r.playerId);
+              if (e) e.riv = r;
+              else byId.set(r.playerId, { playerId: r.playerId, name: r.name, riv: r });
+            }
+            const rows = [...byId.values()];
+
+            const withQ = rows.filter((x) => x.chem && x.chem.holes >= MIN_WITH_HOLES);
+            const best = withQ.length ? withQ.reduce((a, b) => (b.chem!.winRate > a.chem!.winRate ? b : a)) : null;
+            const charmQ = rows.filter((x) => x.riv && x.riv.luckyCharm > 0 && x.riv.roundsTogether >= LUCKY_MIN_ROUNDS);
+            const charm = charmQ.length ? charmQ.reduce((a, b) => (b.riv!.luckyCharm > a.riv!.luckyCharm ? b : a)) : null;
+            const nemQ = rows.filter((x) => x.riv && x.riv.rival > 0);
+            const nemesis = nemQ.length ? nemQ.reduce((a, b) => (b.riv!.rival > a.riv!.rival ? b : a)) : null;
+
+            const tagOf = (x: Row) => (x === best ? 'best' : x === charm ? 'charm' : x === nemesis ? 'nemesis' : null);
+            const pr = (x: Row) => (x === best ? 0 : x === charm ? 1 : x === nemesis ? 2 : 3);
+            rows.sort((a, b) => pr(a) - pr(b) || (b.riv?.roundsTogether ?? 0) - (a.riv?.roundsTogether ?? 0) || a.name.localeCompare(b.name));
+            const shown = showAllRelations ? rows : rows.slice(0, 6);
+
             return (
               <div className="px-4 py-3 border-b">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Chemistry</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-green-500/10 rounded-lg p-2.5">
-                    <div className="text-[9px] text-green-500 font-medium uppercase tracking-wider mb-1">Best Teammate</div>
-                    <div className="text-sm font-bold">{sn(best.name)}</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
-                      <span className="text-green-500 font-bold">{best.winRate}%</span> · {best.wins}-{best.losses}-{best.pushes}
-                    </div>
-                    <div className="text-[9px] text-muted-foreground/50">{best.holes} holes on same team</div>
-                  </div>
-                  <div className="bg-red-500/10 rounded-lg p-2.5">
-                    <div className="text-[9px] text-red-500 font-medium uppercase tracking-wider mb-1">Worst Teammate</div>
-                    <div className="text-sm font-bold">{sn(worst.name)}</div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
-                      <span className="text-red-500 font-bold">{worst.winRate}%</span> · {worst.wins}-{worst.losses}-{worst.pushes}
-                    </div>
-                    <div className="text-[9px] text-muted-foreground/50">{worst.holes} holes on same team</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Partners &amp; Rivals</p>
+                <p className="text-[9px] text-muted-foreground/60 mb-2 leading-snug">
+                  <span className="text-green-600 dark:text-green-400 font-medium">With</span> = holes on the same side ·{' '}
+                  <span className="text-red-500 font-medium">Vs</span> = holes against each other
+                </p>
 
-          {/* Rivals — when grouped with (positive-only attribution) */}
-          {detail.rivals.length > 0 && (() => {
-            const rivalsSorted = [...detail.rivals].sort((a, b) => b.rival - a.rival);
-            return (
-              <div className="px-4 py-3">
+                {charm && charm.riv && (() => {
+                  const total = charm.riv.luckyCharm;
+                  const n = charm.riv.roundsTogether || 1;
+                  const avg = Math.round(total / n);
+                  return (
+                    <div className="rounded-lg bg-green-500/10 px-3 py-2 mb-2.5">
+                      <div className="text-[9px] text-green-600 dark:text-green-400 font-medium uppercase tracking-wider">🍀 Lucky Charm</div>
+                      <div className="text-sm font-bold">{sn(charm.name)}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        You average <span className="text-green-600 dark:text-green-400 font-semibold tabular-nums">+${avg}/round</span> when grouped ({charm.riv.roundsTogether} rds · +${total} total)
+                      </div>
+                    </div>
+                  );
+                })()}
 
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">When Grouped With</p>
-                <div className="flex items-center justify-between text-[9px] text-muted-foreground/50 mb-1 pb-1 border-b border-muted">
-                  <span className="flex-1">Player</span>
-                  <span className="w-10 text-center" title="Number of finalized rounds you've been grouped with this player">Together</span>
-                  <span className="w-20 text-center" title="Your win rate on holes when on opposite teams from them">Vs Win</span>
-                  <span className="w-16 text-right" title="Net money attributable to holes you and they were on opposite teams">Vs $</span>
-                </div>
-                <div className="space-y-1.5">
-                  {rivalsSorted.map((r) => {
-                    const oppDecided = r.holesWon + r.holesLost;
-                    const vsWinPct = oppDecided > 0 ? Math.round((r.holesWon / oppDecided) * 100) : null;
-                    const vsMoney = r.dominate - r.rival;
+                <div className="space-y-2">
+                  {shown.map((x) => {
+                    const tag = tagOf(x);
+                    const chem = x.chem;
+                    const riv = x.riv;
+                    const vsDecided = riv ? riv.holesWon + riv.holesLost : 0;
+                    const vsWinPct = vsDecided > 0 ? Math.round((riv!.holesWon / vsDecided) * 100) : null;
+                    const vsMoney = riv ? riv.dominate - riv.rival : 0;
                     return (
-                      <div key={r.playerId} className="flex items-center justify-between text-xs">
-                        <span className="font-medium flex-1">{r.name}</span>
-                        <span className="text-muted-foreground w-10 text-center tabular-nums text-[10px]">
-                          {r.roundsTogether}x
-                        </span>
-                        <span className="text-muted-foreground w-20 text-center tabular-nums text-[10px]">
-                          {vsWinPct === null ? '—' : `${vsWinPct}% (${r.holesWon}-${r.holesLost})`}
-                        </span>
-                        <span className={`w-16 text-right tabular-nums ${vsMoney > 0 ? 'text-green-600' : vsMoney < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                          {formatMoney(vsMoney)}
-                        </span>
+                      <div key={x.playerId} className="rounded-lg bg-muted/20 px-3 py-2">
+                        <div className="flex items-center justify-between mb-1 gap-2">
+                          <span className="text-sm font-semibold truncate">{sn(x.name)}</span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            {riv && <span className="text-[9px] text-muted-foreground/60 tabular-nums">{riv.roundsTogether} rds</span>}
+                            {tag === 'best' && <span className="text-[9px] font-semibold text-green-600 dark:text-green-400">🤝 Best</span>}
+                            {tag === 'charm' && <span className="text-[9px] font-semibold text-green-600 dark:text-green-400">🍀 Charm</span>}
+                            {tag === 'nemesis' && <span className="text-[9px] font-semibold text-red-500">🎯 Nemesis</span>}
+                          </span>
+                        </div>
+                        {chem && (
+                          <div className="flex items-baseline gap-2 text-[11px]">
+                            <span className="w-7 text-green-600 dark:text-green-400 font-medium">With</span>
+                            <span className="font-bold tabular-nums">{chem.winRate}%</span>
+                            <span className="text-muted-foreground tabular-nums">{chem.wins}-{chem.losses}-{chem.pushes}</span>
+                            <span className="text-muted-foreground/50">· {chem.holes} holes</span>
+                          </div>
+                        )}
+                        {chem?.partner2v2 && (
+                          <div className="text-[10px] text-muted-foreground/70 pl-9">
+                            as 2v2 partners: <span className="tabular-nums font-medium">{chem.partner2v2.winRate}%</span> · {chem.partner2v2.wins}-{chem.partner2v2.losses}-{chem.partner2v2.pushes} · {chem.partner2v2.holes}
+                          </div>
+                        )}
+                        {riv && (
+                          <div className="flex items-baseline gap-2 text-[11px]">
+                            <span className="w-7 text-red-500 font-medium">Vs</span>
+                            <span className="font-bold tabular-nums">{vsWinPct === null ? '—' : `${vsWinPct}%`}</span>
+                            {vsWinPct !== null && <span className="text-muted-foreground tabular-nums">{riv.holesWon}-{riv.holesLost}</span>}
+                            <span className={`tabular-nums ml-auto ${vsMoney > 0 ? 'text-green-600' : vsMoney < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{formatMoney(vsMoney)}</span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
 
+                {!showAllRelations && rows.length > shown.length && (
+                  <button type="button" onClick={() => setShowAllRelations(true)} className="mt-2 w-full text-[10px] text-muted-foreground hover:text-foreground py-1">
+                    Show all {rows.length} ▾
+                  </button>
+                )}
+                {showAllRelations && rows.length > 6 && (
+                  <button type="button" onClick={() => setShowAllRelations(false)} className="mt-1 w-full text-[10px] text-muted-foreground hover:text-foreground py-1">
+                    Show less ▴
+                  </button>
+                )}
+
+                <div className="mt-2.5 pt-2 border-t border-muted text-[9px] text-muted-foreground/60 space-y-0.5">
+                  <div>🤝 Best teammate · highest same-team win%</div>
+                  <div>🍀 Lucky charm · best avg $/round when grouped</div>
+                  <div>🎯 Nemesis · takes the most $ from you</div>
+                </div>
               </div>
             );
           })()}
+
         </div>
       )}
 

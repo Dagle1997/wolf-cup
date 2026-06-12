@@ -1211,7 +1211,11 @@ app.get('/stats/:playerId/detail', async (c) => {
       groupPlayersMap.set(key, arr);
     }
 
-    const chemMap = new Map<number, { name: string; holes: number; wins: number; losses: number; pushes: number }>();
+    // p2v2* fields track the subset restricted to 2v2 (decision === 'partner')
+    // holes only — this is the "Best 2v2 Partnership" record, surfaced inside the
+    // broader same-team chemistry so 4-0-1 (2v2) reads as a labeled subset of
+    // 5-1-1 (all same-team) instead of looking like a contradiction.
+    const chemMap = new Map<number, { name: string; holes: number; wins: number; losses: number; pushes: number; p2v2Holes: number; p2v2Wins: number; p2v2Losses: number; p2v2Pushes: number }>();
     for (const d of decisionRows) {
       if (d.wolfPlayerId === null) continue;
       if (d.decision !== 'alone' && d.decision !== 'partner' && d.decision !== 'blind_wolf') continue;
@@ -1243,11 +1247,23 @@ app.get('/stats/:playerId/detail', async (c) => {
           wins: 0,
           losses: 0,
           pushes: 0,
+          p2v2Holes: 0,
+          p2v2Wins: 0,
+          p2v2Losses: 0,
+          p2v2Pushes: 0,
         };
         entry.holes++;
         if (playerOutcome === 'win') entry.wins++;
         else if (playerOutcome === 'loss') entry.losses++;
         else if (playerOutcome === 'push') entry.pushes++;
+        // 2v2 subset: a 'partner' hole puts exactly two players on each side, so
+        // this teammate IS the 2v2 partner for this hole.
+        if (d.decision === 'partner') {
+          entry.p2v2Holes++;
+          if (playerOutcome === 'win') entry.p2v2Wins++;
+          else if (playerOutcome === 'loss') entry.p2v2Losses++;
+          else if (playerOutcome === 'push') entry.p2v2Pushes++;
+        }
         chemMap.set(teammateId, entry);
       }
     }
@@ -1257,6 +1273,7 @@ app.get('/stats/:playerId/detail', async (c) => {
         // Push-agnostic win rate — matches Best 2v2 Partnership math so a
         // 4-0-1 teammate (100%) outranks a 4-0-0 teammate over fewer holes.
         const decided = c.wins + c.losses;
+        const p2v2Decided = c.p2v2Wins + c.p2v2Losses;
         return {
           playerId: id,
           name: c.name,
@@ -1265,6 +1282,15 @@ app.get('/stats/:playerId/detail', async (c) => {
           losses: c.losses,
           pushes: c.pushes,
           winRate: decided > 0 ? Math.round((c.wins / decided) * 100) : 0,
+          // 2v2-only subset (the "Best 2v2 Partnership" record), or null when the
+          // pair has never been 2v2 partners.
+          partner2v2: c.p2v2Holes > 0 ? {
+            holes: c.p2v2Holes,
+            wins: c.p2v2Wins,
+            losses: c.p2v2Losses,
+            pushes: c.p2v2Pushes,
+            winRate: p2v2Decided > 0 ? Math.round((c.p2v2Wins / p2v2Decided) * 100) : 0,
+          } : null,
         };
       })
       .sort((a, b) => b.holes - a.holes);
