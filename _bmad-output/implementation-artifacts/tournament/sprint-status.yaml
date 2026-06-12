@@ -459,9 +459,19 @@ development_status:
   # wizard UI, the start-round picker (honor the policy), and the auth surfaces
   # (requireScorerForRound + the T13-3 GET fallback) which must enforce it. The
   # "walking caddie" case needs a way to add a non-playing scorer identity
-  # (the T13-3 fix already lets a non-member designated scorer score). NEEDS
-  # DESIGN before build — schema + UX + auth scoping. tournament-api + -web.
-  T13-4-scorer-policy-setup-option: backlog
+  # (the T13-3 fix already lets a non-member designated scorer score).
+  # DONE 2026-06-12 (commits 4e81211 backend + d9422c8 web, pushed, CI green).
+  # Decisions: single-writer PRESERVED (policy only gates who may BECOME the
+  # scorer; one-tap "I'll score" self-claim handoff, no multi-writer). Three
+  # policies on events.scorer_policy (foursome default = today / designated
+  # pool in event_scorer_designees incl. caddie / open). Setup on the event
+  # ADMIN page (roster exists there), not the creation wizard. Enforced at
+  # start-round + scorer transfer via pure lib/scorer-eligibility.ts. Migration
+  # 0014 uses ADD COLUMN (NOT a CHECK-driven table-rebuild — the rebuild's
+  # DROP/RENAME of events is needless risk vs the FK-referencing rounds table).
+  # Followups (minor): start-round picker option-filtering by policy (server
+  # already validates); browser E2E of the policy + claim flow.
+  T13-4-scorer-policy-setup-option: done
 
   # T13-5: MONEY PRESENTATION — two ledgers + results views (Josh, 2026-06-12).
   # The settle-up matrix today COMBINES 2v2 best-ball (per-foursome, zero-sum
