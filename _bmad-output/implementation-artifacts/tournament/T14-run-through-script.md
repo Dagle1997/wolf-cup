@@ -51,11 +51,31 @@
 
 ---
 
+## Automated driver
+
+`apps/tournament-api/src/db/e2e-runthrough.ts` is the executable API-side
+run-through (run via `node --import tsx` with placeholder env + a temp
+`DB_PATH`). It builds a realistic event (4-player foursome, real tees + 18
+holes, a rule set, a cross-player bet), scores all 18 holes over real HTTP,
+then dumps + sanity-checks every read surface (leaderboard, money split,
+my-money, foursome-results), exercises the scorer policy, and finalizes —
+flagging any reconciliation break inline (`!!`).
+
+## Run log
+
+- **2026-06-12 (automated API run-through, all of this session's work):** CLEAN
+  — no bugs. Verified end to end: money `team + individual = combined` for all
+  4 players; My Money loss-less and == each player's combined total; foursome
+  results per-hole money sums to the team total and each player's half-share
+  flows correctly; scorer policy GET/PUT + stranger-designee 400; press-after-
+  full-round 422; complete → finalize → `finalized`. The browser half (PWA
+  install, on-phone scoring, offline at the course) remains Josh's manual pass.
+
 ## Bug Log
 
 | # | Step | Role | Expected | Actual | Severity | New story |
 |---|------|------|----------|--------|----------|-----------|
-| 1 | C-9 | Organizer/Scorer | Organizer designated as scorer can score the foursome | 404 "not available to you" — organizer-scorer cannot score (score-entry resolves foursome by membership only) | High | **T13-3** (filed) |
+| 1 | C-9 | Organizer/Scorer | Organizer designated as scorer can score the foursome | 404 "not available to you" — organizer-scorer cannot score (score-entry resolves foursome by membership only) | High | **T13-3** (fixed) |
 |   |      |      |          |        |          |           |
 
 > Add a row per finding. After the run, convert each FAIL into a `T13-x`/`T14-x` entry in `sprint-status.yaml`.
