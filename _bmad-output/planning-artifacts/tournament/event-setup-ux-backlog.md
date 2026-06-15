@@ -21,7 +21,11 @@ SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member
 - **BUILD SHAPE:** per-player code generation (on roster add, short unique code stored on the player or a new table) → `/join` screen (enter code → claim player on this device, device cookie) → auth bridge so device cookie grants full access → players land in their event. Organizers still use Google (they create events).
 - This is arguably the #1 functional blocker for running the trip (people must be able to get in). NOT just QOL.
 
-### B3b. Add-course affordance shows where you can't use it
+### B3 / edit-round-course — ✅ SHIPPED 2026-06-15 (commit ad32c2a)
+- `PATCH /api/admin/event-rounds/:id/course` (event-scoped; validates revision + tee; refuses after a round starts) + admin-context now returns courseRevisionId/teeColor/started + web "Rounds & courses" page (linked from event admin). Fixes B3b (the add-course path now completes). Tests: 6.
+- **Still open — true "Unknown/TBD" course at creation:** needs `event_rounds.course_revision_id` nullable (SQLite rebuild risk) OR a seeded TBD sentinel course. Deferred. Workaround now: create with any course, then change it via Rounds & courses.
+
+### B3b. Add-course affordance shows where you can't use it — ✅ resolved by edit-round-course (B3)
 - The post-creation setup screen shows "add course via PDF / manually", but there's no way to **change a round's course after creation** — so that affordance is misleading there. Either hide it post-creation OR (better) build **edit-round-course** (which B3/TBD also needs). Josh: "if we can't add it later that really shouldn't show up there."
 
 ### B1. GHIN search: first name + club + scroll
