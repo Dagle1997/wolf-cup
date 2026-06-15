@@ -161,6 +161,12 @@ inviteRouter.get('/:token', async (c) => {
   }
   const event = eventRows[0]!;
 
+  // A cancelled event no longer accepts arrivals — surface it the same way an
+  // expired token does (410 gone) so the invite landing page can say so.
+  if (event.cancelledAt != null) {
+    return c.json({ error: 'gone', code: 'event_cancelled', requestId }, 410);
+  }
+
   // Roster: players in any group under this event. Deduplicate by playerId.
   const groupRows = await db
     .select({ id: groups.id })
@@ -258,7 +264,7 @@ inviteRouter.post(
 
     // Fetch event details (needed for the response shape).
     const eventRows = await db
-      .select({ id: events.id, name: events.name })
+      .select({ id: events.id, name: events.name, cancelledAt: events.cancelledAt })
       .from(events)
       .where(eq(events.id, invite.eventId));
     if (eventRows.length === 0) {
@@ -270,6 +276,11 @@ inviteRouter.post(
       );
     }
     const event = eventRows[0]!;
+
+    // Refuse to add a player to a cancelled event (mirror the GET guard).
+    if (event.cancelledAt != null) {
+      return c.json({ error: 'gone', code: 'event_cancelled', requestId }, 410);
+    }
 
     // Validate playerId is in the event's group_members (cross-table SELECT).
     const groupRows = await db

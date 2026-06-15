@@ -172,6 +172,15 @@ describe('GET /api/invites/:token', () => {
     expect(body.code).toBe('invite_expired');
   });
 
+  it('410 event_cancelled when the event was soft-cancelled', async () => {
+    const { eventId, inviteToken } = await seedEventWithRoster({ playerCount: 1 });
+    await db.update(events).set({ cancelledAt: Date.now() }).where(eq(events.id, eventId));
+    const res = await testApp.request(`/api/invites/${inviteToken}`);
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('event_cancelled');
+  });
+
   it('roster dedupe: player in 2 groups under one event → returned ONCE', async () => {
     const { eventId, inviteToken, playerIds } = await seedEventWithRoster({ playerCount: 1 });
     // Add a 2nd group with the SAME player.
@@ -226,6 +235,21 @@ describe('POST /api/invites/:token/claim', () => {
     expect(rows[0]!.sessionId).toBeNull();
     expect(rows[0]!.playerId).toBe(playerIds[0]);
     expect(rows[0]!.contextId).toBe(`event:${eventId}`);
+  });
+
+  it('410 event_cancelled: a claim against a soft-cancelled event is refused, no device_bindings row', async () => {
+    const { eventId, inviteToken, playerIds } = await seedEventWithRoster({ playerCount: 1 });
+    await db.update(events).set({ cancelledAt: Date.now() }).where(eq(events.id, eventId));
+
+    const res = await testApp.request(`/api/invites/${inviteToken}/claim`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ playerId: playerIds[0]! }),
+    });
+    expect(res.status).toBe(410);
+    expect(((await res.json()) as { code: string }).code).toBe('event_cancelled');
+    const rows = await db.select().from(deviceBindings);
+    expect(rows).toHaveLength(0);
   });
 
   it('Set-Cookie attributes: HttpOnly, SameSite=Lax, Path=/, Max-Age=7776000; no Secure in test env', async () => {

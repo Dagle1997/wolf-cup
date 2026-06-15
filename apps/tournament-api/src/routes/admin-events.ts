@@ -380,7 +380,7 @@ adminEventsRouter.get(
     const eventId = c.req.param('eventId');
 
     const eventRows = await db
-      .select({ id: events.id, name: events.name })
+      .select({ id: events.id, name: events.name, cancelledAt: events.cancelledAt })
       .from(events)
       .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)));
     if (eventRows.length === 0) {
@@ -423,7 +423,11 @@ adminEventsRouter.get(
       .orderBy(asc(eventRounds.roundNumber));
 
     return c.json({
-      event: { id: eventRows[0]!.id, name: eventRows[0]!.name },
+      event: {
+        id: eventRows[0]!.id,
+        name: eventRows[0]!.name,
+        cancelledAt: eventRows[0]!.cancelledAt,
+      },
       groups: groupRows,
       ruleSet: ruleSetRows[0] ?? null,
       eventRounds: erRows,

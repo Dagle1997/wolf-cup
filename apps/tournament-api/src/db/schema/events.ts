@@ -58,6 +58,21 @@ export const events = sqliteTable('events', {
   // in-memory test cache ("no such table: rounds"). The enum is validated by
   // env/Zod at the route + isScorerPolicy() at every read.
   scorerPolicy: text('scorer_policy').notNull().default('foursome'),
+  // Soft-cancellation (organizer-scoped event lifecycle). `cancelled_at` NULL
+  // = active; a unix-ms timestamp = cancelled. A cancelled event is hidden
+  // from participants' lists and refuses new invite claims, but the row +
+  // all children survive so the action is fully reversible (restore clears
+  // both columns). `cancelled_by_player_id` is an audit stamp recording WHICH
+  // organizer cancelled it.
+  //
+  // NO inline `.references()` on cancelled_by_player_id on purpose: a FK added
+  // to an existing table can only be expressed via a SQLite table-REBUILD
+  // (DROP + RENAME), which is exactly the migration shape that intermittently
+  // corrupts the FK-referencing `rounds` table on the shared in-memory test
+  // cache (see scorer_policy note above). The value is always a valid
+  // player.id (the authenticated organizer), validated at the route layer.
+  cancelledAt: integer('cancelled_at'),
+  cancelledByPlayerId: text('cancelled_by_player_id'),
   ...ecosystemColumns(),
 });
 

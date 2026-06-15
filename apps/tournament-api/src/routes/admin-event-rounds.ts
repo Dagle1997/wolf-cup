@@ -593,10 +593,18 @@ adminEventRoundsRouter.post(
     // participant set. 'foursome' default reproduces the prior member-or-
     // organizer rule exactly.
     const evtRows = await db
-      .select({ scorerPolicy: events.scorerPolicy, organizerPlayerId: events.organizerPlayerId })
+      .select({
+        scorerPolicy: events.scorerPolicy,
+        organizerPlayerId: events.organizerPlayerId,
+        cancelledAt: events.cancelledAt,
+      })
       .from(events)
       .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)))
       .limit(1);
+    // A cancelled event cannot start new scoring rounds (restore it first).
+    if (evtRows[0]?.cancelledAt != null) {
+      return c.json({ error: 'unprocessable', code: 'event_cancelled', requestId }, 422);
+    }
     const policy = isScorerPolicy(evtRows[0]?.scorerPolicy) ? evtRows[0]!.scorerPolicy : 'foursome';
     const organizerPlayerId = evtRows[0]?.organizerPlayerId ?? player.id;
 

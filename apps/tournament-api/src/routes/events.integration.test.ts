@@ -14,6 +14,7 @@ import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { Hono } from 'hono';
+import { eq } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -243,5 +244,135 @@ describe('GET /api/events/:eventId', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { event: { id: string } };
     expect(body.event.id).toBe(s.eventId);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Organizer-scoped soft-cancel / restore (multi-organizer lifecycle).
+// ---------------------------------------------------------------------------
+async function cancelEvent(app: Hono, eventId: string): Promise<Response> {
+  return await app.request(`/api/events/${eventId}/cancel`, { method: 'POST' });
+}
+async function restoreEvent(app: Hono, eventId: string): Promise<Response> {
+  return await app.request(`/api/events/${eventId}/restore`, { method: 'POST' });
+}
+async function listEvents(app: Hono): Promise<Response> {
+  return await app.request('/api/events');
+}
+
+describe('POST /api/events/:eventId/cancel + /restore', () => {
+  test('organizer cancels their event (200, audit stamped), idempotent on repeat', async () => {
+    const s = await seed();
+    const app = buildApp(s.organizerId); // isOrganizer:false → proves event-scoped auth
+    const res = await cancelEvent(app, s.eventId);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, cancelled: true, idempotent: false });
+
+    // Audit columns set on the row.
+    const row = (
+      await db
+        .select({ cancelledAt: events.cancelledAt, cancelledBy: events.cancelledByPlayerId })
+        .from(events)
+        .where(eq(events.id, s.eventId))
+    )[0]!;
+    expect(row.cancelledAt).not.toBeNull();
+    expect(row.cancelledBy).toBe(s.organizerId);
+
+    // Second cancel is a no-op (idempotent), original timestamp preserved.
+    const first = row.cancelledAt;
+    const res2 = await cancelEvent(app, s.eventId);
+    expect(res2.status).toBe(200);
+    expect(await res2.json()).toMatchObject({ idempotent: true });
+    const after = (
+      await db.select({ cancelledAt: events.cancelledAt }).from(events).where(eq(events.id, s.eventId))
+    )[0]!;
+    expect(after.cancelledAt).toBe(first);
+  });
+
+  test('a participant (non-organizer) cannot cancel — 403 not_event_organizer', async () => {
+    const s = await seed();
+    const app = buildApp(s.participantId);
+    const res = await cancelEvent(app, s.eventId);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('not_event_organizer');
+    // Row untouched.
+    const row = (
+      await db.select({ cancelledAt: events.cancelledAt }).from(events).where(eq(events.id, s.eventId))
+    )[0]!;
+    expect(row.cancelledAt).toBeNull();
+  });
+
+  test('unknown eventId → 403 not_event_organizer (no-existence-leak)', async () => {
+    const s = await seed();
+    const app = buildApp(s.organizerId);
+    const res = await cancelEvent(app, randomUUID());
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('not_event_organizer');
+  });
+
+  test('malformed eventId → 400 invalid_event_id', async () => {
+    const s = await seed();
+    const app = buildApp(s.organizerId);
+    const res = await cancelEvent(app, 'not-a-uuid');
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('invalid_event_id');
+  });
+
+  test('restore un-cancels (200, clears audit columns); idempotent when already active', async () => {
+    const s = await seed();
+    const app = buildApp(s.organizerId);
+    await cancelEvent(app, s.eventId);
+
+    const res = await restoreEvent(app, s.eventId);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, cancelled: false, idempotent: false });
+    const row = (
+      await db
+        .select({ cancelledAt: events.cancelledAt, cancelledBy: events.cancelledByPlayerId })
+        .from(events)
+        .where(eq(events.id, s.eventId))
+    )[0]!;
+    expect(row.cancelledAt).toBeNull();
+    expect(row.cancelledBy).toBeNull();
+
+    // Restoring an already-active event is a no-op.
+    const res2 = await restoreEvent(app, s.eventId);
+    expect(res2.status).toBe(200);
+    expect(await res2.json()).toMatchObject({ idempotent: true });
+  });
+
+  test('a participant cannot restore — 403', async () => {
+    const s = await seed();
+    const orgApp = buildApp(s.organizerId);
+    await cancelEvent(orgApp, s.eventId);
+    const app = buildApp(s.participantId);
+    const res = await restoreEvent(app, s.eventId);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('GET /api/events list — cancelled events are hidden from participants only', () => {
+  test('after cancel: participant no longer sees it; organizer still sees it with cancelledAt', async () => {
+    const s = await seed();
+    const orgApp = buildApp(s.organizerId);
+    await cancelEvent(orgApp, s.eventId);
+
+    // Participant: cancelled event filtered out of their list.
+    const pApp = buildApp(s.participantId);
+    const pRes = await listEvents(pApp);
+    expect(pRes.status).toBe(200);
+    const pBody = (await pRes.json()) as { events: Array<{ id: string }> };
+    expect(pBody.events.map((e) => e.id)).not.toContain(s.eventId);
+
+    // Organizer: still present, flagged cancelled (so they can restore).
+    const oApp = buildApp(s.organizerId);
+    const oRes = await listEvents(oApp);
+    const oBody = (await oRes.json()) as {
+      events: Array<{ id: string; isOrganizer: boolean; cancelledAt: number | null }>;
+    };
+    const mine = oBody.events.find((e) => e.id === s.eventId);
+    expect(mine).toBeDefined();
+    expect(mine!.isOrganizer).toBe(true);
+    expect(mine!.cancelledAt).not.toBeNull();
   });
 });

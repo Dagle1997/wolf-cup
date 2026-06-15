@@ -27,6 +27,7 @@ type EventListItem = {
   endDate: number;
   timezone: string;
   isOrganizer: boolean;
+  cancelledAt: number | null;
 };
 
 type EventListResponse = { events: EventListItem[] };
@@ -65,12 +66,16 @@ function IndexPage() {
   // the list (the user picks). The redirect runs in an effect (not at
   // render time) so React-Router's location state stays clean.
   const events = eventsQuery.data?.events ?? [];
+  // A lone cancelled event must NOT silently redirect — the organizer needs
+  // the list (with its Cancelled badge → admin → restore). Only auto-redirect
+  // when the single event is active.
+  const autoRedirectId =
+    events.length === 1 && events[0]!.cancelledAt == null ? events[0]!.id : null;
   useEffect(() => {
-    if (session.player !== null && events.length === 1) {
-      const only = events[0]!;
-      void navigate({ to: '/events/$eventId', params: { eventId: only.id } });
+    if (session.player !== null && autoRedirectId !== null) {
+      void navigate({ to: '/events/$eventId', params: { eventId: autoRedirectId } });
     }
-  }, [session.player, events, navigate]);
+  }, [session.player, autoRedirectId, navigate]);
 
   // Anonymous: render the SSO CTA directly so the user controls when
   // they navigate away from the home page (avoids surprising them with
@@ -157,9 +162,9 @@ function IndexPage() {
     );
   }
 
-  // 1 event: the auto-redirect effect will fire — render a quick
+  // 1 active event: the auto-redirect effect will fire — render a quick
   // "Loading…" so we don't flash the list briefly before redirecting.
-  if (events.length === 1) {
+  if (autoRedirectId !== null) {
     return (
       <div style={{ padding: 24 }}>
         <h1>Tournament</h1>
@@ -202,6 +207,21 @@ function IndexPage() {
                   }}
                 >
                   organizer
+                </span>
+              ) : null}
+              {ev.cancelledAt != null ? (
+                <span
+                  style={{
+                    marginLeft: 8,
+                    fontSize: '0.75em',
+                    padding: '1px 6px',
+                    background: '#fee2e2',
+                    color: '#991b1b',
+                    borderRadius: 8,
+                  }}
+                  data-testid={`home-event-cancelled-${ev.id}`}
+                >
+                  Cancelled
                 </span>
               ) : null}
               <div style={{ fontSize: '0.85em', color: '#555', marginTop: 4 }}>

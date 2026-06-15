@@ -8,7 +8,8 @@
  */
 
 import { createFileRoute, Link, useParams } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
@@ -16,11 +17,22 @@ import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 
 type AdminContextResponse = {
-  event: { id: string; name: string };
+  event: { id: string; name: string; cancelledAt: number | null };
   groups: Array<{ id: string; name: string }>;
   ruleSet: { id: string; name: string } | null;
   eventRounds: Array<{ id: string; roundNumber: number; courseName: string }>;
 };
+
+async function postEventLifecycle(
+  eventId: string,
+  action: 'cancel' | 'restore',
+): Promise<void> {
+  const res = await fetch(
+    `/api/events/${encodeURIComponent(eventId)}/${action}`,
+    { method: 'POST', credentials: 'same-origin' },
+  );
+  if (!res.ok) throw new Error(`http_${res.status}`);
+}
 
 async function fetchAdminContext(eventId: string): Promise<AdminContextResponse> {
   const res = await fetch(
@@ -42,11 +54,22 @@ const cardStyle: React.CSSProperties = {
 };
 
 function AdminLandingPage({ eventId }: { eventId: string }) {
+  const queryClient = useQueryClient();
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const query = useQuery<AdminContextResponse, Error>({
     queryKey: ['admin-context', eventId],
     queryFn: () => fetchAdminContext(eventId),
     retry: false,
     staleTime: 30_000,
+  });
+
+  const lifecycle = useMutation<void, Error, 'cancel' | 'restore'>({
+    mutationFn: (action) => postEventLifecycle(eventId, action),
+    onSuccess: async () => {
+      setConfirmingCancel(false);
+      await queryClient.invalidateQueries({ queryKey: ['admin-context', eventId] });
+      await queryClient.invalidateQueries({ queryKey: ['events-list'] });
+    },
   });
 
   if (query.isPending) {
@@ -67,9 +90,52 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
   }
   const ctx = query.data!;
 
+  const isCancelled = ctx.event.cancelledAt != null;
+
   return (
     <PageShell title={`Admin — ${ctx.event.name}`}>
       <BackLink to="/events/$eventId" params={{ eventId }} label="Event home" />
+
+      {isCancelled ? (
+        <div
+          style={{
+            margin: '16px 0',
+            padding: 12,
+            border: '1px solid #fca5a5',
+            background: '#fef2f2',
+            borderRadius: 8,
+          }}
+          data-testid="event-cancelled-banner"
+        >
+          <strong style={{ color: '#991b1b' }}>This event is cancelled.</strong>
+          <div style={{ fontSize: '0.85em', color: '#7f1d1d', margin: '4px 0 10px' }}>
+            It&apos;s hidden from everyone you invited. Nothing was deleted — restore
+            it any time to bring it back exactly as it was.
+          </div>
+          <button
+            type="button"
+            onClick={() => lifecycle.mutate('restore')}
+            disabled={lifecycle.isPending}
+            data-testid="event-restore-btn"
+            style={{
+              padding: '8px 14px',
+              border: '1px solid #16a34a',
+              background: '#16a34a',
+              color: '#fff',
+              borderRadius: 6,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {lifecycle.isPending ? 'Restoring…' : 'Restore event'}
+          </button>
+          {lifecycle.isError ? (
+            <div style={{ color: '#b91c1c', fontSize: '0.8em', marginTop: 8 }}>
+              Couldn&apos;t restore. Try again.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 24px', display: 'grid', gap: 8 }}>
         <li>
@@ -219,6 +285,92 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           </Link>
         </li>
       </ul>
+
+      {!isCancelled ? (
+        <div
+          style={{
+            marginTop: 8,
+            padding: 12,
+            border: '1px solid #fecaca',
+            borderRadius: 8,
+            background: '#fff',
+          }}
+        >
+          <strong style={{ color: '#991b1b' }}>Danger zone</strong>
+          {!confirmingCancel ? (
+            <>
+              <div style={{ fontSize: '0.85em', color: '#555', margin: '4px 0 10px' }}>
+                Cancel this event to hide it from everyone you invited. It&apos;s
+                reversible — you can restore it later.
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmingCancel(true)}
+                data-testid="event-cancel-btn"
+                style={{
+                  padding: '8px 14px',
+                  border: '1px solid #dc2626',
+                  background: '#fff',
+                  color: '#dc2626',
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel event
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: '0.85em', color: '#7f1d1d', margin: '4px 0 10px' }}>
+                Cancel <strong>{ctx.event.name}</strong>? Everyone you invited will
+                lose access until you restore it.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => lifecycle.mutate('cancel')}
+                  disabled={lifecycle.isPending}
+                  data-testid="event-cancel-confirm-btn"
+                  style={{
+                    padding: '8px 14px',
+                    border: '1px solid #dc2626',
+                    background: '#dc2626',
+                    color: '#fff',
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {lifecycle.isPending ? 'Cancelling…' : 'Yes, cancel event'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingCancel(false)}
+                  disabled={lifecycle.isPending}
+                  data-testid="event-cancel-abort-btn"
+                  style={{
+                    padding: '8px 14px',
+                    border: '1px solid #d1d5db',
+                    background: '#fff',
+                    color: '#374151',
+                    borderRadius: 6,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Keep event
+                </button>
+              </div>
+              {lifecycle.isError ? (
+                <div style={{ color: '#b91c1c', fontSize: '0.8em', marginTop: 8 }}>
+                  Couldn&apos;t cancel. Try again.
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
     </PageShell>
   );
 }
