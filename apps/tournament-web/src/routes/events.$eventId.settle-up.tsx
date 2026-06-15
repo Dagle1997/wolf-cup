@@ -152,8 +152,8 @@ export function SettleUpPage({ eventId, viewerId }: SettleUpPageProps) {
         <div
           role="alert"
           style={{
-            backgroundColor: '#fef2f2',
-            border: '1px solid #f87171',
+            backgroundColor: 'var(--color-danger-bg)',
+            border: '1px solid var(--color-danger)',
             padding: '0.5rem 1rem',
             marginBottom: '1rem',
           }}

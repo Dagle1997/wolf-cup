@@ -213,7 +213,7 @@ export function ActivityFeed() {
       <div
         data-testid="activity-feed-empty"
         role="status"
-        style={{ padding: '1rem 0', color: '#666', fontStyle: 'italic' }}
+        style={{ padding: '1rem 0', color: 'var(--color-text-muted)', fontStyle: 'italic' }}
       >
         Activity will show here once scoring starts.
       </div>
@@ -247,9 +247,9 @@ export function ActivityFeed() {
           style={{
             marginTop: 8,
             padding: '0.4rem 0.8rem',
-            border: '1px solid #ccc',
+            border: '1px solid var(--color-border)',
             borderRadius: 4,
-            background: '#fff',
+            background: 'var(--color-surface)',
             cursor: loadingMore ? 'progress' : 'pointer',
           }}
         >

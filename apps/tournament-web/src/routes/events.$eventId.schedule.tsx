@@ -182,7 +182,7 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
             <article
               key={r.id}
               style={{
-                border: '1px solid #ddd',
+                border: '1px solid var(--color-border)',
                 borderRadius: 8,
                 padding: 12,
                 marginBottom: 8,
@@ -191,7 +191,7 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
               <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <div>
                   <strong>Round {r.roundNumber}</strong>
-                  <span style={{ marginLeft: 8, color: '#555' }}>
+                  <span style={{ marginLeft: 8, color: 'var(--color-text-muted)' }}>
                     {`${r.course.name} · ${r.course.clubName}`}
                   </span>
                 </div>
@@ -200,13 +200,13 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
                     style={{
                       padding: '2px 8px',
                       borderRadius: 12,
-                      backgroundColor: '#eef2ff',
+                      backgroundColor: 'var(--color-brand-tint)',
                       marginRight: 6,
                     }}
                   >
                     {r.holesToPlay} holes
                   </span>
-                  <span style={{ color: '#555' }}>{r.teeColor} tees</span>
+                  <span style={{ color: 'var(--color-text-muted)' }}>{r.teeColor} tees</span>
                 </div>
               </header>
 
@@ -221,7 +221,7 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
                     style={{
                       display: 'inline-block',
                       padding: '8px 14px',
-                      background: '#16a34a',
+                      background: 'var(--color-brand-primary)',
                       color: '#fff',
                       borderRadius: 6,
                       textDecoration: 'none',
@@ -251,10 +251,10 @@ function PairingBlock({
   // Exhaustive discriminated-union switch (codex impl finding M #3).
   switch (pairing.kind) {
     case 'no_pairings_set':
-      return <p style={{ color: '#888', fontStyle: 'italic' }}>Pairings not set yet</p>;
+      return <p style={{ color: 'var(--color-text-muted)', fontStyle: 'italic' }}>Pairings not set yet</p>;
     case 'viewer_not_in_foursome':
       return (
-        <p style={{ color: '#888', fontStyle: 'italic' }}>
+        <p style={{ color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
           You&apos;re not in a foursome this round
         </p>
       );
@@ -275,7 +275,7 @@ function PairingBlock({
                 key={m.playerId}
                 style={{
                   padding: '4px 8px',
-                  backgroundColor: m.isViewer ? '#eff6ff' : 'transparent',
+                  backgroundColor: m.isViewer ? 'var(--color-brand-tint)' : 'transparent',
                   fontWeight: m.isViewer ? 'bold' : 'normal',
                   borderRadius: 4,
                   display: 'flex',
@@ -286,7 +286,7 @@ function PairingBlock({
               >
                 <span>
                   {m.name}{' '}
-                  <span style={{ color: '#555', fontWeight: 'normal' }}>
+                  <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal' }}>
                     ({m.handicapIndex.toFixed(1)})
                   </span>
                 </span>
@@ -296,8 +296,8 @@ function PairingBlock({
                     fontSize: '0.75em',
                     padding: '1px 6px',
                     borderRadius: 8,
-                    backgroundColor: isOverride ? '#fef3c7' : '#f1f5f9',
-                    color: isOverride ? '#92400e' : '#475569',
+                    backgroundColor: isOverride ? 'var(--color-warning-bg)' : 'var(--color-surface-sunken)',
+                    color: isOverride ? 'var(--color-warning-text)' : 'var(--color-text-secondary)',
                     fontWeight: 'normal',
                   }}
                   title={

@@ -175,10 +175,10 @@ function ImportCoursePage() {
       {saveState.kind === 'success' ? (
         <div
           data-testid="ghin-import-success"
-          style={{ margin: '16px 0', padding: 12, border: '1px solid #86efac', background: '#f0fdf4', borderRadius: 8 }}
+          style={{ margin: '16px 0', padding: 12, border: '1px solid var(--color-success)', background: 'var(--color-brand-tint)', borderRadius: 8 }}
         >
-          <strong style={{ color: '#166534' }}>Course imported.</strong>
-          <div style={{ fontSize: '0.85em', color: '#15803d', marginTop: 4 }}>
+          <strong style={{ color: 'var(--color-brand-primary)' }}>Course imported.</strong>
+          <div style={{ fontSize: '0.85em', color: 'var(--color-success)', marginTop: 4 }}>
             It’s in your library now — pick it in the event wizard’s course dropdown.
           </div>
           <p style={{ marginTop: 10 }}>
@@ -187,7 +187,7 @@ function ImportCoursePage() {
         </div>
       ) : (
         <>
-          <p style={{ color: '#555', fontSize: '0.9em', margin: '12px 0' }}>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9em', margin: '12px 0' }}>
             Search GHIN by course name. Ratings &amp; slope come straight from the USGA database.
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -206,15 +206,15 @@ function ImportCoursePage() {
               onClick={() => void runSearch()}
               disabled={searching}
               data-testid="ghin-search-btn"
-              style={{ ...btn, background: 'var(--color-brand-primary, #1d4ed8)', color: '#fff', border: 'none' }}
+              style={{ ...btn, background: 'var(--color-brand-primary, var(--color-brand-primary))', color: '#fff', border: 'none' }}
             >
               {searching ? 'Searching…' : 'Search'}
             </button>
           </div>
-          {searchError ? <p role="alert" style={{ color: '#b91c1c', marginTop: 8 }}>{searchError}</p> : null}
+          {searchError ? <p role="alert" style={{ color: 'var(--color-danger)', marginTop: 8 }}>{searchError}</p> : null}
 
           {results && results.length === 0 ? (
-            <p style={{ color: '#555', marginTop: 12 }}>No GHIN courses matched “{query.trim()}”.</p>
+            <p style={{ color: 'var(--color-text-muted)', marginTop: 12 }}>No GHIN courses matched “{query.trim()}”.</p>
           ) : null}
 
           {results && results.length > 0 && !preview ? (
@@ -226,10 +226,10 @@ function ImportCoursePage() {
                     onClick={() => void loadPreview(hit)}
                     disabled={previewLoading}
                     data-testid={`ghin-result-${hit.ghinCourseId}`}
-                    style={{ ...btn, width: '100%', textAlign: 'left', background: '#fff', border: '1px solid #ddd', fontWeight: 400 }}
+                    style={{ ...btn, width: '100%', textAlign: 'left', background: 'var(--color-surface)', border: '1px solid var(--color-border)', fontWeight: 400 }}
                   >
                     <strong>{hit.name}</strong>
-                    <span style={{ color: '#666', fontSize: '0.85em' }}>
+                    <span style={{ color: 'var(--color-text-muted)', fontSize: '0.85em' }}>
                       {' '}— {[hit.city, hit.state].filter(Boolean).join(', ')}
                       {hit.status && hit.status !== 'Active' ? ` · ${hit.status}` : ''}
                     </span>
@@ -246,16 +246,16 @@ function ImportCoursePage() {
               <button
                 type="button"
                 onClick={() => setPreview(null)}
-                style={{ ...btn, background: '#fff', border: '1px solid #ddd', fontWeight: 400, marginBottom: 12 }}
+                style={{ ...btn, background: 'var(--color-surface)', border: '1px solid var(--color-border)', fontWeight: 400, marginBottom: 12 }}
               >
                 ← Back to results
               </button>
               <h2 style={{ margin: '0 0 4px' }}>{preview.course.name}</h2>
-              <div style={{ color: '#666', fontSize: '0.85em', marginBottom: 12 }}>
+              <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85em', marginBottom: 12 }}>
                 {[preview.ghinCourse.city, preview.ghinCourse.state].filter(Boolean).join(', ')} · par{' '}
                 {preview.course.totals.course_total} · {preview.course.holes.length} holes
               </div>
-              <p style={{ fontSize: '0.85em', color: '#555' }}>Tees to import:</p>
+              <p style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>Tees to import:</p>
               <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 16px', display: 'grid', gap: 6 }}>
                 {preview.course.tees.map((t) => (
                   <li key={t.color}>
@@ -276,12 +276,12 @@ function ImportCoursePage() {
                 onClick={() => void importCourse()}
                 disabled={saveState.kind === 'saving' || selectedTees.size === 0}
                 data-testid="ghin-import-btn"
-                style={{ ...btn, background: 'var(--color-brand-primary, #1d4ed8)', color: '#fff', border: 'none', width: '100%' }}
+                style={{ ...btn, background: 'var(--color-brand-primary, var(--color-brand-primary))', color: '#fff', border: 'none', width: '100%' }}
               >
                 {saveState.kind === 'saving' ? 'Importing…' : `Import ${selectedTees.size} tee${selectedTees.size === 1 ? '' : 's'}`}
               </button>
               {saveState.kind === 'error' ? (
-                <p role="alert" style={{ color: '#b91c1c', marginTop: 8 }}>{saveState.message}</p>
+                <p role="alert" style={{ color: 'var(--color-danger)', marginTop: 8 }}>{saveState.message}</p>
               ) : null}
             </div>
           ) : null}

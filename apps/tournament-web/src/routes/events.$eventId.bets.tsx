@@ -78,7 +78,7 @@ async function fetchBets(eventId: string): Promise<FetchOutcome> {
 // ---- Helpers --------------------------------------------------------------
 
 function netColor(cents: number): string | undefined {
-  if (cents > 0) return '#16a34a';
+  if (cents > 0) return 'var(--color-brand-primary)';
   if (cents < 0) return '#dc2626';
   return undefined;
 }
@@ -152,7 +152,7 @@ export function BetsPage({ eventId }: BetsPageProps) {
           key={bet.betId}
           aria-label={`Bet vs ${bet.opponentName}`}
           style={{
-            border: '1px solid #ddd',
+            border: '1px solid var(--color-border)',
             borderRadius: 8,
             padding: 12,
             marginBottom: 12,
@@ -161,7 +161,7 @@ export function BetsPage({ eventId }: BetsPageProps) {
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <div>
               <strong>vs {bet.opponentName}</strong>
-              <div style={{ fontSize: '0.85rem', color: '#555' }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
                 {betTypeLabel(bet.betType)} · {formatCents(bet.stakePerHoleCents)}/hole
               </div>
             </div>

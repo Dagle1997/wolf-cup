@@ -360,7 +360,7 @@ export function NewEventWizard() {
               style={{
                 display: 'inline-block',
                 padding: '10px 18px',
-                background: '#1d4ed8',
+                background: 'var(--color-brand-primary)',
                 color: '#fff',
                 borderRadius: 6,
                 textDecoration: 'none',
@@ -381,7 +381,7 @@ export function NewEventWizard() {
             </a>
           </li>
         </ul>
-        <p style={{ fontSize: '0.8em', color: '#888', marginTop: 16 }}>
+        <p style={{ fontSize: '0.8em', color: 'var(--color-text-muted)', marginTop: 16 }}>
           Event id: {saveState.eventId}
         </p>
       </PageShell>
@@ -535,7 +535,7 @@ export function NewEventWizard() {
             style={{
               marginTop: 'var(--space-3)',
               padding: 'var(--space-3)',
-              border: '1px dashed var(--color-border, #ccc)',
+              border: '1px dashed var(--color-border, var(--color-border))',
               borderRadius: 8,
               display: 'flex',
               flexWrap: 'wrap',
@@ -543,7 +543,7 @@ export function NewEventWizard() {
               alignItems: 'center',
             }}
           >
-            <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted, #555)' }}>
+            <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted, var(--color-text-muted))' }}>
               Course not listed?
             </span>
             <a

@@ -98,7 +98,7 @@ export function ScorerPolicyPage({ eventId }: { eventId: string }) {
   return (
     <PageShell title="Who can score?">
       <BackLink to="/admin/events/$eventId" params={{ eventId }} label="Admin" />
-      <p style={{ color: 'var(--color-text-muted, #555)', fontSize: 'var(--font-sm)' }}>
+      <p style={{ color: 'var(--color-text-muted, var(--color-text-muted))', fontSize: 'var(--font-sm)' }}>
         Choose who is eligible to score each foursome. One person scores at a time;
         eligible players can take over with a tap. This doesn’t change how scores are
         entered — only who’s allowed.
@@ -113,14 +113,14 @@ export function ScorerPolicyPage({ eventId }: { eventId: string }) {
             onChange={() => setPolicy(p)}
           />{' '}
           <strong>{POLICY_LABELS[p].title}</strong>
-          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted, #666)', marginLeft: 24 }}>
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted, var(--color-text-muted))', marginLeft: 24 }}>
             {POLICY_LABELS[p].desc}
           </div>
         </label>
       ))}
 
       {policy === 'designated' ? (
-        <fieldset data-testid="designee-picker" style={{ margin: '12px 0', border: '1px solid #ddd', borderRadius: 8 }}>
+        <fieldset data-testid="designee-picker" style={{ margin: '12px 0', border: '1px solid var(--color-border)', borderRadius: 8 }}>
           <legend>Allowed scorers</legend>
           {roster.length === 0 ? (
             <p style={{ padding: 8 }}>No roster yet — add players first.</p>
@@ -158,7 +158,7 @@ export function ScorerPolicyPage({ eventId }: { eventId: string }) {
             : `Couldn’t save (${save.error.message}).`}
         </p>
       ) : null}
-      {save.isSuccess ? <p role="status" style={{ color: 'var(--color-success, #16a34a)' }}>Saved.</p> : null}
+      {save.isSuccess ? <p role="status" style={{ color: 'var(--color-success, var(--color-brand-primary))' }}>Saved.</p> : null}
 
       <button
         type="button"

@@ -84,7 +84,7 @@ function IndexPage() {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
         <h1>Tournament</h1>
-        <p style={{ color: '#555', margin: '12px 0 24px' }}>
+        <p style={{ color: 'var(--color-text-muted)', margin: '12px 0 24px' }}>
           Sign in with your Google account to view your event.
         </p>
         <a
@@ -92,7 +92,7 @@ function IndexPage() {
           style={{
             display: 'inline-block',
             padding: '10px 18px',
-            background: '#1d4ed8',
+            background: 'var(--color-brand-primary)',
             color: '#fff',
             borderRadius: 6,
             textDecoration: 'none',
@@ -140,7 +140,7 @@ function IndexPage() {
                 style={{
                   display: 'inline-block',
                   padding: '10px 18px',
-                  background: '#1d4ed8',
+                  background: 'var(--color-brand-primary)',
                   color: '#fff',
                   borderRadius: 6,
                   textDecoration: 'none',
@@ -186,11 +186,11 @@ function IndexPage() {
               style={{
                 display: 'block',
                 padding: 12,
-                border: '1px solid #ddd',
+                border: '1px solid var(--color-border)',
                 borderRadius: 8,
                 textDecoration: 'none',
                 color: 'inherit',
-                background: '#fff',
+                background: 'var(--color-surface)',
               }}
               data-testid={`home-event-link-${ev.id}`}
             >
@@ -201,8 +201,8 @@ function IndexPage() {
                     marginLeft: 8,
                     fontSize: '0.75em',
                     padding: '1px 6px',
-                    background: '#f1f5f9',
-                    color: '#475569',
+                    background: 'var(--color-surface-sunken)',
+                    color: 'var(--color-text-secondary)',
                     borderRadius: 8,
                   }}
                 >
@@ -215,8 +215,8 @@ function IndexPage() {
                     marginLeft: 8,
                     fontSize: '0.75em',
                     padding: '1px 6px',
-                    background: '#fee2e2',
-                    color: '#991b1b',
+                    background: 'var(--color-danger-bg)',
+                    color: 'var(--color-danger)',
                     borderRadius: 8,
                   }}
                   data-testid={`home-event-cancelled-${ev.id}`}
@@ -224,7 +224,7 @@ function IndexPage() {
                   Cancelled
                 </span>
               ) : null}
-              <div style={{ fontSize: '0.85em', color: '#555', marginTop: 4 }}>
+              <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', marginTop: 4 }}>
                 {formatDateRange(ev.startDate, ev.endDate, ev.timezone)}
               </div>
             </Link>

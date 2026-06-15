@@ -27,6 +27,7 @@ import { Route as EventsEventIdBetsRouteImport } from './routes/events.$eventId.
 import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
+import { Route as AdminCoursesImportRouteImport } from './routes/admin.courses.import'
 import { Route as AdminEventsEventIdIndexRouteImport } from './routes/admin.events.$eventId.index'
 import { Route as EventsEventIdCoursesCourseIdRouteImport } from './routes/events.$eventId.courses.$courseId'
 import { Route as AdminRuleSetsIdEditRouteImport } from './routes/admin.rule-sets.$id.edit'
@@ -128,6 +129,11 @@ const AdminCoursesNewRoute = AdminCoursesNewRouteImport.update({
   path: '/admin/courses/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminCoursesImportRoute = AdminCoursesImportRouteImport.update({
+  id: '/admin/courses/import',
+  path: '/admin/courses/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminEventsEventIdIndexRoute = AdminEventsEventIdIndexRouteImport.update({
   id: '/admin/events/$eventId/',
   path: '/admin/events/$eventId/',
@@ -187,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/auth/conflict': typeof AuthConflictRoute
   '/auth/declined': typeof AuthDeclinedRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/admin/courses/import': typeof AdminCoursesImportRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
@@ -216,6 +223,7 @@ export interface FileRoutesByTo {
   '/auth/conflict': typeof AuthConflictRoute
   '/auth/declined': typeof AuthDeclinedRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/admin/courses/import': typeof AdminCoursesImportRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
@@ -246,6 +254,7 @@ export interface FileRoutesById {
   '/auth/conflict': typeof AuthConflictRoute
   '/auth/declined': typeof AuthDeclinedRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/admin/courses/import': typeof AdminCoursesImportRoute
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
     | '/auth/conflict'
     | '/auth/declined'
     | '/invite/$token'
+    | '/admin/courses/import'
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
@@ -306,6 +316,7 @@ export interface FileRouteTypes {
     | '/auth/conflict'
     | '/auth/declined'
     | '/invite/$token'
+    | '/admin/courses/import'
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
@@ -335,6 +346,7 @@ export interface FileRouteTypes {
     | '/auth/conflict'
     | '/auth/declined'
     | '/invite/$token'
+    | '/admin/courses/import'
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
@@ -365,6 +377,7 @@ export interface RootRouteChildren {
   AuthConflictRoute: typeof AuthConflictRoute
   AuthDeclinedRoute: typeof AuthDeclinedRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  AdminCoursesImportRoute: typeof AdminCoursesImportRoute
   AdminCoursesNewRoute: typeof AdminCoursesNewRoute
   AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
   AdminEventsNewRoute: typeof AdminEventsNewRoute
@@ -516,6 +529,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCoursesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/courses/import': {
+      id: '/admin/courses/import'
+      path: '/admin/courses/import'
+      fullPath: '/admin/courses/import'
+      preLoaderRoute: typeof AdminCoursesImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/events/$eventId/': {
       id: '/admin/events/$eventId/'
       path: '/admin/events/$eventId'
@@ -589,6 +609,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthConflictRoute: AuthConflictRoute,
   AuthDeclinedRoute: AuthDeclinedRoute,
   InviteTokenRoute: InviteTokenRoute,
+  AdminCoursesImportRoute: AdminCoursesImportRoute,
   AdminCoursesNewRoute: AdminCoursesNewRoute,
   AdminCoursesUploadRoute: AdminCoursesUploadRoute,
   AdminEventsNewRoute: AdminEventsNewRoute,

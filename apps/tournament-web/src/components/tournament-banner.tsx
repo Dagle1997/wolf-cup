@@ -190,8 +190,8 @@ export function TournamentBanner() {
         <div
           data-testid="tournament-banner-storm"
           style={{
-            background: '#fff',
-            border: '1px solid #c80',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-accent)',
             borderRadius: 8,
             padding: '0.6rem 0.9rem',
             boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
@@ -232,8 +232,8 @@ export function TournamentBanner() {
           key={entry.rowId}
           data-testid="tournament-banner-entry"
           style={{
-            background: '#fff',
-            border: '1px solid #ccc',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
             borderRadius: 8,
             padding: '0.6rem 0.9rem',
             boxShadow: '0 2px 8px rgba(0,0,0,0.12)',

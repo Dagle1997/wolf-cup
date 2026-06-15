@@ -5,7 +5,13 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { queryClient } from './lib/query-client';
 import { createAppRouter } from './router';
+import { initTheme } from './lib/theme';
 import './index.css';
+
+// Apply stored theme + keep "system" mode in sync with OS changes. The
+// initial .dark class is already set by the inline script in index.html (no
+// flash); this attaches the runtime listener.
+initTheme();
 
 const router = createAppRouter();
 

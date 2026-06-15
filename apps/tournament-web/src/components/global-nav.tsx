@@ -20,6 +20,7 @@
  */
 import { Link, useLocation } from '@tanstack/react-router';
 import { useAuthSession } from '../hooks/use-auth-session';
+import { ThemeToggle } from './theme-toggle';
 
 /**
  * Pure suppression predicate. Returns true when the nav should render
@@ -67,17 +68,20 @@ export function GlobalNav() {
       >
         🏌️ Tournament
       </Link>
-      {player !== null ? (
-        <Link
-          to="/me"
-          style={{
-            color: 'var(--color-text-muted)',
-            textDecoration: 'none',
-          }}
-        >
-          Account
-        </Link>
-      ) : null}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <ThemeToggle />
+        {player !== null ? (
+          <Link
+            to="/me"
+            style={{
+              color: 'var(--color-text-muted)',
+              textDecoration: 'none',
+            }}
+          >
+            Account
+          </Link>
+        ) : null}
+      </div>
     </nav>
   );
 }

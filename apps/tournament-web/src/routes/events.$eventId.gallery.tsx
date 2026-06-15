@@ -198,7 +198,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
     <PageShell title="Gallery">
       <BackLink to="/events/$eventId" params={{ eventId }} />
       <div style={{ paddingBottom: 96 }}>
-      <div style={{ color: '#555', fontSize: '0.9rem', marginBottom: 12 }}>
+      <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: 12 }}>
         {count === 0
           ? 'No photos yet'
           : `${count} photo${count === 1 ? '' : 's'}`}
@@ -211,7 +211,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
           style={{
             marginBottom: 12,
             padding: '8px 12px',
-            background: '#eef',
+            background: 'var(--color-brand-tint)',
             borderRadius: 6,
           }}
         >
@@ -225,8 +225,8 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
           style={{
             marginBottom: 12,
             padding: '8px 12px',
-            background: '#fee',
-            border: '1px solid #f99',
+            background: 'var(--color-danger-bg)',
+            border: '1px solid var(--color-danger-border)',
             borderRadius: 6,
           }}
         >
@@ -262,13 +262,13 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
           <h2
             style={{
               fontSize: '1rem',
-              borderBottom: '1px solid #ddd',
+              borderBottom: '1px solid var(--color-border)',
               paddingBottom: 4,
             }}
           >
             {groupLabel(g)}
             {g.roundDate !== null && (
-              <span style={{ color: '#888', marginLeft: 8, fontWeight: 'normal' }}>
+              <span style={{ color: 'var(--color-text-muted)', marginLeft: 8, fontWeight: 'normal' }}>
                 {new Date(g.roundDate).toLocaleDateString(undefined, {
                   month: 'short',
                   day: 'numeric',
@@ -299,7 +299,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
                     padding: 0,
                     width: '100%',
                     aspectRatio: '1 / 1',
-                    background: '#000',
+                    background: 'var(--color-text-primary)',
                     cursor: 'pointer',
                   }}
                 >
@@ -325,7 +325,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
                       top: 4,
                       right: 4,
                       background: 'rgba(255,255,255,0.85)',
-                      border: '1px solid #999',
+                      border: '1px solid var(--color-text-muted)',
                       borderRadius: 4,
                       cursor: 'pointer',
                       fontSize: '0.8rem',
@@ -366,7 +366,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
           height: 56,
           borderRadius: '50%',
           border: 0,
-          background: '#0a5',
+          background: 'var(--color-money-pos)',
           color: '#fff',
           fontSize: '1.5rem',
           cursor: 'pointer',
@@ -439,7 +439,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
         >
           <div
             style={{
-              background: '#fff',
+              background: 'var(--color-surface)',
               padding: 16,
               borderRadius: 8,
               maxWidth: 400,
@@ -457,7 +457,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
                   setPendingDelete(null);
                   deleteMutation.mutate(id);
                 }}
-                style={{ background: '#c33', color: '#fff', border: 0, padding: '6px 12px', borderRadius: 4 }}
+                style={{ background: 'var(--color-danger)', color: '#fff', border: 0, padding: '6px 12px', borderRadius: 4 }}
               >
                 Delete
               </button>

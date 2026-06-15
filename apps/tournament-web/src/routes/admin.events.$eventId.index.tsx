@@ -46,11 +46,11 @@ async function fetchAdminContext(eventId: string): Promise<AdminContextResponse>
 const cardStyle: React.CSSProperties = {
   display: 'block',
   padding: 12,
-  border: '1px solid #ddd',
+  border: '1px solid var(--color-border)',
   borderRadius: 8,
   textDecoration: 'none',
   color: 'inherit',
-  background: '#fff',
+  background: 'var(--color-surface)',
 };
 
 function AdminLandingPage({ eventId }: { eventId: string }) {
@@ -101,14 +101,14 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           style={{
             margin: '16px 0',
             padding: 12,
-            border: '1px solid #fca5a5',
-            background: '#fef2f2',
+            border: '1px solid var(--color-danger-border)',
+            background: 'var(--color-danger-bg)',
             borderRadius: 8,
           }}
           data-testid="event-cancelled-banner"
         >
-          <strong style={{ color: '#991b1b' }}>This event is cancelled.</strong>
-          <div style={{ fontSize: '0.85em', color: '#7f1d1d', margin: '4px 0 10px' }}>
+          <strong style={{ color: 'var(--color-danger)' }}>This event is cancelled.</strong>
+          <div style={{ fontSize: '0.85em', color: 'var(--color-danger)', margin: '4px 0 10px' }}>
             It&apos;s hidden from everyone you invited. Nothing was deleted — restore
             it any time to bring it back exactly as it was.
           </div>
@@ -119,8 +119,8 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
             data-testid="event-restore-btn"
             style={{
               padding: '8px 14px',
-              border: '1px solid #16a34a',
-              background: '#16a34a',
+              border: '1px solid var(--color-brand-primary)',
+              background: 'var(--color-brand-primary)',
               color: '#fff',
               borderRadius: 6,
               fontWeight: 600,
@@ -130,7 +130,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
             {lifecycle.isPending ? 'Restoring…' : 'Restore event'}
           </button>
           {lifecycle.isError ? (
-            <div style={{ color: '#b91c1c', fontSize: '0.8em', marginTop: 8 }}>
+            <div style={{ color: 'var(--color-danger)', fontSize: '0.8em', marginTop: 8 }}>
               Couldn&apos;t restore. Try again.
             </div>
           ) : null}
@@ -146,7 +146,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
             data-testid="admin-link-pairings"
           >
             <strong>Pairings + per-player tees</strong>
-            <div style={{ fontSize: '0.85em', color: '#555' }}>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
               Set foursomes per round + override individual players&apos; tees.
             </div>
           </Link>
@@ -160,7 +160,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
             data-testid="admin-link-scorer-policy"
           >
             <strong>Who can score?</strong>
-            <div style={{ fontSize: '0.85em', color: '#555' }}>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
               Foursome members, designated scorers (caddie), or open.
             </div>
           </Link>
@@ -174,7 +174,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
             data-testid="admin-link-start-round"
           >
             <strong>Start round</strong>
-            <div style={{ fontSize: '0.85em', color: '#555' }}>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
               Begin scoring a round — pick who scores each locked foursome.
             </div>
           </Link>
@@ -184,12 +184,12 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           <li
             style={{
               ...cardStyle,
-              background: '#fef3c7',
-              borderColor: '#fde68a',
+              background: 'var(--color-warning-bg)',
+              borderColor: 'var(--color-warning-text)',
             }}
           >
             <strong>Roster</strong>
-            <div style={{ fontSize: '0.85em', color: '#92400e' }}>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-warning-text)' }}>
               No group set up yet. Create one via the New Event wizard or
               ask the API team for help — the roster lives under groups.
             </div>
@@ -204,7 +204,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
                 data-testid={`admin-link-group-${g.id}`}
               >
                 <strong>Roster — {g.name}</strong>
-                <div style={{ fontSize: '0.85em', color: '#555' }}>
+                <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
                   Add / remove players, set handicap indices.
                 </div>
               </Link>
@@ -216,12 +216,12 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           <li
             style={{
               ...cardStyle,
-              background: '#fef3c7',
-              borderColor: '#fde68a',
+              background: 'var(--color-warning-bg)',
+              borderColor: 'var(--color-warning-text)',
             }}
           >
             <strong>Rule set</strong>
-            <div style={{ fontSize: '0.85em', color: '#92400e' }}>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-warning-text)' }}>
               No rule set seeded yet. Defaults apply until one is created.
             </div>
           </li>
@@ -234,7 +234,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
               data-testid="admin-link-ruleset"
             >
               <strong>Rule set — {ctx.ruleSet.name}</strong>
-              <div style={{ fontSize: '0.85em', color: '#555' }}>
+              <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
                 Cents per hole, sandies, greenies, skins mode.
               </div>
             </Link>
@@ -252,7 +252,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
               <strong>
                 Sub-games — Round {er.roundNumber} ({er.courseName})
               </strong>
-              <div style={{ fontSize: '0.85em', color: '#555' }}>
+              <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
                 Toggle skins / sandies / greenies / CTP for this round.
               </div>
             </Link>
@@ -262,7 +262,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
         <li>
           <Link to="/admin/courses/new" style={cardStyle} data-testid="admin-link-course-new">
             <strong>+ New course (manual)</strong>
-            <div style={{ fontSize: '0.85em', color: '#555' }}>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
               Enter holes + tees by hand.
             </div>
           </Link>
@@ -274,7 +274,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
             data-testid="admin-link-course-upload"
           >
             <strong>+ New course from PDF</strong>
-            <div style={{ fontSize: '0.85em', color: '#555' }}>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
               Upload a scorecard PDF; vision parser fills the holes.
             </div>
           </Link>
@@ -291,15 +291,15 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           style={{
             marginTop: 8,
             padding: 12,
-            border: '1px solid #fecaca',
+            border: '1px solid var(--color-danger-border)',
             borderRadius: 8,
-            background: '#fff',
+            background: 'var(--color-surface)',
           }}
         >
-          <strong style={{ color: '#991b1b' }}>Danger zone</strong>
+          <strong style={{ color: 'var(--color-danger)' }}>Danger zone</strong>
           {!confirmingCancel ? (
             <>
-              <div style={{ fontSize: '0.85em', color: '#555', margin: '4px 0 10px' }}>
+              <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', margin: '4px 0 10px' }}>
                 Cancel this event to hide it from everyone you invited. It&apos;s
                 reversible — you can restore it later.
               </div>
@@ -310,7 +310,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
                 style={{
                   padding: '8px 14px',
                   border: '1px solid #dc2626',
-                  background: '#fff',
+                  background: 'var(--color-surface)',
                   color: '#dc2626',
                   borderRadius: 6,
                   fontWeight: 600,
@@ -322,7 +322,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
             </>
           ) : (
             <>
-              <div style={{ fontSize: '0.85em', color: '#7f1d1d', margin: '4px 0 10px' }}>
+              <div style={{ fontSize: '0.85em', color: 'var(--color-danger)', margin: '4px 0 10px' }}>
                 Cancel <strong>{ctx.event.name}</strong>? Everyone you invited will
                 lose access until you restore it.
               </div>
@@ -351,9 +351,9 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
                   data-testid="event-cancel-abort-btn"
                   style={{
                     padding: '8px 14px',
-                    border: '1px solid #d1d5db',
-                    background: '#fff',
-                    color: '#374151',
+                    border: '1px solid var(--color-border)',
+                    background: 'var(--color-surface)',
+                    color: 'var(--color-text-secondary)',
                     borderRadius: 6,
                     fontWeight: 600,
                     cursor: 'pointer',
@@ -363,7 +363,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
                 </button>
               </div>
               {lifecycle.isError ? (
-                <div style={{ color: '#b91c1c', fontSize: '0.8em', marginTop: 8 }}>
+                <div style={{ color: 'var(--color-danger)', fontSize: '0.8em', marginTop: 8 }}>
                   Couldn&apos;t cancel. Try again.
                 </div>
               ) : null}

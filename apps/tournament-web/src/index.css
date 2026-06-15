@@ -43,6 +43,8 @@
   --color-warning-bg: #fef3c7;          /* warning-state background */
   --color-warning-text: #92400e;        /* warning-state text */
   --color-danger: #b91c1c;              /* destructive / error (darkened for sunlight) */
+  --color-danger-bg: #fef2f2;           /* destructive banner background (red-50) */
+  --color-danger-border: #fca5a5;       /* destructive banner border (red-300) */
   --color-money-pos: #15803d;           /* winnings */
   --color-money-neg: #b91c1c;           /* losses */
 
@@ -71,6 +73,44 @@
   /* Layout (consumed by PageShell) */
   --page-padding: 16px;
   --page-max-width: 960px;
+}
+
+:root { color-scheme: light; }
+
+/*
+ * Dark theme. Activated by a `.dark` class on <html> (set by lib/theme.ts
+ * from the user's choice or the OS preference) — matches the Tailwind
+ * `@custom-variant dark (&:is(.dark *))` above. Only the COLOR tokens flip;
+ * spacing/size/radius are theme-agnostic.
+ *
+ * Foreground colors (success/danger/money/accent/brand) are lightened so
+ * they keep AA contrast on the dark surfaces. --color-brand-primary uses
+ * green-600 (#16a34a): white button text ≈ 3:1 (AA large/bold) and as link
+ * text on the dark page ≈ 4.5:1 (AA normal).
+ */
+.dark {
+  color-scheme: dark;
+  --color-surface: #1e293b;             /* card / input bg (slate-800) */
+  --color-surface-sunken: #0f172a;      /* page bg (slate-900) */
+  --color-text-primary: #f1f5f9;        /* slate-100 */
+  --color-text-secondary: #cbd5e1;      /* slate-300 */
+  --color-text-muted: #94a3b8;          /* slate-400 */
+  --color-border: #334155;              /* slate-700 */
+  --color-border-subtle: #1e293b;       /* slate-800 */
+  --color-brand-primary: #16a34a;       /* green-600 — dual-use button/link */
+  --color-brand-strong: #22c55e;        /* green-500 — pressed/active */
+  --color-brand-tint: #052e16;          /* green-950 selected tint */
+  --color-accent: #fbbf24;              /* amber-400 */
+  --color-success: #4ade80;             /* green-400 */
+  --color-warning-bg: #422006;          /* amber-950 */
+  --color-warning-text: #fde68a;        /* amber-200 */
+  --color-danger: #f87171;              /* red-400 */
+  --color-danger-bg: #3f1d1d;           /* dark destructive banner bg */
+  --color-danger-border: #7f1d1d;       /* dark destructive banner border (red-900) */
+  --color-money-pos: #4ade80;
+  --color-money-neg: #f87171;
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-raised: 0 4px 12px rgb(0 0 0 / 0.5);
 }
 
 /* Page background so white cards have something to sit on. */

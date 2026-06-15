@@ -54,7 +54,7 @@ async function fetchMyMoney(eventId: string): Promise<FetchOutcome> {
 }
 
 function netColor(cents: number): string | undefined {
-  if (cents > 0) return 'var(--color-success, #16a34a)';
+  if (cents > 0) return 'var(--color-success, var(--color-brand-primary))';
   if (cents < 0) return 'var(--color-danger, #dc2626)';
   return undefined;
 }

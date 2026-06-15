@@ -96,13 +96,13 @@ export function TournamentToast() {
           key={entry.rowId}
           data-testid="tournament-toast-entry"
           style={{
-            background: '#fff',
-            border: '1px solid #ccc',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
             borderRadius: 8,
             padding: '0.6rem 0.9rem',
             boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
             fontSize: '0.95rem',
-            color: '#222',
+            color: 'var(--color-text-primary)',
           }}
         >
           {entry.headline}

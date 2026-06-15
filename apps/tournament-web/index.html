@@ -10,6 +10,19 @@
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Tournament</title>
+    <!-- No-flash theme init: set the .dark class BEFORE first paint, from the
+         stored preference or the OS setting. Kept in sync at runtime by
+         src/lib/theme.ts. -->
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem('tournament-theme') || 'system';
+          var dark = p === 'dark' || (p === 'system' &&
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

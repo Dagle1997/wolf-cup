@@ -127,8 +127,8 @@ function AndroidInstallButton({
         bottom: 16,
         left: 16,
         right: 16,
-        background: '#fff',
-        border: '1px solid #ccc',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
         borderRadius: 8,
         padding: 12,
         boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
@@ -137,7 +137,7 @@ function AndroidInstallButton({
     >
       <div style={{ marginBottom: 8 }}>
         <strong>Install Tournament</strong>
-        <div style={{ fontSize: '0.85rem', color: '#555' }}>
+        <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
           Add to your home screen for one-tap access.
         </div>
       </div>
@@ -172,7 +172,7 @@ function AndroidInstallButton({
             }
           }}
           style={{
-            background: '#0a5',
+            background: 'var(--color-money-pos)',
             color: '#fff',
             border: 0,
             padding: '6px 12px',
@@ -197,8 +197,8 @@ function IosInstructionsCard({ onDismiss }: { onDismiss: () => void }) {
         bottom: 16,
         left: 16,
         right: 16,
-        background: '#fff',
-        border: '1px solid #ccc',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
         borderRadius: 8,
         padding: 12,
         boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
@@ -207,7 +207,7 @@ function IosInstructionsCard({ onDismiss }: { onDismiss: () => void }) {
     >
       <div style={{ marginBottom: 8 }}>
         <strong>Install Tournament</strong>
-        <div style={{ fontSize: '0.85rem', color: '#555' }}>
+        <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
           Tap the Share icon, then "Add to Home Screen".
         </div>
       </div>
@@ -216,7 +216,7 @@ function IosInstructionsCard({ onDismiss }: { onDismiss: () => void }) {
           type="button"
           onClick={() => onDismiss()}
           style={{
-            background: '#0a5',
+            background: 'var(--color-money-pos)',
             color: '#fff',
             border: 0,
             padding: '6px 12px',

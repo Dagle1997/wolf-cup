@@ -159,7 +159,7 @@ function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eve
       <BackLink to="/events/$eventId/schedule" params={{ eventId }} />
       <header
         style={{
-          background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+          background: 'linear-gradient(135deg, var(--color-brand-strong) 0%, var(--color-brand-primary) 100%)',
           color: 'white',
           padding: '24px 16px',
           borderRadius: 8,
@@ -181,8 +181,8 @@ function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eve
               marginRight: 6,
               padding: '4px 10px',
               borderRadius: 14,
-              border: t.teeColor === selectedTee ? '2px solid #1e3a8a' : '1px solid #ccc',
-              backgroundColor: t.teeColor === selectedTee ? '#eff6ff' : 'transparent',
+              border: t.teeColor === selectedTee ? '2px solid var(--color-brand-strong)' : '1px solid var(--color-border)',
+              backgroundColor: t.teeColor === selectedTee ? 'var(--color-brand-tint)' : 'transparent',
               fontWeight: t.teeColor === selectedTee ? 'bold' : 'normal',
               cursor: 'pointer',
             }}
@@ -210,7 +210,7 @@ function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eve
               <td style={cellStyle}>{h.si}</td>
             </tr>
           ))}
-          <tr style={{ fontWeight: 'bold', borderTop: '2px solid #ccc' }}>
+          <tr style={{ fontWeight: 'bold', borderTop: '2px solid var(--color-border)' }}>
             <td style={cellStyle}>Out</td>
             <td style={cellStyle}>{revision.outTotal}</td>
             <td style={cellStyle}>{outYardage === null ? DASH : outYardage}</td>
@@ -237,7 +237,7 @@ function CoursePreviewView({ data, eventId }: { data: CoursePreviewResponse; eve
 const cellStyle: React.CSSProperties = {
   padding: '6px 8px',
   textAlign: 'center',
-  borderBottom: '1px solid #eee',
+  borderBottom: '1px solid var(--color-border-subtle)',
 };
 
 function formatYardage(y: number | undefined): string {
