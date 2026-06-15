@@ -31,6 +31,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { requireOrganizer } from '../middleware/require-organizer.js';
 import { requireSession } from '../middleware/require-session.js';
 import { db } from '../db/index.js';
+import { ghinClient } from '../lib/ghin-client.js';
 import { groups, groupMembers, players } from '../db/schema/index.js';
 
 const SAVE_BODY_LIMIT_BYTES = 4 * 1024;
@@ -122,12 +123,37 @@ adminGroupsRouter.get('/groups/:groupId', requireSession, requireOrganizer, asyn
     .where(eq(groupMembers.groupId, groupId))
     .orderBy(asc(players.name));
 
+  // Resolve each member's CURRENT handicap index: live from GHIN for
+  // GHIN-linked players (whose manual_handicap_index is intentionally NULL),
+  // else their manual index. Parallel + fault-tolerant so one bad GHIN number
+  // never blanks the roster. (The handicap-lock feature later freezes these.)
+  const log = c.get('logger');
+  const currentByPlayer = new Map<string, number | null>();
+  await Promise.all(
+    memberRows.map(async (m) => {
+      if (m.ghin && ghinClient) {
+        try {
+          const { handicapIndex } = await ghinClient.getHandicap(Number(m.ghin));
+          currentByPlayer.set(m.playerId, handicapIndex);
+        } catch {
+          log?.warn({ event: 'ghin_current_hi_failed', groupId, playerId: m.playerId });
+          currentByPlayer.set(m.playerId, m.manualHandicapIndex ?? null);
+        }
+      } else {
+        currentByPlayer.set(m.playerId, m.manualHandicapIndex ?? null);
+      }
+    }),
+  );
+
   return c.json({
     id: group.id,
     name: group.name,
     eventId: group.eventId,
     moneyVisibilityMode: group.moneyVisibilityMode,
-    members: memberRows,
+    members: memberRows.map((m) => ({
+      ...m,
+      currentHandicapIndex: currentByPlayer.get(m.playerId) ?? null,
+    })),
   });
 });
 

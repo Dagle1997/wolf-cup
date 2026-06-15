@@ -44,6 +44,7 @@ type GroupMember = {
   name: string;
   ghin: string | null;
   manualHandicapIndex: number | null;
+  currentHandicapIndex: number | null; // live GHIN HI (or manual) resolved server-side
   preferredTeeColor: string | null;
 };
 
@@ -347,7 +348,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
                 <tr key={m.playerId}>
                   <td>{m.name}</td>
                   <td>{m.ghin ?? '—'}</td>
-                  <td>{m.manualHandicapIndex !== null ? m.manualHandicapIndex : '—'}</td>
+                  <td>{m.currentHandicapIndex !== null ? m.currentHandicapIndex : '—'}</td>
                   <td>
                     <button
                       type="button"

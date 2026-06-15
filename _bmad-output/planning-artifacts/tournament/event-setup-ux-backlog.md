@@ -38,6 +38,12 @@ Update as items ship.
   - (extensible to greenies, CTP, skins mode, etc.)
 - Event-wide defaults that each round can override.
 - Existing surface: `rule_sets` / `rule_set_revisions` (tenant-level today) + `admin-event-rounds` sub-games. Needs an event-scoped + round-scoped config model + UI.
+- **Rules & sub-games are intermixed and need a redo** (Josh). The admin landing shows a yellow "No rule set seeded yet" card that is NOT clickable — there's no UI to create/seed a rule set, and sub-game toggles live separately under event-rounds. Unify into one coherent "Rules & games" setup (event-wide defaults + per-round overrides).
+
+## 🐞 Bugs found in testing (fix as hit)
+- ~~Member list showed "—" for handicap on every player~~ — FIXED: roster GET now resolves live GHIN HI (currentHandicapIndex).
+- ~~Pairings page crashed ("can't access property 0, c is undefined") when INCREASING foursome count~~ — FIXED: isDirty memo guarded against the transient where the new count outpaces the not-yet-rebuilt grid.
+- Rule-set card un-clickable (see F1).
 
 ### F2. Team selection
 - Possibly pick 2-man (or N-man) teams for the event (not just per-round foursome pairings). Design TBD.

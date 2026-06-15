@@ -379,7 +379,12 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
             }
           }
         }
-        const draftSlots = r.foursomes[fIdx]!;
+        // When the foursome count was just INCREASED, this memo recomputes
+        // with the new count before the grid-rebuild effect adds the empty
+        // foursome rows — so r.foursomes[fIdx] can be undefined for one render.
+        // Treat that transient as "dirty" rather than crashing on [s].
+        const draftSlots = r.foursomes[fIdx];
+        if (!draftSlots) return true;
         for (let s = 0; s < FOURSOME_SIZE; s++) {
           const a = draftSlots[s]!;
           const b = persistedSlots[s]!;
