@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { csrf } from 'hono/csrf';
 import { env } from './lib/env.js';
 import { adminCoursesRouter } from './routes/admin-courses.js';
+import { adminCoursesGhinRouter } from './routes/admin-courses-ghin.js';
 import { adminEventRoundsRouter } from './routes/admin-event-rounds.js';
 import { adminEventsRouter } from './routes/admin-events.js';
 import { adminGroupsRouter } from './routes/admin-groups.js';
@@ -62,6 +63,10 @@ app.route('/api/courses', coursesRouter);
 // Admin-courses router (T2-3). POST /api/admin/courses/parse-pdf —
 // organizer-gated scorecard-PDF → Anthropic Vision → structured JSON.
 app.route('/api/admin', adminCoursesRouter);
+
+// GHIN course-import router. GET /api/admin/courses/ghin/search + /:id —
+// organizer-gated read-only discovery + mapping to the save-request shape.
+app.route('/api/admin', adminCoursesGhinRouter);
 
 // Admin-events router (T3-2). POST /api/admin/events — organizer-gated
 // transactional create across events + event_rounds + invites + groups.

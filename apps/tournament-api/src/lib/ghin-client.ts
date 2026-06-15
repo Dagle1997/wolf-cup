@@ -43,6 +43,69 @@ export type GhinSearchResult = {
   state: string | null;
 };
 
+// ---- Course (CRDB) search + details ---------------------------------------
+// The same golfer login token authorizes GHIN's course-rating endpoints.
+// These power the "import a course from GHIN" flow — the authoritative
+// USGA source for rating/slope (the public web aggregators disagree because
+// the CRDB carries many historical re-ratings; we read CURRENT tees only by
+// NOT passing include_altered_tees).
+
+export type GhinCourseSearchResult = {
+  ghinCourseId: number;
+  name: string;
+  city: string | null;
+  state: string | null;
+  status: string | null;
+};
+
+export type GhinTeeRating = { type: string; courseRating: number; slopeRating: number };
+export type GhinTeeHole = { number: number; par: number; allocation: number; length: number };
+export type GhinTeeSet = {
+  teeSetRatingId: number;
+  name: string;
+  gender: string;
+  totalYardage: number;
+  totalPar: number;
+  ratings: GhinTeeRating[];
+  holes: GhinTeeHole[];
+};
+export type GhinCourseDetails = {
+  ghinCourseId: number;
+  name: string;
+  city: string | null;
+  state: string | null;
+  facilityName: string | null;
+  teeSets: GhinTeeSet[];
+};
+
+type RawCourseSearch = {
+  courses?: Array<{
+    CourseID?: number;
+    CourseName?: string;
+    FullName?: string;
+    CourseCity?: string | null;
+    CourseState?: string | null;
+    CourseStatus?: string | null;
+  }>;
+};
+
+type RawCourseDetails = {
+  CourseId?: number;
+  CourseName?: string;
+  CourseCity?: string | null;
+  CourseState?: string | null;
+  Facility?: { FacilityName?: string | null };
+  TeeSets?: Array<{
+    TeeSetRatingId?: number;
+    TeeSetRatingName?: string;
+    Gender?: string;
+    TotalYardage?: number;
+    TotalPar?: number;
+    Ratings?: Array<{ RatingType?: string; CourseRating?: number; SlopeRating?: number }>;
+    Holes?: Array<{ Number?: number; Par?: number; Allocation?: number; Length?: number }>;
+  }>;
+};
+
 export class GhinDirectClient {
   private token: string | null = null;
   private tokenExpiry = 0;
@@ -116,6 +179,74 @@ export class GhinDirectClient {
 
     const g = data.golfers[0]!;
     return { handicapIndex: g.handicap_index !== null ? Number(g.handicap_index) : null };
+  }
+
+  /**
+   * Search the GHIN course-rating DB by name. NOTE: the CRDB rejects a
+   * combined name+state filter (returns []), so we search by name only and
+   * leave state filtering to the caller. Active + inactive both returned;
+   * `status` lets the UI grey out inactive courses.
+   */
+  async searchCourses(name: string): Promise<GhinCourseSearchResult[]> {
+    const token = await this.getToken();
+    const params = new URLSearchParams({ source: 'GHINcom', name });
+    const res = await fetch(`${GHIN_BASE}/courses/search.json?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': UA },
+    });
+    if (!res.ok) throw new Error('GHIN_UNAVAILABLE');
+    const data = (await res.json()) as RawCourseSearch;
+    return (data.courses ?? [])
+      .filter((c) => typeof c.CourseID === 'number')
+      .map((c) => ({
+        ghinCourseId: c.CourseID!,
+        name: c.FullName ?? c.CourseName ?? `Course ${c.CourseID}`,
+        city: c.CourseCity ?? null,
+        state: c.CourseState ?? null,
+        status: c.CourseStatus ?? null,
+      }));
+  }
+
+  /**
+   * Fetch full tee/rating/hole detail for one course. CRITICAL: we do NOT
+   * pass include_altered_tees, so only the CURRENT (canonical) tee sets come
+   * back — passing it returns dozens of superseded historical re-ratings.
+   */
+  async getCourseDetails(ghinCourseId: number): Promise<GhinCourseDetails> {
+    const token = await this.getToken();
+    const res = await fetch(
+      `${GHIN_BASE}/courses/${ghinCourseId}.json?source=GHINcom`,
+      { headers: { Authorization: `Bearer ${token}`, 'User-Agent': UA } },
+    );
+    if (res.status === 404) throw new Error('NOT_FOUND');
+    if (!res.ok) throw new Error('GHIN_UNAVAILABLE');
+    const d = (await res.json()) as RawCourseDetails;
+    return {
+      ghinCourseId: d.CourseId ?? ghinCourseId,
+      name: d.CourseName ?? `Course ${ghinCourseId}`,
+      city: d.CourseCity ?? null,
+      state: d.CourseState ?? null,
+      facilityName: d.Facility?.FacilityName ?? null,
+      teeSets: (d.TeeSets ?? []).map((t) => ({
+        teeSetRatingId: t.TeeSetRatingId ?? 0,
+        name: t.TeeSetRatingName ?? '',
+        gender: t.Gender ?? '',
+        totalYardage: t.TotalYardage ?? 0,
+        totalPar: t.TotalPar ?? 0,
+        ratings: (t.Ratings ?? [])
+          .filter((r) => typeof r.CourseRating === 'number' && typeof r.SlopeRating === 'number')
+          .map((r) => ({
+            type: r.RatingType ?? '',
+            courseRating: r.CourseRating!,
+            slopeRating: r.SlopeRating!,
+          })),
+        holes: (t.Holes ?? []).map((h) => ({
+          number: h.Number ?? 0,
+          par: h.Par ?? 0,
+          allocation: h.Allocation ?? 0,
+          length: h.Length ?? 0,
+        })),
+      })),
+    };
   }
 }
 

@@ -547,13 +547,22 @@ export function NewEventWizard() {
               Course not listed?
             </span>
             <a
+              href="/admin/courses/import"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="wizard-add-course-ghin"
+              style={{ minHeight: 'var(--control-height)', display: 'inline-flex', alignItems: 'center', fontWeight: 600 }}
+            >
+              + Search GHIN
+            </a>
+            <a
               href="/admin/courses/upload"
               target="_blank"
               rel="noopener noreferrer"
               data-testid="wizard-add-course-upload"
               style={{ minHeight: 'var(--control-height)', display: 'inline-flex', alignItems: 'center' }}
             >
-              + Add from scorecard (PDF)
+              + From scorecard (PDF)
             </a>
             <a
               href="/admin/courses/new"

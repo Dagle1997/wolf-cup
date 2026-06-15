@@ -92,6 +92,10 @@ describe('NewEventWizard', () => {
     // "Course not listed?" escape hatch — links to both creation paths +
     // a refresh-list control so a newly-added course shows without reload.
     expect(screen.getByText(/course not listed/i)).toBeInTheDocument();
+    expect(screen.getByTestId('wizard-add-course-ghin')).toHaveAttribute(
+      'href',
+      '/admin/courses/import',
+    );
     expect(screen.getByTestId('wizard-add-course-upload')).toHaveAttribute(
       'href',
       '/admin/courses/upload',
