@@ -89,6 +89,19 @@ describe('NewEventWizard', () => {
     expect(screen.getByText(/step 2 of 3/i)).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /^rounds$/i })).toBeInTheDocument();
 
+    // "Course not listed?" escape hatch — links to both creation paths +
+    // a refresh-list control so a newly-added course shows without reload.
+    expect(screen.getByText(/course not listed/i)).toBeInTheDocument();
+    expect(screen.getByTestId('wizard-add-course-upload')).toHaveAttribute(
+      'href',
+      '/admin/courses/upload',
+    );
+    expect(screen.getByTestId('wizard-add-course-manual')).toHaveAttribute(
+      'href',
+      '/admin/courses/new',
+    );
+    expect(screen.getByTestId('wizard-refresh-courses')).toBeInTheDocument();
+
     // Back returns to step 1 with values preserved
     await userEvent.click(screen.getByRole('button', { name: /^back$/i }));
     expect(screen.getByText(/step 1 of 3/i)).toBeInTheDocument();

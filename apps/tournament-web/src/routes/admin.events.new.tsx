@@ -171,7 +171,11 @@ export function NewEventWizard() {
   // Course picker query — gated to step 2+ via `enabled` so the fetch
   // doesn't fire on wizard mount (step 1 doesn't need course data; firing
   // early wastes a request and creates test-mock surface area on idle).
-  const { data: coursesResponse } = useQuery<CourseListResponse>({
+  const {
+    data: coursesResponse,
+    refetch: refetchCourses,
+    isFetching: coursesFetching,
+  } = useQuery<CourseListResponse>({
     queryKey: ['courses'],
     queryFn: async () => {
       const res = await fetch('/api/courses');
@@ -179,6 +183,8 @@ export function NewEventWizard() {
       return (await res.json()) as CourseListResponse;
     },
     staleTime: 60_000,
+    // Refetch when the user returns from adding a course in another tab.
+    refetchOnWindowFocus: true,
     enabled: form.step >= 2,
   });
 
@@ -520,6 +526,54 @@ export function NewEventWizard() {
           <button type="button" onClick={addRound} style={{ minHeight: 'var(--control-height)', marginTop: 'var(--space-2)' }}>
             + Add round
           </button>
+
+          {/* Course not in the list? Add one without losing wizard progress.
+              The creation pages open in a new tab (the wizard is unsaved
+              local state); on return, "Refresh list" re-pulls /api/courses
+              so the new course appears in the picker. */}
+          <div
+            style={{
+              marginTop: 'var(--space-3)',
+              padding: 'var(--space-3)',
+              border: '1px dashed var(--color-border, #ccc)',
+              borderRadius: 8,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 'var(--space-2)',
+              alignItems: 'center',
+            }}
+          >
+            <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted, #555)' }}>
+              Course not listed?
+            </span>
+            <a
+              href="/admin/courses/upload"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="wizard-add-course-upload"
+              style={{ minHeight: 'var(--control-height)', display: 'inline-flex', alignItems: 'center' }}
+            >
+              + Add from scorecard (PDF)
+            </a>
+            <a
+              href="/admin/courses/new"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="wizard-add-course-manual"
+              style={{ minHeight: 'var(--control-height)', display: 'inline-flex', alignItems: 'center' }}
+            >
+              + Add manually
+            </a>
+            <button
+              type="button"
+              onClick={() => void refetchCourses()}
+              disabled={coursesFetching}
+              data-testid="wizard-refresh-courses"
+              style={{ minHeight: 'var(--control-height)', marginLeft: 'auto' }}
+            >
+              {coursesFetching ? 'Refreshing…' : '↻ Refresh list'}
+            </button>
+          </div>
           <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-4)' }}>
             <button type="button" onClick={back} style={{ minHeight: 'var(--control-height-lg)' }}>
               Back
