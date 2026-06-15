@@ -8,7 +8,11 @@ SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member
 
 ## 🔴 Setup blockers (in progress — building now)
 
-### B0. Join via CODE (not just Google login) — DESIGNED 2026-06-15; bigger than QOL
+### B0. Join via CODE — ✅ SHIPPED 2026-06-15 (commit 66db5f8)
+- Built: `requireSession` device-binding bridge (lib/device-auth.ts) so a device-bound (non-Google) player authenticates app-wide; migration 0016 `player_join_codes` (per-player, globally-unique 6-char codes, **NO expiry** → lasts the whole multi-day event; device cookie keeps them signed in 90 days post-join); `POST /api/join` (public claim) + `GET /api/admin/events/:id/join-codes` (organizer); web `/join` screen, organizer "Join codes" page, home "Join with a code" CTA. Tests: 9 (incl. device-bridge probe). Full api 1035 ✓.
+- **Migration note for the parked `feat/handicap-lock` branch:** it ALSO has a 0016 (`0016_tense_felicia_hardy`). On its next rebase onto master, renumber it to 0017 (master's 0016 is now `0016_confused_deathstrike`).
+
+### B0 (original design notes). Join via CODE — DESIGNED 2026-06-15; bigger than QOL
 - **CRITICAL FINDING (code-traced):** non-Google players CANNOT use the app today. Sessions are minted ONLY by Google OAuth (`createSession` called only from `auth.ts` Google callback). `requireSession` accepts only the `tournament_session` cookie. The invite-claim flow (`routes/invites.ts /:token/claim`) creates a `device_binding` + `tournament_device_id` cookie but **no session** — so a claimed non-Google player 401s on every authed route (event home, score entry, money). The device-binding infra exists but the bridge to "logged in" was never wired.
 - **DECISIONS (Josh, 2026-06-15):**
   - **Access = FULL** (view, leaderboard, money, score entry, create side bets — first-class; scoring still gated to designated scorers).
