@@ -123,7 +123,7 @@ describe('GET /api/players/search', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { results: typeof fixture };
     expect(body.results).toEqual(fixture);
-    expect(mockGhinClient!.searchByName).toHaveBeenCalledWith('Stoll');
+    expect(mockGhinClient!.searchByName).toHaveBeenCalledWith('Stoll', undefined);
   });
 
   it('search with no upstream matches → 200 { results: [] } (NOT 404)', async () => {
@@ -193,8 +193,17 @@ describe('GET /api/players/search', () => {
     // passing state. The client itself hardcodes state='WV' upstream.
     // A future "promote ?state= to flow through" change has to update
     // this test (regression guard for the v1 limitation).
-    expect(mockGhinClient!.searchByName).toHaveBeenCalledWith('Stoll');
+    expect(mockGhinClient!.searchByName).toHaveBeenCalledWith('Stoll', undefined);
     expect(mockGhinClient!.searchByName).toHaveBeenCalledTimes(1);
+  });
+
+  it('firstName query param is passed through to narrow common last names', async () => {
+    const sessionId = await seedSession();
+    mockGhinClient!.searchByName.mockResolvedValueOnce([]);
+    await testApp.request('/api/players/search?name=Miller&firstName=David', {
+      headers: { cookie: cookie(sessionId) },
+    });
+    expect(mockGhinClient!.searchByName).toHaveBeenCalledWith('Miller', 'David');
   });
 });
 

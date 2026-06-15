@@ -135,7 +135,7 @@ export class GhinDirectClient {
   async searchByName(lastName: string, firstName?: string): Promise<GhinSearchResult[]> {
     const token = await this.getToken();
     const params = new URLSearchParams({
-      per_page: '20',
+      per_page: '50',
       page: '1',
       last_name: lastName,
       state: 'WV',

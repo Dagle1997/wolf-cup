@@ -72,6 +72,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
   const [nameDraftDirty, setNameDraftDirty] = useState(false);
   const [addTab, setAddTab] = useState<'ghin' | 'manual'>('ghin');
   const [ghinSearchTerm, setGhinSearchTerm] = useState('');
+  const [ghinFirstName, setGhinFirstName] = useState('');
   const [ghinSearchTriggered, setGhinSearchTriggered] = useState(false);
   const [manualName, setManualName] = useState('');
   const [manualHandicap, setManualHandicap] = useState('');
@@ -117,10 +118,11 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
   // ---- GHIN search query ------------------------------------------------
 
   const ghinSearchQuery = useQuery<{ results: GhinSearchResult[] } | { error: 'unavailable' }>({
-    queryKey: ['ghin-search', ghinSearchTerm],
+    queryKey: ['ghin-search', ghinSearchTerm, ghinFirstName],
     queryFn: async ({ signal }) => {
+      const fn = ghinFirstName.trim();
       const res = await fetch(
-        `/api/players/search?name=${encodeURIComponent(ghinSearchTerm)}`,
+        `/api/players/search?name=${encodeURIComponent(ghinSearchTerm)}${fn ? `&firstName=${encodeURIComponent(fn)}` : ''}`,
         { signal },
       );
       if (res.status === 503) return { error: 'unavailable' as const };
@@ -386,23 +388,51 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
 
         {addTab === 'ghin' ? (
           <div>
-            <label htmlFor="ghin-search-input">Last name</label>
-            <input
-              id="ghin-search-input"
-              type="text"
-              value={ghinSearchTerm}
-              onChange={(e) => {
-                setGhinSearchTerm(e.target.value);
-                setGhinSearchTriggered(false);
-              }}
-            />
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 140px' }}>
+                <label htmlFor="ghin-first-input">First name (optional)</label>
+                <input
+                  id="ghin-first-input"
+                  type="text"
+                  value={ghinFirstName}
+                  onChange={(e) => {
+                    setGhinFirstName(e.target.value);
+                    setGhinSearchTriggered(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && ghinSearchTerm.trim().length > 0) setGhinSearchTriggered(true);
+                  }}
+                  placeholder="David"
+                />
+              </div>
+              <div style={{ flex: '1 1 140px' }}>
+                <label htmlFor="ghin-search-input">Last name</label>
+                <input
+                  id="ghin-search-input"
+                  type="text"
+                  value={ghinSearchTerm}
+                  onChange={(e) => {
+                    setGhinSearchTerm(e.target.value);
+                    setGhinSearchTriggered(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && ghinSearchTerm.trim().length > 0) setGhinSearchTriggered(true);
+                  }}
+                  placeholder="Miller"
+                />
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => setGhinSearchTriggered(true)}
               disabled={ghinSearchTerm.trim().length === 0}
+              style={{ minHeight: 'var(--control-height)' }}
             >
               Search
             </button>
+            <p style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', margin: '4px 0 0' }}>
+              Add a first name to narrow common last names. WV golfers only (v1).
+            </p>
 
             {ghinSearchQuery.isFetching ? <p>Searching…</p> : null}
 
@@ -412,31 +442,62 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
 
             {ghinSearchQuery.data && 'results' in ghinSearchQuery.data ? (
               ghinSearchQuery.data.results.length === 0 ? (
-                <p>No results in WV. (Out-of-state lookup not supported in v1.)</p>
+                <p>No matches in WV. Add a first name, or try Manual Entry.</p>
               ) : (
-                <ul>
-                  {ghinSearchQuery.data.results.map((r) => (
-                    <li key={r.ghinNumber}>
-                      {r.firstName} {r.lastName} — GHIN {r.ghinNumber}
-                      {r.handicapIndex !== null ? ` — HI ${r.handicapIndex}` : ''}
-                      {r.club ? ` — ${r.club}` : ''}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          addMember.mutate({
-                            mode: 'ghin',
-                            ghin: r.ghinNumber,
-                            firstName: r.firstName,
-                            lastName: r.lastName,
-                          })
-                        }
-                        disabled={addMember.isPending}
+                <>
+                  <p style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', margin: '8px 0 4px' }}>
+                    {ghinSearchQuery.data.results.length} match
+                    {ghinSearchQuery.data.results.length === 1 ? '' : 'es'} — scroll for more
+                  </p>
+                  <ul
+                    style={{
+                      listStyle: 'none',
+                      padding: 0,
+                      margin: 0,
+                      maxHeight: 360,
+                      overflowY: 'auto',
+                      border: '1px solid var(--color-border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                    }}
+                  >
+                    {ghinSearchQuery.data.results.map((r) => (
+                      <li
+                        key={r.ghinNumber}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 'var(--space-2)',
+                          padding: 'var(--space-2) var(--space-3)',
+                          borderBottom: '1px solid var(--color-border-subtle)',
+                        }}
                       >
-                        Add
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                        <span>
+                          <strong>{r.firstName} {r.lastName}</strong>
+                          {r.handicapIndex !== null ? ` — HI ${r.handicapIndex}` : ''}
+                          <span style={{ display: 'block', fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)' }}>
+                            GHIN {r.ghinNumber}{r.club ? ` · ${r.club}` : ''}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            addMember.mutate({
+                              mode: 'ghin',
+                              ghin: r.ghinNumber,
+                              firstName: r.firstName,
+                              lastName: r.lastName,
+                            })
+                          }
+                          disabled={addMember.isPending}
+                          style={{ minHeight: 'var(--control-height)', flexShrink: 0 }}
+                        >
+                          Add
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )
             ) : null}
           </div>

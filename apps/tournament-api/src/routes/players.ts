@@ -61,7 +61,8 @@ function matchUniqueSentinel(err: unknown): boolean {
 export const playersRouter = new Hono();
 
 const searchQuerySchema = z.object({
-  name: z.string().trim().min(1),
+  name: z.string().trim().min(1), // last name
+  firstName: z.string().trim().optional(), // optional first-name filter
   state: z.string().trim().optional(),
 });
 
@@ -75,6 +76,7 @@ playersRouter.get('/search', requireSession, async (c) => {
 
   const parseResult = searchQuerySchema.safeParse({
     name: c.req.query('name'),
+    firstName: c.req.query('firstName'),
     state: c.req.query('state'),
   });
   if (!parseResult.success) {
@@ -102,7 +104,10 @@ playersRouter.get('/search', requireSession, async (c) => {
   }
 
   try {
-    const results = await ghinClient.searchByName(parseResult.data.name);
+    const results = await ghinClient.searchByName(
+      parseResult.data.name,
+      parseResult.data.firstName,
+    );
     return c.json({ results });
   } catch (err) {
     const e = err as { message?: unknown } | null;
