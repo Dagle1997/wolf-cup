@@ -11,6 +11,7 @@ import { pdfScheduleRouter } from './routes/pdf-schedule.js';
 import { authRouter } from './routes/auth.js';
 import { coursesRouter } from './routes/courses.js';
 import { inviteRouter } from './routes/invites.js';
+import { joinRouter, adminJoinCodesRouter } from './routes/join.js';
 import { playersRouter } from './routes/players.js';
 import { scoresRouter, eventRoundsCourseRouter } from './routes/scores.js';
 import { eventsLeaderboardRouter } from './routes/events-leaderboard.js';
@@ -98,6 +99,12 @@ app.route('/api/admin', adminEventRoundsRouter);
 // Invites router (T3-6). 2 anonymous-friendly endpoints under
 // /api/invites/... — first-arrival flow per FR-E1; no SSO triggered.
 app.route('/api/invites', inviteRouter);
+
+// B0 join-via-code. POST /api/join (public, claim by per-player code →
+// device binding, no Google) + GET /api/admin/events/:id/join-codes
+// (organizer, list/generate codes).
+app.route('/api/join', joinRouter);
+app.route('/api/admin', adminJoinCodesRouter);
 
 // PDF schedule export router (T4-3). 1 endpoint:
 // GET /api/events/:eventId/pdf/schedule/:token. Token-gated via T3-8

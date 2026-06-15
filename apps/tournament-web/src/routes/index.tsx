@@ -84,16 +84,35 @@ function IndexPage() {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
         <h1>Tournament</h1>
-        <p style={{ color: 'var(--color-text-muted)', margin: '12px 0 24px' }}>
-          Sign in with your Google account to view your event.
+        <p style={{ color: 'var(--color-text-muted)', margin: '12px 0 16px' }}>
+          Got a join code from your organizer? Enter it — no account needed.
+        </p>
+        <Link
+          to="/join"
+          style={{
+            display: 'inline-block',
+            padding: '12px 20px',
+            background: 'var(--color-brand-primary)',
+            color: '#fff',
+            borderRadius: 6,
+            textDecoration: 'none',
+            fontWeight: 700,
+          }}
+          data-testid="home-join-cta"
+        >
+          Join with a code
+        </Link>
+        <p style={{ color: 'var(--color-text-muted)', margin: '24px 0 8px', fontSize: '0.9em' }}>
+          Organizer?
         </p>
         <a
           href="/api/auth/google"
           style={{
             display: 'inline-block',
             padding: '10px 18px',
-            background: 'var(--color-brand-primary)',
-            color: '#fff',
+            background: 'var(--color-surface)',
+            color: 'var(--color-text-primary)',
+            border: '1px solid var(--color-border)',
             borderRadius: 6,
             textDecoration: 'none',
             fontWeight: 600,

@@ -154,6 +154,20 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
 
         <li>
           <Link
+            to="/admin/events/$eventId/join-codes"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-join-codes"
+          >
+            <strong>Join codes</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Per-player codes so people can join without a Google account.
+            </div>
+          </Link>
+        </li>
+
+        <li>
+          <Link
             to="/admin/events/$eventId/scorer-policy"
             params={{ eventId }}
             style={cardStyle}

@@ -1,58 +1,64 @@
 import type { MiddlewareHandler } from 'hono';
 import { SESSION_COOKIE_NAME, sessionCookieHeader, validateSession } from '../lib/session.js';
+import { DEVICE_COOKIE_NAME, validateDeviceBinding } from '../lib/device-auth.js';
 
 /**
- * Requires a valid `tournament_session` cookie.
+ * Requires an authenticated player — via a Google `tournament_session` cookie
+ * OR (B0) a non-Google `tournament_device_id` device binding (the join-code /
+ * invite-link path). Either way, on success `c.get('session')` and
+ * `c.get('player')` are set, so every downstream route + authz middleware
+ * (requireOrganizer, requireEventParticipant, requireScorerForRound) works
+ * unchanged — they read the same `player`. Device-bound players are normally
+ * non-organizers, so requireOrganizer still gates admin routes.
  *
  * Responses:
- *   - 401 { code: 'session_missing', ... } — no cookie present
- *   - 401 { code: 'session_invalid', ... } + clear-cookie Set-Cookie — cookie
- *     present but session is missing, expired, or past the hard cap. The
- *     clear-cookie header helps the browser drop the stale cookie so the
- *     next request cleanly hits `session_missing` instead of repeating.
- *   - next() — valid; `c.get('session')` and `c.get('player')` are set.
+ *   - 401 { code: 'session_missing' } — no usable cookie at all
+ *   - 401 { code: 'session_invalid' } (+ clear-cookie) — a cookie was present
+ *     but neither the session nor a device binding validated
+ *   - next() — authenticated
  *
- * `requestId` is read from the context variable populated by the global
- * request-id middleware (T1-7). The middleware runs before auth and
- * guarantees a string id; no local generation is needed here.
- *
- * Typing: the Hono Variables augmentation lives in `src/types/hono.d.ts`.
- * Downstream handlers can write `const { playerId } = c.get('session')`
- * with full type safety, no `as any` casts.
+ * For device auth, `session.sessionId` carries the device-binding id (so the
+ * `c.get('session').playerId` readers keep working); there is no `sessions`
+ * row to roll/expire — the 90-day device cookie is the lifetime.
  */
 export const requireSession: MiddlewareHandler = async (c, next) => {
   const requestId = c.get('requestId');
-
-  // Read the session cookie. Hono's getCookie would work but we avoid the
-  // extra import — the raw Cookie header is fine and handles the one name
-  // we care about.
   const cookieHeader = c.req.header('cookie') ?? '';
   const sessionId = extractCookie(cookieHeader, SESSION_COOKIE_NAME);
 
-  if (!sessionId) {
-    return c.json({ error: 'unauthenticated', code: 'session_missing', requestId }, 401);
-  }
-
-  // Cheap shape check — session IDs created by `createSession` are 43-char
-  // base64url. Reject anything wildly off-shape before hitting the DB.
-  // Prevents oversized/garbage cookies from turning into SELECT attempts
-  // that might surprise SQLite, and keeps the 401 fast on bot traffic.
-  if (sessionId.length < 16 || sessionId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+  // 1. Google session cookie path (primary).
+  if (sessionId) {
+    const wellShaped =
+      sessionId.length >= 16 && sessionId.length <= 128 && /^[A-Za-z0-9_-]+$/.test(sessionId);
+    if (wellShaped) {
+      const validated = await validateSession(sessionId);
+      if (validated) {
+        c.set('session', { sessionId, playerId: validated.playerId });
+        c.set('player', { id: validated.playerId, isOrganizer: validated.isOrganizer });
+        await next();
+        return;
+      }
+    }
+    // Present but unusable — clear it so the browser drops the stale value,
+    // then fall through to the device-binding path.
     c.header('Set-Cookie', sessionCookieHeader(null));
-    return c.json({ error: 'unauthenticated', code: 'session_invalid', requestId }, 401);
   }
 
-  const validated = await validateSession(sessionId);
-  if (!validated) {
-    // Clear the cookie so the browser drops the stale value.
-    c.header('Set-Cookie', sessionCookieHeader(null));
-    return c.json({ error: 'unauthenticated', code: 'session_invalid', requestId }, 401);
+  // 2. Device-binding path (B0 — non-Google join via code / invite link).
+  const deviceId = extractCookie(cookieHeader, DEVICE_COOKIE_NAME);
+  if (deviceId && deviceId.length >= 8 && deviceId.length <= 128) {
+    const dev = await validateDeviceBinding(deviceId);
+    if (dev) {
+      c.set('session', { sessionId: deviceId, playerId: dev.playerId });
+      c.set('player', { id: dev.playerId, isOrganizer: dev.isOrganizer });
+      await next();
+      return;
+    }
   }
 
-  c.set('session', { sessionId, playerId: validated.playerId });
-  c.set('player', { id: validated.playerId, isOrganizer: validated.isOrganizer });
-  await next();
-  return;
+  // 3. Neither path authenticated.
+  const code = sessionId || deviceId ? 'session_invalid' : 'session_missing';
+  return c.json({ error: 'unauthenticated', code, requestId }, 401);
 };
 
 /**

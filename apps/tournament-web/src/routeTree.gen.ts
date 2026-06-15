@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as MeRouteImport } from './routes/me'
+import { Route as JoinRouteImport } from './routes/join'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AuthDeclinedRouteImport } from './routes/auth.declined'
@@ -35,6 +36,7 @@ import { Route as AdminGroupsGroupIdEditRouteImport } from './routes/admin.group
 import { Route as AdminEventsEventIdStartRoundRouteImport } from './routes/admin.events.$eventId.start-round'
 import { Route as AdminEventsEventIdScorerPolicyRouteImport } from './routes/admin.events.$eventId.scorer-policy'
 import { Route as AdminEventsEventIdPairingsRouteImport } from './routes/admin.events.$eventId.pairings'
+import { Route as AdminEventsEventIdJoinCodesRouteImport } from './routes/admin.events.$eventId.join-codes'
 import { Route as AdminEventRoundsEventRoundIdSubGamesRouteImport } from './routes/admin.event-rounds.$eventRoundId.sub-games'
 import { Route as EventsEventIdEventRoundsEventRoundIdFoursomeResultsRouteImport } from './routes/events.$eventId.event-rounds.$eventRoundId.foursome-results'
 
@@ -46,6 +48,11 @@ const ProfileRoute = ProfileRouteImport.update({
 const MeRoute = MeRouteImport.update({
   id: '/me',
   path: '/me',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JoinRoute = JoinRouteImport.update({
+  id: '/join',
+  path: '/join',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -173,6 +180,12 @@ const AdminEventsEventIdPairingsRoute =
     path: '/admin/events/$eventId/pairings',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminEventsEventIdJoinCodesRoute =
+  AdminEventsEventIdJoinCodesRouteImport.update({
+    id: '/admin/events/$eventId/join-codes',
+    path: '/admin/events/$eventId/join-codes',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminEventRoundsEventRoundIdSubGamesRoute =
   AdminEventRoundsEventRoundIdSubGamesRouteImport.update({
     id: '/admin/event-rounds/$eventRoundId/sub-games',
@@ -188,6 +201,7 @@ const EventsEventIdEventRoundsEventRoundIdFoursomeResultsRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/join': typeof JoinRoute
   '/me': typeof MeRoute
   '/profile': typeof ProfileRoute
   '/auth/conflict': typeof AuthConflictRoute
@@ -207,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
+  '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
   '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
   '/admin/events/$eventId/start-round': typeof AdminEventsEventIdStartRoundRoute
@@ -218,6 +233,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/join': typeof JoinRoute
   '/me': typeof MeRoute
   '/profile': typeof ProfileRoute
   '/auth/conflict': typeof AuthConflictRoute
@@ -237,6 +253,7 @@ export interface FileRoutesByTo {
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/events/$eventId': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
+  '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
   '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
   '/admin/events/$eventId/start-round': typeof AdminEventsEventIdStartRoundRoute
@@ -249,6 +266,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/join': typeof JoinRoute
   '/me': typeof MeRoute
   '/profile': typeof ProfileRoute
   '/auth/conflict': typeof AuthConflictRoute
@@ -268,6 +286,7 @@ export interface FileRoutesById {
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
+  '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
   '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
   '/admin/events/$eventId/start-round': typeof AdminEventsEventIdStartRoundRoute
@@ -281,6 +300,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/join'
     | '/me'
     | '/profile'
     | '/auth/conflict'
@@ -300,6 +320,7 @@ export interface FileRouteTypes {
     | '/rounds/$roundId/score-entry'
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
+    | '/admin/events/$eventId/join-codes'
     | '/admin/events/$eventId/pairings'
     | '/admin/events/$eventId/scorer-policy'
     | '/admin/events/$eventId/start-round'
@@ -311,6 +332,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/join'
     | '/me'
     | '/profile'
     | '/auth/conflict'
@@ -330,6 +352,7 @@ export interface FileRouteTypes {
     | '/rounds/$roundId/score-entry'
     | '/events/$eventId'
     | '/admin/event-rounds/$eventRoundId/sub-games'
+    | '/admin/events/$eventId/join-codes'
     | '/admin/events/$eventId/pairings'
     | '/admin/events/$eventId/scorer-policy'
     | '/admin/events/$eventId/start-round'
@@ -341,6 +364,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/join'
     | '/me'
     | '/profile'
     | '/auth/conflict'
@@ -360,6 +384,7 @@ export interface FileRouteTypes {
     | '/rounds/$roundId/score-entry'
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
+    | '/admin/events/$eventId/join-codes'
     | '/admin/events/$eventId/pairings'
     | '/admin/events/$eventId/scorer-policy'
     | '/admin/events/$eventId/start-round'
@@ -372,6 +397,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  JoinRoute: typeof JoinRoute
   MeRoute: typeof MeRoute
   ProfileRoute: typeof ProfileRoute
   AuthConflictRoute: typeof AuthConflictRoute
@@ -391,6 +417,7 @@ export interface RootRouteChildren {
   RoundsRoundIdScoreEntryRoute: typeof RoundsRoundIdScoreEntryRoute
   EventsEventIdIndexRoute: typeof EventsEventIdIndexRoute
   AdminEventRoundsEventRoundIdSubGamesRoute: typeof AdminEventRoundsEventRoundIdSubGamesRoute
+  AdminEventsEventIdJoinCodesRoute: typeof AdminEventsEventIdJoinCodesRoute
   AdminEventsEventIdPairingsRoute: typeof AdminEventsEventIdPairingsRoute
   AdminEventsEventIdScorerPolicyRoute: typeof AdminEventsEventIdScorerPolicyRoute
   AdminEventsEventIdStartRoundRoute: typeof AdminEventsEventIdStartRoundRoute
@@ -415,6 +442,13 @@ declare module '@tanstack/react-router' {
       path: '/me'
       fullPath: '/me'
       preLoaderRoute: typeof MeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/join': {
+      id: '/join'
+      path: '/join'
+      fullPath: '/join'
+      preLoaderRoute: typeof JoinRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -585,6 +619,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventsEventIdPairingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/events/$eventId/join-codes': {
+      id: '/admin/events/$eventId/join-codes'
+      path: '/admin/events/$eventId/join-codes'
+      fullPath: '/admin/events/$eventId/join-codes'
+      preLoaderRoute: typeof AdminEventsEventIdJoinCodesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/event-rounds/$eventRoundId/sub-games': {
       id: '/admin/event-rounds/$eventRoundId/sub-games'
       path: '/admin/event-rounds/$eventRoundId/sub-games'
@@ -604,6 +645,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  JoinRoute: JoinRoute,
   MeRoute: MeRoute,
   ProfileRoute: ProfileRoute,
   AuthConflictRoute: AuthConflictRoute,
@@ -624,6 +666,7 @@ const rootRouteChildren: RootRouteChildren = {
   EventsEventIdIndexRoute: EventsEventIdIndexRoute,
   AdminEventRoundsEventRoundIdSubGamesRoute:
     AdminEventRoundsEventRoundIdSubGamesRoute,
+  AdminEventsEventIdJoinCodesRoute: AdminEventsEventIdJoinCodesRoute,
   AdminEventsEventIdPairingsRoute: AdminEventsEventIdPairingsRoute,
   AdminEventsEventIdScorerPolicyRoute: AdminEventsEventIdScorerPolicyRoute,
   AdminEventsEventIdStartRoundRoute: AdminEventsEventIdStartRoundRoute,

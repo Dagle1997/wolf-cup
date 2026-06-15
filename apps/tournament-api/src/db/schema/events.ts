@@ -154,3 +154,36 @@ export const eventScorerDesignees = sqliteTable(
 );
 
 export type EventScorerDesignee = typeof eventScorerDesignees.$inferSelect;
+
+/**
+ * Per-player join CODE (B0 — non-Google join). One short, human-typeable
+ * code per (event, player). A player enters their code on /join → we bind
+ * THAT player to their device (device_bindings) and they get full access
+ * without Google. Per-player (not one event code) so a player who later
+ * self-creates side games is provably that exact player — an event-wide
+ * code + name-pick would let anyone act as anyone.
+ *
+ * `code` is globally UNIQUE (the lookup key from the public /join endpoint,
+ * which has no event context). PK (event_id, player_id) makes generation
+ * idempotent (one code per roster slot). Plain table — no rebuild risk.
+ */
+export const playerJoinCodes = sqliteTable(
+  'player_join_codes',
+  {
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    code: text('code').notNull().unique(),
+    createdAt: integer('created_at').notNull(),
+    ...ecosystemColumns(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.eventId, t.playerId] }),
+    eventIdx: index('idx_player_join_codes_event_id').on(t.eventId),
+  }),
+);
+
+export type PlayerJoinCode = typeof playerJoinCodes.$inferSelect;

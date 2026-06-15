@@ -33,6 +33,7 @@ import { ThemeToggle } from './theme-toggle';
 export function isNavSuppressed(pathname: string): boolean {
   if (pathname.startsWith('/auth/')) return true;
   if (pathname.startsWith('/invite/')) return true;
+  if (pathname === '/join') return true;
   if (/^\/rounds\/[^/]+\/score-entry\/?$/.test(pathname)) return true;
   return false;
 }
