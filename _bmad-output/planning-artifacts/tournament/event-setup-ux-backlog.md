@@ -45,6 +45,16 @@ Update as items ship.
 - ~~Pairings page crashed ("can't access property 0, c is undefined") when INCREASING foursome count~~ — FIXED: isDirty memo guarded against the transient where the new count outpaces the not-yet-rebuilt grid.
 - Rule-set card un-clickable (see F1).
 
+### F1b. Side games (rename from "Sub Games") + player-driven
+- **Rename "Sub Games" → "Side Games"** everywhere (UI labels; keep DB table names).
+- **Overall TEAM game** in the rules: foursomes vs each other for a $ value (the main event game). New format alongside the existing 2v2.
+- **Player-vs-player hole-by-hole side games** — this largely maps to the EXISTING `individual_bets` engine (match_play_per_hole + match_play_with_auto_press already implemented in `engine/rules/individual-bets.ts` + `routes/bets.ts`). What's missing is the player-facing UX + options:
+  - Add opponent (pick from roster) → stake per hole ($5/$10) → handicap basis: **full** vs **negotiated** handicaps → optional **auto-press** (e.g. down 2 holes → x1→x2→x3 each further 2 down).
+  - Examples: "Ronnie Adkins + Josh Stoll — $5/hole, full handicaps"; "Ronnie Adkins + Steven Chatterton — $10/hole, auto-press at 2 down, full handicap".
+  - **Putting game** as a checkbox/add-on (or its own side-game type).
+- **CRITICAL: players add their OWN side games** — not the organizer doing every one. Needs a player-facing "my side games" surface (the bets route is organizer/participant-gated today; open it to participants to self-create against others in the event).
+- This is messy + large — needs its own design pass before build.
+
 ### F2. Team selection
 - Possibly pick 2-man (or N-man) teams for the event (not just per-round foursome pairings). Design TBD.
 

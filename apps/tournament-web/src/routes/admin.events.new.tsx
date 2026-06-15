@@ -68,7 +68,11 @@ type CourseListEntry = {
   id: string;
   name: string;
   clubName: string;
-  latestRevision: { id: string; courseTotal: number };
+  latestRevision: {
+    id: string;
+    courseTotal: number;
+    tees?: Array<{ color: string; rating: number; slope: number }>;
+  };
 };
 
 type CourseListResponse = { courses: CourseListEntry[] };
@@ -491,12 +495,39 @@ export function NewEventWizard() {
                     </select>
                   </td>
                   <td>
-                    <input
-                      aria-label={`Round ${idx + 1} tee color`}
-                      type="text"
-                      value={round.tee_color}
-                      onChange={(e) => setRoundField(idx, 'tee_color', e.target.value)}
-                    />
+                    {(() => {
+                      // Tees for the course chosen in THIS round (default/card
+                      // tee for the round; per-player tee is set on the roster /
+                      // pairings). Dropdown when we know the course's tees;
+                      // falls back to free-text if the course list lacks them.
+                      const chosen = (coursesResponse?.courses ?? []).find(
+                        (c) => c.latestRevision.id === round.course_revision_id,
+                      );
+                      const tees = chosen?.latestRevision.tees ?? [];
+                      if (tees.length > 0) {
+                        return (
+                          <select
+                            aria-label={`Round ${idx + 1} tee color`}
+                            value={round.tee_color}
+                            onChange={(e) => setRoundField(idx, 'tee_color', e.target.value)}
+                          >
+                            <option value="">— pick a tee —</option>
+                            {tees.map((t) => (
+                              <option key={t.color} value={t.color}>{t.color}</option>
+                            ))}
+                          </select>
+                        );
+                      }
+                      return (
+                        <input
+                          aria-label={`Round ${idx + 1} tee color`}
+                          type="text"
+                          placeholder={round.course_revision_id ? 'tee' : 'pick course first'}
+                          value={round.tee_color}
+                          onChange={(e) => setRoundField(idx, 'tee_color', e.target.value)}
+                        />
+                      );
+                    })()}
                   </td>
                   <td>
                     <select
