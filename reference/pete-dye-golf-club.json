@@ -1,0 +1,46 @@
+{
+  "_meta": {
+    "trip": "guyan-library",
+    "extracted": "2026-06-15",
+    "source_note": "Authoritative current USGA/GHIN ratings pulled from the GHIN CRDB, CourseID 5737 (Pete Dye Golf Club, Bridgeport WV), current (non-altered) tee sets only. Par + stroke index verified to match the club's printed scorecard exactly on all 18 holes; yardages are GHIN's current rated lengths (the course was re-measured since the club's website card was printed). Five men's tees + the Dye/Middle combo. Women's tees omitted per scope decision 2026-06-15.",
+    "validation": "All six tee yardage totals reconcile to GHIN: Championship 7398, Back 7099, Dye 6577, Middle 5910, Forward 5148, Dye/Middle 6179. Par 72 (out 36 / in 36)."
+  },
+  "courses": [
+    {
+      "name": "Pete Dye Golf Club",
+      "location": "Bridgeport, WV",
+      "designer": "Pete Dye",
+      "par": 72,
+      "source": "https://api2.ghin.com/api/v1/courses/5737.json",
+      "verified": true,
+      "tees": [
+        { "name": "Championship", "rating": 75.5, "slope": 141, "yardage": 7398 },
+        { "name": "Back", "rating": 73.9, "slope": 136, "yardage": 7099 },
+        { "name": "Dye", "rating": 71.3, "slope": 130, "yardage": 6577 },
+        { "name": "Middle", "rating": 68.1, "slope": 124, "yardage": 5910 },
+        { "name": "Forward", "rating": 64.6, "slope": 118, "yardage": 5148 },
+        { "name": "Dye/Middle", "rating": 69.3, "slope": 127, "yardage": 6179 }
+      ],
+      "holes": [
+        { "hole": 1,  "par": 4, "si": 7,  "yardages": { "Championship": 390, "Back": 382, "Dye": 360, "Middle": 328, "Forward": 288, "Dye/Middle": 360 } },
+        { "hole": 2,  "par": 4, "si": 1,  "yardages": { "Championship": 439, "Back": 415, "Dye": 382, "Middle": 361, "Forward": 305, "Dye/Middle": 361 } },
+        { "hole": 3,  "par": 4, "si": 15, "yardages": { "Championship": 366, "Back": 363, "Dye": 354, "Middle": 337, "Forward": 285, "Dye/Middle": 354 } },
+        { "hole": 4,  "par": 3, "si": 13, "yardages": { "Championship": 222, "Back": 202, "Dye": 178, "Middle": 143, "Forward": 115, "Dye/Middle": 143 } },
+        { "hole": 5,  "par": 5, "si": 3,  "yardages": { "Championship": 588, "Back": 583, "Dye": 540, "Middle": 521, "Forward": 453, "Dye/Middle": 521 } },
+        { "hole": 6,  "par": 4, "si": 11, "yardages": { "Championship": 336, "Back": 319, "Dye": 305, "Middle": 285, "Forward": 236, "Dye/Middle": 305 } },
+        { "hole": 7,  "par": 3, "si": 17, "yardages": { "Championship": 198, "Back": 174, "Dye": 150, "Middle": 124, "Forward": 117, "Dye/Middle": 150 } },
+        { "hole": 8,  "par": 5, "si": 9,  "yardages": { "Championship": 521, "Back": 514, "Dye": 499, "Middle": 464, "Forward": 424, "Dye/Middle": 499 } },
+        { "hole": 9,  "par": 4, "si": 5,  "yardages": { "Championship": 486, "Back": 464, "Dye": 437, "Middle": 325, "Forward": 295, "Dye/Middle": 325 } },
+        { "hole": 10, "par": 4, "si": 4,  "yardages": { "Championship": 475, "Back": 455, "Dye": 409, "Middle": 351, "Forward": 301, "Dye/Middle": 409 } },
+        { "hole": 11, "par": 5, "si": 12, "yardages": { "Championship": 597, "Back": 581, "Dye": 532, "Middle": 498, "Forward": 464, "Dye/Middle": 498 } },
+        { "hole": 12, "par": 4, "si": 16, "yardages": { "Championship": 359, "Back": 347, "Dye": 332, "Middle": 317, "Forward": 287, "Dye/Middle": 332 } },
+        { "hole": 13, "par": 3, "si": 18, "yardages": { "Championship": 197, "Back": 186, "Dye": 165, "Middle": 145, "Forward": 115, "Dye/Middle": 165 } },
+        { "hole": 14, "par": 4, "si": 6,  "yardages": { "Championship": 489, "Back": 467, "Dye": 430, "Middle": 359, "Forward": 307, "Dye/Middle": 359 } },
+        { "hole": 15, "par": 5, "si": 8,  "yardages": { "Championship": 558, "Back": 541, "Dye": 513, "Middle": 485, "Forward": 402, "Dye/Middle": 513 } },
+        { "hole": 16, "par": 3, "si": 14, "yardages": { "Championship": 248, "Back": 224, "Dye": 192, "Middle": 163, "Forward": 135, "Dye/Middle": 163 } },
+        { "hole": 17, "par": 4, "si": 10, "yardages": { "Championship": 405, "Back": 390, "Dye": 357, "Middle": 339, "Forward": 290, "Dye/Middle": 357 } },
+        { "hole": 18, "par": 4, "si": 2,  "yardages": { "Championship": 524, "Back": 492, "Dye": 442, "Middle": 365, "Forward": 329, "Dye/Middle": 365 } }
+      ]
+    }
+  ]
+}

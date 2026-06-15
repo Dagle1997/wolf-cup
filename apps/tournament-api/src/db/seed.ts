@@ -459,23 +459,38 @@ export async function promoteOrganizer(sub: string): Promise<OrganizerResult> {
 // Path resolution (dev vs prod) + JSON loader.
 // ---------------------------------------------------------------------
 
-function resolveSeedDataPath(): string {
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = dirname(__filename);
+// Course-library seed files, loaded in order on CLI boot. Each is an
+// independent SeedData document (own `_meta`, own `courses[]`). Add a new
+// course by dropping a `reference/<name>.json` file here AND adding a COPY
+// line in apps/tournament-api/Dockerfile so it lands in dist/reference/.
+const SEED_FILENAMES = [
+  'pinehurst-may-2026-courses.json',
+  'pete-dye-golf-club.json',
+] as const;
 
+/**
+ * Resolve a single reference seed file to its on-disk path, trying the dev
+ * (repo-root) and prod (dist/) layouts. Returns null if neither exists so
+ * the CLI can skip a missing optional file rather than crash the boot.
+ */
+function resolveSeedFile(filename: string): string | null {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
   // Dev (tsx): from apps/tournament-api/src/db/ walk up 4 to repo root.
-  const devPath = resolve(
-    __dirname,
-    '../../../../reference/pinehurst-may-2026-courses.json',
-  );
+  const devPath = resolve(__dirname, `../../../../reference/${filename}`);
   // Prod (node dist): from apps/tournament-api/dist/db/ walk up 1 to dist/.
-  const prodPath = resolve(__dirname, '../reference/pinehurst-may-2026-courses.json');
-
+  const prodPath = resolve(__dirname, `../reference/${filename}`);
   if (existsSync(devPath)) return devPath;
   if (existsSync(prodPath)) return prodPath;
-  throw new Error(
-    `Seed data not found. Tried:\n  dev:  ${devPath}\n  prod: ${prodPath}`,
-  );
+  return null;
+}
+
+// Default path for loadSeedData() with no argument — the original Pinehurst
+// document. Preserved (and still throwing on absence) so existing callers
+// and tests that rely on the no-arg default are unaffected.
+function resolveSeedDataPath(): string {
+  const path = resolveSeedFile('pinehurst-may-2026-courses.json');
+  if (path) return path;
+  throw new Error('Seed data not found: pinehurst-may-2026-courses.json');
 }
 
 export function loadSeedData(path = resolveSeedDataPath()): SeedData {
@@ -506,9 +521,19 @@ const isCli =
   resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1]);
 
 if (isCli) {
-  const data = loadSeedData();
-  const report = await runSeed(data);
-  logger.info({ event: 'seed_report', ...report });
+  // Load + seed every course-library file in order. Each file is idempotent
+  // (matched by course name + source + extraction date), so re-runs on every
+  // container boot are safe. A missing optional file is logged and skipped.
+  for (const filename of SEED_FILENAMES) {
+    const path = resolveSeedFile(filename);
+    if (!path) {
+      logger.warn({ event: 'seed_file_missing', file: filename });
+      continue;
+    }
+    const data = loadSeedData(path);
+    const report = await runSeed(data);
+    logger.info({ event: 'seed_report', file: filename, ...report });
+  }
 
   const organizerSub = process.env['ORGANIZER_GOOGLE_SUB'];
   if (organizerSub === undefined || organizerSub === '') {

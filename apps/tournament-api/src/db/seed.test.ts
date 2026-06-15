@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -370,6 +370,45 @@ describe('loadSeedData (T2-2 — real reference file)', () => {
       .where(eq(courses.name, 'Mid Pines Inn & Golf Club'));
     expect(midPines[0]?.verified).toBe(true);
     expect(midPines[0]?.courseTotal).toBe(72);
+  });
+
+  test('loads reference/pete-dye-golf-club.json: 1 course / 6 tees / 18 holes, ratings stored ×10', async () => {
+    const peteDyePath = resolve(__dirname, '../../../../reference/pete-dye-golf-club.json');
+    const data = loadSeedData(peteDyePath); // throws if schema-invalid
+    expect(data.courses).toHaveLength(1);
+    expect(data.courses[0]!.name).toBe('Pete Dye Golf Club');
+    expect(data.courses[0]!.tees.map((t) => t.name)).toEqual([
+      'Championship',
+      'Back',
+      'Dye',
+      'Middle',
+      'Forward',
+      'Dye/Middle',
+    ]);
+
+    const report = await runSeed(data);
+    expect(report.coursesInserted).toBe(1);
+    expect(report.teesInserted).toBe(6);
+    expect(report.holesInserted).toBe(18);
+
+    // courseTotal = honest hole-par sum = 72 (matches claimed par → verified).
+    const row = await db
+      .select({ courseTotal: courseRevisions.courseTotal, verified: courseRevisions.verified })
+      .from(courses)
+      .innerJoin(courseRevisions, eq(courseRevisions.courseId, courses.id))
+      .where(eq(courses.name, 'Pete Dye Golf Club'));
+    expect(row[0]!.courseTotal).toBe(72);
+    expect(row[0]!.verified).toBe(true);
+
+    // Championship rating is stored as USGA rating × 10 (75.5 → 755).
+    const champ = await db
+      .select({ rating: courseTees.rating, slope: courseTees.slope })
+      .from(courseTees)
+      .innerJoin(courseRevisions, eq(courseRevisions.id, courseTees.courseRevisionId))
+      .innerJoin(courses, eq(courses.id, courseRevisions.courseId))
+      .where(and(eq(courses.name, 'Pete Dye Golf Club'), eq(courseTees.teeColor, 'Championship')));
+    expect(champ[0]!.rating).toBe(755);
+    expect(champ[0]!.slope).toBe(141);
   });
 });
 
