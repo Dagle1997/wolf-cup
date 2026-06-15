@@ -8,9 +8,14 @@ SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member
 
 ## 🔴 Setup blockers (in progress — building now)
 
-### B0. Join via CODE (not just Google login) — IMPORTANT QOL
-- Players "probably all don't have google login." Need a way to join by a short **code** (or the existing invite **link**) without Google SSO.
-- NOTE: the invite-claim flow ALREADY works without Google — it's device-binding ("the token IS the auth", `routes/invites.ts` GET/POST `/:token/claim`). So a shared invite LINK already bypasses Google today. The ask = surface a short, human-typeable **join code** + a "enter code to join" screen as an alternative to the link. Enhancement on existing infra, not new auth.
+### B0. Join via CODE (not just Google login) — DESIGNED 2026-06-15; bigger than QOL
+- **CRITICAL FINDING (code-traced):** non-Google players CANNOT use the app today. Sessions are minted ONLY by Google OAuth (`createSession` called only from `auth.ts` Google callback). `requireSession` accepts only the `tournament_session` cookie. The invite-claim flow (`routes/invites.ts /:token/claim`) creates a `device_binding` + `tournament_device_id` cookie but **no session** — so a claimed non-Google player 401s on every authed route (event home, score entry, money). The device-binding infra exists but the bridge to "logged in" was never wired.
+- **DECISIONS (Josh, 2026-06-15):**
+  - **Access = FULL** (view, leaderboard, money, score entry, create side bets — first-class; scoring still gated to designated scorers).
+  - **Per-player codes** (not one event code): each roster player gets a unique short code. Needed so a player self-creating side games is provably THAT player (event-wide code + name-pick would let anyone act as anyone).
+  - **Device-bound identity** → **Option A**: extend `requireSession` (or a `requireSessionOrDevice` wrapper) to resolve `tournament_device_id → device_binding → player` when there's no Google session. Reuses existing claim infra; clearing browser / switching device = re-enter code.
+- **BUILD SHAPE:** per-player code generation (on roster add, short unique code stored on the player or a new table) → `/join` screen (enter code → claim player on this device, device cookie) → auth bridge so device cookie grants full access → players land in their event. Organizers still use Google (they create events).
+- This is arguably the #1 functional blocker for running the trip (people must be able to get in). NOT just QOL.
 
 ### B3b. Add-course affordance shows where you can't use it
 - The post-creation setup screen shows "add course via PDF / manually", but there's no way to **change a round's course after creation** — so that affordance is misleading there. Either hide it post-creation OR (better) build **edit-round-course** (which B3/TBD also needs). Josh: "if we can't add it later that really shouldn't show up there."
