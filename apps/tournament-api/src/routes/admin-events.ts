@@ -44,6 +44,7 @@ import {
   courseRevisions,
   courseTees,
   ruleSets,
+  rounds,
 } from '../db/schema/index.js';
 import { isScorerPolicy } from '../lib/scorer-eligibility.js';
 import { suggestPairings } from '../engine/pairings/suggest.js';
@@ -404,12 +405,15 @@ adminEventsRouter.get(
       .where(eq(ruleSets.tenantId, TENANT_ID))
       .limit(1);
 
-    // Event rounds + course name (for the sub-games-per-round links).
+    // Event rounds + course name + current course/tee (for the per-round
+    // course editor) + whether a scoring round has started (locks the edit).
     const erRows = await db
       .select({
         id: eventRounds.id,
         roundNumber: eventRounds.roundNumber,
         courseName: courses.name,
+        courseRevisionId: eventRounds.courseRevisionId,
+        teeColor: eventRounds.teeColor,
       })
       .from(eventRounds)
       .innerJoin(courseRevisions, eq(courseRevisions.id, eventRounds.courseRevisionId))
@@ -422,6 +426,20 @@ adminEventsRouter.get(
       )
       .orderBy(asc(eventRounds.roundNumber));
 
+    // Which event_rounds already have a scoring round (course is locked then).
+    const startedRows = erRows.length
+      ? await db
+          .select({ eventRoundId: rounds.eventRoundId })
+          .from(rounds)
+          .where(
+            and(
+              inArray(rounds.eventRoundId, erRows.map((r) => r.id)),
+              eq(rounds.tenantId, TENANT_ID),
+            ),
+          )
+      : [];
+    const startedSet = new Set(startedRows.map((r) => r.eventRoundId));
+
     return c.json({
       event: {
         id: eventRows[0]!.id,
@@ -430,7 +448,7 @@ adminEventsRouter.get(
       },
       groups: groupRows,
       ruleSet: ruleSetRows[0] ?? null,
-      eventRounds: erRows,
+      eventRounds: erRows.map((r) => ({ ...r, started: startedSet.has(r.id) })),
       requestId,
     });
   },

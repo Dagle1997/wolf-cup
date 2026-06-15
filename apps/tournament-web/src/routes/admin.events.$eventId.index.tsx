@@ -154,6 +154,20 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
 
         <li>
           <Link
+            to="/admin/events/$eventId/rounds"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-rounds"
+          >
+            <strong>Rounds &amp; courses</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Change or assign each round&apos;s course + tee (before scoring starts).
+            </div>
+          </Link>
+        </li>
+
+        <li>
+          <Link
             to="/admin/events/$eventId/join-codes"
             params={{ eventId }}
             style={cardStyle}

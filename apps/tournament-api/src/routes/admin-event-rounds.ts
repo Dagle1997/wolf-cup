@@ -64,8 +64,10 @@ import {
   rounds,
   roundStates,
   scorerAssignments,
+  courseRevisions,
+  courseTees,
 } from '../db/schema/index.js';
-import { INITIAL_ROUND_STATE } from '../services/round-state.js';
+import { INITIAL_ROUND_STATE, isEventOrganizerByEventId } from '../services/round-state.js';
 import { isEligibleScorer, isScorerPolicy } from '../lib/scorer-eligibility.js';
 
 const SAVE_BODY_LIMIT_BYTES = 8 * 1024;
@@ -721,5 +723,99 @@ adminEventRoundsRouter.post(
 
     log.info({ event: 'round_started', roundId, eventRoundId, foursomeCount: scorers.length });
     return c.json({ roundId, requestId }, 201);
+  },
+);
+
+// =====================================================================
+// PATCH /event-rounds/:eventRoundId/course — change a round's course + tee
+// AFTER event creation (B3 / fixes the misleading post-creation "add course"
+// affordance: you can now actually assign/swap the course).
+//
+// Event-scoped organizer auth. Refuses the change once a scoring round has
+// been started for this event_round (changing the course mid-scoring would
+// invalidate handicaps/scores) → 422 round_already_started; restore by not
+// starting, or correct via score tools. Validates the new course revision
+// exists and the tee is one of that course's tees.
+// =====================================================================
+const ChangeCourseSchema = z
+  .object({
+    courseRevisionId: z.string().min(1),
+    teeColor: z.string().min(1),
+  })
+  .strict();
+
+adminEventRoundsRouter.patch(
+  '/event-rounds/:eventRoundId/course',
+  bodyLimit({
+    maxSize: SAVE_BODY_LIMIT_BYTES,
+    onError: (c) => c.json({ error: 'bad_request', code: 'body_too_large', requestId: c.get('requestId') }, 400),
+  }),
+  async (c) => {
+    const requestId = c.get('requestId');
+    const log = c.get('logger');
+    const player = c.get('player')!;
+    const eventRoundId = c.req.param('eventRoundId');
+
+    let raw: unknown;
+    try { raw = await c.req.json(); } catch { return c.json({ error: 'bad_request', code: 'invalid_body', requestId }, 400); }
+    const parsed = ChangeCourseSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: 'bad_request', code: 'invalid_body', requestId, issues: parsed.error.issues }, 400);
+    }
+    const { courseRevisionId, teeColor } = parsed.data;
+
+    // 1. event_round exists (tenant-scoped) → its event for the auth check.
+    const erRows = await db
+      .select({ eventId: eventRounds.eventId })
+      .from(eventRounds)
+      .where(and(eq(eventRounds.id, eventRoundId), eq(eventRounds.tenantId, TENANT_ID)))
+      .limit(1);
+    if (erRows.length === 0) {
+      return c.json({ error: 'not_found', code: 'event_round_not_found', requestId }, 404);
+    }
+    const eventId = erRows[0]!.eventId;
+
+    // 2. Event-scoped organizer (multi-organizer; false covers wrong-org too).
+    if (!(await isEventOrganizerByEventId(db, eventId, player.id, TENANT_ID))) {
+      return c.json({ error: 'forbidden', code: 'not_event_organizer', requestId }, 403);
+    }
+
+    // 3. Refuse if a scoring round already exists for this event_round.
+    const startedRows = await db
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(and(eq(rounds.eventRoundId, eventRoundId), eq(rounds.tenantId, TENANT_ID)))
+      .limit(1);
+    if (startedRows.length > 0) {
+      return c.json({ error: 'unprocessable', code: 'round_already_started', requestId }, 422);
+    }
+
+    // 4. New course revision must exist (tenant-scoped).
+    const revRows = await db
+      .select({ id: courseRevisions.id })
+      .from(courseRevisions)
+      .where(and(eq(courseRevisions.id, courseRevisionId), eq(courseRevisions.tenantId, TENANT_ID)))
+      .limit(1);
+    if (revRows.length === 0) {
+      return c.json({ error: 'bad_request', code: 'unknown_course_revision', requestId }, 400);
+    }
+
+    // 5. Tee must be one of that course revision's tees.
+    const teeRows = await db
+      .select({ teeColor: courseTees.teeColor })
+      .from(courseTees)
+      .where(and(eq(courseTees.courseRevisionId, courseRevisionId), eq(courseTees.teeColor, teeColor), eq(courseTees.tenantId, TENANT_ID)))
+      .limit(1);
+    if (teeRows.length === 0) {
+      return c.json({ error: 'bad_request', code: 'invalid_tee', requestId }, 400);
+    }
+
+    await db
+      .update(eventRounds)
+      .set({ courseRevisionId, teeColor })
+      .where(and(eq(eventRounds.id, eventRoundId), eq(eventRounds.tenantId, TENANT_ID)));
+
+    log.info({ event: 'event_round_course_changed', eventRoundId, eventId, courseRevisionId, teeColor, actorPlayerId: player.id });
+    return c.json({ ok: true, eventRoundId, courseRevisionId, teeColor, requestId }, 200);
   },
 );

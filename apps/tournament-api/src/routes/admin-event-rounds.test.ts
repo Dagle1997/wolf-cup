@@ -33,6 +33,7 @@ const {
   subGames,
   subGameParticipants,
   sessions,
+  rounds,
 } = await import('../db/schema/index.js');
 const { adminEventRoundsRouter } = await import('./admin-event-rounds.js');
 const { requestIdMiddleware } = await import('../middleware/request-id.js');
@@ -729,6 +730,76 @@ describe('POST /api/admin/event-rounds/:eventRoundId/sub-games', () => {
     expect(res.status).toBe(403);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('not_organizer');
+  });
+});
+
+describe('PATCH /api/admin/event-rounds/:eventRoundId/course', () => {
+  async function addCourse(name: string, tee: string): Promise<string> {
+    const now = Date.now();
+    const courseId = randomUUID();
+    const revId = randomUUID();
+    await db.insert(courses).values({ id: courseId, name, clubName: name, createdAt: now, tenantId: TENANT_ID, contextId: 'library:guyan' });
+    await db.insert(courseRevisions).values({ id: revId, courseId, revisionNumber: 1, outTotal: 36, inTotal: 36, courseTotal: 72, createdAt: now, tenantId: TENANT_ID, contextId: 'library:guyan' });
+    await db.insert(courseTees).values({ id: randomUUID(), courseRevisionId: revId, teeColor: tee, rating: 720, slope: 130, tenantId: TENANT_ID, contextId: 'library:guyan' });
+    return revId;
+  }
+  function patch(eventRoundId: string, sessionId: string, body: unknown) {
+    return testApp.request(`/api/admin/event-rounds/${eventRoundId}/course`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: organizerCookie(sessionId) },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('organizer changes the round course + tee → 200, event_round updated', async () => {
+    const s = await seed({ playerCount: 1 });
+    const revId = await addCourse('Pebble', 'Gold');
+    const res = await patch(s.eventRoundId, s.organizerSessionId, { courseRevisionId: revId, teeColor: 'Gold' });
+    expect(res.status).toBe(200);
+    const row = (await db.select().from(eventRounds).where(eq(eventRounds.id, s.eventRoundId)))[0]!;
+    expect(row.courseRevisionId).toBe(revId);
+    expect(row.teeColor).toBe('Gold');
+  });
+
+  it('tee not on the chosen course → 400 invalid_tee', async () => {
+    const s = await seed({ playerCount: 1 });
+    const revId = await addCourse('Pebble', 'Gold');
+    const res = await patch(s.eventRoundId, s.organizerSessionId, { courseRevisionId: revId, teeColor: 'Purple' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('invalid_tee');
+  });
+
+  it('unknown course revision → 400 unknown_course_revision', async () => {
+    const s = await seed({ playerCount: 1 });
+    const res = await patch(s.eventRoundId, s.organizerSessionId, { courseRevisionId: randomUUID(), teeColor: 'Gold' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('unknown_course_revision');
+  });
+
+  it('round already started → 422 round_already_started', async () => {
+    const s = await seed({ playerCount: 1 });
+    const revId = await addCourse('Pebble', 'Gold');
+    await db.insert(rounds).values({
+      id: randomUUID(), eventId: s.eventId, eventRoundId: s.eventRoundId, holesToPlay: 18,
+      openedAt: null, openedByPlayerId: null, createdAt: Date.now(), tenantId: TENANT_ID, contextId: `event:${s.eventId}`,
+    });
+    const res = await patch(s.eventRoundId, s.organizerSessionId, { courseRevisionId: revId, teeColor: 'Gold' });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('round_already_started');
+  });
+
+  it('non-organizer → 403', async () => {
+    const s = await seed({ playerCount: 1 });
+    const revId = await addCourse('Pebble', 'Gold');
+    const res = await patch(s.eventRoundId, s.nonOrganizerSessionId, { courseRevisionId: revId, teeColor: 'Gold' });
+    expect(res.status).toBe(403);
+  });
+
+  it('unknown event_round → 404', async () => {
+    const s = await seed({ playerCount: 1 });
+    const revId = await addCourse('Pebble', 'Gold');
+    const res = await patch(randomUUID(), s.organizerSessionId, { courseRevisionId: revId, teeColor: 'Gold' });
+    expect(res.status).toBe(404);
   });
 });
 
