@@ -3,7 +3,17 @@
 Living backlog from hands-on testing (2026-06-15, Josh). Ordered by priority.
 Update as items ship.
 
+## STATUS (2026-06-15, end of session)
+SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member-HI live-GHIN display, pairings increase-crash fix, B2a (round tee dropdown in wizard). Also live earlier: event soft-cancel, wizard "Course not listed?" links, Pete Dye seed, GHIN course import, dark mode. PARKED on branch `feat/handicap-lock`: handicap-lock backend (needs UI+tests). NEXT: B2b (roster per-player tee), B3 (TBD course — needs edit-round-course first), then a BMAD/design session for the F-series (rules/side-games rework) + UI/QOL polish. Josh created a real "Pete Dye" test event, added players, exercised the flow.
+
 ## 🔴 Setup blockers (in progress — building now)
+
+### B0. Join via CODE (not just Google login) — IMPORTANT QOL
+- Players "probably all don't have google login." Need a way to join by a short **code** (or the existing invite **link**) without Google SSO.
+- NOTE: the invite-claim flow ALREADY works without Google — it's device-binding ("the token IS the auth", `routes/invites.ts` GET/POST `/:token/claim`). So a shared invite LINK already bypasses Google today. The ask = surface a short, human-typeable **join code** + a "enter code to join" screen as an alternative to the link. Enhancement on existing infra, not new auth.
+
+### B3b. Add-course affordance shows where you can't use it
+- The post-creation setup screen shows "add course via PDF / manually", but there's no way to **change a round's course after creation** — so that affordance is misleading there. Either hide it post-creation OR (better) build **edit-round-course** (which B3/TBD also needs). Josh: "if we can't add it later that really shouldn't show up there."
 
 ### B1. GHIN search: first name + club + scroll
 - Last-name-only search returns too many hits (e.g. "Miller"); can't find the right person.
