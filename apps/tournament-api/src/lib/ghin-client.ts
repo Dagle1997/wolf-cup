@@ -248,6 +248,53 @@ export class GhinDirectClient {
       })),
     };
   }
+
+  /**
+   * Dated handicap-index revision history for a golfer (powers "lock
+   * handicaps as of a date"). The endpoint REQUIRES the query params
+   * ghin_number/rev_count/date_begin/date_end — omitting them returns an
+   * empty array, not an error. Returns revisions newest-first as GHIN does.
+   * `value` is the signed numeric index (plus handicaps negative); GHIN's
+   * `display_value` like "+1.3" maps to value -1.3.
+   */
+  async getHandicapHistory(
+    ghin: string | number,
+    dateBegin: string,
+    dateEnd: string,
+    revCount = 60,
+  ): Promise<Array<{ revisionDate: string; value: number | null; displayValue: string | null }>> {
+    const token = await this.getToken();
+    const params = new URLSearchParams({
+      ghin_number: String(ghin),
+      rev_count: String(revCount),
+      date_begin: dateBegin,
+      date_end: dateEnd,
+      source: 'GHINcom',
+    });
+    const res = await fetch(
+      `${GHIN_BASE}/golfers/${ghin}/handicap_history.json?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}`, 'User-Agent': UA } },
+    );
+    if (!res.ok) throw new Error('GHIN_UNAVAILABLE');
+    const data = (await res.json()) as {
+      handicap_revisions?: Array<{ revision_date?: string; value?: unknown; display_value?: unknown }>;
+    };
+    return (data.handicap_revisions ?? [])
+      .filter((r) => typeof r.revision_date === 'string')
+      .map((r) => {
+        const display = r.display_value != null ? String(r.display_value) : null;
+        let value: number | null = null;
+        if (typeof r.value === 'number') value = r.value;
+        else if (typeof r.value === 'string' && r.value.trim() !== '') value = Number(r.value);
+        // Plus handicap: "+1.3" display means a negative numeric index.
+        if ((value == null || Number.isNaN(value)) && display) {
+          const n = Number(display.replace('+', '-'));
+          value = Number.isNaN(n) ? null : n;
+        }
+        if (value != null && Number.isNaN(value)) value = null;
+        return { revisionDate: r.revision_date as string, value, displayValue: display };
+      });
+  }
 }
 
 export const ghinClient =

@@ -40,6 +40,11 @@ import {
 import { getHandicapStrokes } from '../engine/handicap-strokes.js';
 import { fetchActive2v2Config } from './money.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
+import {
+  loadLockedHandicapsByEvent,
+  loadLockedHandicapsByRound,
+  applyLockedToNumberMap,
+} from './event-handicap-overrides.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -191,6 +196,7 @@ export async function computeFoursomeResults(
     const nameById = new Map(nameRows.map((p) => [p.id, p.name]));
     const hiById: Record<string, number> = {};
     for (const p of nameRows) hiById[p.id] = p.hi ?? 0;
+    applyLockedToNumberMap(hiById, await loadLockedHandicapsByRound(txOrDb, roundId, tenantId));
 
     const scoreRows = await txOrDb
       .select({
@@ -332,6 +338,10 @@ export async function computeMyMoney(
 ): Promise<MyMoneyResponse> {
   const games: MyMoneyGame[] = [];
 
+  // Locked handicaps for this event (empty map if unlocked) — applied to every
+  // per-bet HI map below so individual-bet net honors the lock.
+  const lockedHandicaps = await loadLockedHandicapsByEvent(txOrDb, eventId, tenantId);
+
   // ── Foursome (team) game — reuse computeFoursomeResults per round. ──
   const erRows = await txOrDb
     .select({ id: eventRounds.id, roundNumber: eventRounds.roundNumber })
@@ -438,6 +448,7 @@ export async function computeMyMoney(
       .where(and(inArray(players.id, [bet.playerAId, bet.playerBId]), eq(players.tenantId, tenantId)));
     const handicapIndexByPlayer: Record<string, number> = {};
     for (const p of hiRows) handicapIndexByPlayer[p.id] = p.hi ?? 0;
+    applyLockedToNumberMap(handicapIndexByPlayer, lockedHandicaps);
 
     const applicableRoundRows = await txOrDb
       .select({ eventRoundId: individualBetRounds.eventRoundId })

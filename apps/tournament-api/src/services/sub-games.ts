@@ -47,6 +47,7 @@ import {
   type LastHoleUnclaimedResolution,
 } from '../engine/formats/skins.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
+import { loadLockedHandicapsByRound, applyLockedToNumberMap } from './event-handicap-overrides.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -235,6 +236,8 @@ export async function computeSubGame(
     for (const p of playerHIRows) {
       handicapsByPlayer[p.id] = p.manualHandicapIndex ?? 0;
     }
+    // Locked handicaps (if the round's event is locked) override manual.
+    applyLockedToNumberMap(handicapsByPlayer, await loadLockedHandicapsByRound(tx, runtimeRound.id, tenantId));
   }
 
   // Parse sub-game config. Defaults if config malformed.

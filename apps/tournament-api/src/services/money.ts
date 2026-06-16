@@ -63,6 +63,7 @@ import {
   type IndividualBetType,
 } from '../engine/rules/individual-bets.js';
 import { loadSkinsSnapshotsForEvent } from './sub-games.js';
+import { loadLockedHandicapsByEvent, applyLockedToNumberMap } from './event-handicap-overrides.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
 
 type Db = typeof DbType;
@@ -201,6 +202,8 @@ export async function computeMoneyMatrix(
   for (const p of playerRows) {
     handicapIndexByPlayer[p.id] = p.manualHandicapIndex ?? 0;
   }
+  // Locked handicaps (if the event is locked) override manual for money calc.
+  applyLockedToNumberMap(handicapIndexByPlayer, await loadLockedHandicapsByEvent(txOrDb, eventId, tenantId));
 
   // ── (2) Initialize matrix + totals. ──
   // `matrix` is the COMBINED ledger (2v2 + bets + skins) — unchanged behavior.

@@ -13,6 +13,7 @@ export { eventRounds, type EventRound } from './events.js';
 export { invites, type Invite } from './events.js';
 export { eventScorerDesignees, type EventScorerDesignee } from './events.js';
 export { playerJoinCodes, type PlayerJoinCode } from './events.js';
+export { eventHandicaps, type EventHandicap } from './events.js';
 export { groups, type Group } from './groups.js';
 export { groupMembers, type GroupMember } from './groups.js';
 export { ruleSets, type RuleSet } from './rules.js';

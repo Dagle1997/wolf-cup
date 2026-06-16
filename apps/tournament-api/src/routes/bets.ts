@@ -52,6 +52,7 @@ import {
   writeAudit,
 } from '../lib/audit-log.js';
 import { emitActivity } from '../lib/activity.js';
+import { loadLockedHandicapsByEvent, applyLockedToNumberMap } from '../services/event-handicap-overrides.js';
 import {
   computeIndividualBet,
   type ComputeIndividualBetInput,
@@ -342,6 +343,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 interface BetRowMin {
   id: string;
+  eventId: string;
   playerAId: string;
   playerBId: string;
   betType: string;
@@ -587,6 +589,8 @@ async function computeBetStandingForViewer(
   for (const p of playerR) {
     handicapIndexByPlayer[p.id] = p.manualHandicapIndex ?? 0;
   }
+  // Locked handicaps (if the event is locked) override manual for bet net.
+  applyLockedToNumberMap(handicapIndexByPlayer, await loadLockedHandicapsByEvent(db, bet.eventId, tenantId));
 
   let engineOut;
   try {
@@ -705,6 +709,7 @@ betsRouter.get(
       const betRows = await db
         .select({
           id: individualBets.id,
+          eventId: individualBets.eventId,
           playerAId: individualBets.playerAId,
           playerBId: individualBets.playerBId,
           betType: individualBets.betType,

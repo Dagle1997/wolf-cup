@@ -57,6 +57,7 @@ import { pressesDisabled } from '../lib/env.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
 import { emitActivity } from '../lib/activity.js';
 import { BusinessRuleError } from './round-state.js';
+import { loadLockedHandicapsByRound, applyLockedToNumberMap } from './event-handicap-overrides.js';
 import {
   compute2v2BestBall,
   type Compute2v2BestBallInput,
@@ -429,6 +430,8 @@ export async function runPressOrchestrator(
   for (const p of playerHIRows) {
     handicapIndexByPlayer[p.id] = p.manualHandicapIndex ?? 0;
   }
+  // Locked handicaps (if the round's event is locked) override manual.
+  applyLockedToNumberMap(handicapIndexByPlayer, await loadLockedHandicapsByRound(tx, roundId, tenantId));
 
   // ── (10) Pair the 4 members into teamA / teamB by alphabetical playerId.
   // v1 acceptance: deterministic but ignores any "slot-based" team

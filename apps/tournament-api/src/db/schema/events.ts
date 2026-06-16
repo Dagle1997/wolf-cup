@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, index, uniqueIndex, check, primaryKey } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text, index, uniqueIndex, check, primaryKey } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import { ecosystemColumns } from './_columns.js';
 import { players } from './players.js';
@@ -73,10 +73,52 @@ export const events = sqliteTable('events', {
   // player.id (the authenticated organizer), validated at the route layer.
   cancelledAt: integer('cancelled_at'),
   cancelledByPlayerId: text('cancelled_by_player_id'),
+  // Handicap lock (trip fairness): when set (unix-ms cutoff date), every
+  // player's handicap index for THIS event is frozen to the value effective
+  // on/before this date — snapshotted into `event_handicaps`. NULL = not
+  // locked (scoring falls back to players.manual_handicap_index, today's
+  // behavior). The snapshot, not this column, is what scoring reads; this
+  // column records WHICH cutoff produced the snapshot + drives the "locked"
+  // UI state. Plain ADD COLUMN (no FK/CHECK → no table rebuild).
+  handicapLockDate: integer('handicap_lock_date'),
   ...ecosystemColumns(),
 });
 
 export type Event = typeof events.$inferSelect;
+
+/**
+ * Per-event handicap snapshot (the "locked" handicaps). One row per roster
+ * player when the organizer locks handicaps as of a date. `handicap_index` is
+ * the frozen value carried into EVERY round of the event; scoring/leaderboard
+ * COALESCE this over players.manual_handicap_index. `source` records where the
+ * value came from ('ghin' = pulled from GHIN revision history as-of the lock
+ * date; 'manual' = the player's stored manual index, for non-GHIN players).
+ * `ghin_value_date` is the actual GHIN revision date the value came from
+ * (≤ lock date) for transparency. Re-locking overwrites (DELETE-then-INSERT).
+ */
+export const eventHandicaps = sqliteTable(
+  'event_handicaps',
+  {
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    handicapIndex: real('handicap_index'), // e.g. 8.2; NULL = no index available (matches players.manual_handicap_index type)
+    source: text('source').notNull(), // 'ghin' | 'manual'
+    asOfDate: integer('as_of_date').notNull(), // the lock cutoff (unix-ms)
+    ghinValueDate: text('ghin_value_date'), // revision_date the value came from
+    capturedAt: integer('captured_at').notNull(),
+    ...ecosystemColumns(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.eventId, t.playerId] }),
+    eventIdx: index('idx_event_handicaps_event_id').on(t.eventId),
+  }),
+);
+
+export type EventHandicap = typeof eventHandicaps.$inferSelect;
 
 export const eventRounds = sqliteTable(
   'event_rounds',

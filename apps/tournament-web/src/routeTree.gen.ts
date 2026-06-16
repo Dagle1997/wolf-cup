@@ -37,6 +37,7 @@ import { Route as AdminEventsEventIdStartRoundRouteImport } from './routes/admin
 import { Route as AdminEventsEventIdScorerPolicyRouteImport } from './routes/admin.events.$eventId.scorer-policy'
 import { Route as AdminEventsEventIdRoundsRouteImport } from './routes/admin.events.$eventId.rounds'
 import { Route as AdminEventsEventIdPairingsRouteImport } from './routes/admin.events.$eventId.pairings'
+import { Route as AdminEventsEventIdLockHandicapsRouteImport } from './routes/admin.events.$eventId.lock-handicaps'
 import { Route as AdminEventsEventIdJoinCodesRouteImport } from './routes/admin.events.$eventId.join-codes'
 import { Route as AdminEventRoundsEventRoundIdSubGamesRouteImport } from './routes/admin.event-rounds.$eventRoundId.sub-games'
 import { Route as EventsEventIdEventRoundsEventRoundIdFoursomeResultsRouteImport } from './routes/events.$eventId.event-rounds.$eventRoundId.foursome-results'
@@ -187,6 +188,12 @@ const AdminEventsEventIdPairingsRoute =
     path: '/admin/events/$eventId/pairings',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminEventsEventIdLockHandicapsRoute =
+  AdminEventsEventIdLockHandicapsRouteImport.update({
+    id: '/admin/events/$eventId/lock-handicaps',
+    path: '/admin/events/$eventId/lock-handicaps',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminEventsEventIdJoinCodesRoute =
   AdminEventsEventIdJoinCodesRouteImport.update({
     id: '/admin/events/$eventId/join-codes',
@@ -229,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
+  '/admin/events/$eventId/lock-handicaps': typeof AdminEventsEventIdLockHandicapsRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
   '/admin/events/$eventId/rounds': typeof AdminEventsEventIdRoundsRoute
   '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
@@ -262,6 +270,7 @@ export interface FileRoutesByTo {
   '/events/$eventId': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
+  '/admin/events/$eventId/lock-handicaps': typeof AdminEventsEventIdLockHandicapsRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
   '/admin/events/$eventId/rounds': typeof AdminEventsEventIdRoundsRoute
   '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
@@ -296,6 +305,7 @@ export interface FileRoutesById {
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
+  '/admin/events/$eventId/lock-handicaps': typeof AdminEventsEventIdLockHandicapsRoute
   '/admin/events/$eventId/pairings': typeof AdminEventsEventIdPairingsRoute
   '/admin/events/$eventId/rounds': typeof AdminEventsEventIdRoundsRoute
   '/admin/events/$eventId/scorer-policy': typeof AdminEventsEventIdScorerPolicyRoute
@@ -331,6 +341,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/join-codes'
+    | '/admin/events/$eventId/lock-handicaps'
     | '/admin/events/$eventId/pairings'
     | '/admin/events/$eventId/rounds'
     | '/admin/events/$eventId/scorer-policy'
@@ -364,6 +375,7 @@ export interface FileRouteTypes {
     | '/events/$eventId'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/join-codes'
+    | '/admin/events/$eventId/lock-handicaps'
     | '/admin/events/$eventId/pairings'
     | '/admin/events/$eventId/rounds'
     | '/admin/events/$eventId/scorer-policy'
@@ -397,6 +409,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/join-codes'
+    | '/admin/events/$eventId/lock-handicaps'
     | '/admin/events/$eventId/pairings'
     | '/admin/events/$eventId/rounds'
     | '/admin/events/$eventId/scorer-policy'
@@ -431,6 +444,7 @@ export interface RootRouteChildren {
   EventsEventIdIndexRoute: typeof EventsEventIdIndexRoute
   AdminEventRoundsEventRoundIdSubGamesRoute: typeof AdminEventRoundsEventRoundIdSubGamesRoute
   AdminEventsEventIdJoinCodesRoute: typeof AdminEventsEventIdJoinCodesRoute
+  AdminEventsEventIdLockHandicapsRoute: typeof AdminEventsEventIdLockHandicapsRoute
   AdminEventsEventIdPairingsRoute: typeof AdminEventsEventIdPairingsRoute
   AdminEventsEventIdRoundsRoute: typeof AdminEventsEventIdRoundsRoute
   AdminEventsEventIdScorerPolicyRoute: typeof AdminEventsEventIdScorerPolicyRoute
@@ -640,6 +654,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventsEventIdPairingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/events/$eventId/lock-handicaps': {
+      id: '/admin/events/$eventId/lock-handicaps'
+      path: '/admin/events/$eventId/lock-handicaps'
+      fullPath: '/admin/events/$eventId/lock-handicaps'
+      preLoaderRoute: typeof AdminEventsEventIdLockHandicapsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/events/$eventId/join-codes': {
       id: '/admin/events/$eventId/join-codes'
       path: '/admin/events/$eventId/join-codes'
@@ -688,6 +709,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminEventRoundsEventRoundIdSubGamesRoute:
     AdminEventRoundsEventRoundIdSubGamesRoute,
   AdminEventsEventIdJoinCodesRoute: AdminEventsEventIdJoinCodesRoute,
+  AdminEventsEventIdLockHandicapsRoute: AdminEventsEventIdLockHandicapsRoute,
   AdminEventsEventIdPairingsRoute: AdminEventsEventIdPairingsRoute,
   AdminEventsEventIdRoundsRoute: AdminEventsEventIdRoundsRoute,
   AdminEventsEventIdScorerPolicyRoute: AdminEventsEventIdScorerPolicyRoute,

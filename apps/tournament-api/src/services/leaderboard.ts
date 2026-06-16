@@ -31,6 +31,7 @@ import {
 } from '../db/schema/index.js';
 import { allocateNetThroughHole, calcCourseHandicap } from './handicap.js';
 import { aggregateSkinsForEvent } from './sub-games.js';
+import { loadLockedHandicapsByEvent } from './event-handicap-overrides.js';
 
 export type LeaderboardRow = {
   playerId: string;
@@ -135,6 +136,14 @@ export async function computeLeaderboard(
       totalThroughHole: 0,
       perRound: new Map(),
     });
+  }
+
+  // If this event's handicaps are LOCKED, the snapshot index overrides the
+  // live/manual one for every round in scope — the whole point of the lock.
+  const lockedHandicaps = await loadLockedHandicapsByEvent(ctx.db, eventId, tenantId);
+  for (const [playerId, hi] of lockedHandicaps) {
+    const accum = participantMap.get(playerId);
+    if (accum) accum.handicapIndex = hi;
   }
 
   // 2. Resolve the round set in scope.

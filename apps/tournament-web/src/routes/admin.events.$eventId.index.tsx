@@ -196,6 +196,20 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
 
         <li>
           <Link
+            to="/admin/events/$eventId/lock-handicaps"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-lock-handicaps"
+          >
+            <strong>Lock handicaps</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Freeze everyone&apos;s handicap index as of a date for the whole event.
+            </div>
+          </Link>
+        </li>
+
+        <li>
+          <Link
             to="/admin/events/$eventId/start-round"
             params={{ eventId }}
             style={cardStyle}

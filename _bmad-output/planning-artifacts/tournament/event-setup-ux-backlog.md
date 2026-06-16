@@ -84,9 +84,12 @@ SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member
 ### F3. Friends / Favorites roster
 - Organizer-saved player list (favorites) tied to the admin, so future events can quickly select known people instead of re-searching GHIN each time.
 
-## 🔵 In flight (parked on branch `feat/handicap-lock`)
+## 🔵 In flight (branch `feat/handicap-lock`, rebased onto master 2026-06-16 — NOT pushed/deployed)
 
-### H1. Handicap lock "as of a date"
-- **Backend DONE** (migration 0016 `events.handicap_lock_date` + `event_handicaps` snapshot; GHIN `getHandicapHistory`; lock/unlock/GET endpoints; locked-HI overlay applied to leaderboard/money/money-detail/sub-games/press/bets so it carries into every round). Compiles; not shipped.
-- **TODO:** "Lock Handicaps" admin page (As-of date picker + per-player table: today's HI / locked HI) + tests + deploy.
-- GHIN history proven feasible (Ben McGinnis). Rule = index as of cutoff date.
+### H1. Handicap lock "as of a date" — UI + TESTS DONE, awaiting review/deploy
+- **Rebased onto master + migration renumbered 0016→0017** (`0017_lovely_lucky_pierre`, regenerated via `db:generate` off master's 0016 join-codes snapshot; byte-identical SQL: `event_handicaps` table + `events.handicap_lock_date`). Resolved B0 conflicts (kept both `playerJoinCodes` and `eventHandicaps`).
+- **Regression found + FIXED during rebase verification:** the overlay loaders (`event-handicap-overrides.ts`) used the GLOBAL `db` singleton, so inside `runPressOrchestrator(tx)` / e2e they hit "no such table: rounds" (5 press tests + lifecycle e2e failed in isolation). Fix = thread the caller's `tx`/`db` into `loadLockedHandicapsByEvent`/`ByRound` (now first param); updated all 6 call sites (leaderboard `ctx.db`, money/money-detail `txOrDb`, sub-games/press `tx`, bets `db`).
+- **Backend DONE** (lock/unlock/GET endpoints; locked-HI overlay on leaderboard/money/money-detail/sub-games/press/bets so it carries into every round).
+- **UI DONE:** `/admin/events/:eventId/lock-handicaps` — As-of `<input type=date>` picker + per-player table (today's HI / locked HI w/ GHIN provenance) + lock/re-lock/unlock + locked banner. Linked from event admin landing (`admin-link-lock-handicaps`).
+- **Tests DONE:** `handicap-lock.test.ts` (10, pure pickAsOfRevision/isIsoDate), `admin-event-handicaps.test.ts` (13, route GET/lock/unlock incl. GHIN mock + 403 event-scoping), web `lock-handicaps.test.tsx` (4). Full api 1063 ✓ (lone failure = the known full-suite `lifecycle-full.e2e` shared-cache flake, passes isolated), web 352 ✓, `pnpm -r typecheck` clean.
+- **REMAINING:** review + deploy (gated). GHIN history proven feasible (Ben McGinnis). Rule = index as of cutoff date.
