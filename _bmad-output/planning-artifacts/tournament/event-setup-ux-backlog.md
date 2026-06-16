@@ -67,7 +67,14 @@ SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member
 ## 🐞 Bugs found in testing (fix as hit)
 - ~~Member list showed "—" for handicap on every player~~ — FIXED: roster GET now resolves live GHIN HI (currentHandicapIndex).
 - ~~Pairings page crashed ("can't access property 0, c is undefined") when INCREASING foursome count~~ — FIXED: isDirty memo guarded against the transient where the new count outpaces the not-yet-rebuilt grid.
+- ~~2v2 teams assigned ALPHABETICALLY (silent money bug — wrong partnerships whenever intended teams ≠ alpha split)~~ — **FIXED + committed `ce91a42` 2026-06-16.** New shared `resolveFoursomeTeams` (slots 1&2 vs 3&4 from `pairing_members.slot_number`) wired into money.ts/money-detail.ts/press-orchestrator.ts so the 3 paths can't disagree; pairings UI now labels Team 1/Team 2. No existing scored prod rounds → pure correctness. (Unblocks Pete Dye member-guest team-setting.)
 - Rule-set card un-clickable (see F1).
+
+## ⛳ Pete Dye Invitational (Jun 26–27, member-guest, 12 players) — tactical build
+Hard deadline; F1 PRD PAUSED at step 8/11 to do this without rushing the foundation. Format from group texts (STILL DEBATED): 2-day best-ball **against par**, 6 two-man teams (top-6 by low HI as-of 6/14 each drawn an A/B-player + a "hack"), $50/man **winner-take-all**, Guyan 2v2 games inside the foursomes. Teammates sit in the same foursome → 3 foursomes of 4 = two member-guest teams each (the foursome 2v2 = the member-guest match), all 6 teams feed the event pot.
+- **DONE:** set-teams-in-admin (the slot-based team fix above, `ce91a42`). Handicap lock as-of 6/24 = H1 (shipped). Pete Dye course seeded (CourseID 5737, "Dye" tees). Guyan 2v2 + money + scoring already work (now with correct teams).
+- **HELD (format debated):** event-level 6-team best-ball-vs-par standing + winner-take-all pot (a thin aggregation on top of the per-hole team best-net the engine already computes; leaderboard sums player strokes today, not team totals). Build once the group locks the format.
+- **OPERATIONAL (near the date):** create the Pete Dye event + 12 roster + lock handicaps 6/24.
 
 ### F1b. Side games (rename from "Sub Games") + player-driven
 - **Rename "Sub Games" → "Side Games"** everywhere (UI labels; keep DB table names).
@@ -85,12 +92,17 @@ SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member
 ### F3. Friends / Favorites roster
 - Organizer-saved player list (favorites) tied to the admin, so future events can quickly select known people instead of re-searching GHIN each time.
 
-## 🔵 In flight (branch `feat/handicap-lock`, rebased onto master 2026-06-16 — NOT pushed/deployed)
+## 🔵 In flight (branch `feat/handicap-lock` → merged to master + DEPLOYED 2026-06-16)
 
-### H1. Handicap lock "as of a date" — UI + TESTS DONE, awaiting review/deploy
+### H1. Handicap lock "as of a date" — ✅ SHIPPED + DEPLOYED 2026-06-16 (master `026bcb7`)
 - **Rebased onto master + migration renumbered 0016→0017** (`0017_lovely_lucky_pierre`, regenerated via `db:generate` off master's 0016 join-codes snapshot; byte-identical SQL: `event_handicaps` table + `events.handicap_lock_date`). Resolved B0 conflicts (kept both `playerJoinCodes` and `eventHandicaps`).
 - **Regression found + FIXED during rebase verification:** the overlay loaders (`event-handicap-overrides.ts`) used the GLOBAL `db` singleton, so inside `runPressOrchestrator(tx)` / e2e they hit "no such table: rounds" (5 press tests + lifecycle e2e failed in isolation). Fix = thread the caller's `tx`/`db` into `loadLockedHandicapsByEvent`/`ByRound` (now first param); updated all 6 call sites (leaderboard `ctx.db`, money/money-detail `txOrDb`, sub-games/press `tx`, bets `db`).
 - **Backend DONE** (lock/unlock/GET endpoints; locked-HI overlay on leaderboard/money/money-detail/sub-games/press/bets so it carries into every round).
 - **UI DONE:** `/admin/events/:eventId/lock-handicaps` — As-of `<input type=date>` picker + per-player table (today's HI / locked HI w/ GHIN provenance) + lock/re-lock/unlock + locked banner. Linked from event admin landing (`admin-link-lock-handicaps`).
 - **Tests DONE:** `handicap-lock.test.ts` (10, pure pickAsOfRevision/isIsoDate), `admin-event-handicaps.test.ts` (13, route GET/lock/unlock incl. GHIN mock + 403 event-scoping), web `lock-handicaps.test.tsx` (4). Full api 1063 ✓ (lone failure = the known full-suite `lifecycle-full.e2e` shared-cache flake, passes isolated), web 352 ✓, `pnpm -r typecheck` clean.
-- **REMAINING:** review + deploy (gated). GHIN history proven feasible (Ben McGinnis). Rule = index as of cutoff date.
+- **SHIPPED + DEPLOYED + verified live** (prod tournament-api health ok; migration 0017 confirmed applied: `event_handicaps` table + `events.handicap_lock_date` column present). GHIN history proven feasible (Ben McGinnis). Rule = index as of cutoff date.
+- **Lock TIMING (clarified 2026-06-16):** the snapshot is captured *at click time*, but the VALUE is the GHIN revision effective on/before the as-of date (`pickAsOfRevision` = latest revision ≤ cutoff). So **retroactive locking is correct** — forgot to lock the Wednesday-before? Lock anytime with as-of=that Wednesday; GHIN dated history makes it accurate regardless of when you click. **Future-dating + lock-now is WRONG** — it captures today's index mislabeled (the future revision doesn't exist yet).
+
+### H1b. Handicap-lock UX follow-ups (NEW 2026-06-16, not built)
+- **Setup-flow reminder:** surface a handicap-lock prompt/checklist item during event/rules setup ("Lock handicaps as of: ___") so organizers don't forget (Josh forgot the Wednesday-before in practice). The *feature* is H1; this is a setup-UX touchpoint (cross-refs the F1 Rules & Games setup flow — see F1 PRD Journey 1).
+- **Scheduled ("set-and-forget") lock:** configure the as-of date early and have the system AUTO-snapshot when that date arrives — so future-dating works. H1 today snapshots at click-time only; this is the enhancement that makes "set it up early" safe. Small, optional.
