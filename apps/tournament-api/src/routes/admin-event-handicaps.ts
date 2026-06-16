@@ -97,7 +97,7 @@ adminEventHandicapsRouter.get('/events/:eventId/handicaps', async (c) => {
         try {
           const { handicapIndex } = await ghinClient.getHandicap(Number(p.ghin));
           currentByPlayer.set(p.playerId, handicapIndex);
-        } catch (err) {
+        } catch {
           log?.warn({ msg: 'ghin current HI failed', requestId, playerId: p.playerId });
           currentByPlayer.set(p.playerId, null);
         }
@@ -173,7 +173,7 @@ adminEventHandicapsRouter.post(
             if (rev) return { playerId: p.playerId, value: rev.value, source: 'ghin', ghinValueDate: rev.revisionDate.slice(0, 10) };
             // No revision on/before the cutoff — fall back to manual if any.
             return { playerId: p.playerId, value: p.manualHandicapIndex ?? null, source: 'manual', ghinValueDate: null };
-          } catch (err) {
+          } catch {
             log?.warn({ msg: 'ghin history failed during lock', requestId, playerId: p.playerId });
             return { playerId: p.playerId, value: p.manualHandicapIndex ?? null, source: 'manual', ghinValueDate: null };
           }
