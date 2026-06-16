@@ -54,6 +54,7 @@ SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member
 ## 🟢 New features
 
 ### F1. Rules & sub-games config (event-wide + per-round overrides)
+- **DESIGN PASS DONE 2026-06-16** (brainstorming): `_bmad-output/brainstorming/brainstorming-session-2026-06-16.md`. Reframed into a 3-layer model (modifiers ride a base game / games own a pot / peer-bets) + a 3-level cascade (Event→Round→Foursome) behind ONE admin lock toggle; "Standard Guyan Game" = a seeded editable preset; 2v2 money is foursome-internal so per-foursome rule variation is safe (no cross-foursome reconciliation); "345" cap collapses into the 2v2 (point-value + cap); lock state drives leaderboard mode (money vs scores-only). Build-blockers flagged: migration off tenant-scoped rule_sets + recompute-vs-immutable-revisions. NEXT: `/bmad-bmm-create-prd` scoped to F1 using that doc.
 - Per-day (round-level) AND event-wide setup of:
   - **Polies** on/off; variant: "polie only counts on **bogey-or-better (gross)**" vs any.
   - **Point for net birdie** toggle (some groups: win the hole on a net birdie but no extra point).
