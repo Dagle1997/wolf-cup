@@ -64,6 +64,7 @@ import {
 } from '../engine/rules/individual-bets.js';
 import { loadSkinsSnapshotsForEvent } from './sub-games.js';
 import { loadLockedHandicapsByEvent, applyLockedToNumberMap } from './event-handicap-overrides.js';
+import { resolveFoursomeTeams } from './foursome-teams.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
 
 type Db = typeof DbType;
@@ -320,7 +321,7 @@ export async function computeMoneyMatrix(
         );
       for (const pairing of pairingRows) {
         const memberRows2 = await txOrDb
-          .select({ playerId: pairingMembers.playerId })
+          .select({ playerId: pairingMembers.playerId, slotNumber: pairingMembers.slotNumber })
           .from(pairingMembers)
           .where(
             and(
@@ -328,10 +329,11 @@ export async function computeMoneyMatrix(
               eq(pairingMembers.tenantId, tenantId),
             ),
           );
-        if (memberRows2.length !== 4) continue;  // 4-player guard rail (matches press orchestrator)
-        const sortedMembers = memberRows2.map((m) => m.playerId).sort();
-        const teamA: [string, string] = [sortedMembers[0]!, sortedMembers[1]!];
-        const teamB: [string, string] = [sortedMembers[2]!, sortedMembers[3]!];
+        // Teams come from the organizer's slot order (slots 1&2 vs 3&4), never
+        // alphabetical — the partnership decides each team's best net per hole.
+        const teams = resolveFoursomeTeams(memberRows2);
+        if (!teams) continue;  // 4-player guard rail (matches press orchestrator)
+        const { teamA, teamB, ordered: sortedMembers } = teams;
 
         // Hole scores for this round + foursome.
         const scoreRows = await txOrDb

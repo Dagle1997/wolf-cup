@@ -58,6 +58,7 @@ import { buildTeeByPlayer } from './per-player-tee.js';
 import { emitActivity } from '../lib/activity.js';
 import { BusinessRuleError } from './round-state.js';
 import { loadLockedHandicapsByRound, applyLockedToNumberMap } from './event-handicap-overrides.js';
+import { resolveFoursomeTeams } from './foursome-teams.js';
 import {
   compute2v2BestBall,
   type Compute2v2BestBallInput,
@@ -232,7 +233,7 @@ export async function runPressOrchestrator(
 
   // ── (2) Identify the foursome's expected members. ──
   const memberRows = await tx
-    .select({ playerId: pairingMembers.playerId })
+    .select({ playerId: pairingMembers.playerId, slotNumber: pairingMembers.slotNumber })
     .from(pairingMembers)
     .innerJoin(pairings, eq(pairings.id, pairingMembers.pairingId))
     .innerJoin(rounds, eq(rounds.eventRoundId, pairings.eventRoundId))
@@ -433,18 +434,15 @@ export async function runPressOrchestrator(
   // Locked handicaps (if the round's event is locked) override manual.
   applyLockedToNumberMap(handicapIndexByPlayer, await loadLockedHandicapsByRound(tx, roundId, tenantId));
 
-  // ── (10) Pair the 4 members into teamA / teamB by alphabetical playerId.
-  // v1 acceptance: deterministic but ignores any "slot-based" team
-  // semantics the wizard might have. The engines (compute2v2BestBall,
-  // evaluatePresses) are LABEL-AGNOSTIC — they just need two pairs of
-  // two — so this assignment is mathematically correct. The "teamA" /
-  // "teamB" label that surfaces in activity payloads + team_press_log
-  // rows is informational. Followup T6-4g tracks an explicit team
-  // assignment table (e.g., a `pairing_teams` join) when T6-7's manual
-  // press UI needs to display real-world team identities.
-  const sortedMembers = [...expectedMembers].sort();
-  const teamA: [string, string] = [sortedMembers[0]!, sortedMembers[1]!];
-  const teamB: [string, string] = [sortedMembers[2]!, sortedMembers[3]!];
+  // ── (10) Pair the 4 members into teamA / teamB from the organizer's slot
+  // order (slots 1&2 vs 3&4), NOT alphabetically. The PARTNERSHIP is a
+  // deliberate choice (ball-toss + two-closest, or A/B-player draw) and
+  // decides each team's best net per hole — so it must match what money.ts /
+  // money-detail.ts use, or presses and money would disagree on who's teamed.
+  // Centralized in resolveFoursomeTeams so the three paths can't drift.
+  const teams = resolveFoursomeTeams(memberRows);
+  if (!teams) return; // 4-player guard already passed above; defensive
+  const { teamA, teamB } = teams;
 
   // ── (11) Run engines under try/catch — any throw maps to press_engine_error 422. ──
   // Per-player tee overrides (T10): same helper used by money.ts + sub-games.ts.

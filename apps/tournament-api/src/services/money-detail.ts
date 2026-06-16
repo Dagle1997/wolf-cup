@@ -45,6 +45,7 @@ import {
   loadLockedHandicapsByRound,
   applyLockedToNumberMap,
 } from './event-handicap-overrides.js';
+import { resolveFoursomeTeams } from './foursome-teams.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -179,15 +180,15 @@ export async function computeFoursomeResults(
   const foursomes: FoursomeResult[] = [];
   for (const pairing of pairingRows) {
     const memberRows = await txOrDb
-      .select({ playerId: pairingMembers.playerId })
+      .select({ playerId: pairingMembers.playerId, slotNumber: pairingMembers.slotNumber })
       .from(pairingMembers)
       .where(
         and(eq(pairingMembers.pairingId, pairing.id), eq(pairingMembers.tenantId, tenantId)),
       );
-    if (memberRows.length !== 4) continue; // engine requires 4 (matches money.ts)
-    const sortedMembers = memberRows.map((m) => m.playerId).sort();
-    const teamAIds: [string, string] = [sortedMembers[0]!, sortedMembers[1]!];
-    const teamBIds: [string, string] = [sortedMembers[2]!, sortedMembers[3]!];
+    // Teams from the organizer's slot order (slots 1&2 vs 3&4), never alphabetical.
+    const teams = resolveFoursomeTeams(memberRows);
+    if (!teams) continue; // engine requires 4 (matches money.ts)
+    const { teamA: teamAIds, teamB: teamBIds, ordered: sortedMembers } = teams;
 
     const nameRows = await txOrDb
       .select({ id: players.id, name: players.name, hi: players.manualHandicapIndex })

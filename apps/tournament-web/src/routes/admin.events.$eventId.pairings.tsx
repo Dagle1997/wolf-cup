@@ -12,7 +12,7 @@
 
 import { createFileRoute, useParams } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
@@ -575,11 +575,33 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
                   const pinned = pins.has(cellKey);
                   const teeSelectValue = cell.teeColor ?? '';
                   const filled = cell.playerId !== EMPTY;
+                  // Slots 1&2 are best-ball Team 1, slots 3&4 Team 2 — the
+                  // partnership the scoring/money uses (resolveFoursomeTeams),
+                  // never alphabetical. Surface it so the organizer can set
+                  // teams deliberately (ball-toss + two-closest, or A/B draw).
+                  const teamHeader =
+                    sIdx === 0 ? 'Team 1 · best ball' : sIdx === 2 ? 'Team 2 · best ball' : null;
                   return (
+                    <Fragment key={cellKey}>
+                      {teamHeader ? (
+                        <div
+                          data-testid={`team-label-${rIdx}-${fIdx}-${sIdx === 0 ? 'A' : 'B'}`}
+                          style={{
+                            fontSize: 'var(--font-xs, 0.72rem)',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            color: 'var(--color-brand-primary)',
+                            marginTop: sIdx === 2 ? 'var(--space-3)' : 'var(--space-1)',
+                            marginLeft: 26,
+                          }}
+                        >
+                          {teamHeader}
+                        </div>
+                      ) : null}
                     <div
-                      key={cellKey}
                       data-testid={`cell-${rIdx}-${fIdx}-${sIdx}`}
-                      style={{ padding: 'var(--space-2) 0', borderTop: sIdx > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}
+                      style={{ padding: 'var(--space-2) 0', borderTop: sIdx > 0 && sIdx !== 2 ? '1px solid var(--color-border-subtle)' : 'none' }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                         <span aria-hidden style={{ width: 18, flexShrink: 0, fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{sIdx + 1}</span>
@@ -630,6 +652,7 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
                         </select>
                       ) : null}
                     </div>
+                    </Fragment>
                   );
                 })}
               </div>
