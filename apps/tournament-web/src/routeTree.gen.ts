@@ -23,6 +23,7 @@ import { Route as EventsEventIdSettleUpRouteImport } from './routes/events.$even
 import { Route as EventsEventIdScheduleRouteImport } from './routes/events.$eventId.schedule'
 import { Route as EventsEventIdMyMoneyRouteImport } from './routes/events.$eventId.my-money'
 import { Route as EventsEventIdMoneyRouteImport } from './routes/events.$eventId.money'
+import { Route as EventsEventIdMatchPlayStandingsRouteImport } from './routes/events.$eventId.match-play-standings'
 import { Route as EventsEventIdLeaderboardRouteImport } from './routes/events.$eventId.leaderboard'
 import { Route as EventsEventIdGalleryRouteImport } from './routes/events.$eventId.gallery'
 import { Route as EventsEventIdBetsRouteImport } from './routes/events.$eventId.bets'
@@ -114,6 +115,12 @@ const EventsEventIdMoneyRoute = EventsEventIdMoneyRouteImport.update({
   path: '/events/$eventId/money',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsEventIdMatchPlayStandingsRoute =
+  EventsEventIdMatchPlayStandingsRouteImport.update({
+    id: '/events/$eventId/match-play-standings',
+    path: '/events/$eventId/match-play-standings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const EventsEventIdLeaderboardRoute =
   EventsEventIdLeaderboardRouteImport.update({
     id: '/events/$eventId/leaderboard',
@@ -235,6 +242,7 @@ export interface FileRoutesByFullPath {
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
+  '/events/$eventId/match-play-standings': typeof EventsEventIdMatchPlayStandingsRoute
   '/events/$eventId/money': typeof EventsEventIdMoneyRoute
   '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
@@ -270,6 +278,7 @@ export interface FileRoutesByTo {
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
+  '/events/$eventId/match-play-standings': typeof EventsEventIdMatchPlayStandingsRoute
   '/events/$eventId/money': typeof EventsEventIdMoneyRoute
   '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
@@ -306,6 +315,7 @@ export interface FileRoutesById {
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
+  '/events/$eventId/match-play-standings': typeof EventsEventIdMatchPlayStandingsRoute
   '/events/$eventId/money': typeof EventsEventIdMoneyRoute
   '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
@@ -343,6 +353,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/bets'
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
+    | '/events/$eventId/match-play-standings'
     | '/events/$eventId/money'
     | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
@@ -378,6 +389,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/bets'
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
+    | '/events/$eventId/match-play-standings'
     | '/events/$eventId/money'
     | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
@@ -413,6 +425,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/bets'
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
+    | '/events/$eventId/match-play-standings'
     | '/events/$eventId/money'
     | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
@@ -449,6 +462,7 @@ export interface RootRouteChildren {
   EventsEventIdBetsRoute: typeof EventsEventIdBetsRoute
   EventsEventIdGalleryRoute: typeof EventsEventIdGalleryRoute
   EventsEventIdLeaderboardRoute: typeof EventsEventIdLeaderboardRoute
+  EventsEventIdMatchPlayStandingsRoute: typeof EventsEventIdMatchPlayStandingsRoute
   EventsEventIdMoneyRoute: typeof EventsEventIdMoneyRoute
   EventsEventIdMyMoneyRoute: typeof EventsEventIdMyMoneyRoute
   EventsEventIdScheduleRoute: typeof EventsEventIdScheduleRoute
@@ -568,6 +582,13 @@ declare module '@tanstack/react-router' {
       path: '/events/$eventId/money'
       fullPath: '/events/$eventId/money'
       preLoaderRoute: typeof EventsEventIdMoneyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events/$eventId/match-play-standings': {
+      id: '/events/$eventId/match-play-standings'
+      path: '/events/$eventId/match-play-standings'
+      fullPath: '/events/$eventId/match-play-standings'
+      preLoaderRoute: typeof EventsEventIdMatchPlayStandingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/$eventId/leaderboard': {
@@ -721,6 +742,7 @@ const rootRouteChildren: RootRouteChildren = {
   EventsEventIdBetsRoute: EventsEventIdBetsRoute,
   EventsEventIdGalleryRoute: EventsEventIdGalleryRoute,
   EventsEventIdLeaderboardRoute: EventsEventIdLeaderboardRoute,
+  EventsEventIdMatchPlayStandingsRoute: EventsEventIdMatchPlayStandingsRoute,
   EventsEventIdMoneyRoute: EventsEventIdMoneyRoute,
   EventsEventIdMyMoneyRoute: EventsEventIdMyMoneyRoute,
   EventsEventIdScheduleRoute: EventsEventIdScheduleRoute,

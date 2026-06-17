@@ -153,6 +153,7 @@ const ENTRY_CARDS = [
   SCHEDULE_CARD,
   { to: '/events/$eventId/leaderboard' as const, icon: '🏆', title: 'Leaderboard',    desc: 'See live standings' },
   { to: '/events/$eventId/team-standings' as const, icon: '⛳', title: 'Team Standings', desc: '2-man best ball, net to par' },
+  { to: '/events/$eventId/match-play-standings' as const, icon: '⚔️', title: 'Match Play', desc: 'Foursome match points' },
   { to: '/events/$eventId/my-money' as const,    icon: '💰', title: 'My Money',       desc: 'Your money, by game' },
   { to: '/events/$eventId/money' as const,       icon: '🆚', title: 'Money',          desc: 'Head-to-head money matrix' },
   { to: '/events/$eventId/bets' as const,        icon: '🎲', title: 'Bets',           desc: 'Your bets' },

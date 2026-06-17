@@ -103,7 +103,20 @@ interface SeedResult {
   roundId: string;
 }
 
-async function seed(opts: { withScores?: boolean } = {}): Promise<SeedResult> {
+async function seed(
+  opts: {
+    withScores?: boolean;
+    /** 9 or 18 (default 18) — sets event_round + round holes_to_play. */
+    holesToPlay?: 9 | 18;
+    /** Holes 1..aWinsThrough go to teamA, the rest to teamB (default 12). */
+    aWinsThrough?: number;
+    /** Only score holes 1..scoreHoles (default = holesToPlay) — for partial rounds. */
+    scoreHoles?: number;
+  } = {},
+): Promise<SeedResult> {
+  const holesToPlay = opts.holesToPlay ?? 18;
+  const aWinsThrough = opts.aWinsThrough ?? 12;
+  const scoreHoles = opts.scoreHoles ?? holesToPlay;
   const now = Date.now();
   const ids = {
     organizerId: randomUUID(),
@@ -170,12 +183,12 @@ async function seed(opts: { withScores?: boolean } = {}): Promise<SeedResult> {
   });
   await db.insert(eventRounds).values({
     id: ids.eventRoundId, eventId: ids.eventId, roundNumber: 1, roundDate: now,
-    courseRevisionId: ids.courseRevId, teeColor: 'blue', holesToPlay: 18,
+    courseRevisionId: ids.courseRevId, teeColor: 'blue', holesToPlay,
     createdAt: now, tenantId: TENANT_ID, contextId: ctx,
   });
   await db.insert(rounds).values({
     id: ids.roundId, eventId: ids.eventId, eventRoundId: ids.eventRoundId,
-    holesToPlay: 18, createdAt: now,
+    holesToPlay, createdAt: now,
     tenantId: TENANT_ID, contextId: ctx,
   });
   await db.insert(groups).values({
@@ -222,9 +235,11 @@ async function seed(opts: { withScores?: boolean } = {}): Promise<SeedResult> {
 
   if (opts.withScores) {
     // teamA = sortedPlayers[0,1]; teamB = sortedPlayers[2,3].
-    // 18 holes: A wins 12, B wins 6. Net to teamA = +6 holes. Per-pair @ 100c = +600 per pair × 4 pairs = +2400 total team delta.
-    for (let h = 1; h <= 18; h++) {
-      const aWins = h <= 12;
+    // Default 18 holes: A wins 12, B wins 6. Net to teamA = +6 holes. Per-pair
+    // @ 100c = +600 per pair × 4 pairs = +2400 total team delta. (Opts vary the
+    // hole count / split / how many holes get scored for the match-play cases.)
+    for (let h = 1; h <= scoreHoles; h++) {
+      const aWins = h <= aWinsThrough;
       const aGross = aWins ? 4 : 5;
       const bGross = aWins ? 5 : 4;
       for (const pid of [sortedPlayers[0]!, sortedPlayers[1]!]) {
@@ -663,6 +678,125 @@ describe('GET /api/events/:eventId/team-standings', () => {
     const s = await seed({ withScores: true });
     const outApp = buildApp(s.outsiderId);
     const res = await outApp.request(`/api/events/${s.eventId}/team-standings`);
+    expect(res.status).toBe(403);
+  });
+});
+
+// ── Pete Dye Phase 2: event-level match-play points standings ────────────────
+type MatchPlayBody = {
+  eventId: string;
+  teams: Array<{
+    teamKey: string;
+    players: Array<{ playerId: string; name: string | null }>;
+    matchesPlayed: number;
+    won: number;
+    halved: number;
+    lost: number;
+    points: number;
+    holesWon: number;
+    holesLost: number;
+    holesHalved: number;
+    holesDiff: number;
+  }>;
+};
+
+describe('GET /api/events/:eventId/match-play-standings', () => {
+  test('scores the foursome-internal 2v2 match → points + hole diff per team', async () => {
+    // Fixture: 18 holes, teamA wins 12, teamB wins 6 → teamA wins the match 1-0.
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await app.request(`/api/events/${s.eventId}/match-play-standings`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    const body = (await res.json()) as MatchPlayBody;
+
+    expect(body.teams).toHaveLength(2);
+    // Sorted by points desc → teamA (slots 1&2) first.
+    const [first, second] = body.teams;
+    expect(new Set(first!.players.map((p) => p.playerId))).toEqual(
+      new Set([s.playerIds[0]!, s.playerIds[1]!]),
+    );
+    expect(first!.matchesPlayed).toBe(1);
+    expect(first!.won).toBe(1);
+    expect(first!.halved).toBe(0);
+    expect(first!.lost).toBe(0);
+    expect(first!.points).toBe(1);
+    expect(first!.holesWon).toBe(12);
+    expect(first!.holesLost).toBe(6);
+    expect(first!.holesHalved).toBe(0);
+    expect(first!.holesDiff).toBe(6);
+
+    expect(second!.won).toBe(0);
+    expect(second!.lost).toBe(1);
+    expect(second!.points).toBe(0);
+    expect(second!.holesWon).toBe(6);
+    expect(second!.holesLost).toBe(12);
+    expect(second!.holesDiff).toBe(-6);
+  });
+
+  test('no scores → empty board (no rows, so the empty-state shows)', async () => {
+    const s = await seed(); // no scores
+    const app = buildApp(s.playerIds[0]!);
+    const res = await app.request(`/api/events/${s.eventId}/match-play-standings`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MatchPlayBody;
+    // A match is recorded only once fully scored, so an unscored event lists no
+    // teams at all — the web empty-state ("No matches scored yet") then shows.
+    expect(body.teams).toHaveLength(0);
+  });
+
+  test('partially-scored round (6 of 18) → NOT counted (no flippable points)', async () => {
+    const s = await seed({ withScores: true, scoreHoles: 6 });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await app.request(`/api/events/${s.eventId}/match-play-standings`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MatchPlayBody;
+    // 6 holes in (all to teamA) but 12 unscored → match incomplete → no points.
+    expect(body.teams).toHaveLength(0);
+  });
+
+  test('fully-scored round tied on holes (9-9) → halved, 0.5 each', async () => {
+    const s = await seed({ withScores: true, aWinsThrough: 9 }); // A wins 1-9, B wins 10-18
+    const app = buildApp(s.playerIds[0]!);
+    const res = await app.request(`/api/events/${s.eventId}/match-play-standings`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MatchPlayBody;
+    expect(body.teams).toHaveLength(2);
+    for (const t of body.teams) {
+      expect(t.matchesPlayed).toBe(1);
+      expect(t.halved).toBe(1);
+      expect(t.won).toBe(0);
+      expect(t.lost).toBe(0);
+      expect(t.points).toBe(0.5);
+      expect(t.holesWon).toBe(9);
+      expect(t.holesLost).toBe(9);
+      expect(t.holesDiff).toBe(0);
+    }
+  });
+
+  test('9-hole round → match scored over holes 1-9 only', async () => {
+    // holesToPlay=9, A wins holes 1-6, B wins 7-9 → A wins 6-3 over 9 holes.
+    const s = await seed({ withScores: true, holesToPlay: 9, aWinsThrough: 6 });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await app.request(`/api/events/${s.eventId}/match-play-standings`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MatchPlayBody;
+    expect(body.teams).toHaveLength(2);
+    const [first] = body.teams;
+    expect(new Set(first!.players.map((p) => p.playerId))).toEqual(
+      new Set([s.playerIds[0]!, s.playerIds[1]!]),
+    );
+    expect(first!.won).toBe(1);
+    expect(first!.points).toBe(1);
+    expect(first!.holesWon).toBe(6);
+    expect(first!.holesLost).toBe(3);
+    expect(first!.holesDiff).toBe(3);
+  });
+
+  test('non-participant → 403', async () => {
+    const s = await seed({ withScores: true });
+    const outApp = buildApp(s.outsiderId);
+    const res = await outApp.request(`/api/events/${s.eventId}/match-play-standings`);
     expect(res.status).toBe(403);
   });
 });

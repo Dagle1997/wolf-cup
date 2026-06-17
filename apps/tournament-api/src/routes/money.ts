@@ -21,6 +21,7 @@ import { requireEventParticipant } from '../middleware/require-event-participant
 import { computeMoneyMatrix } from '../services/money.js';
 import { computeFoursomeResults, computeMyMoney } from '../services/money-detail.js';
 import { computeTeamStandings } from '../services/team-standings.js';
+import { computeMatchPlayStandings } from '../services/match-play-standings.js';
 
 const TENANT_ID = 'guyan';
 
@@ -149,6 +150,32 @@ moneyRouter.get(
       log.error({ msg: 'GET /team-standings threw', requestId, eventId, err: String(err) });
       return c.json(
         { error: 'internal', code: 'team_standings_failed', requestId },
+        500,
+      );
+    }
+  },
+);
+
+// Event-level MATCH-PLAY points (Pete Dye Phase 2): the foursome-internal 2v2
+// match (slots 1&2 vs 3&4) scored per round → win/halve/loss points aggregated
+// per 2-man team. A SEPARATE parallel board from /team-standings (which decides
+// the pot); both are shown independently.
+moneyRouter.get(
+  '/:eventId/match-play-standings',
+  requireSession,
+  requireEventParticipant,
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const log = c.get('logger') ?? moduleLogger;
+    const eventId = c.req.param('eventId');
+    try {
+      const standings = await computeMatchPlayStandings(db, eventId, TENANT_ID);
+      c.header('cache-control', 'no-store');
+      return c.json(standings, 200);
+    } catch (err) {
+      log.error({ msg: 'GET /match-play-standings threw', requestId, eventId, err: String(err) });
+      return c.json(
+        { error: 'internal', code: 'match_play_standings_failed', requestId },
         500,
       );
     }
