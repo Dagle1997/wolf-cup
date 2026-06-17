@@ -18,6 +18,7 @@ import { Route as AuthDeclinedRouteImport } from './routes/auth.declined'
 import { Route as AuthConflictRouteImport } from './routes/auth.conflict'
 import { Route as EventsEventIdIndexRouteImport } from './routes/events.$eventId.index'
 import { Route as RoundsRoundIdScoreEntryRouteImport } from './routes/rounds.$roundId.score-entry'
+import { Route as EventsEventIdTeamStandingsRouteImport } from './routes/events.$eventId.team-standings'
 import { Route as EventsEventIdSettleUpRouteImport } from './routes/events.$eventId.settle-up'
 import { Route as EventsEventIdScheduleRouteImport } from './routes/events.$eventId.schedule'
 import { Route as EventsEventIdMyMoneyRouteImport } from './routes/events.$eventId.my-money'
@@ -87,6 +88,12 @@ const RoundsRoundIdScoreEntryRoute = RoundsRoundIdScoreEntryRouteImport.update({
   path: '/rounds/$roundId/score-entry',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsEventIdTeamStandingsRoute =
+  EventsEventIdTeamStandingsRouteImport.update({
+    id: '/events/$eventId/team-standings',
+    path: '/events/$eventId/team-standings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const EventsEventIdSettleUpRoute = EventsEventIdSettleUpRouteImport.update({
   id: '/events/$eventId/settle-up',
   path: '/events/$eventId/settle-up',
@@ -232,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
   '/events/$eventId/settle-up': typeof EventsEventIdSettleUpRoute
+  '/events/$eventId/team-standings': typeof EventsEventIdTeamStandingsRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
@@ -266,6 +274,7 @@ export interface FileRoutesByTo {
   '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
   '/events/$eventId/settle-up': typeof EventsEventIdSettleUpRoute
+  '/events/$eventId/team-standings': typeof EventsEventIdTeamStandingsRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/events/$eventId': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
@@ -301,6 +310,7 @@ export interface FileRoutesById {
   '/events/$eventId/my-money': typeof EventsEventIdMyMoneyRoute
   '/events/$eventId/schedule': typeof EventsEventIdScheduleRoute
   '/events/$eventId/settle-up': typeof EventsEventIdSettleUpRoute
+  '/events/$eventId/team-standings': typeof EventsEventIdTeamStandingsRoute
   '/rounds/$roundId/score-entry': typeof RoundsRoundIdScoreEntryRoute
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
@@ -337,6 +347,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
     | '/events/$eventId/settle-up'
+    | '/events/$eventId/team-standings'
     | '/rounds/$roundId/score-entry'
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
@@ -371,6 +382,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
     | '/events/$eventId/settle-up'
+    | '/events/$eventId/team-standings'
     | '/rounds/$roundId/score-entry'
     | '/events/$eventId'
     | '/admin/event-rounds/$eventRoundId/sub-games'
@@ -405,6 +417,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/my-money'
     | '/events/$eventId/schedule'
     | '/events/$eventId/settle-up'
+    | '/events/$eventId/team-standings'
     | '/rounds/$roundId/score-entry'
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
@@ -440,6 +453,7 @@ export interface RootRouteChildren {
   EventsEventIdMyMoneyRoute: typeof EventsEventIdMyMoneyRoute
   EventsEventIdScheduleRoute: typeof EventsEventIdScheduleRoute
   EventsEventIdSettleUpRoute: typeof EventsEventIdSettleUpRoute
+  EventsEventIdTeamStandingsRoute: typeof EventsEventIdTeamStandingsRoute
   RoundsRoundIdScoreEntryRoute: typeof RoundsRoundIdScoreEntryRoute
   EventsEventIdIndexRoute: typeof EventsEventIdIndexRoute
   AdminEventRoundsEventRoundIdSubGamesRoute: typeof AdminEventRoundsEventRoundIdSubGamesRoute
@@ -519,6 +533,13 @@ declare module '@tanstack/react-router' {
       path: '/rounds/$roundId/score-entry'
       fullPath: '/rounds/$roundId/score-entry'
       preLoaderRoute: typeof RoundsRoundIdScoreEntryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/events/$eventId/team-standings': {
+      id: '/events/$eventId/team-standings'
+      path: '/events/$eventId/team-standings'
+      fullPath: '/events/$eventId/team-standings'
+      preLoaderRoute: typeof EventsEventIdTeamStandingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/$eventId/settle-up': {
@@ -704,6 +725,7 @@ const rootRouteChildren: RootRouteChildren = {
   EventsEventIdMyMoneyRoute: EventsEventIdMyMoneyRoute,
   EventsEventIdScheduleRoute: EventsEventIdScheduleRoute,
   EventsEventIdSettleUpRoute: EventsEventIdSettleUpRoute,
+  EventsEventIdTeamStandingsRoute: EventsEventIdTeamStandingsRoute,
   RoundsRoundIdScoreEntryRoute: RoundsRoundIdScoreEntryRoute,
   EventsEventIdIndexRoute: EventsEventIdIndexRoute,
   AdminEventRoundsEventRoundIdSubGamesRoute:

@@ -20,6 +20,7 @@ import { requireSession } from '../middleware/require-session.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
 import { computeMoneyMatrix } from '../services/money.js';
 import { computeFoursomeResults, computeMyMoney } from '../services/money-detail.js';
+import { computeTeamStandings } from '../services/team-standings.js';
 
 const TENANT_ID = 'guyan';
 
@@ -123,6 +124,31 @@ moneyRouter.get(
       });
       return c.json(
         { error: 'internal', code: 'foursome_results_failed', requestId },
+        500,
+      );
+    }
+  },
+);
+
+// Event-level 2-man TEAM standings (member-guest "best ball" overall):
+// each team's cumulative best-ball gross / net / net-to-par across all rounds,
+// sorted by net-to-par. Match-play points (schedule-dependent) is Phase 2.
+moneyRouter.get(
+  '/:eventId/team-standings',
+  requireSession,
+  requireEventParticipant,
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const log = c.get('logger') ?? moduleLogger;
+    const eventId = c.req.param('eventId');
+    try {
+      const standings = await computeTeamStandings(db, eventId, TENANT_ID);
+      c.header('cache-control', 'no-store');
+      return c.json(standings, 200);
+    } catch (err) {
+      log.error({ msg: 'GET /team-standings threw', requestId, eventId, err: String(err) });
+      return c.json(
+        { error: 'internal', code: 'team_standings_failed', requestId },
         500,
       );
     }

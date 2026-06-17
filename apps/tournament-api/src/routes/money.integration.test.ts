@@ -616,3 +616,53 @@ describe('GET /api/events/:eventId/my-money', () => {
     expect(outRes.status).toBe(403);
   });
 });
+
+// ── Pete Dye: event-level 2-man team standings ───────────────────────────────
+type TeamStandingsBody = {
+  eventId: string;
+  teams: Array<{
+    teamKey: string;
+    players: Array<{ playerId: string; name: string | null }>;
+    holesPlayed: number;
+    grossTotal: number;
+    netTotal: number;
+    parTotal: number;
+    toPar: number;
+  }>;
+};
+
+describe('GET /api/events/:eventId/team-standings', () => {
+  test('aggregates best-ball gross/net/to-par per 2-man team, sorted by net-to-par', async () => {
+    // Fixture (HI=0 → net=gross, par 4×18=72): teamA shoots 78 (+6), teamB 84 (+12).
+    const s = await seed({ withScores: true });
+    const app = buildApp(s.playerIds[0]!);
+    const res = await app.request(`/api/events/${s.eventId}/team-standings`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as TeamStandingsBody;
+
+    expect(body.teams).toHaveLength(2);
+    // teamA = slots 1&2 = playerIds[0,1]; teamB = slots 3&4 = playerIds[2,3].
+    const [first, second] = body.teams;
+    // Sorted by net-to-par → teamA (+6) ahead of teamB (+12).
+    expect(first!.toPar).toBe(6);
+    expect(first!.grossTotal).toBe(78);
+    expect(first!.netTotal).toBe(78);
+    expect(first!.parTotal).toBe(72);
+    expect(first!.holesPlayed).toBe(18);
+    expect(new Set(first!.players.map((p) => p.playerId))).toEqual(
+      new Set([s.playerIds[0]!, s.playerIds[1]!]),
+    );
+    expect(second!.toPar).toBe(12);
+    expect(second!.grossTotal).toBe(84);
+    expect(new Set(second!.players.map((p) => p.playerId))).toEqual(
+      new Set([s.playerIds[2]!, s.playerIds[3]!]),
+    );
+  });
+
+  test('non-participant → 403', async () => {
+    const s = await seed({ withScores: true });
+    const outApp = buildApp(s.outsiderId);
+    const res = await outApp.request(`/api/events/${s.eventId}/team-standings`);
+    expect(res.status).toBe(403);
+  });
+});
