@@ -30,7 +30,7 @@
  * is set by the route layer (T6-5 spec AC-5).
  */
 
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { db as DbType } from '../db/index.js';
 import {
   courseHoles,
@@ -243,7 +243,10 @@ export async function computeMoneyMatrix(
       );
 
     for (const er of eventRoundRows) {
-      // Find runtime rounds row for this event_round.
+      // Find the runtime rounds row for this event_round. Deterministic +
+      // identical ordering to money-detail/team-standings so all surfaces pick
+      // the SAME round if more than one ever exists for an event_round
+      // (otherwise money, foursome-results, and standings could desync).
       const runtimeRoundRows = await txOrDb
         .select({ id: rounds.id })
         .from(rounds)
@@ -252,7 +255,9 @@ export async function computeMoneyMatrix(
             eq(rounds.eventRoundId, er.id),
             eq(rounds.tenantId, tenantId),
           ),
-        );
+        )
+        .orderBy(asc(rounds.createdAt), asc(rounds.id))
+        .limit(1);
       if (runtimeRoundRows.length === 0) continue;
       const roundId = runtimeRoundRows[0]!.id;
 

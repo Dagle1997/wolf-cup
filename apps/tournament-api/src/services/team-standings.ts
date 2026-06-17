@@ -82,8 +82,14 @@ export async function computeTeamStandings(
           acc.set(key, row);
         }
         for (const hole of foursome.perHole) {
+          // Only count a FULLY complete hole — both teams have a best net.
+          // (The 2v2 engine gates bestNet on all four members being scored, so
+          // teamA/teamB best-nets already move together; requiring both here
+          // makes that invariant self-enforcing rather than relying on the
+          // engine, and keeps a team's running total honest if that ever
+          // changes.)
+          if (hole.teamABestNet == null || hole.teamBBestNet == null) continue;
           const bestNet = side === 'teamA' ? hole.teamABestNet : hole.teamBBestNet;
-          if (bestNet == null) continue; // hole not fully scored yet
           const grosses = hole.players
             .filter((p) => ids.includes(p.playerId))
             .map((p) => p.gross)

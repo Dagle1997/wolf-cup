@@ -12,7 +12,7 @@
  * (compute2v2BestBall) and the SAME team-formation rule (UUID sort →
  * teamA = first two) as money.ts §3, so the numbers reconcile exactly.
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { db as DbType } from '../db/index.js';
 import {
   courseHoles,
@@ -118,10 +118,13 @@ export async function computeFoursomeResults(
   const config = await fetchActive2v2Config(txOrDb, tenantId);
   if (!config) return empty;
 
+  // Deterministic + identical ordering to money.ts so both pick the SAME
+  // runtime round if more than one ever exists for an event_round.
   const runtimeRoundRows = await txOrDb
     .select({ id: rounds.id })
     .from(rounds)
     .where(and(eq(rounds.eventRoundId, er.id), eq(rounds.tenantId, tenantId)))
+    .orderBy(asc(rounds.createdAt), asc(rounds.id))
     .limit(1);
   if (runtimeRoundRows.length === 0) return empty;
   const roundId = runtimeRoundRows[0]!.id;
@@ -194,6 +197,10 @@ export async function computeFoursomeResults(
       .select({ id: players.id, name: players.name, hi: players.manualHandicapIndex })
       .from(players)
       .where(and(inArray(players.id, sortedMembers), eq(players.tenantId, tenantId)));
+    // Skip a foursome whose members don't all resolve to a player row, rather
+    // than computing money/standings against an incomplete handicap set
+    // (mirrors money.ts's missing-member guard — keep the two consistent).
+    if (nameRows.length !== sortedMembers.length) continue;
     const nameById = new Map(nameRows.map((p) => [p.id, p.name]));
     const hiById: Record<string, number> = {};
     for (const p of nameRows) hiById[p.id] = p.hi ?? 0;

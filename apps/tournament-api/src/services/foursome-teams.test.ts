@@ -43,15 +43,37 @@ describe('resolveFoursomeTeams', () => {
     ).toBeNull();
   });
 
-  it('is deterministic when slots collide (tie-break by playerId)', () => {
-    const members = [
-      { playerId: 'b', slotNumber: 1 },
-      { playerId: 'a', slotNumber: 1 },
-      { playerId: 'd', slotNumber: 2 },
-      { playerId: 'c', slotNumber: 2 },
-    ];
-    const teams = resolveFoursomeTeams(members)!;
-    // slot 1: a,b (tie-break); slot 2: c,d → ordered a,b,c,d
-    expect(teams.ordered).toEqual(['a', 'b', 'c', 'd']);
+  it('REFUSES (null) on corrupt slot data rather than guessing wrong teams', () => {
+    // Duplicate slot_number → intended partnerships are unknowable → null, so
+    // the caller skips the foursome (visible "fix the pairing") instead of
+    // computing silently-wrong money.
+    expect(
+      resolveFoursomeTeams([
+        { playerId: 'b', slotNumber: 1 },
+        { playerId: 'a', slotNumber: 1 },
+        { playerId: 'd', slotNumber: 2 },
+        { playerId: 'c', slotNumber: 2 },
+      ]),
+    ).toBeNull();
+    // Duplicate playerId (corrupt member rows) → null too.
+    expect(
+      resolveFoursomeTeams([
+        { playerId: 'a', slotNumber: 1 },
+        { playerId: 'a', slotNumber: 2 },
+        { playerId: 'c', slotNumber: 3 },
+        { playerId: 'd', slotNumber: 4 },
+      ]),
+    ).toBeNull();
+  });
+
+  it('accepts distinct slots that are not exactly 1..4 (lowest-two vs highest-two)', () => {
+    const teams = resolveFoursomeTeams([
+      { playerId: 'p', slotNumber: 2 },
+      { playerId: 'q', slotNumber: 4 },
+      { playerId: 'r', slotNumber: 5 },
+      { playerId: 's', slotNumber: 9 },
+    ])!;
+    expect(teams.teamA).toEqual(['p', 'q']); // slots 2,4
+    expect(teams.teamB).toEqual(['r', 's']); // slots 5,9
   });
 });

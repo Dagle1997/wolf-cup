@@ -28,10 +28,24 @@ export function resolveFoursomeTeams(
   members: FoursomeMemberSlot[],
 ): FoursomeTeams | null {
   if (members.length !== 4) return null;
-  // Order by slot number. Tie-break by playerId so a mis-seeded duplicate slot
-  // is at least deterministic rather than dependent on row-arrival order.
+
+  // REFUSE to guess on corrupt slot data. The pairings UI always writes four
+  // distinct players in distinct slots; if that invariant is broken (duplicate
+  // member rows, or two players sharing a slot_number) we cannot know the
+  // intended partnerships, and forming a team anyway would be silently-wrong
+  // MONEY. Returning null makes the caller skip the foursome — a visible
+  // absence ("fix the pairing") instead of a wrong settle-up. Slot VALUES need
+  // not be exactly 1..4, only distinct: lowest-two vs highest-two preserves the
+  // organizer's intended order either way.
+  const distinctPlayers = new Set(members.map((m) => m.playerId));
+  const distinctSlots = new Set(members.map((m) => m.slotNumber));
+  if (distinctPlayers.size !== 4 || distinctSlots.size !== 4) return null;
+
+  // Order by slot number. Slots are distinct (guarded above), so the comparator
+  // never ties; the bytewise playerId fallback is belt-and-suspenders only and
+  // is deterministic regardless of locale.
   const ordered = [...members].sort(
-    (a, b) => a.slotNumber - b.slotNumber || a.playerId.localeCompare(b.playerId),
+    (a, b) => a.slotNumber - b.slotNumber || (a.playerId < b.playerId ? -1 : a.playerId > b.playerId ? 1 : 0),
   );
   const ids = ordered.map((m) => m.playerId) as [string, string, string, string];
   return {
