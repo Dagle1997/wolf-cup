@@ -360,6 +360,46 @@ describe('POST /api/admin/events', () => {
     expect(res.status).toBe(201);
   });
 
+  it('cross-tenant course_revision_id → 400 unknown_course_revision (existence is tenant-scoped)', async () => {
+    // codex high finding: existence check must be tenant-scoped so a foreign-
+    // tenant revision can't pass existence, have its tees filtered out, and
+    // slip through the tee-less carve-out with an unvalidated cross-tenant id.
+    const sessionId = await seedSession({ isOrganizer: true });
+    await db.insert(courses).values({
+      id: 'c-foreign',
+      name: 'Foreign Course',
+      clubName: 'Foreign Club',
+      createdAt: Date.now(),
+      tenantId: 'other-tenant',
+      contextId: 'library:other-tenant',
+    });
+    await db.insert(courseRevisions).values({
+      id: 'cr-foreign',
+      courseId: 'c-foreign',
+      revisionNumber: 1,
+      outTotal: 36,
+      inTotal: 36,
+      courseTotal: 72,
+      verified: true,
+      createdAt: Date.now(),
+      tenantId: 'other-tenant',
+      contextId: 'library:other-tenant',
+    });
+    const payload = validEventRequest('cr-foreign');
+
+    const res = await testApp.request('/api/admin/events', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; missing: string[] };
+    expect(body.code).toBe('unknown_course_revision');
+    expect(body.missing).toEqual(['cr-foreign']);
+    expect(await db.select().from(events)).toHaveLength(0);
+  });
+
   it('unauthenticated POST → 401 session_missing', async () => {
     await seedCourseRevision();
     const res = await testApp.request('/api/admin/events', {

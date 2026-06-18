@@ -171,10 +171,20 @@ adminEventsRouter.post(
     );
     let existingIds: Set<string>;
     try {
+      // Tenant-scoped existence check. MUST match the tee lookup's tenant
+      // filter below (codex high finding): if existence were tenant-blind
+      // while tees are tenant-scoped, a cross-tenant revision would pass
+      // here, have its tees filtered out, hit the tee-less carve-out, and
+      // persist an unvalidated cross-tenant courseRevisionId.
       const existingRevisions = await db
         .select({ id: courseRevisions.id })
         .from(courseRevisions)
-        .where(inArray(courseRevisions.id, requestedRevisionIds));
+        .where(
+          and(
+            inArray(courseRevisions.id, requestedRevisionIds),
+            eq(courseRevisions.tenantId, TENANT_ID),
+          ),
+        );
       existingIds = new Set(existingRevisions.map((r) => r.id));
     } catch (err) {
       const e = err as { message?: unknown; cause?: unknown } | null;

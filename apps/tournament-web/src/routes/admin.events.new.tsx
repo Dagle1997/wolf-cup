@@ -68,11 +68,13 @@ type CourseListEntry = {
   id: string;
   name: string;
   clubName: string;
+  // /api/courses emits `null` for a course with no revision (courses.ts).
+  // Such a course is not selectable for event creation.
   latestRevision: {
     id: string;
     courseTotal: number;
     tees?: Array<{ color: string; rating: number; slope: number }>;
-  };
+  } | null;
 };
 
 type CourseListResponse = { courses: CourseListEntry[] };
@@ -495,11 +497,15 @@ export function NewEventWizard() {
                       }
                     >
                       <option value="">— pick a course —</option>
-                      {(coursesResponse?.courses ?? []).map((c) => (
-                        <option key={c.latestRevision.id} value={c.latestRevision.id}>
-                          {c.name}
-                        </option>
-                      ))}
+                      {(coursesResponse?.courses ?? [])
+                        // A course with no revision (latestRevision: null) has
+                        // no tees/ratings → not selectable for event creation.
+                        .filter((c) => c.latestRevision !== null)
+                        .map((c) => (
+                          <option key={c.latestRevision!.id} value={c.latestRevision!.id}>
+                            {c.name}
+                          </option>
+                        ))}
                     </select>
                   </td>
                   <td>
@@ -509,9 +515,9 @@ export function NewEventWizard() {
                       // pairings). Dropdown when we know the course's tees;
                       // falls back to free-text if the course list lacks them.
                       const chosen = (coursesResponse?.courses ?? []).find(
-                        (c) => c.latestRevision.id === round.course_revision_id,
+                        (c) => c.latestRevision?.id === round.course_revision_id,
                       );
-                      const tees = chosen?.latestRevision.tees ?? [];
+                      const tees = chosen?.latestRevision?.tees ?? [];
                       if (tees.length > 0) {
                         return (
                           <select
@@ -653,7 +659,7 @@ export function NewEventWizard() {
                 {form.rounds.map((r, i) => {
                   const courseLabel =
                     coursesResponse?.courses.find(
-                      (c) => c.latestRevision.id === r.course_revision_id,
+                      (c) => c.latestRevision?.id === r.course_revision_id,
                     )?.name ?? r.course_revision_id;
                   return (
                     <li key={i}>
