@@ -300,6 +300,66 @@ describe('POST /api/admin/events', () => {
     expect(await db.select().from(events)).toHaveLength(0);
   });
 
+  it('Pre-flight rejection: tee_color not a real tee of the course → 400 unknown_tee_color, no rows written', async () => {
+    // Regression guard: the wizard's free-text tee fallback once persisted a
+    // bogus tee like "1" (no matching course_tees row → broken slope-aware
+    // course handicap → wrong net/money). Creation must now reject it, the
+    // same way the pairings save + edit-round-course PATCH already do.
+    const sessionId = await seedSession({ isOrganizer: true });
+    await seedCourseRevision(); // seeds 'blue' + 'forward' tees on cr1
+    const payload = validEventRequest();
+    payload.rounds[0]!.tee_color = '1'; // not blue/forward
+
+    const res = await testApp.request('/api/admin/events', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; teeColor: string };
+    expect(body.code).toBe('unknown_tee_color');
+    expect(body.teeColor).toBe('1');
+    // Pre-flight fires BEFORE the transaction → no events row.
+    expect(await db.select().from(events)).toHaveLength(0);
+  });
+
+  it('tee-less course revision: any tee_color allowed (can\'t validate) → 201', async () => {
+    // A bare manually-added course with no course_tees rows can't be
+    // validated; creation must keep working (free-text tee path preserved).
+    const sessionId = await seedSession({ isOrganizer: true });
+    await db.insert(courses).values({
+      id: 'c-no-tees',
+      name: 'Bare Course',
+      clubName: 'Bare Club',
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: 'library:guyan',
+    });
+    await db.insert(courseRevisions).values({
+      id: 'cr-no-tees',
+      courseId: 'c-no-tees',
+      revisionNumber: 1,
+      outTotal: 36,
+      inTotal: 36,
+      courseTotal: 72,
+      verified: true,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: 'library:guyan',
+    });
+    const payload = validEventRequest('cr-no-tees');
+    payload.rounds[0]!.tee_color = 'whatever';
+
+    const res = await testApp.request('/api/admin/events', {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    expect(res.status).toBe(201);
+  });
+
   it('unauthenticated POST → 401 session_missing', async () => {
     await seedCourseRevision();
     const res = await testApp.request('/api/admin/events', {

@@ -332,6 +332,14 @@ export function NewEventWizard() {
         });
         return;
       }
+      if (res.status === 400 && code === 'unknown_tee_color') {
+        setSaveState({
+          kind: 'error',
+          userMessage:
+            'A round’s tee isn’t a valid tee for its course. Please go back to step 2 and pick a tee from the dropdown.',
+        });
+        return;
+      }
       if (res.status === 400 && code === 'body_too_large') {
         setSaveState({
           kind: 'error',

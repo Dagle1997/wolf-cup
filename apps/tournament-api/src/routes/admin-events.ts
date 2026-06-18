@@ -203,6 +203,68 @@ adminEventsRouter.post(
       );
     }
 
+    // Pre-flight: every round's tee_color must be a REAL tee of its course
+    // revision. Mirrors the pairings save step-4c validation + the B3
+    // edit-round-course PATCH. Closes a silent-money-bug hole: the wizard's
+    // free-text tee fallback (shown when the course list hasn't loaded its
+    // tees) could persist a bogus tee like "1" that matches no course_tees
+    // row → no rating/slope → broken slope-aware course handicap → wrong
+    // net/money on leaderboard/money/standings. Only enforced for revisions
+    // that actually have tees on file; a tee-less course (bare manual add)
+    // can't be validated, so it keeps today's free-text behavior.
+    try {
+      const teeRows = await db
+        .select({
+          courseRevisionId: courseTees.courseRevisionId,
+          teeColor: courseTees.teeColor,
+        })
+        .from(courseTees)
+        .where(
+          and(
+            inArray(courseTees.courseRevisionId, requestedRevisionIds),
+            eq(courseTees.tenantId, TENANT_ID),
+          ),
+        );
+      const teesByRevision = new Map<string, Set<string>>();
+      for (const t of teeRows) {
+        let set = teesByRevision.get(t.courseRevisionId);
+        if (!set) {
+          set = new Set();
+          teesByRevision.set(t.courseRevisionId, set);
+        }
+        set.add(t.teeColor);
+      }
+      for (const round of body.rounds) {
+        const validTees = teesByRevision.get(round.course_revision_id);
+        if (!validTees || validTees.size === 0) continue; // can't validate
+        if (!validTees.has(round.tee_color)) {
+          return c.json(
+            {
+              error: 'bad_request',
+              code: 'unknown_tee_color',
+              requestId,
+              courseRevisionId: round.course_revision_id,
+              teeColor: round.tee_color,
+            },
+            400,
+          );
+        }
+      }
+    } catch (err) {
+      const e = err as { message?: unknown; cause?: unknown } | null;
+      log.error({
+        event: 'admin_event_create_failed',
+        eventName: body.name,
+        stage: 'preflight_tee_validation',
+        message: e?.message ?? null,
+        cause: e?.cause ? String(e.cause) : null,
+      });
+      return c.json(
+        { error: 'internal', code: 'create_failed', requestId },
+        500,
+      );
+    }
+
     const eventId = randomUUID();
     const contextId = `event:${eventId}`;
     const inviteToken = randomBytes(32).toString('base64url');
