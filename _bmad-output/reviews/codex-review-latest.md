@@ -1,49 +1,56 @@
 # Codex Review
 
-- Generated: 2026-06-18T19:01:40.686Z
+- Generated: 2026-06-19T01:38:48.987Z
 - Model: gpt-5.2
 - Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: apps/tournament-api/src/routes/admin-events.ts, apps/tournament-api/src/routes/courses.ts, apps/tournament-web/src/routes/admin.events.new.tsx
+- Reviewed files: apps/api/src/services/bets.ts, apps/api/src/routes/bets.ts, apps/api/src/routes/admin/bets.ts, apps/api/src/db/schema.ts, apps/web/src/routes/bets.tsx, apps/web/src/routes/admin/bets.tsx
 
 ## Summary
 
-The new pre-flight tee validation closes the reported “bogus tee persisted” hole for the normal wizard flow, but it introduces (or at least solidifies) a serious cross-tenant mismatch: course_revision_id existence is not tenant-scoped while tee lookup is tenant-scoped and the “tee-less carve-out” treats “no tees returned” as “can’t validate”. That combination can bypass tee validation (and allow cross-tenant courseRevisionIds) and can also cause confusing behavior if casing/whitespace differs between stored course_tees.teeColor and the client-submitted tee_color (which is trimmed).
+Core settle logic mostly matches stated semantics (push handling, per-hole netHoles sign, settle-up uses outcome.payout). The biggest real-money risks are around (a) net calculation silently falling back to HI=0 when round_players data is missing, (b) settling with a default tee when round.tee is null/invalid, and (c) missing server-side validation that IDs are valid/positive and belong to the round roster. There’s also a latent multi-tenant/context mixing risk because queries ignore tenantId/contextId despite the schema having them.
 
 Overall risk: high
 
 ## Findings
 
-1. [high] Tenant scoping mismatch can bypass tee validation and allow cross-tenant courseRevisionIds
-   - File: apps/tournament-api/src/routes/admin-events.ts:164-266
+1. [high] Net settlement can be wrong: missing round_players HI silently treated as 0 strokes (not gated)
+   - File: apps/api/src/services/bets.ts:74-104
    - Confidence: high
-   - Why it matters: The course revision existence check is not tenant-scoped (lines 174-178), but the tee lookup is tenant-scoped (lines 215-227) and the validator explicitly skips validation when no tees are found for a revision (line 239). An attacker (or buggy client) can submit a course_revision_id that exists in a different tenant: it will pass the existence check, but tees will be filtered out by tenantId='guyan', causing `validTees` to be undefined and the code to `continue` (line 239), thereby bypassing tee validation entirely. The transaction then persists an event_round with a cross-tenant courseRevisionId (lines 287-300). This can also lead to cross-tenant data exposure later because other queries join courseRevisions/courses without tenant filtering (e.g., admin-context joins at lines 481-488 only filter eventRounds by tenant).
-   - Suggested fix: Make the pre-flight course revision check tenant-scoped (e.g., `where(and(inArray(courseRevisions.id, requestedRevisionIds), eq(courseRevisions.tenantId, TENANT_ID)))`) and treat any non-tenant match as missing/invalid. Consider additionally enforcing that the referenced courseRevisions.courseId (and courses.tenantId) match TENANT_ID. Once revisions are tenant-validated, the tee query’s tenant filter + tee-less carve-out can’t be abused to bypass validation.
+   - Why it matters: computeStrokeTotals builds hiMap from round_players (line 74-78) but then uses `const hi = hiMap.get(s.playerId) ?? 0;` (line 91). If a subject has hole_scores rows but no round_players row (data inconsistency, guest/import issue, or a bet created for a non-roster player), they can reach holesPlayed===18 and the bet will settle with the wrong net (effectively gross, or under-stroked), moving real money incorrectly. This violates the invariant “Net must be IDENTICAL to the leaderboard’s net (per-round HI + tee)” because leaderboard net requires the correct per-round HI.
+   - Suggested fix: Fail closed: if a player has any hole_scores for the round but no round_players.handicap_index, treat totals for that player as incomplete (holesPlayed=0) or return null net so bets stay `live`/error. Also validate on bet creation that subject(s) are in round_players for the round.
 
-2. [medium] Exact-match teeColor comparison can falsely reject legitimate tees due to trimming/case/whitespace normalization mismatches
-   - File: apps/tournament-api/src/routes/admin-events.ts:71-252
-   - Confidence: medium
-   - Why it matters: The request schema trims `tee_color` (line 88), and the web wizard also trims it on submit (apps/tournament-web/src/routes/admin.events.new.tsx:280). The DB values from `course_tees.teeColor` are used as-is in the Set (line 235) and compared with `Set.has()` (line 240), which is case- and whitespace-sensitive. If `course_tees.teeColor` contains leading/trailing whitespace (e.g., from import) or differs by case from what the client submits (especially in the wizard’s free-text fallback), event creation will 400 `unknown_tee_color` even if the tee is “logically” correct. Worse: trimming on submit means a tee that *was* selected from a dropdown that included trailing spaces in its option value could be trimmed into a value that no longer matches the DB row, causing a regression that blocks creation.
-   - Suggested fix: Normalize both sides consistently during validation (e.g., compare `normalize(tee) = tee.trim()` or `tee.trim().toLowerCase()` depending on desired semantics). Alternatively, enforce canonicalization at write/import time for `courseTees.teeColor` so DB values never contain stray whitespace/case variants. If you keep case-sensitive semantics, ensure the client does not trim (or trims exactly as DB does) and add an explicit data cleanup/migration.
-
-3. [medium] “No tees → skip validation” can preserve the original money/handicap bug for incomplete imports and makes behavior inconsistent with pairings tee override validation
-   - File: apps/tournament-api/src/routes/admin-events.ts:206-252
-   - Confidence: medium
-   - Why it matters: The carve-out `if (!validTees || validTees.size === 0) continue;` (line 239) is intended for truly tee-less manual courses, but it will also apply when tees are missing due to data issues (e.g., partial import) or due to the tenant mismatch described above. In those cases, you’ll still persist a tee_color that won’t match any course_tees row, recreating the slope/rating lookup failure you’re trying to prevent. Additionally, the pairings save step-4c does *not* have the same carve-out: if `validTees` is missing, it rejects overrides (lines 875-894, especially 880). So an event round could be created with a free-text tee (allowed), but later per-player overrides become impossible for that round (rejected) — surprising and potentially blocking admin workflows.
-   - Suggested fix: If tee-less courses are a supported concept, consider explicitly detecting them via course revision metadata (or a dedicated flag) rather than inferring from “no course_tees rows returned”. If inference is the only option, consider returning a more explicit error when tees are expected but missing (e.g., based on course type/source) or at least log a warning with revisionId. Align pairings override validation semantics with event-round tee semantics for tee-less courses (either allow free-text overrides for tee-less courses or disallow tee-less rounds entirely).
-
-4. [low] Wizard assumes latestRevision is non-null but /api/courses can return latestRevision: null
-   - File: apps/tournament-web/src/routes/admin.events.new.tsx:67-525
+2. [high] Tee fallback can silently mis-grade net bets when round.tee is null/invalid
+   - File: apps/api/src/services/bets.ts:24-236
    - Confidence: high
-   - Why it matters: The courses API explicitly emits `latestRevision: null` when a course has no revision (apps/tournament-api/src/routes/courses.ts:85-96). The wizard’s types and rendering assume `latestRevision` is always present (e.g., `<option key={c.latestRevision.id} ...>` at lines 498-501), which would throw at runtime if that data anomaly occurs. This can indirectly increase the chance the wizard ends up in a state where tees aren’t loaded and the user uses free-text (the scenario you’re hardening).
-   - Suggested fix: Make the client type reflect `latestRevision: {...} | null` and guard in rendering (skip courses with null latestRevision or show them disabled). Ideally also prevent such courses from being selectable for event creation.
+   - Why it matters: getBetsBoard uses `const tee = (round.tee as Tee | null) ?? DEFAULT_TEE;` with DEFAULT_TEE = "blue" (lines 24, 234-235). If the round’s tee hasn’t been set yet (null) or is an unexpected string, net strokes (and thus winners/payouts) can be computed for the wrong tee. That’s a direct real-money settlement risk, especially on game day if the admin forgot to set tee before scores start.
+   - Suggested fix: Do not default tee for settlement. If round.tee is null/invalid, return board outcomes as `live` (or an explicit error status) and/or require tee be set before allowing bet creation/settlement. Consider validating tee against the Tee union at runtime rather than casting.
+
+3. [medium] Per-hole settlement tolerates missing per-hole scores (continues) instead of failing closed
+   - File: apps/api/src/services/bets.ts:141-164
+   - Confidence: medium
+   - Why it matters: In per_hole settlement, the loop skips holes where either side’s per-hole value is missing: `if (av == null || bv == null) continue;` (line 154). Although you gate on `holesPlayed < 18` (lines 144-145), adversarially this can still undercount holes if data becomes inconsistent (e.g., holesPlayed inflated by non-unique rows in a corrupted DB or future schema changes), leading to a smaller payout and potentially the wrong winner. This is exactly the kind of “partial data but settles anyway” failure that moves real money wrong.
+   - Suggested fix: For per_hole, explicitly require both maps contain all 18 holes (e.g., check `ah.size===18 && bh.size===18` and/or verify each hole 1..18 exists). If any hole is missing for either player, return `live`.
+
+4. [high] Admin bet creation does not validate player IDs are real/positive or in the round roster (can misattribute money)
+   - File: apps/api/src/routes/admin/bets.ts:23-98
+   - Confidence: high
+   - Why it matters: Zod schema allows any int for player IDs (lines 28-33): not `.positive()`, not checked for existence, and not checked that subjects are in the round roster. If SQLite foreign keys are not enforced at runtime (common unless explicitly enabled), it’s possible to create bets referencing non-existent players (e.g., 0/negative) or non-roster players; then settle-up in getBetsBoard will credit/debit those IDs (apps/api/src/services/bets.ts lines 241-246), producing a wrong settle-up sheet. Even with FK enforcement, a malformed request can cause runtime errors and operational disruption on league day.
+   - Suggested fix: Harden createBetSchema: require `.positive()` for all player IDs and roundId; then verify in DB that subject(s) exist AND are in round_players for that round. Also verify stakeholders exist in players. Return 422 on mismatch.
+
+5. [medium] Queries ignore tenantId/contextId despite schema having them (possible cross-tenant data leak + wrong settlement)
+   - File: apps/api/src/services/bets.ts:48-236
+   - Confidence: medium
+   - Why it matters: bets, players, hole_scores, round_players tables all carry tenantId/contextId, but getActiveRound/getBetsBoard/computeStrokeTotals filter only by status/roundId and not by tenant/context (e.g., getBetsBoard line 214-215; computeStrokeTotals lines 74-87). If the DB ever contains multiple tenants/contexts, the public GET /api/bets could mix or reveal other tenants’ bets and/or compute totals from the wrong population, corrupting the settle-up for real money.
+   - Suggested fix: Thread tenantId/contextId through request context (or infer from deployment) and add WHERE clauses on tenantId/contextId consistently for rounds/bets/players/round_players/hole_scores. Add tests that ensure isolation.
 
 ## Strengths
 
-- Validation is performed pre-transaction, so it avoids holding a write transaction open while doing reads (apps/tournament-api/src/routes/admin-events.ts:215-266 vs tx at 274+).
-- The new error code `unknown_tee_color` is wired through to a user-facing wizard message (apps/tournament-web/src/routes/admin.events.new.tsx:335-342), reducing support/debug time.
-- The validation logic mirrors the existing pairings tee validation shape (Map<revisionId, Set<teeColor>>), which reduces the chance of divergent rules over time.
+- Settlement is recomputed from scores (no stored outcome), so score corrections automatically resettle (services/bets.ts).
+- Push semantics are implemented for h2h ties and over/under == line with payout 0 (services/bets.ts lines 134-137, 171-173).
+- Per-hole netHoles sign and payout magnitude align with the stated rules; settle-up aggregation uses outcome.payout (services/bets.ts lines 158-163, 241-246).
+- Admin routes are protected by adminAuthMiddleware for create/delete (routes/admin/bets.ts lines 37, 53, 101).
 
 ## Warnings
 
-- Truncated file content for review: apps/tournament-api/src/routes/admin-events.ts
+- Truncated file content for review: apps/api/src/db/schema.ts

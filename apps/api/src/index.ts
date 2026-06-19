@@ -28,6 +28,8 @@ import galleryRouter from './routes/gallery.js';
 import oddsRouter from './routes/odds.js';
 import ctpEntriesRouter from './routes/ctp-entries.js';
 import scoutingRouter from './routes/scouting.js';
+import betsRouter from './routes/bets.js';
+import adminBetsRouter from './routes/admin/bets.js';
 import cron from 'node-cron';
 import { ghinClient } from './lib/ghin-client.js';
 import { runBackup, backupConfigured } from './lib/backup.js';
@@ -64,6 +66,7 @@ app.route('/api', galleryRouter);
 app.route('/api', oddsRouter);
 app.route('/api', ctpEntriesRouter);
 app.route('/api', scoutingRouter);
+app.route('/api', betsRouter);
 
 // ---------------------------------------------------------------------------
 // Admin routes
@@ -81,6 +84,7 @@ app.route('/api/admin', adminAttendanceRouter);
 app.route('/api/admin/history', adminHistoryRouter);
 app.route('/api/admin', adminBackupRouter);
 app.route('/api/admin', adminTheHouseRouter);
+app.route('/api/admin', adminBetsRouter);
 
 // ---------------------------------------------------------------------------
 // Startup cleanup — delete cancelled casual rounds older than 24 hours

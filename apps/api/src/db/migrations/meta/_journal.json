@@ -218,6 +218,13 @@
       "when": 1781134317871,
       "tag": "0030_odds_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1781832394668,
+      "tag": "0031_skinny_joystick",
+      "breakpoints": true
     }
   ]
 }

@@ -20,6 +20,7 @@ import { Route as HelpRouteImport } from './routes/help'
 import { Route as GuideRouteImport } from './routes/guide'
 import { Route as GalleryRouteImport } from './routes/gallery'
 import { Route as CheatsheetRouteImport } from './routes/cheatsheet'
+import { Route as BetsRouteImport } from './routes/bets'
 import { Route as BallDrawRouteImport } from './routes/ball-draw'
 import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -35,6 +36,7 @@ import { Route as AdminRoundsRouteImport } from './routes/admin/rounds'
 import { Route as AdminRosterRouteImport } from './routes/admin/roster'
 import { Route as AdminPairingAuditRouteImport } from './routes/admin/pairing-audit'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
+import { Route as AdminBetsRouteImport } from './routes/admin/bets'
 
 const StatsRoute = StatsRouteImport.update({
   id: '/stats',
@@ -89,6 +91,11 @@ const GalleryRoute = GalleryRouteImport.update({
 const CheatsheetRoute = CheatsheetRouteImport.update({
   id: '/cheatsheet',
   path: '/cheatsheet',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BetsRoute = BetsRouteImport.update({
+  id: '/bets',
+  path: '/bets',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BallDrawRoute = BallDrawRouteImport.update({
@@ -166,12 +173,18 @@ const AdminLoginRoute = AdminLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminBetsRoute = AdminBetsRouteImport.update({
+  id: '/bets',
+  path: '/bets',
+  getParentRoute: () => AdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
+  '/bets': typeof BetsRoute
   '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
@@ -183,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/score-entry-hole': typeof ScoreEntryHoleRoute
   '/standings': typeof StandingsRoute
   '/stats': typeof StatsRoute
+  '/admin/bets': typeof AdminBetsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/pairing-audit': typeof AdminPairingAuditRoute
   '/admin/roster': typeof AdminRosterRoute
@@ -199,6 +213,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
+  '/bets': typeof BetsRoute
   '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
@@ -210,6 +225,7 @@ export interface FileRoutesByTo {
   '/score-entry-hole': typeof ScoreEntryHoleRoute
   '/standings': typeof StandingsRoute
   '/stats': typeof StatsRoute
+  '/admin/bets': typeof AdminBetsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/pairing-audit': typeof AdminPairingAuditRoute
   '/admin/roster': typeof AdminRosterRoute
@@ -228,6 +244,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
+  '/bets': typeof BetsRoute
   '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
@@ -239,6 +256,7 @@ export interface FileRoutesById {
   '/score-entry-hole': typeof ScoreEntryHoleRoute
   '/standings': typeof StandingsRoute
   '/stats': typeof StatsRoute
+  '/admin/bets': typeof AdminBetsRoute
   '/admin/login': typeof AdminLoginRoute
   '/admin/pairing-audit': typeof AdminPairingAuditRoute
   '/admin/roster': typeof AdminRosterRoute
@@ -258,6 +276,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/attendance'
     | '/ball-draw'
+    | '/bets'
     | '/cheatsheet'
     | '/gallery'
     | '/guide'
@@ -269,6 +288,7 @@ export interface FileRouteTypes {
     | '/score-entry-hole'
     | '/standings'
     | '/stats'
+    | '/admin/bets'
     | '/admin/login'
     | '/admin/pairing-audit'
     | '/admin/roster'
@@ -285,6 +305,7 @@ export interface FileRouteTypes {
     | '/'
     | '/attendance'
     | '/ball-draw'
+    | '/bets'
     | '/cheatsheet'
     | '/gallery'
     | '/guide'
@@ -296,6 +317,7 @@ export interface FileRouteTypes {
     | '/score-entry-hole'
     | '/standings'
     | '/stats'
+    | '/admin/bets'
     | '/admin/login'
     | '/admin/pairing-audit'
     | '/admin/roster'
@@ -313,6 +335,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/attendance'
     | '/ball-draw'
+    | '/bets'
     | '/cheatsheet'
     | '/gallery'
     | '/guide'
@@ -324,6 +347,7 @@ export interface FileRouteTypes {
     | '/score-entry-hole'
     | '/standings'
     | '/stats'
+    | '/admin/bets'
     | '/admin/login'
     | '/admin/pairing-audit'
     | '/admin/roster'
@@ -342,6 +366,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AttendanceRoute: typeof AttendanceRoute
   BallDrawRoute: typeof BallDrawRoute
+  BetsRoute: typeof BetsRoute
   CheatsheetRoute: typeof CheatsheetRoute
   GalleryRoute: typeof GalleryRoute
   GuideRoute: typeof GuideRoute
@@ -435,6 +460,13 @@ declare module '@tanstack/react-router' {
       path: '/cheatsheet'
       fullPath: '/cheatsheet'
       preLoaderRoute: typeof CheatsheetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bets': {
+      id: '/bets'
+      path: '/bets'
+      fullPath: '/bets'
+      preLoaderRoute: typeof BetsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ball-draw': {
@@ -542,10 +574,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/bets': {
+      id: '/admin/bets'
+      path: '/bets'
+      fullPath: '/admin/bets'
+      preLoaderRoute: typeof AdminBetsRouteImport
+      parentRoute: typeof AdminRoute
+    }
   }
 }
 
 interface AdminRouteChildren {
+  AdminBetsRoute: typeof AdminBetsRoute
   AdminLoginRoute: typeof AdminLoginRoute
   AdminPairingAuditRoute: typeof AdminPairingAuditRoute
   AdminRosterRoute: typeof AdminRosterRoute
@@ -557,6 +597,7 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminBetsRoute: AdminBetsRoute,
   AdminLoginRoute: AdminLoginRoute,
   AdminPairingAuditRoute: AdminPairingAuditRoute,
   AdminRosterRoute: AdminRosterRoute,
@@ -574,6 +615,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   AttendanceRoute: AttendanceRoute,
   BallDrawRoute: BallDrawRoute,
+  BetsRoute: BetsRoute,
   CheatsheetRoute: CheatsheetRoute,
   GalleryRoute: GalleryRoute,
   GuideRoute: GuideRoute,

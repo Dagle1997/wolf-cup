@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Users, CalendarDays, Trophy, FilePenLine, KeyRound, LogOut, Loader2, Check, CalendarClock, FileDown, Landmark, GitCompareArrows } from 'lucide-react';
+import { Users, CalendarDays, Trophy, FilePenLine, KeyRound, LogOut, Loader2, Check, CalendarClock, FileDown, Landmark, GitCompareArrows, Dice5 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch } from '@/lib/api';
 
@@ -147,6 +147,12 @@ const NAV_CARDS = [
     icon: Landmark,
     title: 'The House',
     description: 'Weekly scouting-line P&L + calibration (hidden from the public page)',
+  },
+  {
+    to: '/admin/bets' as const,
+    icon: Dice5,
+    title: 'Bets',
+    description: "Set this week's side action — auto-settles from scores",
   },
 ];
 

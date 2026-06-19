@@ -759,3 +759,54 @@ export const sentEmails = sqliteTable(
     sentAtIdx: index("idx_sent_emails_sent_at").on(t.sentAt),
   }),
 );
+
+// ---------------------------------------------------------------------------
+// bets  (side-action bet tracker — admin-entered v1, identity-ready)
+//
+// A bet has a PROPOSITION (subjects whose round SCORES settle it) and two
+// STAKEHOLDERS (who has cash on each side). Stakeholders are independent of the
+// subjects — e.g. Kyle (stakeholder) can back "Teddy beats Jaquint" without
+// being either player. Every party is a player_id so per-person identity drops
+// in later with no migration; v1 only an admin can create them.
+//
+// Side semantics by bet_type:
+//   h2h        — side A = subject_a wins (lower score by basis), side B = subject_b wins; equal = push
+//   over_under — side A = UNDER (subject_a's score < line), side B = OVER (> line); equal = push
+// Outcome is NOT stored — it's recomputed from the round's scores (pure), so a
+// score correction re-settles automatically.
+// ---------------------------------------------------------------------------
+export const bets = sqliteTable(
+  "bets",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    roundId: integer("round_id")
+      .notNull()
+      .references(() => rounds.id),
+    betType: text("bet_type").notNull(), // 'h2h' | 'over_under'
+    basis: text("basis").notNull().default("net"), // 'net' | 'gross'
+    amountDollars: integer("amount_dollars").notNull(), // whole dollars (matches money_total)
+    // Proposition — the player(s) whose 18-hole score decides it.
+    subjectAPlayerId: integer("subject_a_player_id")
+      .notNull()
+      .references(() => players.id), // h2h: player A; over_under: the subject
+    subjectBPlayerId: integer("subject_b_player_id").references(() => players.id), // h2h: player B; over_under: null
+    line: integer("line"), // over_under: the number (e.g. 90); h2h: null
+    // Stakeholders — who has money on each side (identity-ready player refs).
+    sideAPlayerId: integer("side_a_player_id")
+      .notNull()
+      .references(() => players.id), // backs side A ("A wins" / "under")
+    sideBPlayerId: integer("side_b_player_id")
+      .notNull()
+      .references(() => players.id), // backs side B ("B wins" / "over")
+    note: text("note"),
+    createdByAdminId: integer("created_by_admin_id"),
+    createdAt: integer("created_at").notNull(),
+    contextId: text("context_id")
+      .notNull()
+      .default("league:guyan-wolf-cup-friday"),
+    tenantId: text("tenant_id").notNull().default("guyan"),
+  },
+  (t) => ({
+    roundIdx: index("idx_bets_round_id").on(t.roundId),
+  }),
+);

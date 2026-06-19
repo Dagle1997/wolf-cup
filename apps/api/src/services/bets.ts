@@ -1,0 +1,297 @@
+/**
+ * Side-action bet tracker — settle engine + board builder.
+ *
+ * Bets auto-settle from the round's scores (pure, recomputed every read — a
+ * score correction re-settles automatically). Net is computed the SAME way the
+ * leaderboard does it (slope-aware `getHandicapStrokes` off the per-round
+ * `round_players.handicap_index` + `round.tee`) — never re-derive net by hand
+ * (the recurring `Math.round(HI)` bug family).
+ *
+ * Side semantics:
+ *   h2h        — side A = subject_a wins (LOWER score by basis), side B = subject_b wins; equal = push
+ *   over_under — side A = UNDER (subject_a's score < line), side B = OVER (> line); equal = push
+ *
+ * A bet only DECLARES a winner once every subject has a complete 18; until then
+ * it's `live`. v1 is admin-entered; every party is a player_id so per-person
+ * identity layers on later with no migration.
+ */
+import { desc, eq, inArray, or } from "drizzle-orm";
+import { getCourseHole, getHandicapStrokes } from "@wolf-cup/engine";
+import type { Tee, HoleNumber } from "@wolf-cup/engine";
+import { db } from "../db/index.js";
+import { bets, rounds, roundPlayers, holeScores, players } from "../db/schema.js";
+
+const DEFAULT_TEE: Tee = "blue";
+
+export type StrokeTotals = {
+  gross18: number;
+  net18: number;
+  holesPlayed: number;
+  /** Per-hole gross / net (holeNumber → value) — for per-hole match-play bets. */
+  perHoleGross: Map<number, number>;
+  perHoleNet: Map<number, number>;
+  /**
+   * NET is only trustworthy when the round's tee is known AND this player has a
+   * round handicap. If either is missing we can compute gross but NOT a
+   * defensible net — net bets then stay `live` (fail closed) rather than
+   * auto-paying on a guessed handicap. Gross bets are always reliable.
+   */
+  netReliable: boolean;
+};
+
+export type ActiveRound = {
+  id: number;
+  status: string;
+  tee: string | null;
+  scheduledDate: string;
+};
+
+/**
+ * The round the public board is pointed at: an ACTIVE official wins over a
+ * future SCHEDULED one; before game day a scheduled official still shows.
+ * Mirrors the leaderboard's resolution.
+ */
+export async function getActiveRound(): Promise<ActiveRound | null> {
+  const candidates = await db
+    .select({
+      id: rounds.id,
+      type: rounds.type,
+      status: rounds.status,
+      tee: rounds.tee,
+      scheduledDate: rounds.scheduledDate,
+    })
+    .from(rounds)
+    .where(or(eq(rounds.status, "active"), eq(rounds.status, "scheduled")))
+    .orderBy(desc(rounds.id))
+    .all();
+  const r =
+    candidates.find((c) => c.type === "official" && c.status === "active") ??
+    candidates.find((c) => c.type === "official") ??
+    candidates.find((c) => c.status === "active") ??
+    candidates[0] ??
+    null;
+  return r ? { id: r.id, status: r.status, tee: r.tee, scheduledDate: r.scheduledDate } : null;
+}
+
+/** Per-player gross18 / net18 / holesPlayed for a round (leaderboard-identical net). */
+export async function computeStrokeTotals(
+  roundId: number,
+  tee: Tee | null,
+): Promise<Map<number, StrokeTotals>> {
+  const teeKnown = tee === "black" || tee === "blue" || tee === "white";
+  const effTee: Tee = teeKnown ? tee! : DEFAULT_TEE; // compute-with-default but flag net unreliable
+
+  const rp = await db
+    .select({ playerId: roundPlayers.playerId, hi: roundPlayers.handicapIndex })
+    .from(roundPlayers)
+    .where(eq(roundPlayers.roundId, roundId));
+  const hiMap = new Map(rp.map((r) => [r.playerId, r.hi]));
+
+  const scores = await db
+    .select({
+      playerId: holeScores.playerId,
+      holeNumber: holeScores.holeNumber,
+      grossScore: holeScores.grossScore,
+    })
+    .from(holeScores)
+    .where(eq(holeScores.roundId, roundId));
+
+  const totals = new Map<number, StrokeTotals>();
+  for (const s of scores) {
+    const hiKnown = hiMap.has(s.playerId);
+    const hi = hiMap.get(s.playerId) ?? 0;
+    const courseHole = getCourseHole(s.holeNumber as HoleNumber);
+    const strokes = getHandicapStrokes(hi, courseHole.strokeIndex, effTee);
+    const t =
+      totals.get(s.playerId) ??
+      ({
+        gross18: 0,
+        net18: 0,
+        holesPlayed: 0,
+        perHoleGross: new Map(),
+        perHoleNet: new Map(),
+        netReliable: teeKnown && hiKnown,
+      } as StrokeTotals);
+    const net = s.grossScore - strokes;
+    t.gross18 += s.grossScore;
+    t.net18 += net;
+    t.holesPlayed += 1;
+    t.perHoleGross.set(s.holeNumber, s.grossScore);
+    t.perHoleNet.set(s.holeNumber, net);
+    totals.set(s.playerId, t);
+  }
+  return totals;
+}
+
+export type BetRow = typeof bets.$inferSelect;
+
+export type BetOutcome = {
+  status: "live" | "settled" | "push";
+  /** 'A' | 'B' when settled — which SIDE won (side_a / side_b stakeholder). */
+  winningSide: "A" | "B" | null;
+  /** Dollars the winning side collects from the losing side (0 if live/push). */
+  payout: number;
+  /** h2h/over_under: subjects' 18 totals under this bet's basis (null until complete). */
+  subjectAScore: number | null;
+  subjectBScore: number | null;
+  /** per_hole only: holes each subject won outright. */
+  holesWon: { a: number; b: number } | null;
+};
+
+/** Pure: settle one bet against the round's stroke totals. */
+export function settleBet(bet: BetRow, totals: Map<number, StrokeTotals>): BetOutcome {
+  const a = totals.get(bet.subjectAPlayerId);
+  // NET bets only grade when the net is trustworthy (tee + handicap known);
+  // otherwise stay live (fail closed). Gross is always gradeable.
+  const scoreFor = (t: StrokeTotals | undefined): number | null =>
+    !t || t.holesPlayed < 18 || (bet.basis === "net" && !t.netReliable)
+      ? null
+      : bet.basis === "gross"
+        ? t.gross18
+        : t.net18;
+  const sa = scoreFor(a);
+
+  if (bet.betType === "over_under") {
+    if (sa == null || bet.line == null) {
+      return { status: "live", winningSide: null, payout: 0, subjectAScore: sa, subjectBScore: null, holesWon: null };
+    }
+    if (sa < bet.line) return { status: "settled", winningSide: "A", payout: bet.amountDollars, subjectAScore: sa, subjectBScore: null, holesWon: null }; // under
+    if (sa > bet.line) return { status: "settled", winningSide: "B", payout: bet.amountDollars, subjectAScore: sa, subjectBScore: null, holesWon: null }; // over
+    return { status: "push", winningSide: null, payout: 0, subjectAScore: sa, subjectBScore: null, holesWon: null };
+  }
+
+  const b = bet.subjectBPlayerId != null ? totals.get(bet.subjectBPlayerId) : undefined;
+
+  if (bet.betType === "per_hole") {
+    // Match-play: each hole both played, lower (net or gross) wins it. Money =
+    // |holesA − holesB| × amountDollars (the per-HOLE stake).
+    if (
+      !a ||
+      !b ||
+      a.holesPlayed < 18 ||
+      b.holesPlayed < 18 ||
+      (bet.basis === "net" && (!a.netReliable || !b.netReliable))
+    ) {
+      return { status: "live", winningSide: null, payout: 0, subjectAScore: null, subjectBScore: null, holesWon: null };
+    }
+    const ah = bet.basis === "gross" ? a.perHoleGross : a.perHoleNet;
+    const bh = bet.basis === "gross" ? b.perHoleGross : b.perHoleNet;
+    let won = 0;
+    let lost = 0;
+    for (let h = 1; h <= 18; h++) {
+      const av = ah.get(h);
+      const bv = bh.get(h);
+      if (av == null || bv == null) continue;
+      if (av < bv) won++;
+      else if (av > bv) lost++;
+    }
+    const netHoles = won - lost;
+    const payout = Math.abs(netHoles) * bet.amountDollars;
+    const holesWon = { a: won, b: lost };
+    if (netHoles > 0) return { status: "settled", winningSide: "A", payout, subjectAScore: null, subjectBScore: null, holesWon };
+    if (netHoles < 0) return { status: "settled", winningSide: "B", payout, subjectAScore: null, subjectBScore: null, holesWon };
+    return { status: "push", winningSide: null, payout: 0, subjectAScore: null, subjectBScore: null, holesWon };
+  }
+
+  // h2h — lower 18 total wins.
+  const sb = scoreFor(b);
+  if (sa == null || sb == null) {
+    return { status: "live", winningSide: null, payout: 0, subjectAScore: sa, subjectBScore: sb, holesWon: null };
+  }
+  if (sa < sb) return { status: "settled", winningSide: "A", payout: bet.amountDollars, subjectAScore: sa, subjectBScore: sb, holesWon: null }; // A lower wins
+  if (sa > sb) return { status: "settled", winningSide: "B", payout: bet.amountDollars, subjectAScore: sa, subjectBScore: sb, holesWon: null };
+  return { status: "push", winningSide: null, payout: 0, subjectAScore: sa, subjectBScore: sb, holesWon: null };
+}
+
+export type BoardBet = {
+  id: number;
+  betType: "h2h" | "over_under" | "per_hole";
+  basis: "net" | "gross";
+  amountDollars: number;
+  line: number | null;
+  note: string | null;
+  subjectA: { id: number; name: string };
+  subjectB: { id: number; name: string } | null;
+  sideA: { id: number; name: string }; // backs side A
+  sideB: { id: number; name: string }; // backs side B
+  outcome: BetOutcome;
+};
+
+export type BetsBoard = {
+  round: { id: number; status: string; scheduledDate: string } | null;
+  bets: BoardBet[];
+  /** Per-stakeholder net for the week (+ ahead / − owes). Settled bets only. */
+  settleUp: Array<{ playerId: number; name: string; net: number }>;
+};
+
+/** Build the full board for a round (defaults to the active round). */
+export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
+  let round: { id: number; status: string; tee: string | null; scheduledDate: string } | null;
+  if (roundId != null) {
+    const r = (
+      await db
+        .select({ id: rounds.id, status: rounds.status, tee: rounds.tee, scheduledDate: rounds.scheduledDate })
+        .from(rounds)
+        .where(eq(rounds.id, roundId))
+        .limit(1)
+    )[0];
+    round = r ?? null;
+  } else {
+    round = await getActiveRound();
+  }
+  if (!round) return { round: null, bets: [], settleUp: [] };
+
+  const betRows = await db.select().from(bets).where(eq(bets.roundId, round.id)).orderBy(bets.id);
+  if (betRows.length === 0) {
+    return { round: { id: round.id, status: round.status, scheduledDate: round.scheduledDate }, bets: [], settleUp: [] };
+  }
+
+  // Names for every player referenced by any bet.
+  const ids = new Set<number>();
+  for (const b of betRows) {
+    ids.add(b.subjectAPlayerId);
+    if (b.subjectBPlayerId != null) ids.add(b.subjectBPlayerId);
+    ids.add(b.sideAPlayerId);
+    ids.add(b.sideBPlayerId);
+  }
+  const nameRows = await db
+    .select({ id: players.id, name: players.name })
+    .from(players)
+    .where(inArray(players.id, [...ids]));
+  const nameOf = new Map(nameRows.map((p) => [p.id, p.name]));
+  const who = (id: number) => ({ id, name: nameOf.get(id) ?? `#${id}` });
+
+  const totals = await computeStrokeTotals(round.id, round.tee as Tee | null);
+
+  const board: BoardBet[] = [];
+  const net = new Map<number, number>(); // stakeholder → running net
+  for (const b of betRows) {
+    const outcome = settleBet(b, totals);
+    if (outcome.status === "settled") {
+      const winnerId = outcome.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId;
+      const loserId = outcome.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId;
+      // payout is the actual money (flat for h2h/o-u; netHoles × stake for per_hole).
+      net.set(winnerId, (net.get(winnerId) ?? 0) + outcome.payout);
+      net.set(loserId, (net.get(loserId) ?? 0) - outcome.payout);
+    }
+    board.push({
+      id: b.id,
+      betType: b.betType as "h2h" | "over_under" | "per_hole",
+      basis: b.basis as "net" | "gross",
+      amountDollars: b.amountDollars,
+      line: b.line,
+      note: b.note,
+      subjectA: who(b.subjectAPlayerId),
+      subjectB: b.subjectBPlayerId != null ? who(b.subjectBPlayerId) : null,
+      sideA: who(b.sideAPlayerId),
+      sideB: who(b.sideBPlayerId),
+      outcome,
+    });
+  }
+
+  const settleUp = [...net.entries()]
+    .map(([playerId, n]) => ({ playerId, name: nameOf.get(playerId) ?? `#${playerId}`, net: n }))
+    .sort((a, b) => b.net - a.net);
+
+  return { round: { id: round.id, status: round.status, scheduledDate: round.scheduledDate }, bets: board, settleUp };
+}

@@ -808,6 +808,12 @@ function LeaderboardTable({
         >
           🔎 Scouting
         </button>
+        <Link
+          to="/bets"
+          className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          🎲 The Action
+        </Link>
       </div>
       {showScouting ? (
         <ScoutingPanel roundId={roundId} />
