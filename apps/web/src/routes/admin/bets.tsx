@@ -90,10 +90,12 @@ function AdminBetsPage() {
 
   const create = useMutation({
     mutationFn: async () => {
-      // odds_win stakeholders are always explicit (the bettor backs the player,
-      // the layer takes the other side); never "the players themselves".
-      const sA = isOddsWin || !sameStakeholders ? sideA : subjectA;
-      const sB = isOddsWin || !sameStakeholders ? sideB : needsSubjectB ? subjectB : '';
+      // Sides are explicit (manual pickers) for odds_win, over_under (one subject
+      // can't be both stakeholders), and whenever "players themselves" is off.
+      // Only h2h/per_hole with sameStakeholders default the sides to the subjects.
+      const useManualSides = isOddsWin || needsLine || !sameStakeholders;
+      const sA = useManualSides ? sideA : subjectA;
+      const sB = useManualSides ? sideB : subjectB;
       const body: Record<string, unknown> = {
         betType,
         basis,
@@ -244,6 +246,7 @@ function AdminBetsPage() {
                       <span className="font-semibold">{pulledOdds > 0 ? `+${pulledOdds}` : pulledOdds}</span>
                     )}
                   </div>
+                  <span className="text-[10px] text-muted-foreground">locks from The Line at save</span>
                 </label>
               ) : (
                 <label className="block text-xs">
