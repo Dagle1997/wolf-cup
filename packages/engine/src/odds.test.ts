@@ -159,6 +159,68 @@ describe('computeOddsLine — favorite emerges + members only', () => {
     // favorite (top of each ordering) must agree
     expect(bootstrapOrder[0]).toBe(independent[0]);
   });
+
+  it('exposes three outcomes per line; perfect-day prob ≤ min(stableford, money) prob', () => {
+    const r = computeOddsLine(base(field));
+    if (r.gated) throw new Error('gated');
+    for (const l of r.lines) {
+      const { stableford, money, perfectDay } = l.outcomes;
+      // a perfect day (own BOTH titles, no ties) is a subset of owning each title alone
+      expect(perfectDay.prob).toBeLessThanOrEqual(stableford.prob + 1e-9);
+      expect(perfectDay.prob).toBeLessThanOrEqual(money.prob + 1e-9);
+      for (const o of [stableford, money, perfectDay]) {
+        expect(o.prob).toBeGreaterThanOrEqual(0);
+        expect(o.prob).toBeLessThanOrEqual(1);
+        // a positive-prob outcome must carry a price; a zero/under-sampled one is null
+        if (o.american !== null) expect(o.prob).toBeGreaterThan(0);
+      }
+    }
+    // each metric's win probabilities across the field sum to ≈1 (someone wins each title)
+    const stabSum = r.lines.reduce((a, l) => a + l.outcomes.stableford.prob, 0);
+    const moneySum = r.lines.reduce((a, l) => a + l.outcomes.money.prob, 0);
+    expect(stabSum).toBeCloseTo(1, 1);
+    expect(moneySum).toBeCloseTo(1, 1);
+  });
+
+  // The combined postedAmerican is what The House grades against — adding the three
+  // display markets must NOT perturb it. Lock the bytes for a fixed field + seed.
+  it('REGRESSION: combined postedAmerican is byte-stable (House anchor)', () => {
+    const r = computeOddsLine(base(field));
+    if (r.gated) throw new Error('gated');
+    const posted = r.lines.map((l) => [l.playerId, l.postedAmerican] as const);
+    expect(posted).toEqual([
+      [1, -175],
+      [3, 195],
+      [4, 880],
+      [2, 880],
+    ]);
+  });
+
+  // The three markets infer "#1 in Stableford / money" from Harvey RANK points.
+  // rankScores is a strictly monotone-by-score transform (multiplier=1, bonus=0 in
+  // the sim), so argmax(rankPoints) == argmax(raw) and ties map to equal points.
+  // Prove that equivalence directly so the proxy can't silently drift.
+  it('Harvey rank-points argmax == raw #1 (the market-detection proxy)', () => {
+    const raw = [
+      { stableford: 31, money: 5 },
+      { stableford: 44, money: -2 }, // best stableford
+      { stableford: 30, money: 18 }, // best money
+      { stableford: 30, money: 18 }, // tie for best money with #3
+    ];
+    const pts = calculateHarveyPoints(raw, 'regular', 0);
+    const argmax = (sel: (p: { stablefordPoints: number; moneyPoints: number }) => number) => {
+      let best = -Infinity;
+      const winners: number[] = [];
+      pts.forEach((p, i) => {
+        const v = sel(p);
+        if (v > best) { best = v; winners.length = 0; winners.push(i); }
+        else if (v === best) winners.push(i);
+      });
+      return winners;
+    };
+    expect(argmax((p) => p.stablefordPoints)).toEqual([1]); // sole stableford #1
+    expect(argmax((p) => p.moneyPoints)).toEqual([2, 3]); // tie → equal points, both detected
+  });
 });
 
 describe('computeOddsLine — shrinkage + no false favorite', () => {

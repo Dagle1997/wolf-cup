@@ -27,12 +27,18 @@ type ScoutGroup = {
 };
 
 type OddsTier = 'favorite' | 'live' | 'longshot' | 'unpriced';
+type OddsOutcome = { prob: number; american: number | null };
 type OddsLine = {
   playerId: number;
   name: string;
   fairProb: number;
   postedAmerican: number | null;
   impliedProb: number;
+  outcomes: {
+    stableford: OddsOutcome;
+    money: OddsOutcome;
+    perfectDay: OddsOutcome;
+  };
   tier: OddsTier;
   confidence: { rounds: number; level: 'low' | 'medium' | 'high' };
   drivers: {
@@ -91,15 +97,6 @@ const fmtDate = (d: string) => {
   const [, m, day] = d.split('-');
   return m && day ? `${Number(m)}/${Number(day)}` : d;
 };
-const tierLabel: Record<OddsTier, string> = { favorite: 'Favorite', live: 'Live', longshot: 'Longshot', unpriced: 'Thin sample' };
-const chipClass = (tier: OddsTier) =>
-  tier === 'favorite'
-    ? 'text-emerald-700 bg-emerald-50'
-    : tier === 'longshot'
-      ? 'text-muted-foreground bg-muted'
-      : tier === 'unpriced'
-        ? 'text-muted-foreground'
-        : 'text-foreground bg-muted/60';
 
 /** Compact stat lines for a player, most-interesting first. */
 function statLines(p: ScoutPlayer): string[] {
@@ -179,27 +176,44 @@ function PlayerRow({ p }: { p: ScoutPlayer }) {
 function LineRow({ line }: { line: OddsLine }) {
   const [open, setOpen] = useState(false);
   const why = oddsWhy(line);
+  const o = line.outcomes;
   return (
-    <div className="border-b last:border-0">
-      <button
-        type="button"
+    <>
+      <tr
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/40 text-sm"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpen((v) => !v);
+          }
+        }}
+        tabIndex={0}
+        role="button"
+        aria-expanded={open}
+        aria-label={`${line.name} — odds; ${open ? 'collapse' : 'expand'} the why`}
+        className="border-b last:border-0 cursor-pointer hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-        <span className="font-medium">{line.name}</span>
-        <span className="text-[10px] text-muted-foreground">{tierLabel[line.tier]}</span>
-        <span className={`ml-auto w-14 text-right font-semibold tabular-nums rounded px-1 ${chipClass(line.tier)}`}>{fmtAmerican(line.postedAmerican)}</span>
-      </button>
+        <td className="sticky left-0 z-10 bg-card px-3 py-1.5 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1">
+            {open ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+            <span className="font-medium text-sm">{line.name}</span>
+          </span>
+        </td>
+        <td className="px-2 py-1.5 text-right tabular-nums text-sm">{fmtAmerican(o.stableford.american)}</td>
+        <td className="px-2 py-1.5 text-right tabular-nums text-sm">{fmtAmerican(o.money.american)}</td>
+        <td className="px-3 py-1.5 text-right tabular-nums text-sm font-bold">{fmtAmerican(o.perfectDay.american)}</td>
+      </tr>
       {open && (
-        <div className="px-3 pb-2 pl-8 text-xs">
-          {line.postedAmerican !== null && (
-            <p className="text-muted-foreground mb-1">{(line.fairProb * 100).toFixed(1)}% to win the week · confidence {line.confidence.level}</p>
-          )}
-          {why && <p className="text-foreground/80 italic leading-snug">📊 {why}</p>}
-        </div>
+        <tr className="border-b last:border-0">
+          <td colSpan={4} className="px-3 pb-2 pl-8 text-xs bg-muted/20">
+            <p className="text-muted-foreground mb-1 tabular-nums">
+              wins Stableford {(o.stableford.prob * 100).toFixed(0)}% · wins money {(o.money.prob * 100).toFixed(0)}% · perfect day {(o.perfectDay.prob * 100).toFixed(1)}% · confidence {line.confidence.level}
+            </p>
+            {why && <p className="text-foreground/80 italic leading-snug">📊 {why}</p>}
+          </td>
+        </tr>
       )}
-    </div>
+    </>
   );
 }
 
@@ -212,31 +226,31 @@ function TheLine({ odds }: { odds: Odds }) {
       </div>
     );
   }
-  if (odds.wideOpen) {
-    return (
-      <div className="rounded-xl border overflow-hidden shadow-sm">
-        <div className="bg-muted/60 px-3 py-2 border-b font-semibold text-sm">🌀 Wide-open week</div>
-        <p className="px-3 py-2 text-xs text-muted-foreground">
-          Nobody has separated from the pack — handicaps have everyone bunched. Any of these could take it.
-        </p>
-        <div className="px-3 pb-2 flex flex-wrap gap-1.5">
-          {odds.lines.map((l) => (
-            <span key={l.playerId} className="text-xs rounded px-1.5 py-0.5 bg-muted tabular-nums">
-              {l.name} {fmtAmerican(l.postedAmerican)}
-            </span>
-          ))}
-        </div>
-      </div>
-    );
-  }
   return (
     <div className="rounded-xl border overflow-hidden shadow-sm">
       <div className="bg-muted/60 px-3 py-2 border-b">
-        <p className="font-semibold text-sm">📊 The Line — to win the week</p>
-        <p className="text-[10px] text-muted-foreground">most Harvey points · house holds ~{(odds.effectiveHold * 100).toFixed(0)}% · for fun · tap a name for the why</p>
+        <p className="font-semibold text-sm">📊 The Line</p>
+        <p className="text-[10px] text-muted-foreground">house holds ~{(odds.effectiveHold * 100).toFixed(0)}% · for fun · swipe ➜ for more · tap a name for the why</p>
       </div>
-      <div>
-        {odds.lines.map((l) => <LineRow key={l.playerId} line={l} />)}
+      {odds.wideOpen && (
+        <p className="px-3 py-2 text-xs text-muted-foreground border-b bg-muted/20">
+          🌀 Wide-open week — nobody has separated from the pack, handicaps have everyone bunched. Any of these could take it.
+        </p>
+      )}
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="The Line odds board">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b bg-muted text-[10px] uppercase tracking-wide text-muted-foreground">
+              <th className="sticky left-0 z-10 bg-muted px-3 py-1.5 text-left font-semibold">Player</th>
+              <th className="px-2 py-1.5 text-right font-semibold whitespace-nowrap">Wins Stbl. #1</th>
+              <th className="px-2 py-1.5 text-right font-semibold whitespace-nowrap">Wins $ #1</th>
+              <th className="px-3 py-1.5 text-right font-semibold whitespace-nowrap">Perfect Day</th>
+            </tr>
+          </thead>
+          <tbody>
+            {odds.lines.map((l) => <LineRow key={l.playerId} line={l} />)}
+          </tbody>
+        </table>
       </div>
     </div>
   );

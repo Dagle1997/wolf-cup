@@ -98,12 +98,30 @@ export interface ComputeOddsInput {
 
 export type OddsTier = 'favorite' | 'live' | 'longshot' | 'unpriced';
 
+/** One priced market outcome: fair probability + posted American odds. */
+export interface OddsOutcome {
+  readonly prob: number;
+  readonly american: number | null; // null when under-sampled ("—")
+}
+
 export interface OddsLine {
   readonly playerId: number;
-  /** True win probability (sums to ≈1 across members). The % shown to users on expand. */
+  /** True win probability for the COMBINED Harvey total (sums to ≈1 across members).
+   * Retained as the anchor The House grades against; the UI shows `outcomes` instead. */
   readonly fairProb: number;
-  /** Posted American odds (vig'd, rounded, capped). null when the member is under-sampled ("—"). */
+  /** Posted American odds for the combined-win (vig'd, rounded, capped). null when under-sampled. */
   readonly postedAmerican: number | null;
+  /**
+   * The three displayed markets, each priced independently from the SAME sims:
+   *  - stableford: P(this member finishes #1 in Stableford points)
+   *  - money:      P(this member finishes #1 in money)
+   *  - perfectDay: P(SOLE #1 in BOTH — no ties in either metric)
+   */
+  readonly outcomes: {
+    readonly stableford: OddsOutcome;
+    readonly money: OddsOutcome;
+    readonly perfectDay: OddsOutcome;
+  };
   /** Posted implied probability = fairProb × OVERROUND (sums to ≈OVERROUND). */
   readonly impliedProb: number;
   readonly tier: OddsTier;
@@ -253,8 +271,16 @@ export function computeOddsLine(input: ComputeOddsInput): OddsResult {
   //    at multiplier=1/bonus=0) HarveySumViolationError can't take the whole read
   //    down — a failed sim is simply skipped (F13).
   const rng = mulberry32(seed);
-  const wins = new Map<number, number>();
-  for (const m of members) wins.set(m.playerId, 0);
+  const wins = new Map<number, number>(); // combined Harvey total (The House anchor)
+  const stabWins = new Map<number, number>(); // #1 in stableford
+  const moneyWins = new Map<number, number>(); // #1 in money
+  const perfectDayWins = new Map<number, number>(); // sole #1 in BOTH (no ties)
+  for (const m of members) {
+    wins.set(m.playerId, 0);
+    stabWins.set(m.playerId, 0);
+    moneyWins.set(m.playerId, 0);
+    perfectDayWins.set(m.playerId, 0);
+  }
   const memberIdx = field.map((f, i) => (f.isSub ? -1 : i)).filter((i) => i >= 0);
 
   const simInputs: HarveyRoundInput[] = field.map(() => ({ stableford: 0, money: 0 }));
@@ -285,6 +311,31 @@ export function computeOddsLine(input: ComputeOddsInput): OddsResult {
     }
     const share = 1 / winners.length;
     for (const pid of winners) wins.set(pid, (wins.get(pid) ?? 0) + share);
+
+    // Independent #1 in stableford / money + the perfect day (sole #1 in both).
+    let maxStab = -Infinity;
+    let maxMoney = -Infinity;
+    for (const i of memberIdx) {
+      const sp = Math.round(points[i]!.stablefordPoints * 2);
+      const mp = Math.round(points[i]!.moneyPoints * 2);
+      if (sp > maxStab) maxStab = sp;
+      if (mp > maxMoney) maxMoney = mp;
+    }
+    const stabW: number[] = [];
+    const moneyW: number[] = [];
+    for (const i of memberIdx) {
+      if (Math.round(points[i]!.stablefordPoints * 2) === maxStab) stabW.push(field[i]!.playerId);
+      if (Math.round(points[i]!.moneyPoints * 2) === maxMoney) moneyW.push(field[i]!.playerId);
+    }
+    const stabShare = 1 / stabW.length;
+    for (const pid of stabW) stabWins.set(pid, (stabWins.get(pid) ?? 0) + stabShare);
+    const moneyShare = 1 / moneyW.length;
+    for (const pid of moneyW) moneyWins.set(pid, (moneyWins.get(pid) ?? 0) + moneyShare);
+    // Perfect Day: a SOLE stableford leader who is ALSO the sole money leader.
+    if (stabW.length === 1 && moneyW.length === 1 && stabW[0] === moneyW[0]) {
+      const pid = stabW[0]!;
+      perfectDayWins.set(pid, (perfectDayWins.get(pid) ?? 0) + 1);
+    }
     validSims += 1;
   }
 
@@ -292,11 +343,19 @@ export function computeOddsLine(input: ComputeOddsInput): OddsResult {
     return { gated: true, reason: 'odds open in a few weeks' };
   }
 
-  // 5. fairProb per member.
+  // 5. fairProb per member (combined anchor + the three displayed markets).
   const M = members.length;
   const u = 1 / M;
   const fairByPlayer = new Map<number, number>();
-  for (const m of members) fairByPlayer.set(m.playerId, (wins.get(m.playerId) ?? 0) / validSims);
+  const stabProb = new Map<number, number>();
+  const moneyProb = new Map<number, number>();
+  const perfectProb = new Map<number, number>();
+  for (const m of members) {
+    fairByPlayer.set(m.playerId, (wins.get(m.playerId) ?? 0) / validSims);
+    stabProb.set(m.playerId, (stabWins.get(m.playerId) ?? 0) / validSims);
+    moneyProb.set(m.playerId, (moneyWins.get(m.playerId) ?? 0) / validSims);
+    perfectProb.set(m.playerId, (perfectDayWins.get(m.playerId) ?? 0) / validSims);
+  }
 
   // "Why" drivers: each member's mean Stableford/money over their own prior rounds,
   // plus their rank among members (1 = best). This is the plain-language story
@@ -336,8 +395,20 @@ export function computeOddsLine(input: ComputeOddsInput): OddsResult {
     } else {
       tier = 'live';
     }
+    // Price a market: vig the fair prob, cap + round. No price when under-sampled
+    // or the event never happened in sim (prob 0 → "—", not a bogus longshot).
+    const price = (p: number): number | null =>
+      underSampled || p <= 0 ? null : probToAmerican(p * C.OVERROUND, C.LONGSHOT_CAP, C.FAVORITE_CAP);
+    const sp = stabProb.get(m.playerId) ?? 0;
+    const mp = moneyProb.get(m.playerId) ?? 0;
+    const pp = perfectProb.get(m.playerId) ?? 0;
     return {
       playerId: m.playerId, fairProb, postedAmerican, impliedProb, tier,
+      outcomes: {
+        stableford: { prob: sp, american: price(sp) },
+        money: { prob: mp, american: price(mp) },
+        perfectDay: { prob: pp, american: price(pp) },
+      },
       confidence: { rounds, level },
       drivers: {
         rounds,
