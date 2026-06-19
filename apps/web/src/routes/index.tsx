@@ -694,7 +694,8 @@ function LeaderboardTable({
   const [expandedPlayerIds, setExpandedPlayerIds] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<'all' | 'group'>('all');
   const [sortMode, setSortMode] = useState<SortMode>(() => readSortPref());
-  const [showScouting, setShowScouting] = useState(false);
+  const { scouting: scoutingParam } = Route.useSearch();
+  const [showScouting, setShowScouting] = useState(scoutingParam === true);
   const colCount = data.harveyLiveEnabled ? 6 : 5;
 
   // Persist sort preference (without overwriting on render-time fallback)
@@ -1310,5 +1311,11 @@ function LeaderboardPage() {
 }
 
 export const Route = createFileRoute('/')({
+  // `?scouting=1` opens the board with the scouting panel already showing — so
+  // "Back" from The Action returns you to scouting (where you came from).
+  validateSearch: (search: Record<string, unknown>): { scouting?: true } => {
+    const s = search['scouting'];
+    return s === true || s === 'true' || s === 1 || s === '1' ? { scouting: true } : {};
+  },
   component: LeaderboardPage,
 });

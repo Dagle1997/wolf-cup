@@ -121,10 +121,11 @@ function BetsPage() {
       <div className="mb-4">
         <Link
           to="/"
+          search={{ scouting: true }}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
         >
           <ChevronLeft className="h-3 w-3" />
-          Board
+          Scouting
         </Link>
         <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
           <Dice5 className="h-5 w-5" />
