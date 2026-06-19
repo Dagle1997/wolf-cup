@@ -37,6 +37,7 @@ const createBetSchema = z.object({
 app.get("/bets", adminAuthMiddleware, async (c) => {
   const board = await getBetsBoard();
   const round = await getActiveRound();
+  // roster = the round's players (valid SUBJECTS — they need scores to settle).
   let roster: Array<{ id: number; name: string }> = [];
   if (round) {
     roster = await db
@@ -46,7 +47,14 @@ app.get("/bets", adminAuthMiddleware, async (c) => {
       .where(eq(roundPlayers.roundId, round.id))
       .orderBy(players.name);
   }
-  return c.json({ ...board, roster });
+  // allPlayers = every active league member (valid STAKEHOLDERS — a better like
+  // Kyle who isn't playing this week can still back a side).
+  const allPlayers = await db
+    .select({ id: players.id, name: players.name })
+    .from(players)
+    .where(eq(players.isActive, 1))
+    .orderBy(players.name);
+  return c.json({ ...board, roster, allPlayers });
 });
 
 // POST — create a bet.

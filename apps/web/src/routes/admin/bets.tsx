@@ -20,7 +20,8 @@ type Bet = {
 type AdminBoard = {
   round: { id: number; status: string; scheduledDate: string } | null;
   bets: Bet[];
-  roster: Person[];
+  roster: Person[]; // valid SUBJECTS (in the round → have scores)
+  allPlayers: Person[]; // valid STAKEHOLDERS (any active league member)
 };
 
 type BetType = 'h2h' | 'over_under' | 'per_hole';
@@ -58,7 +59,8 @@ function AdminBetsPage() {
   const [sideB, setSideB] = useState('');
   const [note, setNote] = useState('');
 
-  const roster = q.data?.roster ?? [];
+  const roster = q.data?.roster ?? []; // subjects (in the round)
+  const allPlayers = q.data?.allPlayers ?? roster; // stakeholders (any league member)
   const needsSubjectB = betType === 'h2h' || betType === 'per_hole';
   const needsLine = betType === 'over_under';
 
@@ -113,7 +115,7 @@ function AdminBetsPage() {
     (sameStakeholders ? (!ouNeedsManualSides || (sideA && sideB)) : sideA && sideB) &&
     !create.isPending;
 
-  const nameOf = (id: number) => roster.find((p) => p.id === id)?.name ?? `#${id}`;
+  const nameOf = (id: number) => allPlayers.find((p) => p.id === id)?.name ?? `#${id}`;
 
   function describe(b: Bet): string {
     if (b.betType === 'over_under') return `${b.subjectA.name} O/U ${b.line} · ${b.basis}`;
@@ -210,14 +212,14 @@ function AdminBetsPage() {
                   <span className="text-muted-foreground">{needsLine ? 'Backs UNDER' : 'Backs A'}</span>
                   <select className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" value={sideA} onChange={(e) => setSideA(e.target.value)}>
                     <option value="">—</option>
-                    {roster.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {allPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </label>
                 <label className="block text-xs">
                   <span className="text-muted-foreground">{needsLine ? 'Backs OVER' : 'Backs B'}</span>
                   <select className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" value={sideB} onChange={(e) => setSideB(e.target.value)}>
                     <option value="">—</option>
-                    {roster.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {allPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </label>
               </div>
