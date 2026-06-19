@@ -175,6 +175,27 @@ export async function computeRoundOddsLine(
   return { odds, nameOf, targetRoster, seasonRoundIds };
 }
 
+/**
+ * The current Line price (American odds) a player carries for one of the three
+ * markets, used to LOCK an odds_win bet at bet-creation time. Returns null when
+ * the line is gated or the player is under-sampled ("—") — caller must refuse to
+ * book the bet rather than invent a price.
+ */
+export async function lookupMarketOdds(
+  roundId: number,
+  playerId: number,
+  market: "stableford" | "money" | "perfect_day",
+): Promise<number | null> {
+  const res = await computeRoundOddsLine(roundId);
+  if (!res || res.odds.gated) return null;
+  const line = res.odds.lines.find((l) => l.playerId === playerId);
+  if (!line) return null;
+  const o = line.outcomes;
+  const american =
+    market === "stableford" ? o.stableford.american : market === "money" ? o.money.american : o.perfectDay.american;
+  return american;
+}
+
 /** Read the frozen snapshot (if any) for a round. Null when none stored. */
 export async function getStoredOddsLine(
   roundId: number,

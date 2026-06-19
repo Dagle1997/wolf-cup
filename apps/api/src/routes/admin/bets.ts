@@ -17,6 +17,7 @@ import { bets, roundPlayers, players } from "../../db/schema.js";
 import { adminAuthMiddleware } from "../../middleware/admin-auth.js";
 import type { Variables } from "../../types.js";
 import { getActiveRound, getBetsBoard } from "../../services/bets.js";
+import { lookupMarketOdds, computeRoundOddsLine } from "../../lib/odds-line.js";
 
 const app = new Hono<{ Variables: Variables }>();
 
@@ -28,10 +29,9 @@ const createBetSchema = z.object({
   subjectAPlayerId: z.number().int().positive(),
   subjectBPlayerId: z.number().int().positive().nullable().optional(),
   line: z.number().int().nullable().optional(),
-  // odds_win only:
+  // odds_win only: the market. The PRICE is pulled from The Line server-side (never
+  // client-supplied) so the locked odds always match the generated line.
   oddsMarket: z.enum(["stableford", "money", "perfect_day"]).optional(),
-  // American odds: magnitude always ≥ 100 (e.g. +1650, -200). Reject the no-man's-land (-99..99).
-  odds: z.number().int().refine((n) => Math.abs(n) >= 100, "american_odds_min_100").optional(),
   sideAPlayerId: z.number().int().positive(),
   sideBPlayerId: z.number().int().positive(),
   note: z.string().max(200).optional(),
@@ -58,7 +58,22 @@ app.get("/bets", adminAuthMiddleware, async (c) => {
     .from(players)
     .where(eq(players.isActive, 1))
     .orderBy(players.name);
-  return c.json({ ...board, roster, allPlayers });
+
+  // The current Line price per player per market — so the odds_win form can SHOW
+  // the locked odds (read-only; the POST re-derives the same value server-side).
+  let oddsLines: Array<{ playerId: number; stableford: number | null; money: number | null; perfectDay: number | null }> = [];
+  if (round) {
+    const res = await computeRoundOddsLine(round.id);
+    if (res && !res.odds.gated) {
+      oddsLines = res.odds.lines.map((l) => ({
+        playerId: l.playerId,
+        stableford: l.outcomes.stableford.american,
+        money: l.outcomes.money.american,
+        perfectDay: l.outcomes.perfectDay.american,
+      }));
+    }
+  }
+  return c.json({ ...board, roster, allPlayers, oddsLines });
 });
 
 // POST — create a bet.
@@ -83,9 +98,9 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
   } else if (d.betType === "over_under") {
     if (d.line == null) return c.json({ error: "over_under_needs_line" }, 400);
   } else {
-    // odds_win — one subject (the player bet to win), a market, and a locked price.
+    // odds_win — one subject (the player bet to win) + a market. Price comes from
+    // The Line below (after we know roundId), not from the client.
     if (d.oddsMarket == null) return c.json({ error: "odds_win_needs_market" }, 400);
-    if (d.odds == null) return c.json({ error: "odds_win_needs_odds" }, 400);
   }
   if (d.sideAPlayerId === d.sideBPlayerId) {
     return c.json({ error: "stakeholders_must_differ" }, 400);
@@ -117,6 +132,14 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
     return c.json({ error: "stakeholder_not_a_player" }, 400);
   }
 
+  // odds_win: LOCK the price from The Line right now (never trust a client value).
+  // No priceable line for this player (gated / under-sampled) → refuse to book.
+  let lockedOdds: number | null = null;
+  if (d.betType === "odds_win") {
+    lockedOdds = await lookupMarketOdds(roundId, d.subjectAPlayerId, d.oddsMarket!);
+    if (lockedOdds == null) return c.json({ error: "no_line_for_player" }, 422);
+  }
+
   const adminId = c.get("adminId");
   const [row] = await db
     .insert(bets)
@@ -129,7 +152,7 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
       subjectBPlayerId: d.betType === "h2h" || d.betType === "per_hole" ? d.subjectBPlayerId! : null,
       line: d.betType === "over_under" ? d.line! : null,
       oddsMarket: d.betType === "odds_win" ? d.oddsMarket! : null,
-      odds: d.betType === "odds_win" ? d.odds! : null,
+      odds: lockedOdds,
       sideAPlayerId: d.sideAPlayerId,
       sideBPlayerId: d.sideBPlayerId,
       note: d.note ?? null,

@@ -20,11 +20,13 @@ type Bet = {
   sideA: Person;
   sideB: Person;
 };
+type OddsLine = { playerId: number; stableford: number | null; money: number | null; perfectDay: number | null };
 type AdminBoard = {
   round: { id: number; status: string; scheduledDate: string } | null;
   bets: Bet[];
   roster: Person[]; // valid SUBJECTS (in the round → have scores)
   allPlayers: Person[]; // valid STAKEHOLDERS (any active league member)
+  oddsLines: OddsLine[]; // current Line price per player per market
 };
 
 type BetType = 'h2h' | 'over_under' | 'per_hole' | 'odds_win';
@@ -64,7 +66,6 @@ function AdminBetsPage() {
   const [subjectB, setSubjectB] = useState('');
   const [line, setLine] = useState('');
   const [oddsMarket, setOddsMarket] = useState<OddsMarket>('perfect_day');
-  const [odds, setOdds] = useState('');
   const [amount, setAmount] = useState('');
   const [sameStakeholders, setSameStakeholders] = useState(true);
   const [sideA, setSideA] = useState('');
@@ -73,9 +74,19 @@ function AdminBetsPage() {
 
   const roster = q.data?.roster ?? []; // subjects (in the round)
   const allPlayers = q.data?.allPlayers ?? roster; // stakeholders (any league member)
+  const oddsLines = q.data?.oddsLines ?? [];
   const needsSubjectB = betType === 'h2h' || betType === 'per_hole';
   const needsLine = betType === 'over_under';
   const isOddsWin = betType === 'odds_win';
+
+  // odds_win price comes straight from The Line for the picked player + market
+  // (never typed). null = the player isn't priceable yet (gated / thin sample).
+  const pulledOdds: number | null = (() => {
+    if (!isOddsWin || !subjectA) return null;
+    const line = oddsLines.find((l) => l.playerId === Number(subjectA));
+    if (!line) return null;
+    return oddsMarket === 'stableford' ? line.stableford : oddsMarket === 'money' ? line.money : line.perfectDay;
+  })();
 
   const create = useMutation({
     mutationFn: async () => {
@@ -94,10 +105,7 @@ function AdminBetsPage() {
       };
       if (needsSubjectB) body['subjectBPlayerId'] = Number(subjectB);
       if (needsLine) body['line'] = Number(line);
-      if (isOddsWin) {
-        body['oddsMarket'] = oddsMarket;
-        body['odds'] = Number(odds);
-      }
+      if (isOddsWin) body['oddsMarket'] = oddsMarket; // price is locked from The Line server-side
       return apiFetch<{ id: number }>('/admin/bets', { method: 'POST', body: JSON.stringify(body) });
     },
     onSuccess: () => {
@@ -106,7 +114,6 @@ function AdminBetsPage() {
       setSubjectA('');
       setSubjectB('');
       setLine('');
-      setOdds('');
       setAmount('');
       setSideA('');
       setSideB('');
@@ -128,7 +135,8 @@ function AdminBetsPage() {
   const ouNeedsManualSides = sameStakeholders && needsLine;
   const manualSides = isOddsWin || !sameStakeholders || ouNeedsManualSides;
 
-  const oddsValid = !isOddsWin || (odds !== '' && Math.abs(Number(odds)) >= 100);
+  // odds_win is only valid once The Line has a price for the picked player + market.
+  const oddsValid = !isOddsWin || pulledOdds !== null;
   const canSubmit =
     subjectA &&
     (!needsSubjectB || subjectB) &&
@@ -226,17 +234,16 @@ function AdminBetsPage() {
             <div className="grid grid-cols-2 gap-3">
               {isOddsWin ? (
                 <label className="block text-xs">
-                  <span className="text-muted-foreground">Odds (American, e.g. +1650)</span>
-                  <input
-                    type="number"
-                    placeholder="+1650"
-                    className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                    value={odds}
-                    onChange={(e) => setOdds(e.target.value)}
-                  />
-                  {odds !== '' && Math.abs(Number(odds)) < 100 && (
-                    <span className="text-[10px] text-red-500">American odds are ±100 or more</span>
-                  )}
+                  <span className="text-muted-foreground">Odds (from The Line)</span>
+                  <div className="mt-1 w-full rounded-lg border bg-muted/40 px-3 py-2 text-sm tabular-nums">
+                    {!subjectA ? (
+                      <span className="text-muted-foreground">pick a player</span>
+                    ) : pulledOdds === null ? (
+                      <span className="text-amber-600">no line yet</span>
+                    ) : (
+                      <span className="font-semibold">{pulledOdds > 0 ? `+${pulledOdds}` : pulledOdds}</span>
+                    )}
+                  </div>
                 </label>
               ) : (
                 <label className="block text-xs">
