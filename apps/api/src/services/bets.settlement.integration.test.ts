@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import { vi, describe, it, expect, beforeAll } from "vitest";
+import type { BetsBoard } from "./bets.js";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
 import { migrate } from "drizzle-orm/libsql/migrator";
@@ -86,49 +87,67 @@ beforeAll(async () => {
   ]);
 });
 
+// Exactly-one bet matching (subjectA, market) — asserts the selector is unambiguous
+// so an assertion can never silently grade the wrong row.
+const pick = (board: BetsBoard, subjId: number, market: string) => {
+  const matches = board.bets.filter((b) => b.subjectA.id === subjId && b.oddsMarket === market);
+  expect(matches).toHaveLength(1);
+  return matches[0]!;
+};
+
 describe("odds_win settlement — finalize→settle (real money path)", () => {
+  // Runs FIRST (declared before the finalized block), so the round is still active.
   it("rides LIVE while the round is active (day-winner not yet authoritative)", async () => {
     const board = await getBetsBoard(R);
+    expect(board.round?.status).toBe("active");
     expect(board.bets).toHaveLength(3);
     expect(board.bets.every((b) => b.outcome.status === "live")).toBe(true);
     expect(board.settleUp).toHaveLength(0); // nothing settled yet
   });
 
-  it("settles every bet correctly once the round is finalized", async () => {
-    await db.update(rounds).set({ status: "finalized" }).where(eq(rounds.id, R));
-    const board = await getBetsBoard(R);
-    const byBettor = (subjId: number, market: string) =>
-      board.bets.find((b) => b.subjectA.id === subjId && b.oddsMarket === market)!;
+  describe("once the round is finalized", () => {
+    // A hook (not a prior `it`) does the finalize, so these tests don't depend on
+    // run order beyond the live test above having read the active round first.
+    beforeAll(async () => {
+      await db.update(rounds).set({ status: "finalized" }).where(eq(rounds.id, R));
+    });
 
-    // 1) perfect day on P1 → bettor (Alice) collects the +1650 profit.
-    const perfect = byBettor(P1, "perfect_day");
-    expect(perfect.outcome.status).toBe("settled");
-    expect(perfect.outcome.winningSide).toBe("A");
-    expect(perfect.outcome.payout).toBe(1650);
+    it("settles every bet correctly once the round is finalized", async () => {
+      const board = await getBetsBoard(R);
+      expect(board.round?.status).toBe("finalized");
 
-    // 2) P2 to win money → MISS (P1 won it) → layer (Bob) collects the $50 stake.
-    const money = byBettor(P2, "money");
-    expect(money.outcome.winningSide).toBe("B");
-    expect(money.outcome.payout).toBe(50);
+      // 1) perfect day on P1 → bettor (Alice) collects the +1650 profit.
+      const perfect = pick(board, P1, "perfect_day");
+      expect(perfect.outcome.status).toBe("settled");
+      expect(perfect.outcome.winningSide).toBe("A");
+      expect(perfect.outcome.payout).toBe(1650);
 
-    // 3) vs The House on P1 Stableford → HIT → Carl +200; sideB is The House (null).
-    const house = byBettor(P1, "stableford");
-    expect(house.outcome.winningSide).toBe("A");
-    expect(house.outcome.payout).toBe(200);
-    expect(house.sideB).toBeNull();
-  });
+      // 2) P2 to win money → MISS (P1 won it) → layer (Bob) collects the $50 STAKE
+      //    (not a profit — would fail if the code paid americanProfit on a miss).
+      const money = pick(board, P2, "money");
+      expect(money.outcome.winningSide).toBe("B");
+      expect(money.outcome.payout).toBe(50);
 
-  it("rolls up the right settle-up — and the House makes it intentionally non-zero-sum", async () => {
-    const board = await getBetsBoard(R);
-    const net = new Map(board.settleUp.map((s) => [s.playerId, s.net]));
-    expect(net.get(ALICE)).toBe(1650 - 50); // +1600 (won perfect day, lost the money bet)
-    expect(net.get(BOB)).toBe(-1650 + 50); // -1600
-    expect(net.get(CARL)).toBe(200); // beat the House
-    // The House is the book, not a player → never on settle-up.
-    expect(net.has(-1)).toBe(false);
-    expect(board.settleUp.some((s) => s.name === "The House")).toBe(false);
-    // Player ledger sums to the House's loss (+200), NOT zero — by design.
-    const sum = board.settleUp.reduce((a, s) => a + s.net, 0);
-    expect(sum).toBe(200);
+      // 3) vs The House on P1 Stableford → HIT → Carl +200; sideB is The House (null).
+      const house = pick(board, P1, "stableford");
+      expect(house.outcome.winningSide).toBe("A");
+      expect(house.outcome.payout).toBe(200);
+      expect(house.sideB).toBeNull();
+    });
+
+    it("rolls up the right settle-up — and the House makes it intentionally non-zero-sum", async () => {
+      const board = await getBetsBoard(R);
+      expect(board.round?.status).toBe("finalized");
+      const net = new Map(board.settleUp.map((s) => [s.playerId, s.net]));
+      expect(net.get(ALICE)).toBe(1650 - 50); // +1600 (won perfect day, lost the money bet)
+      expect(net.get(BOB)).toBe(-1650 + 50); // -1600
+      expect(net.get(CARL)).toBe(200); // beat the House
+      // The House is the book, not a player → never on settle-up.
+      expect(net.has(-1)).toBe(false);
+      expect(board.settleUp.some((s) => s.name === "The House")).toBe(false);
+      // Player ledger sums to the House's loss (+200), NOT zero — by design.
+      const sum = board.settleUp.reduce((a, s) => a + s.net, 0);
+      expect(sum).toBe(200);
+    });
   });
 });
