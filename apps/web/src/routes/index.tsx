@@ -702,6 +702,12 @@ function LeaderboardTable({
   const showScouting = scoutingParam === true;
   const toggleScouting = () =>
     void navigate({ to: '/', search: showScouting ? {} : { scouting: true } });
+  // The sort + All/Group controls are leaderboard controls, so using one while
+  // scouting is open returns you to the board (re-sorting a hidden table felt
+  // like the buttons did nothing).
+  const closeScouting = () => {
+    if (showScouting) void navigate({ to: '/', search: {} });
+  };
   const colCount = data.harveyLiveEnabled ? 6 : 5;
 
   // Persist sort preference (without overwriting on render-time fallback)
@@ -764,7 +770,10 @@ function LeaderboardTable({
           <div className="inline-flex rounded-full border bg-muted/40 p-0.5 text-xs font-semibold">
             <button
               type="button"
-              onClick={() => setViewMode('all')}
+              onClick={() => {
+                setViewMode('all');
+                closeScouting();
+              }}
               className={`px-3 py-1 rounded-full transition-colors ${
                 viewMode === 'all'
                   ? 'bg-background text-foreground shadow-sm'
@@ -776,7 +785,10 @@ function LeaderboardTable({
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('group')}
+              onClick={() => {
+                setViewMode('group');
+                closeScouting();
+              }}
               className={`px-3 py-1 rounded-full transition-colors ${
                 viewMode === 'group'
                   ? 'bg-background text-foreground shadow-sm'
@@ -793,7 +805,10 @@ function LeaderboardTable({
             <button
               key={opt.mode}
               type="button"
-              onClick={() => setSortMode(opt.mode)}
+              onClick={() => {
+                setSortMode(opt.mode);
+                closeScouting();
+              }}
               className={`px-3 py-1 rounded-full transition-colors ${
                 effectiveSortMode === opt.mode
                   ? 'bg-background text-foreground shadow-sm'
