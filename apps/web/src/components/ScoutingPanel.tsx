@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Dice5 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 type Trend = { direction: 'up' | 'down' | 'flat'; delta: number; sample: number };
@@ -324,6 +325,19 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
 
       {/* 📊 The Line */}
       <TheLine odds={data.odds} />
+
+      {/* 🎲 The Action — the side-bet board lives under scouting (keeps the main leaderboard clean) */}
+      <Link
+        to="/bets"
+        className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm hover:bg-muted/40 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <Dice5 className="h-4 w-4 text-muted-foreground" />
+          <span className="font-semibold text-sm">The Action</span>
+          <span className="text-[11px] text-muted-foreground">— this week's side bets</span>
+        </span>
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </Link>
 
       {data.groups.length === 0 ? (
         <div className="rounded-xl border p-6 text-center text-sm text-muted-foreground">No scouting data yet — groups or 2026 rounds aren't set.</div>

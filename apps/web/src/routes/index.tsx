@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, Fragment } from 'react';
 import { RefreshCw, AlertCircle, Loader2, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
@@ -694,8 +694,14 @@ function LeaderboardTable({
   const [expandedPlayerIds, setExpandedPlayerIds] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<'all' | 'group'>('all');
   const [sortMode, setSortMode] = useState<SortMode>(() => readSortPref());
+  // Scouting visibility is URL-driven (?scouting=1) so the bottom-nav "Board"
+  // tap (which clears search) always returns to the clean leaderboard, and the
+  // back-link from The Action lands you back in scouting where you came from.
+  const navigate = useNavigate();
   const { scouting: scoutingParam } = Route.useSearch();
-  const [showScouting, setShowScouting] = useState(scoutingParam === true);
+  const showScouting = scoutingParam === true;
+  const toggleScouting = () =>
+    void navigate({ to: '/', search: showScouting ? {} : { scouting: true } });
   const colCount = data.harveyLiveEnabled ? 6 : 5;
 
   // Persist sort preference (without overwriting on render-time fallback)
@@ -801,7 +807,7 @@ function LeaderboardTable({
         </div>
         <button
           type="button"
-          onClick={() => setShowScouting((v) => !v)}
+          onClick={toggleScouting}
           className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
             showScouting ? 'bg-background text-foreground shadow-sm' : 'bg-muted/40 text-muted-foreground hover:text-foreground'
           }`}
@@ -809,12 +815,6 @@ function LeaderboardTable({
         >
           🔎 Scouting
         </button>
-        <Link
-          to="/bets"
-          className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold bg-muted/40 text-muted-foreground hover:text-foreground transition-colors"
-        >
-          🎲 The Action
-        </Link>
       </div>
       {showScouting ? (
         <ScoutingPanel roundId={roundId} />
