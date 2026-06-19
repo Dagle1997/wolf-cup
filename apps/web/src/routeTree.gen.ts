@@ -29,6 +29,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as StandingsHistoryRouteImport } from './routes/standings_.history'
 import { Route as RoundRoundIdRouteImport } from './routes/round.$roundId'
 import { Route as PairingsRoundIdRouteImport } from './routes/pairings.$roundId'
+import { Route as BetsHistoryRouteImport } from './routes/bets.history'
 import { Route as AdminTheHouseRouteImport } from './routes/admin/the-house'
 import { Route as AdminSeasonRouteImport } from './routes/admin/season'
 import { Route as AdminScoreCorrectionsRouteImport } from './routes/admin/score-corrections'
@@ -138,6 +139,11 @@ const PairingsRoundIdRoute = PairingsRoundIdRouteImport.update({
   path: '/pairings/$roundId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BetsHistoryRoute = BetsHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => BetsRoute,
+} as any)
 const AdminTheHouseRoute = AdminTheHouseRouteImport.update({
   id: '/the-house',
   path: '/the-house',
@@ -184,7 +190,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
-  '/bets': typeof BetsRoute
+  '/bets': typeof BetsRouteWithChildren
   '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
@@ -204,6 +210,7 @@ export interface FileRoutesByFullPath {
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
   '/admin/season': typeof AdminSeasonRoute
   '/admin/the-house': typeof AdminTheHouseRoute
+  '/bets/history': typeof BetsHistoryRoute
   '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
   '/standings/history': typeof StandingsHistoryRoute
@@ -213,7 +220,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
-  '/bets': typeof BetsRoute
+  '/bets': typeof BetsRouteWithChildren
   '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
@@ -233,6 +240,7 @@ export interface FileRoutesByTo {
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
   '/admin/season': typeof AdminSeasonRoute
   '/admin/the-house': typeof AdminTheHouseRoute
+  '/bets/history': typeof BetsHistoryRoute
   '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
   '/standings/history': typeof StandingsHistoryRoute
@@ -244,7 +252,7 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/attendance': typeof AttendanceRoute
   '/ball-draw': typeof BallDrawRoute
-  '/bets': typeof BetsRoute
+  '/bets': typeof BetsRouteWithChildren
   '/cheatsheet': typeof CheatsheetRoute
   '/gallery': typeof GalleryRoute
   '/guide': typeof GuideRoute
@@ -264,6 +272,7 @@ export interface FileRoutesById {
   '/admin/score-corrections': typeof AdminScoreCorrectionsRoute
   '/admin/season': typeof AdminSeasonRoute
   '/admin/the-house': typeof AdminTheHouseRoute
+  '/bets/history': typeof BetsHistoryRoute
   '/pairings/$roundId': typeof PairingsRoundIdRoute
   '/round/$roundId': typeof RoundRoundIdRoute
   '/standings_/history': typeof StandingsHistoryRoute
@@ -296,6 +305,7 @@ export interface FileRouteTypes {
     | '/admin/score-corrections'
     | '/admin/season'
     | '/admin/the-house'
+    | '/bets/history'
     | '/pairings/$roundId'
     | '/round/$roundId'
     | '/standings/history'
@@ -325,6 +335,7 @@ export interface FileRouteTypes {
     | '/admin/score-corrections'
     | '/admin/season'
     | '/admin/the-house'
+    | '/bets/history'
     | '/pairings/$roundId'
     | '/round/$roundId'
     | '/standings/history'
@@ -355,6 +366,7 @@ export interface FileRouteTypes {
     | '/admin/score-corrections'
     | '/admin/season'
     | '/admin/the-house'
+    | '/bets/history'
     | '/pairings/$roundId'
     | '/round/$roundId'
     | '/standings_/history'
@@ -366,7 +378,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AttendanceRoute: typeof AttendanceRoute
   BallDrawRoute: typeof BallDrawRoute
-  BetsRoute: typeof BetsRoute
+  BetsRoute: typeof BetsRouteWithChildren
   CheatsheetRoute: typeof CheatsheetRoute
   GalleryRoute: typeof GalleryRoute
   GuideRoute: typeof GuideRoute
@@ -525,6 +537,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PairingsRoundIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/bets/history': {
+      id: '/bets/history'
+      path: '/history'
+      fullPath: '/bets/history'
+      preLoaderRoute: typeof BetsHistoryRouteImport
+      parentRoute: typeof BetsRoute
+    }
     '/admin/the-house': {
       id: '/admin/the-house'
       path: '/the-house'
@@ -610,12 +629,22 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface BetsRouteChildren {
+  BetsHistoryRoute: typeof BetsHistoryRoute
+}
+
+const BetsRouteChildren: BetsRouteChildren = {
+  BetsHistoryRoute: BetsHistoryRoute,
+}
+
+const BetsRouteWithChildren = BetsRoute._addFileChildren(BetsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
   AttendanceRoute: AttendanceRoute,
   BallDrawRoute: BallDrawRoute,
-  BetsRoute: BetsRoute,
+  BetsRoute: BetsRouteWithChildren,
   CheatsheetRoute: CheatsheetRoute,
   GalleryRoute: GalleryRoute,
   GuideRoute: GuideRoute,

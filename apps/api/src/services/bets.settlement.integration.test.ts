@@ -28,7 +28,7 @@ vi.mock("../db/index.js", async () => {
 
 import { db } from "../db/index.js";
 import { eq } from "drizzle-orm";
-import { getBetsBoard } from "./bets.js";
+import { getBetsBoard, getSeasonBetHistory } from "./bets.js";
 import { seasons, players, rounds, groups, roundPlayers, roundResults, bets } from "../db/schema.js";
 
 const now = 1_700_000_000_000;
@@ -103,6 +103,12 @@ describe("odds_win settlement — finalize→settle (real money path)", () => {
     expect(board.bets).toHaveLength(3);
     expect(board.bets.every((b) => b.outcome.status === "live")).toBe(true);
     expect(board.settleUp).toHaveLength(0); // nothing settled yet
+
+    // Season record: all 3 bets pending (round not terminal), no one recorded yet.
+    const history = await getSeasonBetHistory();
+    expect(history.season?.id).toBe(1);
+    expect(history.pendingCount).toBe(3);
+    expect(history.people).toHaveLength(0);
   });
 
   describe("once the round is finalized", () => {
@@ -148,6 +154,20 @@ describe("odds_win settlement — finalize→settle (real money path)", () => {
       // Player ledger sums to the House's loss (+200), NOT zero — by design.
       const sum = board.settleUp.reduce((a, s) => a + s.net, 0);
       expect(sum).toBe(200);
+    });
+
+    it("season record aggregates the same nets (current season, House excluded)", async () => {
+      const history = await getSeasonBetHistory();
+      expect(history.season?.id).toBe(1);
+      expect(history.pendingCount).toBe(0); // every bet on the only round settled
+      const net = new Map(history.people.map((p) => [p.playerId, p.net]));
+      expect(net.get(ALICE)).toBe(1600);
+      expect(net.get(BOB)).toBe(-1600);
+      expect(net.get(CARL)).toBe(200);
+      expect(net.has(-1)).toBe(false); // The House is not a person on the record
+      // Sorted by net desc → Alice (top) ... Bob (bottom).
+      expect(history.people[0]!.playerId).toBe(ALICE);
+      expect(history.people.at(-1)!.playerId).toBe(BOB);
     });
   });
 });

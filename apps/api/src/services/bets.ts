@@ -19,7 +19,7 @@ import { desc, eq, inArray, or } from "drizzle-orm";
 import { getCourseHole, getHandicapStrokes } from "@wolf-cup/engine";
 import type { Tee, HoleNumber } from "@wolf-cup/engine";
 import { db } from "../db/index.js";
-import { bets, rounds, roundPlayers, holeScores, players, roundResults } from "../db/schema.js";
+import { bets, rounds, roundPlayers, holeScores, players, roundResults, seasons } from "../db/schema.js";
 
 const DEFAULT_TEE: Tee = "blue";
 
@@ -396,4 +396,95 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
     .sort((a, b) => b.net - a.net);
 
   return { round: { id: round.id, status: round.status, scheduledDate: round.scheduledDate }, bets: board, settleUp };
+}
+
+export type SeasonBetHistory = {
+  season: { id: number; name: string } | null;
+  /** Per-person season net (+ up / − down), settled bets only, sorted by net desc. */
+  people: Array<{ playerId: number; name: string; net: number }>;
+  /** Bets that haven't settled yet (rounds in progress, or a net bet that can't grade). */
+  pendingCount: number;
+};
+
+/**
+ * Season-long betting record: each person's NET across every settled bet in the
+ * CURRENT season. Outcomes are recomputed from each round's scores (never stored),
+ * so a correction or a later finalize flows in automatically — same as the live
+ * board. The House (null side B) is the book, not a player, so it's left off.
+ * Only TERMINAL rounds (finalized | completed) contribute; bets on live rounds —
+ * and any that can't grade yet (e.g. a net bet with an unknown tee/HI) — are counted
+ * as pending, never as a $0 result.
+ */
+export async function getSeasonBetHistory(): Promise<SeasonBetHistory> {
+  // Current season = latest startDate (mirrors standings).
+  const season =
+    (await db.select({ id: seasons.id, name: seasons.name }).from(seasons).orderBy(desc(seasons.startDate)).limit(1))[0] ??
+    null;
+  if (!season) return { season: null, people: [], pendingCount: 0 };
+
+  const seasonRounds = await db
+    .select({ id: rounds.id, status: rounds.status, tee: rounds.tee })
+    .from(rounds)
+    .where(eq(rounds.seasonId, season.id));
+  if (seasonRounds.length === 0) return { season, people: [], pendingCount: 0 };
+
+  const roundById = new Map(seasonRounds.map((r) => [r.id, r]));
+  const allBets = await db
+    .select()
+    .from(bets)
+    .where(inArray(bets.roundId, [...roundById.keys()]));
+  if (allBets.length === 0) return { season, people: [], pendingCount: 0 };
+
+  // Group bets by round so each round is settled once.
+  const byRound = new Map<number, BetRow[]>();
+  for (const b of allBets) {
+    const list = byRound.get(b.roundId);
+    if (list) list.push(b);
+    else byRound.set(b.roundId, [b]);
+  }
+
+  const net = new Map<number, number>();
+  let pendingCount = 0;
+
+  for (const [roundId, roundBets] of byRound) {
+    const round = roundById.get(roundId)!;
+    if (!isTerminalRoundStatus(round.status)) {
+      pendingCount += roundBets.length; // round still in progress
+      continue;
+    }
+    // settleBet reads stroke totals only for non-odds_win bets and day markets
+    // only for odds_win bets — compute each only when this round actually needs
+    // it (a round of pure odds_win bets touches no holeScores, and vice-versa).
+    const needsTotals = roundBets.some((b) => b.betType !== "odds_win");
+    const needsDay = roundBets.some((b) => b.betType === "odds_win");
+    const totals = needsTotals
+      ? await computeStrokeTotals(roundId, round.tee as Tee | null)
+      : new Map<number, StrokeTotals>();
+    const day = needsDay ? await computeDayMarkets(roundId, true) : undefined;
+    for (const b of roundBets) {
+      const o = settleBet(b, totals, day);
+      if (o.status === "live") {
+        pendingCount += 1; // terminal round but still ungradeable (e.g. net bet, unknown tee/HI)
+        continue;
+      }
+      if (o.status === "push") continue; // resolved, no money moved — matches the live board's settle-up
+      // Only money-moving participants register (lazily), exactly like getBetsBoard's settleUp:
+      // a push-only stakeholder never appears, and a null side (The House) is left off.
+      const winnerId = o.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId;
+      const loserId = o.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId;
+      if (winnerId != null) net.set(winnerId, (net.get(winnerId) ?? 0) + o.payout);
+      if (loserId != null) net.set(loserId, (net.get(loserId) ?? 0) - o.payout);
+    }
+  }
+
+  const ids = [...net.keys()];
+  const nameRows = ids.length
+    ? await db.select({ id: players.id, name: players.name }).from(players).where(inArray(players.id, ids))
+    : [];
+  const nameOf = new Map(nameRows.map((p) => [p.id, p.name]));
+  const people = ids
+    .map((id) => ({ playerId: id, name: nameOf.get(id) ?? `#${id}`, net: net.get(id)! }))
+    .sort((a, b) => b.net - a.net || a.name.localeCompare(b.name));
+
+  return { season, people, pendingCount };
 }

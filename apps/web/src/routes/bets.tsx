@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, Dice5 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Dice5, Trophy } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
@@ -155,6 +155,19 @@ function BetsPage() {
         </h1>
         <p className="text-xs text-muted-foreground">Side bets for the week — auto-settled from scores.</p>
       </div>
+
+      {/* Season record link */}
+      <Link
+        to="/bets/history"
+        className="mb-4 flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm hover:bg-muted/40 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <Trophy className="h-4 w-4 text-muted-foreground" />
+          <span className="font-semibold text-sm">Season Record</span>
+          <span className="text-[11px] text-muted-foreground">— who's up & down</span>
+        </span>
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </Link>
 
       {isLoading && <div className="text-center py-12 text-muted-foreground">Loading…</div>}
       {isError && <GalleryError />}
