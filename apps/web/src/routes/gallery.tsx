@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useRef } from 'react';
-import { Camera, Upload, Loader2, X, ChevronLeft } from 'lucide-react';
+import { Camera, Images, Check, Loader2, X, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiFetch, apiFetchFormData } from '@/lib/api';
 import { getSession } from '@/lib/session-store';
@@ -109,64 +109,73 @@ function Lightbox({
 
 function GalleryPage() {
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<Photo | null>(null);
-  const [caption, setCaption] = useState('');
-  const [showCaptionInput, setShowCaptionInput] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // Background upload queue: each photo uploads one-at-a-time so you can keep
+  // shooting while earlier shots upload. No caption, no confirm tap — selecting
+  // (camera or library) fires the upload. `uploading` = count still in flight
+  // or queued; `cameraActive` reveals the one-tap "Take another" affordance.
+  const queueRef = useRef<File[]>([]);
+  const drainingRef = useRef(false);
+  const [uploading, setUploading] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['gallery'],
     queryFn: () => apiFetch<GalleryResponse>('/gallery?limit=100'),
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: async (files: File[]) => {
-      const session = getSession();
-      const headers: Record<string, string> = {};
-      if (session?.entryCode) headers['x-entry-code'] = session.entryCode;
-      const total = files.length;
-      for (let i = 0; i < total; i++) {
-        setUploadProgress({ current: i + 1, total });
+  const drainQueue = async () => {
+    if (drainingRef.current) return;
+    drainingRef.current = true;
+    const session = getSession();
+    const headers: Record<string, string> = {};
+    if (session?.entryCode) headers['x-entry-code'] = session.entryCode;
+    while (queueRef.current.length > 0) {
+      const file = queueRef.current.shift()!;
+      setUploading(queueRef.current.length + 1); // queued + this one in flight
+      try {
         const formData = new FormData();
-        formData.append('photo', files[i]!);
-        if (caption.trim()) formData.append('caption', caption.trim());
+        formData.append('photo', file);
         if (session?.roundId) formData.append('roundId', String(session.roundId));
         await apiFetchFormData<UploadResponse>('/gallery/upload', formData, headers);
+        queryClient.invalidateQueries({ queryKey: ['gallery'] }); // show each as it lands
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : 'Upload failed');
       }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gallery'] });
-      setCaption('');
-      setShowCaptionInput(false);
-      setPendingFiles([]);
-      setUploadProgress(null);
-    },
-    onError: () => {
-      setUploadProgress(null);
-    },
-  });
+    }
+    drainingRef.current = false;
+    setUploading(0);
+  };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const enqueueFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    setUploadError(null);
+    queueRef.current.push(...files);
+    setUploading(queueRef.current.length);
+    void drainQueue();
+  };
+
+  const handleCameraSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setPendingFiles(Array.from(files));
-    setShowCaptionInput(true);
-    // Reset input so same file can be re-selected
+    if (files && files.length > 0) {
+      enqueueFiles(Array.from(files));
+      setCameraActive(true); // keep the "Take another" path visible
+    }
+    e.target.value = ''; // allow re-capture of an identical frame
+  };
+
+  const handleLibrarySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) enqueueFiles(Array.from(files));
     e.target.value = '';
   };
 
-  const handleUpload = () => {
-    if (pendingFiles.length === 0) return;
-    uploadMutation.mutate(pendingFiles);
-  };
-
-  const handleCancelUpload = () => {
-    setPendingFiles([]);
-    setShowCaptionInput(false);
-    setCaption('');
-  };
+  const openCamera = () => cameraInputRef.current?.click();
+  const openLibrary = () => libraryInputRef.current?.click();
 
   // Group photos by round
   const photos = data?.photos ?? [];
@@ -206,90 +215,78 @@ function GalleryPage() {
             Gallery
           </h1>
         </div>
-        <Button
-          size="sm"
-          className="gap-1.5"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploadMutation.isPending}
-        >
-          <Upload className="h-3.5 w-3.5" />
-          Upload
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={openCamera}
+            data-testid="gallery-camera-btn"
+          >
+            <Camera className="h-4 w-4" />
+            Camera
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            className="gap-1.5"
+            onClick={openLibrary}
+            data-testid="gallery-library-btn"
+          >
+            <Images className="h-4 w-4" />
+            Library
+          </Button>
+        </div>
+        {/* Camera → straight to the camera (one shot per session on iOS). */}
         <input
-          ref={fileInputRef}
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleCameraSelect}
+        />
+        {/* Library → pick existing photos, multi-select. */}
+        <input
+          ref={libraryInputRef}
           type="file"
           accept="image/*"
           multiple
           className="hidden"
-          onChange={handleFileSelect}
+          onChange={handleLibrarySelect}
         />
       </div>
 
-      {/* Caption input + confirm (shown after file selected) */}
-      {showCaptionInput && pendingFiles.length > 0 && (
-        <div className="rounded-xl border bg-card p-4 mb-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <div className="flex -space-x-2 shrink-0">
-              {pendingFiles.slice(0, 3).map((file, i) => (
-                <img
-                  key={i}
-                  src={URL.createObjectURL(file)}
-                  alt="Preview"
-                  className="w-16 h-16 rounded-lg object-cover border-2 border-card"
-                />
-              ))}
+      {/* Background-upload status + one-tap "Take another" (camera flow). */}
+      {(uploading > 0 || cameraActive) && (
+        <div className="rounded-xl border bg-card p-3 mb-4 flex items-center gap-3">
+          {uploading > 0 ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin text-green-500 shrink-0" />
+              <span className="text-sm flex-1">
+                Uploading {uploading} photo{uploading > 1 ? 's' : ''}…
+              </span>
+            </>
+          ) : (
+            <>
+              <Check className="h-4 w-4 text-green-500 shrink-0" />
+              <span className="text-sm flex-1">Uploaded</span>
+            </>
+          )}
+          {cameraActive && (
+            <div className="flex gap-2 shrink-0">
+              <Button size="sm" className="gap-1" onClick={openCamera} data-testid="gallery-take-another">
+                <Camera className="h-3.5 w-3.5" />
+                Take another
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setCameraActive(false)}>
+                Done
+              </Button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">
-                {pendingFiles.length === 1
-                  ? pendingFiles[0]!.name
-                  : `${pendingFiles.length} photos selected`}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {(pendingFiles.reduce((sum, f) => sum + f.size, 0) / 1024 / 1024).toFixed(1)} MB total
-              </p>
-            </div>
-          </div>
-          <input
-            type="text"
-            placeholder="Add a caption (optional)"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/50"
-          />
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              className="flex-1"
-              onClick={handleUpload}
-              disabled={uploadMutation.isPending}
-            >
-              {uploadMutation.isPending && uploadProgress ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                  Uploading {uploadProgress.current} of {uploadProgress.total}…
-                </>
-              ) : pendingFiles.length === 1 ? (
-                'Upload Photo'
-              ) : (
-                `Upload ${pendingFiles.length} Photos`
-              )}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleCancelUpload}
-              disabled={uploadMutation.isPending}
-            >
-              Cancel
-            </Button>
-          </div>
-          {uploadMutation.isError && (
-            <p className="text-xs text-destructive">
-              Upload failed: {uploadMutation.error.message}
-            </p>
           )}
         </div>
+      )}
+      {uploadError && (
+        <p className="text-xs text-destructive mb-4">Upload failed: {uploadError}</p>
       )}
 
       {/* Loading */}
