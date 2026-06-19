@@ -22,12 +22,16 @@ const app = new Hono<{ Variables: Variables }>();
 
 const createBetSchema = z.object({
   roundId: z.number().int().optional(), // default = active round
-  betType: z.enum(["h2h", "over_under", "per_hole"]),
+  betType: z.enum(["h2h", "over_under", "per_hole", "odds_win"]),
   basis: z.enum(["net", "gross"]).default("net"),
   amountDollars: z.number().int().positive(),
   subjectAPlayerId: z.number().int().positive(),
   subjectBPlayerId: z.number().int().positive().nullable().optional(),
   line: z.number().int().nullable().optional(),
+  // odds_win only:
+  oddsMarket: z.enum(["stableford", "money", "perfect_day"]).optional(),
+  // American odds: magnitude always ≥ 100 (e.g. +1650, -200). Reject the no-man's-land (-99..99).
+  odds: z.number().int().refine((n) => Math.abs(n) >= 100, "american_odds_min_100").optional(),
   sideAPlayerId: z.number().int().positive(),
   sideBPlayerId: z.number().int().positive(),
   note: z.string().max(200).optional(),
@@ -76,8 +80,12 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
   if (d.betType === "h2h" || d.betType === "per_hole") {
     if (d.subjectBPlayerId == null) return c.json({ error: "needs_two_subjects" }, 400);
     if (d.subjectAPlayerId === d.subjectBPlayerId) return c.json({ error: "subjects_must_differ" }, 400);
-  } else {
+  } else if (d.betType === "over_under") {
     if (d.line == null) return c.json({ error: "over_under_needs_line" }, 400);
+  } else {
+    // odds_win — one subject (the player bet to win), a market, and a locked price.
+    if (d.oddsMarket == null) return c.json({ error: "odds_win_needs_market" }, 400);
+    if (d.odds == null) return c.json({ error: "odds_win_needs_odds" }, 400);
   }
   if (d.sideAPlayerId === d.sideBPlayerId) {
     return c.json({ error: "stakeholders_must_differ" }, 400);
@@ -87,7 +95,11 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
   // must be real players (a non-playing better like Kyle is fine). Don't trust
   // the client to send valid/roster ids.
   const subjectIds = [d.subjectAPlayerId];
-  if (d.betType !== "over_under" && d.subjectBPlayerId != null) subjectIds.push(d.subjectBPlayerId);
+  // Only h2h/per_hole have a second subject; ignore any stray subjectBPlayerId on
+  // over_under/odds_win so it can't wrongly trip the roster check.
+  if ((d.betType === "h2h" || d.betType === "per_hole") && d.subjectBPlayerId != null) {
+    subjectIds.push(d.subjectBPlayerId);
+  }
   const rosterRows = await db
     .select({ playerId: roundPlayers.playerId })
     .from(roundPlayers)
@@ -114,8 +126,10 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
       basis: d.basis,
       amountDollars: d.amountDollars,
       subjectAPlayerId: d.subjectAPlayerId,
-      subjectBPlayerId: d.betType === "over_under" ? null : d.subjectBPlayerId!,
+      subjectBPlayerId: d.betType === "h2h" || d.betType === "per_hole" ? d.subjectBPlayerId! : null,
       line: d.betType === "over_under" ? d.line! : null,
+      oddsMarket: d.betType === "odds_win" ? d.oddsMarket! : null,
+      odds: d.betType === "odds_win" ? d.odds! : null,
       sideAPlayerId: d.sideAPlayerId,
       sideBPlayerId: d.sideBPlayerId,
       note: d.note ?? null,

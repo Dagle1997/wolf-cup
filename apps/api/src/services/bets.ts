@@ -19,9 +19,82 @@ import { desc, eq, inArray, or } from "drizzle-orm";
 import { getCourseHole, getHandicapStrokes } from "@wolf-cup/engine";
 import type { Tee, HoleNumber } from "@wolf-cup/engine";
 import { db } from "../db/index.js";
-import { bets, rounds, roundPlayers, holeScores, players } from "../db/schema.js";
+import { bets, rounds, roundPlayers, holeScores, players, roundResults } from "../db/schema.js";
 
 const DEFAULT_TEE: Tee = "blue";
+
+export type OddsMarket = "stableford" | "money" | "perfect_day";
+
+/**
+ * The round's settled "day" — who owns each Line title. A market is owned only by
+ * the SOLE leader (a tie = nobody owns it cleanly, mirrors The Line's "no ties"
+ * Perfect Day rule). `finalized` gates odds_win settlement: before the round is
+ * finalized the day-winner isn't authoritative, so the bet stays `live`.
+ */
+export type DayMarkets = {
+  /** Round is in a terminal scored state (finalized | completed) AND has results. */
+  resolved: boolean;
+  stablefordWinner: number | null; // sole #1 in Stableford points; null if tied/none
+  moneyWinner: number | null; // sole #1 in money; null if tied/none
+  perfectDayWinner: number | null; // sole #1 in BOTH
+};
+
+/** American-odds PROFIT on a stake, rounded to whole dollars. +odds: stake×odds/100; −odds: stake×100/|odds|. */
+export function americanProfit(stake: number, odds: number): number {
+  if (odds === 0) return 0;
+  return odds > 0
+    ? Math.round((stake * odds) / 100)
+    : Math.round((stake * 100) / Math.abs(odds));
+}
+
+/** A round is in a terminal SCORED state — its day-winner is authoritative. */
+export function isTerminalRoundStatus(status: string): boolean {
+  return status === "finalized" || status === "completed";
+}
+
+/**
+ * Resolve each Line title's SOLE winner from round_results (authoritative once the
+ * round is terminal). `resolved` is true ONLY when the round is terminal AND results
+ * exist — a terminal round with EMPTY results is a data anomaly, so we leave it
+ * unresolved (odds_win then fails closed to `live` rather than auto-paying the layer).
+ */
+export async function computeDayMarkets(
+  roundId: number,
+  terminal: boolean,
+): Promise<DayMarkets> {
+  const rows = await db
+    .select({
+      playerId: roundResults.playerId,
+      stableford: roundResults.stablefordTotal,
+      money: roundResults.moneyTotal,
+    })
+    .from(roundResults)
+    .where(eq(roundResults.roundId, roundId));
+
+  // Sole leader of `sel`, or null when empty or tied at the top.
+  const soleLeader = (sel: (r: (typeof rows)[number]) => number): number | null => {
+    if (rows.length === 0) return null;
+    let best = -Infinity;
+    let leaders: number[] = [];
+    for (const r of rows) {
+      const v = sel(r);
+      if (v > best) {
+        best = v;
+        leaders = [r.playerId];
+      } else if (v === best) {
+        leaders.push(r.playerId);
+      }
+    }
+    return leaders.length === 1 ? leaders[0]! : null;
+  };
+
+  const stablefordWinner = soleLeader((r) => r.stableford);
+  const moneyWinner = soleLeader((r) => r.money);
+  const perfectDayWinner =
+    stablefordWinner != null && stablefordWinner === moneyWinner ? stablefordWinner : null;
+
+  return { resolved: terminal && rows.length > 0, stablefordWinner, moneyWinner, perfectDayWinner };
+}
 
 export type StrokeTotals = {
   gross18: number;
@@ -138,8 +211,31 @@ export type BetOutcome = {
   holesWon: { a: number; b: number } | null;
 };
 
-/** Pure: settle one bet against the round's stroke totals. */
-export function settleBet(bet: BetRow, totals: Map<number, StrokeTotals>): BetOutcome {
+/** Pure: settle one bet against the round's stroke totals (+ day markets for odds_win). */
+export function settleBet(
+  bet: BetRow,
+  totals: Map<number, StrokeTotals>,
+  day?: DayMarkets,
+): BetOutcome {
+  if (bet.betType === "odds_win") {
+    const live: BetOutcome = { status: "live", winningSide: null, payout: 0, subjectAScore: null, subjectBScore: null, holesWon: null };
+    // Bettor (side A) backs subject_a to WIN a Line market at locked American odds.
+    // Authoritative only once the round is terminal WITH results; until then live.
+    if (bet.odds == null || bet.oddsMarket == null || !day || !day.resolved) return live;
+    // FAIL CLOSED on an unknown market string (data/enum corruption) — never auto-pay.
+    const winnerByMarket: Record<string, number | null> = {
+      stableford: day.stablefordWinner,
+      money: day.moneyWinner,
+      perfect_day: day.perfectDayWinner,
+    };
+    if (!(bet.oddsMarket in winnerByMarket)) return live;
+    const winnerId: number | null = winnerByMarket[bet.oddsMarket] ?? null;
+    const hit = winnerId != null && winnerId === bet.subjectAPlayerId;
+    return hit
+      ? { status: "settled", winningSide: "A", payout: americanProfit(bet.amountDollars, bet.odds), subjectAScore: null, subjectBScore: null, holesWon: null } // bettor collects profit
+      : { status: "settled", winningSide: "B", payout: bet.amountDollars, subjectAScore: null, subjectBScore: null, holesWon: null }; // layer collects the stake
+  }
+
   const a = totals.get(bet.subjectAPlayerId);
   // NET bets only grade when the net is trustworthy (tee + handicap known);
   // otherwise stay live (fail closed). Gross is always gradeable.
@@ -205,15 +301,17 @@ export function settleBet(bet: BetRow, totals: Map<number, StrokeTotals>): BetOu
 
 export type BoardBet = {
   id: number;
-  betType: "h2h" | "over_under" | "per_hole";
+  betType: "h2h" | "over_under" | "per_hole" | "odds_win";
   basis: "net" | "gross";
   amountDollars: number;
   line: number | null;
+  oddsMarket: OddsMarket | null;
+  odds: number | null;
   note: string | null;
   subjectA: { id: number; name: string };
   subjectB: { id: number; name: string } | null;
-  sideA: { id: number; name: string }; // backs side A
-  sideB: { id: number; name: string }; // backs side B
+  sideA: { id: number; name: string }; // backs side A (odds_win: the bettor)
+  sideB: { id: number; name: string }; // backs side B (odds_win: the layer)
   outcome: BetOutcome;
 };
 
@@ -262,11 +360,12 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
   const who = (id: number) => ({ id, name: nameOf.get(id) ?? `#${id}` });
 
   const totals = await computeStrokeTotals(round.id, round.tee as Tee | null);
+  const day = await computeDayMarkets(round.id, isTerminalRoundStatus(round.status));
 
   const board: BoardBet[] = [];
   const net = new Map<number, number>(); // stakeholder → running net
   for (const b of betRows) {
-    const outcome = settleBet(b, totals);
+    const outcome = settleBet(b, totals, day);
     if (outcome.status === "settled") {
       const winnerId = outcome.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId;
       const loserId = outcome.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId;
@@ -276,10 +375,12 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
     }
     board.push({
       id: b.id,
-      betType: b.betType as "h2h" | "over_under" | "per_hole",
+      betType: b.betType as "h2h" | "over_under" | "per_hole" | "odds_win",
       basis: b.basis as "net" | "gross",
       amountDollars: b.amountDollars,
       line: b.line,
+      oddsMarket: b.oddsMarket as OddsMarket | null,
+      odds: b.odds,
       note: b.note,
       subjectA: who(b.subjectAPlayerId),
       subjectB: b.subjectBPlayerId != null ? who(b.subjectBPlayerId) : null,

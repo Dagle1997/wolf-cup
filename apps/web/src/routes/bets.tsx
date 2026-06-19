@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api';
 // Types (mirror services/bets.ts BetsBoard)
 // ---------------------------------------------------------------------------
 type Person = { id: number; name: string };
+type OddsMarket = 'stableford' | 'money' | 'perfect_day';
 type Outcome = {
   status: 'live' | 'settled' | 'push';
   winningSide: 'A' | 'B' | null;
@@ -17,10 +18,12 @@ type Outcome = {
 };
 type Bet = {
   id: number;
-  betType: 'h2h' | 'over_under' | 'per_hole';
+  betType: 'h2h' | 'over_under' | 'per_hole' | 'odds_win';
   basis: 'net' | 'gross';
   amountDollars: number;
   line: number | null;
+  oddsMarket: OddsMarket | null;
+  odds: number | null;
   note: string | null;
   subjectA: Person;
   subjectB: Person | null;
@@ -28,6 +31,13 @@ type Bet = {
   sideB: Person;
   outcome: Outcome;
 };
+
+const MARKET_LABEL: Record<OddsMarket, string> = {
+  stableford: 'wins Stableford',
+  money: 'wins money',
+  perfect_day: 'a perfect day',
+};
+const fmtOdds = (n: number) => (n > 0 ? `+${n}` : `${n}`);
 type Board = {
   round: { id: number; status: string; scheduledDate: string } | null;
   bets: Bet[];
@@ -46,6 +56,14 @@ function basisLabel(b: Bet): string {
 
 /** The bet phrased from one stakeholder's side. */
 function describeForSide(b: Bet, side: 'A' | 'B'): string {
+  if (b.betType === 'odds_win') {
+    const market = b.oddsMarket ? MARKET_LABEL[b.oddsMarket] : 'wins';
+    const price = b.odds != null ? ` @ ${fmtOdds(b.odds)}` : '';
+    // side A = bettor (backs the player to hit the market); side B = layer (fades it).
+    return side === 'A'
+      ? `${b.subjectA.name} — ${market}${price}`
+      : `fades ${b.subjectA.name} — ${market}${price}`;
+  }
   if (b.betType === 'over_under') {
     return side === 'A'
       ? `${b.subjectA.name} under ${b.line} (${basisLabel(b)})`
@@ -64,6 +82,7 @@ function describeForSide(b: Bet, side: 'A' | 'B'): string {
 
 function stakeLabel(b: Bet): string {
   if (b.betType === 'per_hole') return `$${b.amountDollars}/hole`;
+  if (b.betType === 'odds_win') return `$${b.amountDollars}${b.odds != null ? ` @ ${fmtOdds(b.odds)}` : ''}`;
   return `$${b.amountDollars}`;
 }
 

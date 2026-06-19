@@ -1,55 +1,55 @@
 # Codex Review
 
-- Generated: 2026-06-19T01:38:48.987Z
+- Generated: 2026-06-19T02:54:59.413Z
 - Model: gpt-5.2
 - Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: apps/api/src/services/bets.ts, apps/api/src/routes/bets.ts, apps/api/src/routes/admin/bets.ts, apps/api/src/db/schema.ts, apps/web/src/routes/bets.tsx, apps/web/src/routes/admin/bets.tsx
+- Reviewed files: apps/api/src/services/bets.ts, apps/api/src/services/bets.test.ts, apps/api/src/routes/admin/bets.ts, apps/api/src/db/schema.ts, apps/api/src/db/migrations/0032_nostalgic_mauler.sql, apps/web/src/routes/admin/bets.tsx, apps/web/src/routes/bets.tsx
 
 ## Summary
 
-Core settle logic mostly matches stated semantics (push handling, per-hole netHoles sign, settle-up uses outcome.payout). The biggest real-money risks are around (a) net calculation silently falling back to HI=0 when round_players data is missing, (b) settling with a default tee when round.tee is null/invalid, and (c) missing server-side validation that IDs are valid/positive and belong to the round roster. There’s also a latent multi-tenant/context mixing risk because queries ignore tenantId/contextId despite the schema having them.
+The new `odds_win` bet type is largely integrated end-to-end (schema fields, admin validation, settlement logic, board rendering) and you added targeted unit tests for `americanProfit` + `settleBet` odds_win. The main money-risk issue is that `odds_win` can settle as a *loss for the bettor* in cases that look like data/enum corruption (e.g., empty `round_results` on a finalized round or an unexpected `odds_market` string), rather than failing closed to `live`. There’s also a small but real admin validation bug where an extraneous `subjectBPlayerId` can incorrectly block odds_win bet creation.
 
 Overall risk: high
 
 ## Findings
 
-1. [high] Net settlement can be wrong: missing round_players HI silently treated as 0 strokes (not gated)
-   - File: apps/api/src/services/bets.ts:74-104
+1. [high] odds_win can incorrectly settle as bettor loss when day markets are indeterminate (e.g., empty round_results)
+   - File: apps/api/src/services/bets.ts:49-227
    - Confidence: high
-   - Why it matters: computeStrokeTotals builds hiMap from round_players (line 74-78) but then uses `const hi = hiMap.get(s.playerId) ?? 0;` (line 91). If a subject has hole_scores rows but no round_players row (data inconsistency, guest/import issue, or a bet created for a non-roster player), they can reach holesPlayed===18 and the bet will settle with the wrong net (effectively gross, or under-stroked), moving real money incorrectly. This violates the invariant “Net must be IDENTICAL to the leaderboard’s net (per-round HI + tee)” because leaderboard net requires the correct per-round HI.
-   - Suggested fix: Fail closed: if a player has any hole_scores for the round but no round_players.handicap_index, treat totals for that player as incomplete (holesPlayed=0) or return null net so bets stay `live`/error. Also validate on bet creation that subject(s) are in round_players for the round.
+   - Why it matters: This is real-money settlement. `computeDayMarkets()` returns null winners when `round_results` is empty (`rows.length===0` ⇒ `soleLeader` returns null) (lines 63-78). When the round is finalized, `getBetsBoard()` passes `day.finalized=true` (lines 352-359), and `settleBet()` will then treat `winnerId=null` as a miss and settle the bet for side B with payout=stake (lines 215-227). If `round.status==='finalized'` ever occurs before `round_results` is populated/complete (or if `round_results` is temporarily empty due to a write failure), the system will display the bettor as definitively losing and credit the layer—despite having no authoritative results. That’s not “fail closed”; it’s “fail to layer,” which is dangerous for money correctness and operator trust.
+   - Suggested fix: Differentiate “tie at the top” from “no authoritative data.” Minimal fix: have `computeDayMarkets` include `rowCount`/`hasResults`/`ready` (e.g., `ready = finalized && rows.length>0`) and make `settleBet` return `live` unless `day.ready` is true. If you need to also guard against partial results, consider requiring results for all roster players or some explicit `round_results_complete`/`finalized_at` invariant. Add tests covering: finalized+empty results ⇒ live; finalized+tie ⇒ settles to B.
 
-2. [high] Tee fallback can silently mis-grade net bets when round.tee is null/invalid
-   - File: apps/api/src/services/bets.ts:24-236
+2. [high] Invalid/unknown oddsMarket value causes automatic layer win instead of failing closed
+   - File: apps/api/src/services/bets.ts:209-227
    - Confidence: high
-   - Why it matters: getBetsBoard uses `const tee = (round.tee as Tee | null) ?? DEFAULT_TEE;` with DEFAULT_TEE = "blue" (lines 24, 234-235). If the round’s tee hasn’t been set yet (null) or is an unexpected string, net strokes (and thus winners/payouts) can be computed for the wrong tee. That’s a direct real-money settlement risk, especially on game day if the admin forgot to set tee before scores start.
-   - Suggested fix: Do not default tee for settlement. If round.tee is null/invalid, return board outcomes as `live` (or an explicit error status) and/or require tee be set before allowing bet creation/settlement. Consider validating tee against the Tee union at runtime rather than casting.
+   - Why it matters: `bets.odds_market` is a free-text column (no DB CHECK). Although the admin route uses a Zod enum, the DB can still contain unexpected values (manual edits, older data, future code bugs). In `settleBet()`, an unknown `bet.oddsMarket` falls through to `winnerId=null` (lines 215-223) and therefore settles as a miss (side B wins stake) (lines 223-227). That’s an asymmetric failure mode that can silently transfer money in the wrong direction rather than leaving the bet live for investigation.
+   - Suggested fix: Treat unrecognized `oddsMarket` as non-gradeable: return `{status:'live'...}` (or hard error) instead of settling to B. Example: validate `bet.oddsMarket` against the allowed set at runtime and fail closed if not matched. Add a unit test: `oddsMarket='typo'` + finalized day ⇒ live (not settled B).
 
-3. [medium] Per-hole settlement tolerates missing per-hole scores (continues) instead of failing closed
-   - File: apps/api/src/services/bets.ts:141-164
+3. [medium] Admin roster validation may incorrectly reject odds_win if client sends subjectBPlayerId (even though it is ignored)
+   - File: apps/api/src/routes/admin/bets.ts:94-106
+   - Confidence: high
+   - Why it matters: For roster validation, `subjectIds` includes `subjectBPlayerId` whenever `d.betType !== 'over_under'` and `subjectBPlayerId != null` (line 98). That condition includes `odds_win`. But on insert you always write `subjectBPlayerId: null` for odds_win (line 125). So a client that accidentally sends `subjectBPlayerId` (or a future UI regression) can get `subject_not_in_round` even though subjectB is irrelevant and will be discarded. This is a correctness/ops footgun during admin entry.
+   - Suggested fix: Only include `subjectBPlayerId` in `subjectIds` for bet types that actually use it: `if (d.betType === 'h2h' || d.betType === 'per_hole') subjectIds.push(...)`. Optionally also hard-reject `subjectBPlayerId` being provided for odds_win/over_under to keep the API strict.
+
+4. [medium] odds_win settlement gate only checks status === 'finalized'; schema allows 'completed' too (possible never-settle)
+   - File: apps/api/src/services/bets.ts:352-359
    - Confidence: medium
-   - Why it matters: In per_hole settlement, the loop skips holes where either side’s per-hole value is missing: `if (av == null || bv == null) continue;` (line 154). Although you gate on `holesPlayed < 18` (lines 144-145), adversarially this can still undercount holes if data becomes inconsistent (e.g., holesPlayed inflated by non-unique rows in a corrupted DB or future schema changes), leading to a smaller payout and potentially the wrong winner. This is exactly the kind of “partial data but settles anyway” failure that moves real money wrong.
-   - Suggested fix: For per_hole, explicitly require both maps contain all 18 holes (e.g., check `ah.size===18 && bh.size===18` and/or verify each hole 1..18 exists). If any hole is missing for either player, return `live`.
+   - Why it matters: `getBetsBoard()` passes `finalized = round.status === 'finalized'` (line 353). In the provided schema, `rounds.statusCheck` allows a `'completed'` status as well (apps/api/src/db/schema.ts lines 188-193). If production data ever uses `'completed'` as the terminal state (legacy or admin tooling), `odds_win` bets would remain `live` forever even though the round is effectively done.
+   - Suggested fix: Confirm the canonical terminal status. If `'completed'` is real, treat it as finalized for odds_win settlement (and likely elsewhere): `finalized = round.status === 'finalized' || round.status === 'completed'`. Add a test or fixture to prevent regression.
 
-4. [high] Admin bet creation does not validate player IDs are real/positive or in the round roster (can misattribute money)
-   - File: apps/api/src/routes/admin/bets.ts:23-98
-   - Confidence: high
-   - Why it matters: Zod schema allows any int for player IDs (lines 28-33): not `.positive()`, not checked for existence, and not checked that subjects are in the round roster. If SQLite foreign keys are not enforced at runtime (common unless explicitly enabled), it’s possible to create bets referencing non-existent players (e.g., 0/negative) or non-roster players; then settle-up in getBetsBoard will credit/debit those IDs (apps/api/src/services/bets.ts lines 241-246), producing a wrong settle-up sheet. Even with FK enforcement, a malformed request can cause runtime errors and operational disruption on league day.
-   - Suggested fix: Harden createBetSchema: require `.positive()` for all player IDs and roundId; then verify in DB that subject(s) exist AND are in round_players for that round. Also verify stakeholders exist in players. Return 422 on mismatch.
-
-5. [medium] Queries ignore tenantId/contextId despite schema having them (possible cross-tenant data leak + wrong settlement)
-   - File: apps/api/src/services/bets.ts:48-236
+5. [medium] Migration SQL uses `ALTER TABLE ... ADD ...` (missing `COLUMN`) — verify SQLite compatibility
+   - File: apps/api/src/db/migrations/0032_nostalgic_mauler.sql:1-2
    - Confidence: medium
-   - Why it matters: bets, players, hole_scores, round_players tables all carry tenantId/contextId, but getActiveRound/getBetsBoard/computeStrokeTotals filter only by status/roundId and not by tenant/context (e.g., getBetsBoard line 214-215; computeStrokeTotals lines 74-87). If the DB ever contains multiple tenants/contexts, the public GET /api/bets could mix or reveal other tenants’ bets and/or compute totals from the wrong population, corrupting the settle-up for real money.
-   - Suggested fix: Thread tenantId/contextId through request context (or infer from deployment) and add WHERE clauses on tenantId/contextId consistently for rounds/bets/players/round_players/hole_scores. Add tests that ensure isolation.
+   - Why it matters: SQLite commonly uses `ALTER TABLE table_name ADD COLUMN col_def;`. This migration uses `ALTER TABLE `bets` ADD `odds_market` text;` (line 1) and similarly for `odds` (line 2). If your migration runner truly targets SQLite syntax and `ADD` without `COLUMN` isn’t accepted in your SQLite version/config, the migration will fail and runtime queries selecting these columns will error (breaking bets board/admin in production).
+   - Suggested fix: Double-check prior migrations / the migration runner’s dialect. If needed, change to `ADD COLUMN` for both statements and re-run. Consider adding a smoke test or CI migration apply step to catch this class of issue.
 
 ## Strengths
 
-- Settlement is recomputed from scores (no stored outcome), so score corrections automatically resettle (services/bets.ts).
-- Push semantics are implemented for h2h ties and over/under == line with payout 0 (services/bets.ts lines 134-137, 171-173).
-- Per-hole netHoles sign and payout magnitude align with the stated rules; settle-up aggregation uses outcome.payout (services/bets.ts lines 158-163, 241-246).
-- Admin routes are protected by adminAuthMiddleware for create/delete (routes/admin/bets.ts lines 37, 53, 101).
+- `americanProfit` implements correct profit (not payout) semantics for American odds and is unit-tested for both + and − odds, including rounding behavior (apps/api/src/services/bets.test.ts:181-186).
+- `odds_win` settlement correctly gates on round finalization and fails closed to `live` when day markets aren’t provided (apps/api/src/services/bets.ts:212-214; test coverage at bets.test.ts:209-216).
+- Admin route validates stakeholders differ and that subjects are in the round roster (apps/api/src/routes/admin/bets.ts:80-106), which is key for deterministic settlement.
+- Net ledger reuse in `getBetsBoard` correctly treats `outcome.payout` as the transfer amount; for odds_win this matches real-world net transfers (profit on win; stake on loss) (apps/api/src/services/bets.ts:359-365).
 
 ## Warnings
 

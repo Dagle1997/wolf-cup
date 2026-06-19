@@ -225,6 +225,13 @@
       "when": 1781832394668,
       "tag": "0031_skinny_joystick",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1781836879006,
+      "tag": "0032_nostalgic_mauler",
+      "breakpoints": true
     }
   ]
 }

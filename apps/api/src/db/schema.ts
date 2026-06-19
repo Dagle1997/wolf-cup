@@ -772,6 +772,11 @@ export const sentEmails = sqliteTable(
 // Side semantics by bet_type:
 //   h2h        — side A = subject_a wins (lower score by basis), side B = subject_b wins; equal = push
 //   over_under — side A = UNDER (subject_a's score < line), side B = OVER (> line); equal = push
+//   per_hole   — match-play, lower (net/gross) wins each hole; payout = netHoles × stake
+//   odds_win   — side A (bettor) backs subject_a to WIN a Line market at locked American
+//                odds; side B (layer) takes the other side. Settles only when the round is
+//                FINALIZED (the day-winner is then authoritative). Bettor wins → collects the
+//                American PROFIT; loses → forfeits the STAKE (amount_dollars). No push.
 // Outcome is NOT stored — it's recomputed from the round's scores (pure), so a
 // score correction re-settles automatically.
 // ---------------------------------------------------------------------------
@@ -782,15 +787,18 @@ export const bets = sqliteTable(
     roundId: integer("round_id")
       .notNull()
       .references(() => rounds.id),
-    betType: text("bet_type").notNull(), // 'h2h' | 'over_under'
+    betType: text("bet_type").notNull(), // 'h2h' | 'over_under' | 'per_hole' | 'odds_win'
     basis: text("basis").notNull().default("net"), // 'net' | 'gross'
-    amountDollars: integer("amount_dollars").notNull(), // whole dollars (matches money_total)
+    amountDollars: integer("amount_dollars").notNull(), // whole dollars (matches money_total). odds_win: the STAKE the bettor risks.
     // Proposition — the player(s) whose 18-hole score decides it.
     subjectAPlayerId: integer("subject_a_player_id")
       .notNull()
-      .references(() => players.id), // h2h: player A; over_under: the subject
-    subjectBPlayerId: integer("subject_b_player_id").references(() => players.id), // h2h: player B; over_under: null
+      .references(() => players.id), // h2h: player A; over_under/odds_win: the subject
+    subjectBPlayerId: integer("subject_b_player_id").references(() => players.id), // h2h: player B; over_under/odds_win: null
     line: integer("line"), // over_under: the number (e.g. 90); h2h: null
+    // odds_win — bet a player to WIN a Line market at a locked American price.
+    oddsMarket: text("odds_market"), // 'stableford' | 'money' | 'perfect_day' (which title)
+    odds: integer("odds"), // locked American odds (e.g. +1650 longshot, -200 favorite)
     // Stakeholders — who has money on each side (identity-ready player refs).
     sideAPlayerId: integer("side_a_player_id")
       .notNull()

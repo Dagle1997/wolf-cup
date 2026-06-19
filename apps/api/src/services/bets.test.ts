@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { settleBet, type StrokeTotals, type BetRow } from "./bets.js";
+import { settleBet, americanProfit, type StrokeTotals, type BetRow, type DayMarkets } from "./bets.js";
 
 // Minimal bet-row factory (only the fields settleBet reads matter).
 function bet(overrides: Partial<BetRow>): BetRow {
@@ -175,5 +175,77 @@ describe("settleBet — per-hole match play ($/hole)", () => {
   it("incomplete round → live", () => {
     const o = settleBet(ph(), new Map([[1, partial(45, 36)], [2, full(88, 74)]]));
     expect(o.status).toBe("live");
+  });
+});
+
+describe("americanProfit", () => {
+  it("+odds: $100 @ +1650 → $1650 profit", () => expect(americanProfit(100, 1650)).toBe(1650));
+  it("−odds: $100 @ −200 → $50 profit", () => expect(americanProfit(100, -200)).toBe(50));
+  it("rounds to whole dollars (+150 on $25 → $38)", () => expect(americanProfit(25, 150)).toBe(38));
+  it("0 odds is a no-op guard", () => expect(americanProfit(100, 0)).toBe(0));
+});
+
+describe("settleBet — odds_win (bet a player to win a Line market)", () => {
+  // Player 1 (subjectA) bet by side A (bettor 10) vs layer (11), $100 @ +1650, perfect_day.
+  const ow = (overrides: Partial<BetRow> = {}) =>
+    bet({
+      betType: "odds_win",
+      subjectAPlayerId: 1,
+      subjectBPlayerId: null,
+      amountDollars: 100,
+      odds: 1650,
+      oddsMarket: "perfect_day",
+      ...overrides,
+    });
+  const noTotals = new Map<number, StrokeTotals>();
+  const day = (o: Partial<DayMarkets> = {}): DayMarkets => ({
+    resolved: true,
+    stablefordWinner: null,
+    moneyWinner: null,
+    perfectDayWinner: null,
+    ...o,
+  });
+
+  it("rides LIVE until the round resolves (day-winner not yet authoritative)", () => {
+    const o = settleBet(ow(), noTotals, day({ resolved: false, perfectDayWinner: 1 }));
+    expect(o.status).toBe("live");
+  });
+
+  it("FAILS CLOSED (live) on an unknown market string — never auto-pays the layer", () => {
+    const o = settleBet(ow({ oddsMarket: "bogus" as never }), noTotals, day({ perfectDayWinner: 1 }));
+    expect(o.status).toBe("live");
+  });
+
+  it("with no day markets passed at all → live (fail closed)", () => {
+    expect(settleBet(ow(), noTotals).status).toBe("live");
+  });
+
+  it("subject WINS the market → bettor (A) collects the American profit", () => {
+    const o = settleBet(ow(), noTotals, day({ perfectDayWinner: 1, stablefordWinner: 1, moneyWinner: 1 }));
+    expect(o.status).toBe("settled");
+    expect(o.winningSide).toBe("A"); // bettor
+    expect(o.payout).toBe(1650); // $100 @ +1650
+  });
+
+  it("subject MISSES the market → layer (B) collects the stake; no push", () => {
+    const o = settleBet(ow(), noTotals, day({ perfectDayWinner: 2 }));
+    expect(o.status).toBe("settled");
+    expect(o.winningSide).toBe("B"); // layer
+    expect(o.payout).toBe(100); // the stake
+  });
+
+  it("a TIE at the top is not a clean win → bettor loses (perfectDayWinner null)", () => {
+    const o = settleBet(ow(), noTotals, day({ perfectDayWinner: null }));
+    expect(o.winningSide).toBe("B");
+    expect(o.payout).toBe(100);
+  });
+
+  it("market selector routes to the right title (money market)", () => {
+    const b = ow({ oddsMarket: "money", odds: -150 });
+    const hit = settleBet(b, noTotals, day({ moneyWinner: 1 }));
+    expect(hit.winningSide).toBe("A");
+    expect(hit.payout).toBe(americanProfit(100, -150)); // $67
+    const miss = settleBet(b, noTotals, day({ stablefordWinner: 1, moneyWinner: 2 }));
+    expect(miss.winningSide).toBe("B"); // won stableford, but the bet was on money
   });
 });
