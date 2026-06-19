@@ -320,13 +320,8 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
         </div>
       )}
 
-      {/* Retrospective grade (past finalized weeks only) — leads, above the line */}
-      {data.retrospective && <RetroGrade retro={data.retrospective} />}
-
-      {/* 📊 The Line */}
-      <TheLine odds={data.odds} />
-
-      {/* 🎲 The Action — the side-bet board lives under scouting (keeps the main leaderboard clean) */}
+      {/* 🎲 The Action — leads the scouting page (the side-bet board lives here,
+          keeping the main leaderboard clean) */}
       <Link
         to="/bets"
         className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm hover:bg-muted/40 transition-colors"
@@ -338,6 +333,12 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
         </span>
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </Link>
+
+      {/* Retrospective grade (past finalized weeks only) — leads, above the line */}
+      {data.retrospective && <RetroGrade retro={data.retrospective} />}
+
+      {/* 📊 The Line */}
+      <TheLine odds={data.odds} />
 
       {data.groups.length === 0 ? (
         <div className="rounded-xl border p-6 text-center text-sm text-muted-foreground">No scouting data yet — groups or 2026 rounds aren't set.</div>

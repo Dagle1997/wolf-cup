@@ -240,6 +240,16 @@ describe("settleBet — odds_win (bet a player to win a Line market)", () => {
     expect(o.payout).toBe(100);
   });
 
+  it("settles vs THE HOUSE (null layer) — settleBet ignores side B, outcome unchanged", () => {
+    const houseBet = ow({ sideBPlayerId: null }); // bet vs the book, no layer player
+    const win = settleBet(houseBet, noTotals, day({ perfectDayWinner: 1 }));
+    expect(win.winningSide).toBe("A"); // bettor collects profit (the House pays)
+    expect(win.payout).toBe(1650);
+    const lose = settleBet(houseBet, noTotals, day({ perfectDayWinner: 2 }));
+    expect(lose.winningSide).toBe("B"); // the House collects the stake
+    expect(lose.payout).toBe(100);
+  });
+
   it("market selector routes to the right title (money market)", () => {
     const b = ow({ oddsMarket: "money", odds: -150 });
     const hit = settleBet(b, noTotals, day({ moneyWinner: 1 }));

@@ -18,7 +18,7 @@ type Bet = {
   subjectA: Person;
   subjectB: Person | null;
   sideA: Person;
-  sideB: Person;
+  sideB: Person | null; // null = The House (odds_win vs the book)
 };
 type OddsLine = { playerId: number; stableford: number | null; money: number | null; perfectDay: number | null };
 type AdminBoard = {
@@ -102,9 +102,11 @@ function AdminBetsPage() {
         amountDollars: Number(amount),
         subjectAPlayerId: Number(subjectA),
         sideAPlayerId: Number(sA),
-        sideBPlayerId: Number(sB),
         note: note.trim() || undefined,
       };
+      // odds_win with an empty/House layer → omit sideBPlayerId (= bet vs The House).
+      const layerIsHouse = isOddsWin && (sB === '' || sB === 'house');
+      if (!layerIsHouse) body['sideBPlayerId'] = Number(sB);
       if (needsSubjectB) body['subjectBPlayerId'] = Number(subjectB);
       if (needsLine) body['line'] = Number(line);
       if (isOddsWin) body['oddsMarket'] = oddsMarket; // price is locked from The Line server-side
@@ -146,7 +148,8 @@ function AdminBetsPage() {
     oddsValid &&
     amount &&
     Number(amount) > 0 &&
-    (manualSides ? sideA && sideB : true) &&
+    // odds_win needs the bettor (side A); the layer is optional (empty = The House).
+    (manualSides ? sideA && (isOddsWin || sideB) : true) &&
     !create.isPending;
 
   const nameOf = (id: number) => allPlayers.find((p) => p.id === id)?.name ?? `#${id}`;
@@ -282,7 +285,7 @@ function AdminBetsPage() {
                 <label className="block text-xs">
                   <span className="text-muted-foreground">{needsLine ? 'Backs OVER' : isOddsWin ? 'Layer (other side)' : 'Backs B'}</span>
                   <select className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm" value={sideB} onChange={(e) => setSideB(e.target.value)}>
-                    <option value="">—</option>
+                    <option value="">{isOddsWin ? '🏠 The House' : '—'}</option>
                     {allPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </label>
@@ -313,7 +316,7 @@ function AdminBetsPage() {
                 <div className="min-w-0">
                   <div className="truncate">{describe(b)}</div>
                   <div className="text-[11px] text-muted-foreground truncate">
-                    {b.sideA.name} vs {b.sideB.name}
+                    {b.sideA.name} vs {b.sideB?.name ?? 'The House'}
                     {b.betType !== 'per_hole' ? ` · $${b.amountDollars}` : ''}
                   </div>
                 </div>

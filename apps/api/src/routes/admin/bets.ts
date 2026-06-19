@@ -33,7 +33,9 @@ const createBetSchema = z.object({
   // client-supplied) so the locked odds always match the generated line.
   oddsMarket: z.enum(["stableford", "money", "perfect_day"]).optional(),
   sideAPlayerId: z.number().int().positive(),
-  sideBPlayerId: z.number().int().positive(),
+  // sideB is the layer. Optional/null ONLY for odds_win = bet vs The House (no
+  // second player); required for h2h / over_under / per_hole.
+  sideBPlayerId: z.number().int().positive().nullable().optional(),
   note: z.string().max(200).optional(),
 });
 
@@ -102,7 +104,12 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
     // The Line below (after we know roundId), not from the client.
     if (d.oddsMarket == null) return c.json({ error: "odds_win_needs_market" }, 400);
   }
-  if (d.sideAPlayerId === d.sideBPlayerId) {
+  // The layer (side B) is required for every type EXCEPT odds_win, where a null
+  // layer means the bet is vs The House (the book) — no second player.
+  if (d.betType !== "odds_win" && d.sideBPlayerId == null) {
+    return c.json({ error: "needs_layer" }, 400);
+  }
+  if (d.sideBPlayerId != null && d.sideAPlayerId === d.sideBPlayerId) {
     return c.json({ error: "stakeholders_must_differ" }, 400);
   }
 
@@ -123,7 +130,8 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
   if (subjectIds.some((id) => !rosterIds.has(id))) {
     return c.json({ error: "subject_not_in_round" }, 400);
   }
-  const stakeIds = [d.sideAPlayerId, d.sideBPlayerId];
+  // Validate only the present stakeholders (a null side B = The House, not a player).
+  const stakeIds = [d.sideAPlayerId, ...(d.sideBPlayerId != null ? [d.sideBPlayerId] : [])];
   const realRows = await db
     .select({ id: players.id })
     .from(players)
@@ -154,7 +162,7 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
       oddsMarket: d.betType === "odds_win" ? d.oddsMarket! : null,
       odds: lockedOdds,
       sideAPlayerId: d.sideAPlayerId,
-      sideBPlayerId: d.sideBPlayerId,
+      sideBPlayerId: d.sideBPlayerId ?? null, // null = The House (odds_win vs the book)
       note: d.note ?? null,
       createdByAdminId: adminId,
       createdAt: Date.now(),

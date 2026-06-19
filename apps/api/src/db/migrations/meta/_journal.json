@@ -232,6 +232,13 @@
       "when": 1781836879006,
       "tag": "0032_nostalgic_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1781840651966,
+      "tag": "0033_faulty_professor_monster",
+      "breakpoints": true
     }
   ]
 }

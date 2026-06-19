@@ -28,7 +28,7 @@ type Bet = {
   subjectA: Person;
   subjectB: Person | null;
   sideA: Person;
-  sideB: Person;
+  sideB: Person | null; // null = The House (odds_win vs the book)
   outcome: Outcome;
 };
 
@@ -89,6 +89,8 @@ function stakeLabel(b: Bet): string {
 type RosterEntry = { bet: Bet; side: 'A' | 'B'; opponent: Person };
 type RosterPerson = { id: number; name: string; entries: RosterEntry[]; net: number };
 
+const HOUSE: Person = { id: -1, name: 'The House' };
+
 function buildRoster(board: Board): RosterPerson[] {
   const byId = new Map<number, RosterPerson>();
   const settleNet = new Map(board.settleUp.map((s) => [s.playerId, s.net]));
@@ -101,8 +103,9 @@ function buildRoster(board: Board): RosterPerson[] {
     return r;
   };
   for (const b of board.bets) {
-    ensure(b.sideA).entries.push({ bet: b, side: 'A', opponent: b.sideB });
-    ensure(b.sideB).entries.push({ bet: b, side: 'B', opponent: b.sideA });
+    // The House (null side B) gets no roster card; the bettor's card shows "vs The House".
+    ensure(b.sideA).entries.push({ bet: b, side: 'A', opponent: b.sideB ?? HOUSE });
+    if (b.sideB) ensure(b.sideB).entries.push({ bet: b, side: 'B', opponent: b.sideA });
   }
   return [...byId.values()].sort((a, z) => z.net - a.net || a.name.localeCompare(z.name));
 }

@@ -803,9 +803,7 @@ export const bets = sqliteTable(
     sideAPlayerId: integer("side_a_player_id")
       .notNull()
       .references(() => players.id), // backs side A ("A wins" / "under")
-    sideBPlayerId: integer("side_b_player_id")
-      .notNull()
-      .references(() => players.id), // backs side B ("B wins" / "over")
+    sideBPlayerId: integer("side_b_player_id").references(() => players.id), // backs side B ("B wins" / "over"); NULL = The House (odds_win vs the book)
     note: text("note"),
     createdByAdminId: integer("created_by_admin_id"),
     createdAt: integer("created_at").notNull(),
@@ -816,5 +814,11 @@ export const bets = sqliteTable(
   },
   (t) => ({
     roundIdx: index("idx_bets_round_id").on(t.roundId),
+    // A null layer (side B) means "vs The House" — only valid for odds_win. Every
+    // other bet type must name a real second stakeholder.
+    layerRequiredUnlessHouse: check(
+      "chk_bets_side_b_required",
+      sql`side_b_player_id IS NOT NULL OR bet_type = 'odds_win'`,
+    ),
   }),
 );

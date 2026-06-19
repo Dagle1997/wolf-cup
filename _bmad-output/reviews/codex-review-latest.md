@@ -1,55 +1,57 @@
 # Codex Review
 
-- Generated: 2026-06-19T02:54:59.413Z
+- Generated: 2026-06-19T03:42:56.603Z
 - Model: gpt-5.2
 - Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: apps/api/src/services/bets.ts, apps/api/src/services/bets.test.ts, apps/api/src/routes/admin/bets.ts, apps/api/src/db/schema.ts, apps/api/src/db/migrations/0032_nostalgic_mauler.sql, apps/web/src/routes/admin/bets.tsx, apps/web/src/routes/bets.tsx
+- Reviewed files: apps/api/src/db/schema.ts, apps/api/src/db/migrations/0033_goofy_salo.sql, apps/api/src/services/bets.ts, apps/api/src/routes/admin/bets.ts, apps/web/src/routes/admin/bets.tsx, apps/web/src/routes/bets.tsx, apps/web/src/components/ScoutingPanel.tsx
 
 ## Summary
 
-The new `odds_win` bet type is largely integrated end-to-end (schema fields, admin validation, settlement logic, board rendering) and you added targeted unit tests for `americanProfit` + `settleBet` odds_win. The main money-risk issue is that `odds_win` can settle as a *loss for the bettor* in cases that look like data/enum corruption (e.g., empty `round_results` on a finalized round or an unexpected `odds_market` string), rather than failing closed to `live`. There’s also a small but real admin validation bug where an extraneous `subjectBPlayerId` can incorrectly block odds_win bet creation.
+Change largely achieves the goal: DB + API + both UIs now tolerate `bets.side_b_player_id = NULL` and display/grade odds_win vs “The House” without crashing. The main remaining risks for real-money are (1) lack of a DB-level invariant restricting NULL sideB to `bet_type='odds_win'`, and (2) `settleUp` is no longer guaranteed to be zero-sum once house bets exist, which can break any downstream code/assumptions that implicitly relied on conservation between players.
 
-Overall risk: high
+Overall risk: medium
 
 ## Findings
 
-1. [high] odds_win can incorrectly settle as bettor loss when day markets are indeterminate (e.g., empty round_results)
-   - File: apps/api/src/services/bets.ts:49-227
+1. [high] DB now permits NULL side_b_player_id for any bet_type (no invariant that only odds_win can be vs House)
+   - File: apps/api/src/db/schema.ts:803-806
    - Confidence: high
-   - Why it matters: This is real-money settlement. `computeDayMarkets()` returns null winners when `round_results` is empty (`rows.length===0` ⇒ `soleLeader` returns null) (lines 63-78). When the round is finalized, `getBetsBoard()` passes `day.finalized=true` (lines 352-359), and `settleBet()` will then treat `winnerId=null` as a miss and settle the bet for side B with payout=stake (lines 215-227). If `round.status==='finalized'` ever occurs before `round_results` is populated/complete (or if `round_results` is temporarily empty due to a write failure), the system will display the bettor as definitively losing and credit the layer—despite having no authoritative results. That’s not “fail closed”; it’s “fail to layer,” which is dangerous for money correctness and operator trust.
-   - Suggested fix: Differentiate “tie at the top” from “no authoritative data.” Minimal fix: have `computeDayMarkets` include `rowCount`/`hasResults`/`ready` (e.g., `ready = finalized && rows.length>0`) and make `settleBet` return `live` unless `day.ready` is true. If you need to also guard against partial results, consider requiring results for all roster players or some explicit `round_results_complete`/`finalized_at` invariant. Add tests covering: finalized+empty results ⇒ live; finalized+tie ⇒ settles to B.
+   - Why it matters: After this change, the database allows `side_b_player_id` to be NULL for *all* bet types, but the “NULL means The House” interpretation is only valid for `odds_win`. If any non-odds_win row is ever inserted/edited with NULL sideB (future code path, manual DB fix, bad import), the system will silently treat it as a house bet in `getBetsBoard` (sideB becomes null → UI shows “The House”; ledger will omit the missing stakeholder), producing incorrect settlement/settle-up for real money.
+   - Suggested fix: Add a DB-level CHECK constraint tying nullability to bet type, e.g. `CHECK (bet_type = 'odds_win' OR side_b_player_id IS NOT NULL)` in both Drizzle schema and a migration. Also consider a defensive runtime guard in `getBetsBoard`: if `betType !== 'odds_win' && sideBPlayerId == null`, fail closed (mark outcome live/push and/or surface an admin-visible error) instead of treating it as house.
 
-2. [high] Invalid/unknown oddsMarket value causes automatic layer win instead of failing closed
-   - File: apps/api/src/services/bets.ts:209-227
+2. [medium] Settle-up ledger is no longer zero-sum when house bets settle (may break implicit invariants)
+   - File: apps/api/src/services/bets.ts:365-398
    - Confidence: high
-   - Why it matters: `bets.odds_market` is a free-text column (no DB CHECK). Although the admin route uses a Zod enum, the DB can still contain unexpected values (manual edits, older data, future code bugs). In `settleBet()`, an unknown `bet.oddsMarket` falls through to `winnerId=null` (lines 215-223) and therefore settles as a miss (side B wins stake) (lines 223-227). That’s an asymmetric failure mode that can silently transfer money in the wrong direction rather than leaving the bet live for investigation.
-   - Suggested fix: Treat unrecognized `oddsMarket` as non-gradeable: return `{status:'live'...}` (or hard error) instead of settling to B. Example: validate `bet.oddsMarket` against the allowed set at runtime and fail closed if not matched. Add a unit test: `oddsMarket='typo'` + finalized day ⇒ live (not settled B).
+   - Why it matters: With `sideBPlayerId` nullable, `getBetsBoard` intentionally omits the house from `net` (lines 369-375). This means totals across `settleUp` will not necessarily sum to 0 once any odds_win vs house settles (e.g., bettor wins → +profit with no corresponding negative). If any downstream consumer (current or future) assumes settle-up is an internal player-to-player reconciliation (zero-sum), those computations will be wrong. This is a money-path behavioral change even if the UI currently just displays nets.
+   - Suggested fix: Decide and codify what `settleUp` represents:
+- If it’s “player vs everyone (including house) P/L”, current approach is fine, but document that it’s not zero-sum.
+- If it’s “player-to-player settle-up only”, then exclude house bets entirely from `net`, or add an explicit synthetic entry (e.g. `{ playerId: 0, name: 'The House', net: -sum(players) }`) so conservation holds.
+Add tests covering mixed boards (peer bets + house bets) to lock the intended semantics.
 
-3. [medium] Admin roster validation may incorrectly reject odds_win if client sends subjectBPlayerId (even though it is ignored)
-   - File: apps/api/src/routes/admin/bets.ts:94-106
-   - Confidence: high
-   - Why it matters: For roster validation, `subjectIds` includes `subjectBPlayerId` whenever `d.betType !== 'over_under'` and `subjectBPlayerId != null` (line 98). That condition includes `odds_win`. But on insert you always write `subjectBPlayerId: null` for odds_win (line 125). So a client that accidentally sends `subjectBPlayerId` (or a future UI regression) can get `subject_not_in_round` even though subjectB is irrelevant and will be discarded. This is a correctness/ops footgun during admin entry.
-   - Suggested fix: Only include `subjectBPlayerId` in `subjectIds` for bet types that actually use it: `if (d.betType === 'h2h' || d.betType === 'per_hole') subjectIds.push(...)`. Optionally also hard-reject `subjectBPlayerId` being provided for odds_win/over_under to keep the API strict.
-
-4. [medium] odds_win settlement gate only checks status === 'finalized'; schema allows 'completed' too (possible never-settle)
-   - File: apps/api/src/services/bets.ts:352-359
+3. [medium] Migration relies on PRAGMA foreign_keys toggling during table rebuild; may be ineffective under transactional runners and doesn’t validate existing FK integrity
+   - File: apps/api/src/db/migrations/0033_goofy_salo.sql:1-31
    - Confidence: medium
-   - Why it matters: `getBetsBoard()` passes `finalized = round.status === 'finalized'` (line 353). In the provided schema, `rounds.statusCheck` allows a `'completed'` status as well (apps/api/src/db/schema.ts lines 188-193). If production data ever uses `'completed'` as the terminal state (legacy or admin tooling), `odds_win` bets would remain `live` forever even though the round is effectively done.
-   - Suggested fix: Confirm the canonical terminal status. If `'completed'` is real, treat it as finalized for odds_win settlement (and likely elsewhere): `finalized = round.status === 'finalized' || round.status === 'completed'`. Add a test or fixture to prevent regression.
+   - Why it matters: SQLite’s `PRAGMA foreign_keys` setting is connection-scoped and cannot be changed inside a transaction (attempts can be ignored). If your migration runner wraps statements in a transaction, the OFF/ON may not behave as intended. Also, turning foreign_keys back ON does not retroactively validate existing rows, so any preexisting FK issues would persist silently. This is a production migration on real-money week.
+   - Suggested fix: Verify how Drizzle runs migrations in your environment (transactional vs not). Consider:
+- Removing reliance on toggling if unnecessary (bets likely has no inbound FKs), or explicitly running rebuild outside a transaction.
+- Running `PRAGMA foreign_key_check;` as an operational post-migration verification step.
+- Add a preflight assertion query in a follow-up migration to ensure no invalid `side_*_player_id` references exist.
 
-5. [medium] Migration SQL uses `ALTER TABLE ... ADD ...` (missing `COLUMN`) — verify SQLite compatibility
-   - File: apps/api/src/db/migrations/0032_nostalgic_mauler.sql:1-2
+4. [medium] No automated test coverage added for odds_win vs House settlement + board rendering
+   - File: apps/api/src/services/bets.ts:214-399
    - Confidence: medium
-   - Why it matters: SQLite commonly uses `ALTER TABLE table_name ADD COLUMN col_def;`. This migration uses `ALTER TABLE `bets` ADD `odds_market` text;` (line 1) and similarly for `odds` (line 2). If your migration runner truly targets SQLite syntax and `ADD` without `COLUMN` isn’t accepted in your SQLite version/config, the migration will fail and runtime queries selecting these columns will error (breaking bets board/admin in production).
-   - Suggested fix: Double-check prior migrations / the migration runner’s dialect. If needed, change to `ADD COLUMN` for both statements and re-run. Consider adding a smoke test or CI migration apply step to catch this class of issue.
+   - Why it matters: This change modifies the settlement ledger path and API contract (`BoardBet.sideB` nullable) in a real-money feature area. There’s no accompanying test demonstrating (a) odds_win vs house bettor win records +profit only and doesn’t crash, (b) bettor loss records −stake only, (c) mixed peer + house boards produce expected `settleUp` and stable UI-facing JSON shapes.
+   - Suggested fix: Add focused tests:
+- Unit tests for `getBetsBoard`’s net aggregation with `sideBPlayerId=null` for odds_win (both winningSide A and B).
+- Contract test ensuring `BoardBet.sideB` is null in JSON and clients handle it.
+- Regression test ensuring non-odds_win with null sideB is rejected (route) and/or fails closed (board).
 
 ## Strengths
 
-- `americanProfit` implements correct profit (not payout) semantics for American odds and is unit-tested for both + and − odds, including rounding behavior (apps/api/src/services/bets.test.ts:181-186).
-- `odds_win` settlement correctly gates on round finalization and fails closed to `live` when day markets aren’t provided (apps/api/src/services/bets.ts:212-214; test coverage at bets.test.ts:209-216).
-- Admin route validates stakeholders differ and that subjects are in the round roster (apps/api/src/routes/admin/bets.ts:80-106), which is key for deterministic settlement.
-- Net ledger reuse in `getBetsBoard` correctly treats `outcome.payout` as the transfer amount; for odds_win this matches real-world net transfers (profit on win; stake on loss) (apps/api/src/services/bets.ts:359-365).
+- API layer properly gates NULL sideB to odds_win creation (`needs_layer` for other bet types) and avoids self-stakeholder collision only when sideB is present (apps/api/src/routes/admin/bets.ts:107-114).
+- `getBetsBoard` now avoids inserting `null` into the `ids` set and avoids `Map` writes with `null` keys (apps/api/src/services/bets.ts:347-355, 369-375), eliminating the most likely crash/NaN risk.
+- Both admin and public web UIs were updated to treat `sideB` as nullable and render a clear “The House” fallback without creating a roster card for the house (apps/web/src/routes/admin/bets.tsx:21-22, 316-321; apps/web/src/routes/bets.tsx:92-110).
 
 ## Warnings
 

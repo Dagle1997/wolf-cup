@@ -311,7 +311,7 @@ export type BoardBet = {
   subjectA: { id: number; name: string };
   subjectB: { id: number; name: string } | null;
   sideA: { id: number; name: string }; // backs side A (odds_win: the bettor)
-  sideB: { id: number; name: string }; // backs side B (odds_win: the layer)
+  sideB: { id: number; name: string } | null; // backs side B (odds_win: the layer); null = The House
   outcome: BetOutcome;
 };
 
@@ -350,7 +350,7 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
     ids.add(b.subjectAPlayerId);
     if (b.subjectBPlayerId != null) ids.add(b.subjectBPlayerId);
     ids.add(b.sideAPlayerId);
-    ids.add(b.sideBPlayerId);
+    if (b.sideBPlayerId != null) ids.add(b.sideBPlayerId); // null = The House (no player)
   }
   const nameRows = await db
     .select({ id: players.id, name: players.name })
@@ -370,8 +370,9 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
       const winnerId = outcome.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId;
       const loserId = outcome.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId;
       // payout is the actual money (flat for h2h/o-u; netHoles × stake for per_hole).
-      net.set(winnerId, (net.get(winnerId) ?? 0) + outcome.payout);
-      net.set(loserId, (net.get(loserId) ?? 0) - outcome.payout);
+      // A null side is The House (odds_win) — not a player, so it's left off settle-up.
+      if (winnerId != null) net.set(winnerId, (net.get(winnerId) ?? 0) + outcome.payout);
+      if (loserId != null) net.set(loserId, (net.get(loserId) ?? 0) - outcome.payout);
     }
     board.push({
       id: b.id,
@@ -385,7 +386,7 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
       subjectA: who(b.subjectAPlayerId),
       subjectB: b.subjectBPlayerId != null ? who(b.subjectBPlayerId) : null,
       sideA: who(b.sideAPlayerId),
-      sideB: who(b.sideBPlayerId),
+      sideB: b.sideBPlayerId != null ? who(b.sideBPlayerId) : null,
       outcome,
     });
   }
