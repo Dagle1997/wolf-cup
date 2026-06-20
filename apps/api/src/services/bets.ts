@@ -315,11 +315,26 @@ export type BoardBet = {
   outcome: BetOutcome;
 };
 
+/** One actionable payment: `from` pays `to` `amount`. */
+export type SettleUpEntry = {
+  fromPlayerId: number;
+  fromName: string;
+  toPlayerId: number;
+  toName: string;
+  amount: number; // > 0
+};
+
 export type BetsBoard = {
   round: { id: number; status: string; scheduledDate: string } | null;
   bets: BoardBet[];
-  /** Per-stakeholder net for the week (+ ahead / − owes). Settled bets only. */
-  settleUp: Array<{ playerId: number; name: string; net: number }>;
+  /**
+   * Who pays whom, netted PAIRWISE — only bets between the SAME two stakeholders
+   * net against each other. A player who is up vs one person and down vs another
+   * shows BOTH payments (netting across different payees would hide real money
+   * owed). Settled player-vs-player bets only; The House (null side) is the book,
+   * not a player, so its bets are left off.
+   */
+  settleUp: SettleUpEntry[];
 };
 
 /** Build the full board for a round (defaults to the active round). */
@@ -363,16 +378,25 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
   const day = await computeDayMarkets(round.id, isTerminalRoundStatus(round.status));
 
   const board: BoardBet[] = [];
-  const net = new Map<number, number>(); // stakeholder → running net
+  // Pairwise nets, keyed by the unordered stakeholder pair. `net` is signed from
+  // lowId's perspective: net > 0 ⇒ highId owes lowId; net < 0 ⇒ lowId owes highId.
+  const pairNet = new Map<string, { lowId: number; highId: number; net: number }>();
   for (const b of betRows) {
     const outcome = settleBet(b, totals, day);
     if (outcome.status === "settled") {
       const winnerId = outcome.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId;
       const loserId = outcome.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId;
-      // payout is the actual money (flat for h2h/o-u; netHoles × stake for per_hole).
-      // A null side is The House (odds_win) — not a player, so it's left off settle-up.
-      if (winnerId != null) net.set(winnerId, (net.get(winnerId) ?? 0) + outcome.payout);
-      if (loserId != null) net.set(loserId, (net.get(loserId) ?? 0) - outcome.payout);
+      // Only player-vs-player bets settle pairwise. A null side is The House
+      // (odds_win vs the book) — not a player, so it's left off the settle-up.
+      if (winnerId != null && loserId != null) {
+        const lowId = Math.min(winnerId, loserId);
+        const highId = Math.max(winnerId, loserId);
+        const key = `${lowId}-${highId}`;
+        const entry = pairNet.get(key) ?? { lowId, highId, net: 0 };
+        // Winner collects `payout` from loser; record it in lowId's sign.
+        entry.net += winnerId === lowId ? outcome.payout : -outcome.payout;
+        pairNet.set(key, entry);
+      }
     }
     board.push({
       id: b.id,
@@ -391,9 +415,22 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
     });
   }
 
-  const settleUp = [...net.entries()]
-    .map(([playerId, n]) => ({ playerId, name: nameOf.get(playerId) ?? `#${playerId}`, net: n }))
-    .sort((a, b) => b.net - a.net);
+  // Resolve each pair's net into a directional payment (loser → winner).
+  const nameOrId = (id: number) => nameOf.get(id) ?? `#${id}`;
+  const settleUp: SettleUpEntry[] = [];
+  for (const { lowId, highId, net: n } of pairNet.values()) {
+    if (n === 0) continue; // even pair — nobody owes anybody
+    const toId = n > 0 ? lowId : highId; // receiver
+    const fromId = n > 0 ? highId : lowId; // payer
+    settleUp.push({
+      fromPlayerId: fromId,
+      fromName: nameOrId(fromId),
+      toPlayerId: toId,
+      toName: nameOrId(toId),
+      amount: Math.abs(n),
+    });
+  }
+  settleUp.sort((a, b) => b.amount - a.amount || a.fromName.localeCompare(b.fromName));
 
   return { round: { id: round.id, status: round.status, scheduledDate: round.scheduledDate }, bets: board, settleUp };
 }

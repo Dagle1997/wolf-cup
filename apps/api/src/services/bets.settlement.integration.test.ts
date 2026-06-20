@@ -141,19 +141,22 @@ describe("odds_win settlement — finalize→settle (real money path)", () => {
       expect(house.sideB).toBeNull();
     });
 
-    it("rolls up the right settle-up — and the House makes it intentionally non-zero-sum", async () => {
+    it("rolls up the right settle-up — pairwise who-pays-whom, House bets excluded", async () => {
       const board = await getBetsBoard(R);
       expect(board.round?.status).toBe("finalized");
-      const net = new Map(board.settleUp.map((s) => [s.playerId, s.net]));
-      expect(net.get(ALICE)).toBe(1650 - 50); // +1600 (won perfect day, lost the money bet)
-      expect(net.get(BOB)).toBe(-1650 + 50); // -1600
-      expect(net.get(CARL)).toBe(200); // beat the House
-      // The House is the book, not a player → never on settle-up.
-      expect(net.has(-1)).toBe(false);
-      expect(board.settleUp.some((s) => s.name === "The House")).toBe(false);
-      // Player ledger sums to the House's loss (+200), NOT zero — by design.
-      const sum = board.settleUp.reduce((a, s) => a + s.net, 0);
-      expect(sum).toBe(200);
+      // Among players, only the Alice/Bob pair settles: Alice +1650 (perfect day)
+      // − 50 (lost the money bet) ⇒ BOB owes ALICE 1600, one directional payment.
+      expect(board.settleUp).toHaveLength(1);
+      const pay = board.settleUp[0]!;
+      expect(pay.fromPlayerId).toBe(BOB);
+      expect(pay.toPlayerId).toBe(ALICE);
+      expect(pay.amount).toBe(1600);
+      // Carl's +200 is vs The House (the book, not a player): no player owes it, so
+      // it never shows in the player settle-up — that's where the non-zero-sum lives.
+      expect(board.settleUp.some((s) => s.fromPlayerId === CARL || s.toPlayerId === CARL)).toBe(false);
+      // The House is never a payer or payee.
+      expect(board.settleUp.some((s) => s.fromName === "The House" || s.toName === "The House")).toBe(false);
+      expect(board.settleUp.some((s) => s.fromPlayerId < 0 || s.toPlayerId < 0)).toBe(false);
     });
 
     it("season record aggregates the same nets (current season, House excluded)", async () => {
