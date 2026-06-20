@@ -321,15 +321,18 @@ export function ScoutingPanel({ roundId }: { roundId: number }) {
       )}
 
       {/* 🎲 The Action — leads the scouting page (the side-bet board lives here,
-          keeping the main leaderboard clean) */}
+          keeping the main leaderboard clean). Carries the scrubbed week so a
+          past round's scouting opens that round's bets + results, not the live
+          board's. */}
       <Link
         to="/bets"
+        search={{ round: effectiveRoundId }}
         className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm hover:bg-muted/40 transition-colors"
       >
         <span className="flex items-center gap-2">
           <Dice5 className="h-4 w-4 text-muted-foreground" />
           <span className="font-semibold text-sm">The Action</span>
-          <span className="text-[11px] text-muted-foreground">— this week's side bets</span>
+          <span className="text-[11px] text-muted-foreground">— side bets &amp; results</span>
         </span>
         <ChevronRight className="h-4 w-4 text-muted-foreground" />
       </Link>

@@ -700,13 +700,25 @@ function LeaderboardTable({
   const navigate = useNavigate();
   const { scouting: scoutingParam } = Route.useSearch();
   const showScouting = scoutingParam === true;
+  // Preserve the ?round=N param when toggling scouting so the historical view
+  // doesn't snap back to the live board.
   const toggleScouting = () =>
-    void navigate({ to: '/', search: showScouting ? {} : { scouting: true } });
+    void navigate({
+      to: '/',
+      search: (prev) => {
+        const next: { scouting?: true; round?: number } = {};
+        if (!showScouting) next.scouting = true;
+        if (prev.round != null) next.round = prev.round;
+        return next;
+      },
+    });
   // The sort + All/Group controls are leaderboard controls, so using one while
   // scouting is open returns you to the board (re-sorting a hidden table felt
   // like the buttons did nothing).
   const closeScouting = () => {
-    if (showScouting) void navigate({ to: '/', search: {} });
+    if (showScouting) {
+      void navigate({ to: '/', search: (prev) => (prev.round != null ? { round: prev.round } : {}) });
+    }
   };
   const colCount = data.harveyLiveEnabled ? 6 : 5;
 
@@ -954,7 +966,24 @@ function LeaderboardTable({
 // ---------------------------------------------------------------------------
 
 function LeaderboardPage() {
-  const [viewingRoundId, setViewingRoundId] = useState<number | null>(null);
+  // The viewed round lives in the URL (?round=N) so links back into the board —
+  // e.g. the "Scouting" back-link from The Action — restore the exact round you
+  // were on. Absent → the live/session board.
+  const navigate = useNavigate();
+  const { round: roundParam } = Route.useSearch();
+  const viewingRoundId = roundParam ?? null;
+  const setViewingRound = (id: number | null) =>
+    void navigate({
+      to: '/',
+      search: (prev) => {
+        // Build with only defined keys — the router's search type rejects
+        // explicit `undefined` properties.
+        const next: { scouting?: true; round?: number } = {};
+        if (prev.scouting) next.scouting = true;
+        if (id != null) next.round = id;
+        return next;
+      },
+    });
   const [showHistory, setShowHistory] = useState(false);
   const queryClient = useQueryClient();
 
@@ -1014,7 +1043,8 @@ function LeaderboardPage() {
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: ['leaderboard-history'],
     queryFn: () => apiFetch<HistoryResponse>('/leaderboard/history'),
-    enabled: showHistory || (liveData?.round === null),
+    // Also load when arriving directly at a round via ?round=N so prev/next work.
+    enabled: showHistory || viewingRoundId !== null || (liveData?.round === null),
   });
 
   // Historical round leaderboard
@@ -1047,7 +1077,7 @@ function LeaderboardPage() {
   }, [liveData]);
 
   const goBackToLive = () => {
-    setViewingRoundId(null);
+    setViewingRound(null);
     setShowHistory(false);
   };
 
@@ -1077,7 +1107,7 @@ function LeaderboardPage() {
               </button>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => prevRound && setViewingRoundId(prevRound.id)}
+                  onClick={() => prevRound && setViewingRound(prevRound.id)}
                   disabled={!prevRound}
                   className="p-1 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-default"
                   aria-label="Previous round"
@@ -1095,7 +1125,7 @@ function LeaderboardPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => nextRound && setViewingRoundId(nextRound.id)}
+                  onClick={() => nextRound && setViewingRound(nextRound.id)}
                   disabled={!nextRound}
                   className="p-1 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-default"
                   aria-label="Next round"
@@ -1306,7 +1336,7 @@ function LeaderboardPage() {
             {historyRounds.map((r) => (
               <button
                 key={r.id}
-                onClick={() => setViewingRoundId(r.id)}
+                onClick={() => setViewingRound(r.id)}
                 className="flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm hover:bg-muted/30 transition-colors text-left"
               >
                 <div>
@@ -1326,11 +1356,17 @@ function LeaderboardPage() {
 }
 
 export const Route = createFileRoute('/')({
-  // `?scouting=1` opens the board with the scouting panel already showing — so
-  // "Back" from The Action returns you to scouting (where you came from).
-  validateSearch: (search: Record<string, unknown>): { scouting?: true } => {
+  // `?scouting=1` opens the board with the scouting panel already showing, and
+  // `?round=N` opens a past round — so "Back" from The Action returns you to the
+  // exact round + scouting you came from.
+  validateSearch: (search: Record<string, unknown>): { scouting?: true; round?: number } => {
     const s = search['scouting'];
-    return s === true || s === 'true' || s === 1 || s === '1' ? { scouting: true } : {};
+    const raw = search['round'];
+    const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
+    const out: { scouting?: true; round?: number } = {};
+    if (s === true || s === 'true' || s === 1 || s === '1') out.scouting = true;
+    if (Number.isInteger(n) && n > 0) out.round = n;
+    return out;
   },
   component: LeaderboardPage,
 });

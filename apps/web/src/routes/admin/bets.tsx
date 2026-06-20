@@ -21,13 +21,22 @@ type Bet = {
   sideB: Person | null; // null = The House (odds_win vs the book)
 };
 type OddsLine = { playerId: number; stableford: number | null; money: number | null; perfectDay: number | null };
+type RoundOption = { id: number; scheduledDate: string; status: string; type: string };
 type AdminBoard = {
   round: { id: number; status: string; scheduledDate: string } | null;
   bets: Bet[];
   roster: Person[]; // valid SUBJECTS (in the round → have scores)
   allPlayers: Person[]; // valid STAKEHOLDERS (any active league member)
   oddsLines: OddsLine[]; // current Line price per player per market
+  rounds: RoundOption[]; // every round, most recent first — for the selector
 };
+
+/** "YYYY-MM-DD" → "Jun 19" (round dates are calendar dates, parse as local). */
+function fmtRoundDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-');
+  if (!y || !m || !d) return dateStr;
+  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 type BetType = 'h2h' | 'over_under' | 'per_hole' | 'odds_win';
 
@@ -47,9 +56,12 @@ const MARKET_LABEL: Record<OddsMarket, string> = {
 function AdminBetsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // null = let the server pick (active round, else most recent). Picking a round
+  // from the dropdown scopes the board + roster + add-bet form to that round.
+  const [selectedRoundId, setSelectedRoundId] = useState<number | null>(null);
   const q = useQuery({
-    queryKey: ['admin-bets'],
-    queryFn: () => apiFetch<AdminBoard>('/admin/bets'),
+    queryKey: ['admin-bets', selectedRoundId ?? 'default'],
+    queryFn: () => apiFetch<AdminBoard>(selectedRoundId != null ? `/admin/bets?roundId=${selectedRoundId}` : '/admin/bets'),
     retry: false,
   });
 
@@ -72,6 +84,10 @@ function AdminBetsPage() {
   const [sideB, setSideB] = useState('');
   const [note, setNote] = useState('');
 
+  // Bets can only be ADDED to an open (active/scheduled) round; a finalized round
+  // is view + delete only (mirrors the server gate). Deletion stays available.
+  const roundOpen =
+    q.data?.round != null && (q.data.round.status === 'active' || q.data.round.status === 'scheduled');
   const roster = q.data?.roster ?? []; // subjects (in the round)
   const allPlayers = q.data?.allPlayers ?? roster; // stakeholders (any league member)
   const oddsLines = q.data?.oddsLines ?? [];
@@ -104,6 +120,9 @@ function AdminBetsPage() {
         sideAPlayerId: Number(sA),
         note: note.trim() || undefined,
       };
+      // Target the round currently in view (defaults to active server-side, but
+      // the selector can point at a different round).
+      if (q.data?.round?.id) body['roundId'] = q.data.round.id;
       // odds_win with an empty/House layer → omit sideBPlayerId (= bet vs The House).
       const layerIsHouse = isOddsWin && (sB === '' || sB === 'house');
       if (!layerIsHouse) body['sideBPlayerId'] = Number(sB);
@@ -170,23 +189,51 @@ function AdminBetsPage() {
           <ChevronLeft className="h-3 w-3" />
           Admin
         </Link>
-        <h1 className="text-xl font-bold tracking-tight">Bets — this week</h1>
+        <h1 className="text-xl font-bold tracking-tight">Bets</h1>
         {q.data?.round && (
-          <p className="text-xs text-muted-foreground">Round {q.data.round.id} · {q.data.round.scheduledDate}</p>
+          <p className="text-xs text-muted-foreground">
+            Round {q.data.round.id} · {q.data.round.scheduledDate} · {q.data.round.status}
+          </p>
         )}
       </div>
 
+      {/* Round selector — manage any round's bets (delete past/test bets even
+          when nothing is active). */}
+      {q.data && q.data.rounds.length > 0 && (
+        <label className="mb-4 flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground">Round</span>
+          <select
+            className="rounded-lg border bg-background px-3 py-2 text-sm"
+            value={selectedRoundId ?? q.data.round?.id ?? q.data.rounds[0]?.id ?? ''}
+            onChange={(e) => setSelectedRoundId(Number(e.target.value))}
+          >
+            {q.data.rounds.map((r) => (
+              <option key={r.id} value={r.id}>
+                {fmtRoundDate(r.scheduledDate)} · {r.type === 'casual' ? 'Practice' : 'Official'} · {r.status}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {q.isLoading && <div className="py-8 text-center text-muted-foreground">Loading…</div>}
 
-      {q.data && !q.data.round && (
+      {q.data && !q.data.round && q.data.rounds.length === 0 && (
         <div className="rounded-xl border bg-card p-4 text-sm text-amber-600">
-          No active round — set up this week&apos;s round first, then add bets.
+          No rounds yet — set up a round first, then add bets.
+        </div>
+      )}
+
+      {q.data?.round && !roundOpen && (
+        <div className="rounded-xl border bg-card p-3 mb-4 text-xs text-muted-foreground">
+          This round is {q.data.round.status} — viewing &amp; deleting only. Adding new bets is disabled.
         </div>
       )}
 
       {q.data?.round && (
         <>
-          {/* Add a bet */}
+          {/* Add a bet — only on an open (active/scheduled) round */}
+          {roundOpen && (
           <div className="rounded-xl border bg-card p-4 mb-6 space-y-3">
             <div className="text-sm font-bold">Add a bet</div>
 
@@ -307,6 +354,7 @@ function AdminBetsPage() {
               Add bet
             </Button>
           </div>
+          )}
 
           {/* Existing bets */}
           <div className="space-y-2">

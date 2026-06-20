@@ -11,9 +11,9 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { bets, roundPlayers, players } from "../../db/schema.js";
+import { bets, roundPlayers, players, rounds } from "../../db/schema.js";
 import { adminAuthMiddleware } from "../../middleware/admin-auth.js";
 import type { Variables } from "../../types.js";
 import { getActiveRound, getBetsBoard } from "../../services/bets.js";
@@ -39,18 +39,37 @@ const createBetSchema = z.object({
   note: z.string().max(200).optional(),
 });
 
-// GET — the board + the active round's roster (for the add-bet picker).
+// GET — the board + the selected round's roster (for the add-bet picker).
+//
+// Round selection: explicit ?roundId=N, else the active round, else the most
+// recent round — so the page stays usable for past-round management (e.g.
+// deleting test bets after a round finalizes, when nothing is active).
 app.get("/bets", adminAuthMiddleware, async (c) => {
-  const board = await getBetsBoard();
-  const round = await getActiveRound();
-  // roster = the round's players (valid SUBJECTS — they need scores to settle).
+  const raw = c.req.query("roundId");
+  const n = raw != null ? Number(raw) : NaN;
+  const requestedRoundId = Number.isInteger(n) && n > 0 ? n : undefined;
+
+  // All rounds (most recent first) for the selector dropdown.
+  const allRounds = await db
+    .select({ id: rounds.id, scheduledDate: rounds.scheduledDate, status: rounds.status, type: rounds.type })
+    .from(rounds)
+    .orderBy(desc(rounds.scheduledDate), desc(rounds.id));
+
+  let selectedRoundId = requestedRoundId;
+  if (selectedRoundId == null) {
+    const ar = await getActiveRound();
+    selectedRoundId = ar?.id ?? allRounds[0]?.id;
+  }
+
+  const board = await getBetsBoard(selectedRoundId);
+  // roster = the selected round's players (valid SUBJECTS — they need scores to settle).
   let roster: Array<{ id: number; name: string }> = [];
-  if (round) {
+  if (selectedRoundId != null) {
     roster = await db
       .select({ id: players.id, name: players.name })
       .from(roundPlayers)
       .innerJoin(players, eq(players.id, roundPlayers.playerId))
-      .where(eq(roundPlayers.roundId, round.id))
+      .where(eq(roundPlayers.roundId, selectedRoundId))
       .orderBy(players.name);
   }
   // allPlayers = every active league member (valid STAKEHOLDERS — a better like
@@ -61,11 +80,11 @@ app.get("/bets", adminAuthMiddleware, async (c) => {
     .where(eq(players.isActive, 1))
     .orderBy(players.name);
 
-  // The current Line price per player per market — so the odds_win form can SHOW
-  // the locked odds (read-only; the POST re-derives the same value server-side).
+  // The selected round's Line price per player per market — so the odds_win form
+  // can SHOW the locked odds (read-only; the POST re-derives it server-side).
   let oddsLines: Array<{ playerId: number; stableford: number | null; money: number | null; perfectDay: number | null }> = [];
-  if (round) {
-    const res = await computeRoundOddsLine(round.id);
+  if (selectedRoundId != null) {
+    const res = await computeRoundOddsLine(selectedRoundId);
     if (res && !res.odds.gated) {
       oddsLines = res.odds.lines.map((l) => ({
         playerId: l.playerId,
@@ -75,7 +94,7 @@ app.get("/bets", adminAuthMiddleware, async (c) => {
       }));
     }
   }
-  return c.json({ ...board, roster, allPlayers, oddsLines });
+  return c.json({ ...board, roster, allPlayers, oddsLines, rounds: allRounds });
 });
 
 // POST — create a bet.
@@ -92,6 +111,18 @@ app.post("/bets", adminAuthMiddleware, async (c) => {
     const ar = await getActiveRound();
     if (!ar) return c.json({ error: "no_active_round" }, 422);
     roundId = ar.id;
+  }
+
+  // Bets may only be ADDED to an open (active/scheduled) round. The round
+  // selector lets an admin VIEW + delete bets on a finalized/cancelled round,
+  // but creating one there would auto-settle into a closed round's money —
+  // gate it server-side (deletion stays allowed; it's by-id, not here).
+  const roundRow = (
+    await db.select({ status: rounds.status }).from(rounds).where(eq(rounds.id, roundId)).limit(1)
+  )[0];
+  if (!roundRow) return c.json({ error: "round_not_found" }, 404);
+  if (roundRow.status !== "active" && roundRow.status !== "scheduled") {
+    return c.json({ error: "round_not_open" }, 422);
   }
 
   if (d.betType === "h2h" || d.betType === "per_hole") {

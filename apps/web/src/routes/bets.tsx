@@ -50,6 +50,17 @@ function money(n: number): string {
   return '$0';
 }
 
+/** "YYYY-MM-DD" → "Fri, Jun 19" (round dates are calendar dates, parse as local). */
+function formatRoundDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-');
+  if (!y || !m || !d) return dateStr;
+  return new Date(Number(y), Number(m) - 1, Number(d)).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 function basisLabel(b: Bet): string {
   return b.basis === 'gross' ? 'gross' : 'net';
 }
@@ -133,17 +144,31 @@ function GalleryError() {
 }
 
 function BetsPage() {
+  // `?round=N` views a past round's bets + results (from that round's scouting
+  // panel); absent → the live/active round's board.
+  const { round } = Route.useSearch();
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['bets'],
-    queryFn: () => apiFetch<Board>('/bets'),
+    queryKey: ['bets', round ?? 'live'],
+    queryFn: () => apiFetch<Board>(round != null ? `/bets?roundId=${round}` : '/bets'),
   });
+
+  // A FINISHED round shows its date + past framing; a live/upcoming round keeps
+  // "for the week". Keyed on round status (not the ?round param) so opening The
+  // Action on the live board still reads as the current week even though the
+  // link carries the live round id for correct scoping.
+  const r = data?.round ?? null;
+  const isPastRound = r ? r.status === 'finalized' || r.status === 'completed' : false;
+  const roundDate = r ? formatRoundDate(r.scheduledDate) : null;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="mb-4">
         <Link
           to="/"
-          search={{ scouting: true }}
+          // Only carry the round back for a PAST round (so the leaderboard
+          // restores it). For the live/upcoming round, omit it so the board
+          // returns to its live, auto-polling view rather than history mode.
+          search={isPastRound && round != null ? { scouting: true, round } : { scouting: true }}
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
         >
           <ChevronLeft className="h-3 w-3" />
@@ -153,7 +178,11 @@ function BetsPage() {
           <Dice5 className="h-5 w-5" />
           The Action
         </h1>
-        <p className="text-xs text-muted-foreground">Side bets for the week — auto-settled from scores.</p>
+        <p className="text-xs text-muted-foreground">
+          {isPastRound && roundDate
+            ? `${roundDate} — side bets, auto-settled from scores.`
+            : 'Side bets for the week — auto-settled from scores.'}
+        </p>
       </div>
 
       {/* Season record link */}
@@ -175,8 +204,12 @@ function BetsPage() {
       {data && (data.bets.length === 0 || !data.round) && (
         <div className="flex flex-col items-center gap-2 py-12 text-center">
           <Dice5 className="h-10 w-10 text-muted-foreground/30" />
-          <p className="text-muted-foreground">No bets on the board yet</p>
-          <p className="text-xs text-muted-foreground/60">The admin adds this week&apos;s action.</p>
+          <p className="text-muted-foreground">
+            {isPastRound ? 'No bets were on the board for this round' : 'No bets on the board yet'}
+          </p>
+          <p className="text-xs text-muted-foreground/60">
+            {isPastRound ? 'Nothing was wagered here.' : "The admin adds this week's action."}
+          </p>
         </div>
       )}
 
@@ -237,5 +270,12 @@ function BetsPage() {
 }
 
 export const Route = createFileRoute('/bets')({
+  // `?round=N` scopes the board to a past round (reached from that round's
+  // scouting panel). Absent/invalid → the live/active round.
+  validateSearch: (search: Record<string, unknown>): { round?: number } => {
+    const raw = search['round'];
+    const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
+    return Number.isInteger(n) && n > 0 ? { round: n } : {};
+  },
   component: BetsPage,
 });
