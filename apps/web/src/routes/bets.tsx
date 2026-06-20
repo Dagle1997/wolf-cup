@@ -38,10 +38,11 @@ const MARKET_LABEL: Record<OddsMarket, string> = {
   perfect_day: 'a perfect day',
 };
 const fmtOdds = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+type SettleUp = { fromPlayerId: number; fromName: string; toPlayerId: number; toName: string; amount: number };
 type Board = {
   round: { id: number; status: string; scheduledDate: string } | null;
   bets: Bet[];
-  settleUp: Array<{ playerId: number; name: string; net: number }>;
+  settleUp: SettleUp[]; // pairwise: `from` pays `to` `amount`
 };
 
 function money(n: number): string {
@@ -104,11 +105,10 @@ const HOUSE: Person = { id: -1, name: 'The House' };
 
 function buildRoster(board: Board): RosterPerson[] {
   const byId = new Map<number, RosterPerson>();
-  const settleNet = new Map(board.settleUp.map((s) => [s.playerId, s.net]));
   const ensure = (p: Person): RosterPerson => {
     let r = byId.get(p.id);
     if (!r) {
-      r = { id: p.id, name: p.name, entries: [], net: settleNet.get(p.id) ?? 0 };
+      r = { id: p.id, name: p.name, entries: [], net: 0 };
       byId.set(p.id, r);
     }
     return r;
@@ -117,6 +117,15 @@ function buildRoster(board: Board): RosterPerson[] {
     // The House (null side B) gets no roster card; the bettor's card shows "vs The House".
     ensure(b.sideA).entries.push({ bet: b, side: 'A', opponent: b.sideB ?? HOUSE });
     if (b.sideB) ensure(b.sideB).entries.push({ bet: b, side: 'B', opponent: b.sideA });
+  }
+  // Per-person net = their own settled outcomes (overall up/down this week). The
+  // actionable "who pays whom" is the pairwise settleUp list, not this aggregate.
+  for (const r of byId.values()) {
+    r.net = r.entries.reduce((sum, e) => {
+      const o = e.bet.outcome;
+      if (o.status !== 'settled') return sum;
+      return sum + (o.winningSide === e.side ? o.payout : -o.payout);
+    }, 0);
   }
   return [...byId.values()].sort((a, z) => z.net - a.net || a.name.localeCompare(z.name));
 }
@@ -215,24 +224,25 @@ function BetsPage() {
 
       {data && data.bets.length > 0 && (
         <div className="space-y-4">
-          {/* Settle-up summary (settled bets only) */}
-          {data.settleUp.some((s) => s.net !== 0) && (
+          {/* Settle-up — pairwise "who pays whom" (settled bets only). Each row is
+              one real payment; bets only net against the SAME counterparty. */}
+          {data.settleUp.length > 0 && (
             <div className="rounded-xl border bg-card p-3">
               <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
                 Week settle-up
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                {data.settleUp
-                  .filter((s) => s.net !== 0)
-                  .map((s) => (
-                    <span key={s.playerId} className="tabular-nums">
-                      {s.name}{' '}
-                      <span className={s.net > 0 ? 'text-green-600 font-bold' : 'text-red-500 font-bold'}>
-                        {money(s.net)}
-                      </span>
+              <ul className="space-y-1 text-sm">
+                {data.settleUp.map((s) => (
+                  <li key={`${s.fromPlayerId}-${s.toPlayerId}`} className="flex items-center justify-between gap-3">
+                    <span>
+                      <span className="font-semibold">{s.fromName}</span>
+                      <span className="text-muted-foreground"> pays </span>
+                      <span className="font-semibold">{s.toName}</span>
                     </span>
-                  ))}
-              </div>
+                    <span className="font-bold tabular-nums">${s.amount}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
