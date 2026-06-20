@@ -20,6 +20,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { db as DbType } from '../db/index.js';
 import {
+  courseHoles,
   courseRevisions,
   courseTees,
   eventRounds,
@@ -30,6 +31,7 @@ import {
   rounds,
 } from '../db/schema/index.js';
 import { allocateNetThroughHole, calcCourseHandicap } from './handicap.js';
+import { getHandicapStrokes } from '../engine/handicap-strokes.js';
 import { aggregateSkinsForEvent } from './sub-games.js';
 import { loadLockedHandicapsByEvent } from './event-handicap-overrides.js';
 
@@ -373,4 +375,144 @@ function assignRanksAndBuildRows(
   }
 
   return rows;
+}
+
+// ---------------------------------------------------------------------------
+// netForSegment — the net contract the betting engine consumes (P2/D3).
+// ---------------------------------------------------------------------------
+
+export type NetForSegmentTrust =
+  | 'ok'
+  | 'no_handicap' // player has no HI (live or locked) → fail-closed (FR24)
+  | 'no_course_data' // round/tee/course missing → fail-closed (FR24)
+  | 'incomplete'; // at least one scoped hole not yet scored → provisional (FR25)
+
+export type NetForSegmentResult = {
+  /** Per-hole net (gross − getHandicapStrokes) over the requested holes, hole-ascending. `net`/`gross` null when that hole isn't scored. */
+  perHole: Array<{ holeNumber: number; net: number | null; gross: number | null }>;
+  /** Sum of per-hole net; null unless trust === 'ok' (every scoped hole scored + trustworthy HI/course). */
+  total: number | null;
+  trust: NetForSegmentTrust;
+};
+
+/**
+ * Net for a player over an explicit set of holes in one scoring round.
+ *
+ * The betting engine NEVER re-derives net (P2) — it consumes this. Net is the
+ * CANONICAL per-hole allocation `gross − getHandicapStrokes(HI, strokeIndex, tee)`
+ * — the same per-stroke-index method the individual_bets + 2v2 best-ball
+ * engines use (NOT the leaderboard's proportional `allocateNetThroughHole`,
+ * which is a partial-round display approximation and cannot produce per-hole
+ * net). Over a full 18 the two agree exactly (Σ getHandicapStrokes = CH), so
+ * a full-round total reconciles with the leaderboard's `netThroughHole`
+ * (asserted by the net-reconciliation test); per-hole values additionally let
+ * front + back sum to total cleanly (Nassau, Epic 4) and feed the hole-by-hole
+ * basis (FR36).
+ *
+ * Locked-HI aware (the event's snapshot overrides the live index, FR23).
+ * Fail-closed: returns `total: null` with a `trust` reason when net can't be
+ * vouched for (no HI / no course data) or the scope isn't complete.
+ *
+ * Read-only; tenant-scoped on every query.
+ */
+export async function netForSegment(
+  ctx: LeaderboardCtx,
+  args: { roundId: string; playerId: string; holeNumbers: number[] },
+): Promise<NetForSegmentResult> {
+  const tenantId = ctx.tenantId;
+  const holeNumbers = [...args.holeNumbers].sort((a, b) => a - b);
+  const emptyPerHole = holeNumbers.map((holeNumber) => ({
+    holeNumber,
+    net: null,
+    gross: null,
+  }));
+
+  // 1. Round context (slope/rating/par + course revision + event), same joins
+  // as computeLeaderboard. Missing → fail-closed (no_course_data).
+  const ctxRows = await ctx.db
+    .select({
+      eventId: eventRounds.eventId,
+      courseRevisionId: eventRounds.courseRevisionId,
+      slope: courseTees.slope,
+      rating: courseTees.rating,
+      coursePar: courseRevisions.courseTotal,
+    })
+    .from(rounds)
+    .innerJoin(eventRounds, eq(eventRounds.id, rounds.eventRoundId))
+    .innerJoin(courseRevisions, eq(courseRevisions.id, eventRounds.courseRevisionId))
+    .innerJoin(
+      courseTees,
+      and(
+        eq(courseTees.courseRevisionId, eventRounds.courseRevisionId),
+        eq(courseTees.teeColor, eventRounds.teeColor),
+      ),
+    )
+    .where(
+      and(
+        eq(rounds.id, args.roundId),
+        eq(rounds.tenantId, tenantId),
+        eq(eventRounds.tenantId, tenantId),
+        eq(courseRevisions.tenantId, tenantId),
+        eq(courseTees.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  const rc = ctxRows[0];
+  if (!rc) return { perHole: emptyPerHole, total: null, trust: 'no_course_data' };
+
+  // 2. Effective handicap index: live/manual, overridden by the event's locked
+  // snapshot when the event's handicaps are locked. Null → fail-closed.
+  const playerRow = await ctx.db
+    .select({ hi: players.manualHandicapIndex })
+    .from(players)
+    .where(and(eq(players.id, args.playerId), eq(players.tenantId, tenantId)))
+    .limit(1);
+  let hi: number | null = playerRow[0]?.hi ?? null;
+  const locked = await loadLockedHandicapsByEvent(ctx.db, rc.eventId, tenantId);
+  const lockedHi = locked.get(args.playerId);
+  if (lockedHi !== undefined) hi = lockedHi;
+  if (hi === null) return { perHole: emptyPerHole, total: null, trust: 'no_handicap' };
+
+  // 3. Stroke index per requested hole.
+  const holeRows = await ctx.db
+    .select({ holeNumber: courseHoles.holeNumber, si: courseHoles.si })
+    .from(courseHoles)
+    .where(
+      and(
+        eq(courseHoles.courseRevisionId, rc.courseRevisionId),
+        inArray(courseHoles.holeNumber, holeNumbers),
+        eq(courseHoles.tenantId, tenantId),
+      ),
+    );
+  const siByHole = new Map(holeRows.map((r) => [r.holeNumber, r.si]));
+
+  // 4. Gross per requested hole for this player+round.
+  const scoreRows = await ctx.db
+    .select({ holeNumber: holeScores.holeNumber, grossStrokes: holeScores.grossStrokes })
+    .from(holeScores)
+    .where(
+      and(
+        eq(holeScores.roundId, args.roundId),
+        eq(holeScores.playerId, args.playerId),
+        inArray(holeScores.holeNumber, holeNumbers),
+        eq(holeScores.tenantId, tenantId),
+      ),
+    );
+  const grossByHole = new Map(scoreRows.map((r) => [r.holeNumber, r.grossStrokes]));
+
+  const tee = { slope: rc.slope, ratingTimes10: rc.rating, coursePar: rc.coursePar };
+  const perHole = holeNumbers.map((holeNumber) => {
+    const gross = grossByHole.get(holeNumber) ?? null;
+    const si = siByHole.get(holeNumber);
+    if (gross === null || si === undefined) {
+      return { holeNumber, net: null, gross };
+    }
+    return { holeNumber, net: gross - getHandicapStrokes(hi, si, tee), gross };
+  });
+
+  if (perHole.some((p) => p.net === null)) {
+    return { perHole, total: null, trust: 'incomplete' };
+  }
+  const total = perHole.reduce((sum, p) => sum + (p.net as number), 0);
+  return { perHole, total, trust: 'ok' };
 }

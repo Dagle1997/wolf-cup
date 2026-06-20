@@ -37,6 +37,7 @@ const {
   courses,
   courseRevisions,
   courseTees,
+  courseHoles,
   events,
   eventRounds,
   groups,
@@ -45,7 +46,7 @@ const {
   roundStates,
   holeScores,
 } = await import('../db/schema/index.js');
-const { computeLeaderboard } = await import('./leaderboard.js');
+const { computeLeaderboard, netForSegment } = await import('./leaderboard.js');
 
 const TENANT_ID = 'guyan';
 const CTX_BASE = 'league:guyan-wolf-cup-friday';
@@ -63,6 +64,7 @@ beforeEach(async () => {
   await db.delete(groups);
   await db.delete(events);
   await db.delete(courseTees);
+  await db.delete(courseHoles);
   await db.delete(courseRevisions);
   await db.delete(courses);
   await db.delete(players);
@@ -85,6 +87,8 @@ interface SeedResult {
   roundIds: string[];
   /** Stable participant ids — sorted ASC by uuid for predictable tie order. */
   playerIds: string[];
+  /** The single course revision all rounds share. */
+  courseRevisionId: string;
 }
 
 async function seedEvent(opts: SeedOpts): Promise<SeedResult> {
@@ -164,6 +168,21 @@ async function seedEvent(opts: SeedOpts): Promise<SeedResult> {
       contextId: CTX_BASE,
     },
   ]);
+  // 18 holes, par 4 each (sums to courseTotal 72), stroke index 1..18.
+  // The leaderboard doesn't read course_holes (it allocates net proportionally),
+  // but netForSegment needs per-hole stroke index — seed a full SI set.
+  await db.insert(courseHoles).values(
+    Array.from({ length: 18 }, (_, i) => ({
+      id: randomUUID(),
+      courseRevisionId: courseRevId,
+      holeNumber: i + 1,
+      par: 4,
+      si: i + 1,
+      yardagePerTeeJson: '{}',
+      tenantId: TENANT_ID,
+      contextId: CTX_BASE,
+    })),
+  );
 
   await db.insert(events).values({
     id: eventId,
@@ -233,7 +252,7 @@ async function seedEvent(opts: SeedOpts): Promise<SeedResult> {
     roundIds.push(roundId);
   }
 
-  return { eventId, roundIds, playerIds };
+  return { eventId, roundIds, playerIds, courseRevisionId: courseRevId };
 }
 
 async function postHoleScore(
@@ -489,5 +508,98 @@ describe('computeLeaderboard', () => {
       expect(r.netThroughHole).toBeNull();
       expect(r.throughHole).toBe(0);
     }
+  });
+});
+
+describe('netForSegment — the betting engine net contract (P2/D3)', () => {
+  const ALL_18 = Array.from({ length: 18 }, (_, i) => i + 1);
+
+  test('net-RECONCILIATION: sum over full 18 === leaderboard netThroughHole', async () => {
+    // Two players with different handicaps; reconciliation must hold for both.
+    const seed = await seedEvent({
+      participantCount: 2,
+      handicapIndexes: [12.4, 3.0],
+      rounds: [{ teeColor: 'blue' }],
+    });
+    const [roundId] = seed.roundIds as [string];
+    const scorerId = seed.playerIds[0]!;
+
+    // Post a full 18 for both players (varied gross so net isn't trivially gross).
+    const grossByPlayer: Record<string, number[]> = {
+      [seed.playerIds[0]!]: [4, 5, 4, 6, 4, 4, 5, 4, 4, 4, 5, 4, 4, 3, 4, 5, 4, 4],
+      [seed.playerIds[1]!]: [4, 4, 3, 4, 4, 5, 4, 4, 4, 4, 4, 4, 5, 4, 4, 4, 3, 4],
+    };
+    for (const pid of seed.playerIds) {
+      for (let h = 1; h <= 18; h++) {
+        await postHoleScore(roundId, pid, scorerId, h, grossByPlayer[pid]![h - 1]!);
+      }
+    }
+
+    const board = await computeLeaderboard(
+      { db, tenantId: TENANT_ID },
+      seed.eventId,
+      { roundId, scope: 'round' },
+    );
+
+    for (const pid of seed.playerIds) {
+      const seg = await netForSegment({ db, tenantId: TENANT_ID }, {
+        roundId,
+        playerId: pid,
+        holeNumbers: ALL_18,
+      });
+      const row = board.find((r) => r.playerId === pid)!;
+      expect(seg.trust).toBe('ok');
+      // The exposure must never drift from the leaderboard's own net.
+      expect(seg.total).toBe(row.netThroughHole);
+    }
+  });
+
+  test('front + back nets sum to the full-18 total (segmentable, Nassau-ready)', async () => {
+    const seed = await seedEvent({
+      participantCount: 1,
+      handicapIndexes: [9.7],
+      rounds: [{ teeColor: 'blue' }],
+    });
+    const [roundId] = seed.roundIds as [string];
+    const pid = seed.playerIds[0]!;
+    for (let h = 1; h <= 18; h++) await postHoleScore(roundId, pid, pid, h, 5);
+
+    const ctx = { db, tenantId: TENANT_ID };
+    const front = await netForSegment(ctx, { roundId, playerId: pid, holeNumbers: ALL_18.slice(0, 9) });
+    const back = await netForSegment(ctx, { roundId, playerId: pid, holeNumbers: ALL_18.slice(9) });
+    const total = await netForSegment(ctx, { roundId, playerId: pid, holeNumbers: ALL_18 });
+    expect(front.total! + back.total!).toBe(total.total);
+  });
+
+  test('fail-closed: no handicap on file → trust=no_handicap, total null (FR24)', async () => {
+    const seed = await seedEvent({
+      participantCount: 1,
+      handicapIndexes: [null],
+      rounds: [{ teeColor: 'blue' }],
+    });
+    const [roundId] = seed.roundIds as [string];
+    const pid = seed.playerIds[0]!;
+    for (let h = 1; h <= 18; h++) await postHoleScore(roundId, pid, pid, h, 4);
+
+    const seg = await netForSegment({ db, tenantId: TENANT_ID }, { roundId, playerId: pid, holeNumbers: ALL_18 });
+    expect(seg.trust).toBe('no_handicap');
+    expect(seg.total).toBeNull();
+  });
+
+  test('incomplete scope → trust=incomplete, total null (FR25)', async () => {
+    const seed = await seedEvent({
+      participantCount: 1,
+      handicapIndexes: [10.0],
+      rounds: [{ teeColor: 'blue' }],
+    });
+    const [roundId] = seed.roundIds as [string];
+    const pid = seed.playerIds[0]!;
+    // Only 9 of 18 scored, but the bet scope asks for 18.
+    for (let h = 1; h <= 9; h++) await postHoleScore(roundId, pid, pid, h, 4);
+
+    const seg = await netForSegment({ db, tenantId: TENANT_ID }, { roundId, playerId: pid, holeNumbers: ALL_18 });
+    expect(seg.trust).toBe('incomplete');
+    expect(seg.total).toBeNull();
+    expect(seg.perHole.filter((p) => p.net !== null)).toHaveLength(9);
   });
 });
