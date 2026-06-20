@@ -131,6 +131,9 @@ export default tseslint.config(
       // T8-4: awards service test seeds raw activity rows to set up
       // the idempotency + first-eagle-after-birdie scenarios.
       'src/services/awards.test.ts',
+      // Story 1.1 betting: clears the activity table between cases (the
+      // create path emits action_bet.created via emitActivity in prod code).
+      'src/routes/admin-event-bets.integration.test.ts',
     ],
     rules: {
       'no-restricted-imports': 'off',

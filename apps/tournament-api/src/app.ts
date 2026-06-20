@@ -4,6 +4,7 @@ import { env } from './lib/env.js';
 import { adminCoursesRouter } from './routes/admin-courses.js';
 import { adminCoursesGhinRouter } from './routes/admin-courses-ghin.js';
 import { adminEventHandicapsRouter } from './routes/admin-event-handicaps.js';
+import { adminEventBetsRouter } from './routes/admin-event-bets.js';
 import { adminEventRoundsRouter } from './routes/admin-event-rounds.js';
 import { adminEventsRouter } from './routes/admin-events.js';
 import { adminGroupsRouter } from './routes/admin-groups.js';
@@ -73,6 +74,11 @@ app.route('/api/admin', adminCoursesGhinRouter);
 // Handicap-lock router. GET/POST /api/admin/events/:eventId/handicaps[...] —
 // organizer-gated lock of each roster player's HI as of a cutoff date.
 app.route('/api/admin', adminEventHandicapsRouter);
+
+// "The Action" admin betting router. GET/POST /api/admin/events/:eventId/bets —
+// organizer-gated create + list of action bets (Story 1.1: h2h-net). Distinct
+// path from the legacy individual_bets POST /api/events/:eventId/bets.
+app.route('/api/admin', adminEventBetsRouter);
 
 // Admin-events router (T3-2). POST /api/admin/events — organizer-gated
 // transactional create across events + event_rounds + invites + groups.

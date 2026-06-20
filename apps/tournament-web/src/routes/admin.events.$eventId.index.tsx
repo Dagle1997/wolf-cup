@@ -210,6 +210,20 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
 
         <li>
           <Link
+            to="/admin/events/$eventId/bets"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-bets"
+          >
+            <strong>The Action</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Enter head-to-head bets that auto-settle into the pairwise settle-up.
+            </div>
+          </Link>
+        </li>
+
+        <li>
+          <Link
             to="/admin/events/$eventId/start-round"
             params={{ eventId }}
             style={cardStyle}

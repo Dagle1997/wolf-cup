@@ -381,6 +381,17 @@ function assignRanksAndBuildRows(
 // netForSegment — the net contract the betting engine consumes (P2/D3).
 // ---------------------------------------------------------------------------
 
+/**
+ * Version stamp for the canonical net allocation used by `netForSegment`
+ * (gross − getHandicapStrokes per stroke-index, locked-HI aware). A banked
+ * action-bet records the version it settled under; if this constant later
+ * changes, the betting query surfaces a mismatch for organizer review rather
+ * than silently re-settling already-banked money (architecture key-deliverable,
+ * independent of Epic 5's finalize snapshot). Bump ONLY when the per-hole net
+ * math changes in a way that could move a settled outcome.
+ */
+export const NET_CALC_VERSION = 1;
+
 export type NetForSegmentTrust =
   | 'ok'
   | 'no_handicap' // player has no HI (live or locked) → fail-closed (FR24)

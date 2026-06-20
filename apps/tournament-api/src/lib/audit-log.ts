@@ -28,6 +28,13 @@ export const AUDIT_EVENT_TYPES = {
   ROUND_FINALIZED: 'round.finalized',
   RULE_SET_REVISED: 'rule_set.revised',
   BET_CREATED: 'bet.created',
+  // "The Action" betting (action-bets domain). The shared BET entity type
+  // disambiguates these from the legacy individual_bets 'bet.created' via the
+  // audit row's entity_id (the action bet's id).
+  ACTION_BET_CREATED: 'action_bet.created',
+  ACTION_BET_SETTLED: 'action_bet.settled',
+  ACTION_BET_VOIDED: 'action_bet.voided',
+  ACTION_BET_FINALIZED: 'action_bet.finalized',
   SUBGAME_COMPUTED: 'subgame.computed',
   GALLERY_UPLOADED: 'gallery.uploaded',
   GALLERY_DELETED: 'gallery.deleted',

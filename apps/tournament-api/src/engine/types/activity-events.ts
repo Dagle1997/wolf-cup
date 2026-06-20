@@ -102,6 +102,46 @@ export interface BetCreatedEvent extends ActivityEventBase {
   actorPlayerId: string;
 }
 
+/**
+ * "The Action" betting events (action-bets domain, Story 1.1). Distinct from
+ * the legacy `bet.created` above, which is the individual_bets/match-play flow
+ * with an incompatible {playerAId, playerBId, stakePerHoleCents} payload and
+ * must NOT be repurposed (P14 — never cross-wire the two bet models). Action
+ * bets carry subjects≠stakeholders and a single stake, so they get their own
+ * `action_bet.*` types. (Decision ratified with Josh 2026-06-20.)
+ */
+export interface ActionBetCreatedEvent extends ActivityEventBase {
+  type: 'action_bet.created';
+  betId: string;
+  betType: string;
+  basis: string;
+  holeScope: string;
+  stakeCents: number;
+  stakeholderAId: string;
+  subjectAId: string;
+  stakeholderBId: string;
+  subjectBId: string;
+  actorPlayerId: string;
+}
+
+export interface ActionBetSettledEvent extends ActivityEventBase {
+  type: 'action_bet.settled';
+  betId: string;
+  actorPlayerId: string;
+}
+
+export interface ActionBetVoidedEvent extends ActivityEventBase {
+  type: 'action_bet.voided';
+  betId: string;
+  actorPlayerId: string;
+}
+
+export interface ActionBetFinalizedEvent extends ActivityEventBase {
+  type: 'action_bet.finalized';
+  betId: string;
+  actorPlayerId: string;
+}
+
 export interface RuleSetRevisedEvent extends ActivityEventBase {
   type: 'rule_set.revised';
   ruleSetId: string;
@@ -150,6 +190,10 @@ export type ActivityEvent =
   | PressManualFiredEvent
   | PressManualUndoneEvent
   | BetCreatedEvent
+  | ActionBetCreatedEvent
+  | ActionBetSettledEvent
+  | ActionBetVoidedEvent
+  | ActionBetFinalizedEvent
   | RuleSetRevisedEvent
   | SubgameComputedEvent
   | GalleryUploadedEvent
@@ -167,6 +211,10 @@ export const ACTIVITY_TYPES = [
   'press.manual_fired',
   'press.manual_undone',
   'bet.created',
+  'action_bet.created',
+  'action_bet.settled',
+  'action_bet.voided',
+  'action_bet.finalized',
   'rule_set.revised',
   'subgame.computed',
   'gallery.uploaded',
@@ -313,6 +361,50 @@ const betCreatedSchema = z
   })
   .strict();
 
+const actionBetCreatedSchema = z
+  .object({
+    ...baseFields,
+    type: z.literal('action_bet.created'),
+    betId: nonEmptyString,
+    betType: nonEmptyString,
+    basis: nonEmptyString,
+    holeScope: nonEmptyString,
+    stakeCents: z.number().int().min(1),
+    stakeholderAId: nonEmptyString,
+    subjectAId: nonEmptyString,
+    stakeholderBId: nonEmptyString,
+    subjectBId: nonEmptyString,
+    actorPlayerId: nonEmptyString,
+  })
+  .strict();
+
+const actionBetSettledSchema = z
+  .object({
+    ...baseFields,
+    type: z.literal('action_bet.settled'),
+    betId: nonEmptyString,
+    actorPlayerId: nonEmptyString,
+  })
+  .strict();
+
+const actionBetVoidedSchema = z
+  .object({
+    ...baseFields,
+    type: z.literal('action_bet.voided'),
+    betId: nonEmptyString,
+    actorPlayerId: nonEmptyString,
+  })
+  .strict();
+
+const actionBetFinalizedSchema = z
+  .object({
+    ...baseFields,
+    type: z.literal('action_bet.finalized'),
+    betId: nonEmptyString,
+    actorPlayerId: nonEmptyString,
+  })
+  .strict();
+
 const ruleSetRevisedSchema = z
   .object({
     ...baseFields,
@@ -375,6 +467,10 @@ export const activityEventSchemas = {
   'press.manual_fired': pressManualFiredSchema,
   'press.manual_undone': pressManualUndoneSchema,
   'bet.created': betCreatedSchema,
+  'action_bet.created': actionBetCreatedSchema,
+  'action_bet.settled': actionBetSettledSchema,
+  'action_bet.voided': actionBetVoidedSchema,
+  'action_bet.finalized': actionBetFinalizedSchema,
   'rule_set.revised': ruleSetRevisedSchema,
   'subgame.computed': subgameComputedSchema,
   'gallery.uploaded': galleryUploadedSchema,

@@ -46,6 +46,9 @@ import {
   applyLockedToNumberMap,
 } from './event-handicap-overrides.js';
 import { resolveFoursomeTeams } from './foursome-teams.js';
+import { bets as actionBetsTable } from '../db/schema/index.js';
+import { loadBetWithSides, settleActionBet } from './bets-query.js';
+import { scopedHolesForScope } from '../engine/bets/scope.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -315,7 +318,7 @@ export type MyMoneyGameRound = {
 };
 
 export type MyMoneyGame = {
-  kind: 'foursome' | 'individual';
+  kind: 'foursome' | 'individual' | 'action';
   /** Stable id: 'foursome' for the team game, the betId for each side game. */
   key: string;
   label: string;
@@ -352,10 +355,15 @@ export async function computeMyMoney(
 
   // ── Foursome (team) game — reuse computeFoursomeResults per round. ──
   const erRows = await txOrDb
-    .select({ id: eventRounds.id, roundNumber: eventRounds.roundNumber })
+    .select({
+      id: eventRounds.id,
+      roundNumber: eventRounds.roundNumber,
+      holesToPlay: eventRounds.holesToPlay,
+    })
     .from(eventRounds)
     .where(and(eq(eventRounds.eventId, eventId), eq(eventRounds.tenantId, tenantId)))
     .orderBy(eventRounds.roundNumber);
+  const holesToPlayByEventRound = new Map(erRows.map((r) => [r.id, r.holesToPlay]));
 
   const foursomeRounds: MyMoneyGameRound[] = [];
   for (const er of erRows) {
@@ -616,6 +624,85 @@ export async function computeMyMoney(
       opponentName,
       netToViewerCents: sign * out.netToPlayerACents,
       perRound,
+    });
+  }
+
+  // ── "The Action" bets — one game per bet the viewer STAKES (FR8/FR10). ──
+  // The viewer here is a STAKEHOLDER (may be a non-playing backer, the open
+  // book). Net is viewer-signed from the settled SettlementEdge. h2h is
+  // winner-take-stake (a single lump at settlement, not per-hole), so the whole
+  // amount sits on the bet's last scoped hole — keeping Σ perHole === round net
+  // (the My Money loss-less-decomposition invariant) and Σ games === the
+  // combined matrix total for the viewer.
+  const actionBetRows = await txOrDb
+    .select({ id: actionBetsTable.id })
+    .from(actionBetsTable)
+    .where(and(eq(actionBetsTable.eventId, eventId), eq(actionBetsTable.tenantId, tenantId)))
+    .orderBy(actionBetsTable.createdAt, actionBetsTable.id);
+  for (const row of actionBetRows) {
+    const bet = await loadBetWithSides(txOrDb, row.id, tenantId);
+    if (!bet) continue;
+    const viewerSide = bet.sides.find((s) => s.stakeholderPlayerId === viewerId);
+    if (!viewerSide) continue; // viewer doesn't stake this bet
+    const oppSide = bet.sides.find((s) => s.side !== viewerSide.side);
+
+    const outcome = await settleActionBet(txOrDb, bet, tenantId);
+    let signed = 0;
+    for (const e of outcome.edges) {
+      if (e.toPlayerId === viewerId) signed += e.cents;
+      else if (e.fromPlayerId === viewerId) signed -= e.cents;
+    }
+
+    const oppName = oppSide
+      ? (
+          await txOrDb
+            .select({ name: players.name })
+            .from(players)
+            .where(and(eq(players.id, oppSide.stakeholderPlayerId), eq(players.tenantId, tenantId)))
+            .limit(1)
+        )[0]?.name ?? null
+      : null;
+
+    const holesToPlay = holesToPlayByEventRound.get(bet.eventRoundId) ?? 18;
+    const scoped = scopedHolesForScope(bet.holeScope, holesToPlay);
+    const lastHole = scoped.length > 0 ? scoped[scoped.length - 1]! : holesToPlay;
+    const winner: MyMoneyHole['winner'] =
+      outcome.derivedState === 'push'
+        ? 'halved'
+        : outcome.winnerSubjectId === null
+          ? null
+          : outcome.winnerSubjectId === viewerSide.subjectPlayerId
+            ? 'viewer'
+            : 'opponent';
+    const roundNumber = roundNumberByEventRound.get(bet.eventRoundId) ?? 0;
+
+    games.push({
+      kind: 'action',
+      key: bet.id,
+      label: oppName ? `The Action vs ${oppName}` : 'The Action',
+      opponentName: oppName,
+      netToViewerCents: signed,
+      perRound: [
+        {
+          eventRoundId: bet.eventRoundId,
+          roundNumber,
+          netToViewerCents: signed,
+          perHole: [
+            {
+              holeNumber: lastHole,
+              par: 0,
+              viewerGross: null,
+              viewerNet: outcome.subjectNetTotal[viewerSide.subjectPlayerId] ?? null,
+              oppGross: null,
+              oppNet: oppSide
+                ? outcome.subjectNetTotal[oppSide.subjectPlayerId] ?? null
+                : null,
+              winner,
+              moneyToViewerCents: signed,
+            },
+          ],
+        },
+      ],
     });
   }
 

@@ -7,9 +7,19 @@
 
 ## TL;DR — where we are
 
-Planning is COMPLETE (PRD → readiness → architecture → epics → 16 stories, all committed). **Implementation of Story 1.1 is ~half done and all green.** The pure correctness core (approved golden fixtures, schema+migration, settlement engine, net contract) is built, tested, and committed on a branch. The remaining Story 1.1 work is the **server/UI wiring ("1.1b")**.
+Planning is COMPLETE (PRD → readiness → architecture → epics → 16 stories, all committed). **Story 1.1 is now FULLY IMPLEMENTED and all green** (the 1.1b server/UI wiring was built 2026-06-20 on top of the previously-committed 1.1a core). API full suite **1107 passed / 2 skipped**, web **354 passed**, `pnpm -r typecheck` clean. **Not yet committed** — the 1.1b work is uncommitted in the working tree (commit/push gated on Josh).
 
-**Resume point:** build **`bets-write.ts` + `bets-query.ts`** (the server half), then the admin route, then settle-up wiring + minimal admin UI. Details in **"To resume"** below.
+**Resume point:** review the 1.1b diff, commit it, then **Story 1.2 (per-hole match-play bet type)** — see epics-betting-action.md. Story 1.2 reuses the same engine/IR/route/settle-up spine; it adds a new `per_hole_match` type (golden fixtures first, per the story's hard gate) + `CREATABLE_BET_TYPES` entry in `bets-write.ts`.
+
+### 1.1b — built 2026-06-20 (uncommitted)
+- **Activity/audit:** `action_bet.created/.settled/.voided/.finalized` registered in `engine/types/activity-events.ts` (union + Zod + map) and `lib/audit-log.ts`. **Decision (ratified w/ Josh):** distinct `action_bet.*` types, NOT the legacy `bet.created` — that name is taken by individual_bets (`routes/bets.ts`) with an incompatible payload (P14, never cross-wire). `NET_CALC_VERSION = 1` added to `leaderboard.ts`.
+- **`services/bets-write.ts`** — `createActionBet(tx, …)` + `actionBetCreateSchema`. Tx-only; FR50 (distinct stakeholders), distinct subjects, FR9/FR51 (all 4 roster members), FR49 placement cutoff, betType/basis CREATABLE gate (h2h+net only in 1.1). Writes bet + 2 sides + audit + activity in one tx. **SPEC-WORDING CORRECTION:** the AC's "subjects distinct from stakeholders (FR8)" is imprecise — fixtures (a) prove stakeholder==subject is the *normal* self-backing case; FR8 only means they *may* differ (open book, fixture c). The write path does NOT force subject≠stakeholder.
+- **`services/bets-query.ts`** — recompute-on-read settle (`settleActionBet`), `computeActionBetEdgesForEvent` (the **P8 visibility chokepoint** feeding money), `listBetsForEvent`/`getActionBetView` for the route, net-calc-version mismatch flag (dormant until banking).
+- **`engine/bets/scope.ts`** — pure `scopedHolesForScope(scope, holesToPlay)` shared by write (cutoff) + query (net) so they can't disagree.
+- **Route** `routes/admin-event-bets.ts` (POST/GET `/api/admin/events/:eventId/bets`, organizer-gated) wired in `app.ts`. NOTE: the handoff's `routes/admin/*` path was wrong — routes are flat files; matched `admin-event-handicaps.ts` conventions.
+- **Settle-up integration:** `money.ts:computeMoneyMatrix` now folds bet edges into the combined matrix + a new `actionLedger` split; `money-detail.ts:computeMyMoney` adds a new `'action'` game kind (whole stake on the last scoped hole to preserve the loss-less per-hole-sums-to-round-net invariant). **NOTE:** the pairwise matrix lives in `money.ts`, not `money-detail.ts` as the old handoff said — both were updated.
+- **Web:** `apps/tournament-web/src/routes/admin.events.$eventId.bets.tsx` (create h2h-net + open-book toggle + bet list w/ state) + "The Action" link on the event admin index. Roster/rounds sourced from the existing pairings endpoint (no GHIN call).
+- **Tests:** `routes/admin-event-bets.integration.test.ts` (7 tests: create/list, 403, FR50, FR49, settles-into-settle-up end-to-end, push contributes nothing, open-book non-playing backer collects + appears in settle-up). All prior suites still green.
 
 ---
 

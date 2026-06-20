@@ -22,7 +22,7 @@ import { HeadToHeadCard, type CardHole } from '../components/head-to-head-card';
 import { formatCents } from '../lib/format-cents';
 
 type MyMoneyGame = {
-  kind: 'foursome' | 'individual';
+  kind: 'foursome' | 'individual' | 'action';
   key: string;
   label: string;
   opponentName: string | null;
@@ -137,7 +137,11 @@ export function MyMoneyPage({ eventId }: { eventId: string }) {
                   <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}>Round {r.roundNumber}</div>
                 ) : null}
                 <HeadToHeadCard
-                  opponentLabel={game.kind === 'individual' ? game.opponentName ?? 'Opponent' : 'Other team'}
+                  opponentLabel={
+                    game.kind === 'individual' || game.kind === 'action'
+                      ? game.opponentName ?? 'Opponent'
+                      : 'Other team'
+                  }
                   showOpponentScore={game.kind === 'individual'}
                   perHole={r.perHole}
                 />

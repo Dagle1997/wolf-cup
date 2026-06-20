@@ -66,6 +66,7 @@ import { loadSkinsSnapshotsForEvent } from './sub-games.js';
 import { loadLockedHandicapsByEvent, applyLockedToNumberMap } from './event-handicap-overrides.js';
 import { resolveFoursomeTeams } from './foursome-teams.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
+import { computeActionBetEdgesForEvent } from './bets-query.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -84,6 +85,8 @@ export type MoneyMatrix = {
   teamLedger: Ledger;
   /** T13-5 split: 1v1 individual bets ("Individual bets"). */
   individualLedger: Ledger;
+  /** "The Action" split: action-bet SettlementEdges, stakeholder-keyed. */
+  actionLedger: Ledger;
   computedAt: string;
   visibilityMode: 'open' | 'participant' | 'self_only';
 };
@@ -185,6 +188,7 @@ export async function computeMoneyMatrix(
       totals: {},
       teamLedger: emptyLedger,
       individualLedger: emptyLedger,
+      actionLedger: emptyLedger,
       computedAt,
       visibilityMode: 'open',
     };
@@ -222,6 +226,7 @@ export async function computeMoneyMatrix(
   const matrix = zeroMatrix();
   const teamMatrix = zeroMatrix();
   const individualMatrix = zeroMatrix();
+  const actionMatrix = zeroMatrix();
 
   // ── (3) Aggregate 2v2 best ball per round. ──
   const config = await fetchActive2v2Config(txOrDb, tenantId);
@@ -616,6 +621,23 @@ export async function computeMoneyMatrix(
     }
   }
 
+  // ── (5b) "The Action" bets — fold SettlementEdges into combined + action. ──
+  // The edges come from the P8 chokepoint (bets-query). Direction: from PAYS to,
+  // so `to` collects `cents` from `from`. matrix[a][b] = a is up on b, so the
+  // winner (to) gains and the loser (from) loses. Edges are between STAKEHOLDERS
+  // (roster members; FR38 non-playing backers are in playerIds). Push /
+  // provisional bets emit no edges (FR26/FR39), so nothing to add for them.
+  const actionEdges = await computeActionBetEdgesForEvent(txOrDb, eventId, tenantId);
+  for (const edge of actionEdges) {
+    const to = edge.toPlayerId;
+    const from = edge.fromPlayerId;
+    if (!matrix[to] || !matrix[from]) continue; // stakeholder outside event scope — skip
+    matrix[to]![from] = (matrix[to]![from] ?? 0) + edge.cents;
+    matrix[from]![to] = (matrix[from]![to] ?? 0) - edge.cents;
+    actionMatrix[to]![from] = (actionMatrix[to]![from] ?? 0) + edge.cents;
+    actionMatrix[from]![to] = (actionMatrix[from]![to] ?? 0) - edge.cents;
+  }
+
   // ── (6) Compute totals (combined + each split). ──
   const totalsFor = (m: Record<string, Record<string, number>>): Record<string, number> => {
     const t: Record<string, number> = {};
@@ -643,6 +665,7 @@ export async function computeMoneyMatrix(
     totals,
     teamLedger: { matrix: teamMatrix, totals: totalsFor(teamMatrix) },
     individualLedger: { matrix: individualMatrix, totals: totalsFor(individualMatrix) },
+    actionLedger: { matrix: actionMatrix, totals: totalsFor(actionMatrix) },
     computedAt,
     visibilityMode,
   };
