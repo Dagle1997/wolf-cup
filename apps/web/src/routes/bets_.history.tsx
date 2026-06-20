@@ -4,7 +4,7 @@ import { ChevronLeft, Trophy } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
 // Mirrors services/bets.ts SeasonBetHistory.
-type Person = { playerId: number; name: string; net: number };
+type Person = { playerId: number; name: string; won: number; lost: number; net: number; wins: number; losses: number };
 type History = {
   season: { id: number; name: string } | null;
   people: Person[];
@@ -63,8 +63,10 @@ function HistoryPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/60 text-muted-foreground text-[11px]">
-                  <th className="text-center py-2 pl-2 pr-1 w-10">#</th>
+                  <th className="text-center py-2 pl-2 pr-1 w-8">#</th>
                   <th className="text-left py-2 pr-2">Player</th>
+                  <th className="text-right py-2 pr-2 w-16">Won</th>
+                  <th className="text-right py-2 pr-2 w-16">Lost</th>
                   <th className="text-right py-2 pr-3 w-20">Net</th>
                 </tr>
               </thead>
@@ -72,7 +74,16 @@ function HistoryPage() {
                 {data.people.map((p, i) => (
                   <tr key={p.playerId} className="border-b last:border-0">
                     <td className="py-2.5 pl-2 pr-1 text-center text-muted-foreground font-medium">{i + 1}</td>
-                    <td className="py-2.5 pr-2 font-semibold">{p.name}</td>
+                    <td className="py-2.5 pr-2">
+                      <div className="font-semibold leading-tight">{p.name}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">{p.wins}–{p.losses} record</div>
+                    </td>
+                    <td className="py-2.5 pr-2 text-right tabular-nums text-green-600">
+                      {p.won > 0 ? `$${p.won}` : '—'}
+                    </td>
+                    <td className="py-2.5 pr-2 text-right tabular-nums text-red-500">
+                      {p.lost > 0 ? `$${p.lost}` : '—'}
+                    </td>
                     <td
                       className={`py-2.5 pr-3 text-right tabular-nums font-bold ${
                         p.net > 0 ? 'text-green-600' : p.net < 0 ? 'text-red-500' : 'text-muted-foreground'
@@ -96,6 +107,6 @@ function HistoryPage() {
   );
 }
 
-export const Route = createFileRoute('/bets/history')({
+export const Route = createFileRoute('/bets_/history')({
   component: HistoryPage,
 });

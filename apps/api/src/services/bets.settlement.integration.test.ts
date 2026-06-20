@@ -168,6 +168,12 @@ describe("odds_win settlement — finalize→settle (real money path)", () => {
       expect(net.get(BOB)).toBe(-1600);
       expect(net.get(CARL)).toBe(200);
       expect(net.has(-1)).toBe(false); // The House is not a person on the record
+      // Win/Loss breakdown: Alice won the perfect day ($1650) and lost the money bet ($50);
+      // Carl beat the House once ($200, no losses).
+      const byId = new Map(history.people.map((p) => [p.playerId, p]));
+      expect(byId.get(ALICE)).toMatchObject({ won: 1650, lost: 50, net: 1600, wins: 1, losses: 1 });
+      expect(byId.get(BOB)).toMatchObject({ won: 50, lost: 1650, net: -1600, wins: 1, losses: 1 });
+      expect(byId.get(CARL)).toMatchObject({ won: 200, lost: 0, net: 200, wins: 1, losses: 0 });
       // Sorted by net desc → Alice (top) ... Bob (bottom).
       expect(history.people[0]!.playerId).toBe(ALICE);
       expect(history.people.at(-1)!.playerId).toBe(BOB);

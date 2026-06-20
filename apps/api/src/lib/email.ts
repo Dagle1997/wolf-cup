@@ -55,7 +55,7 @@ export async function sendRoundResultsEmail(
     '',
     input.topLine ?? '',
     '',
-    `Attached: updated ${input.seasonYear} season workbook (name, gross, stableford, money per finalized round).`,
+    `Attached: updated ${input.seasonYear} season workbook — per round a summary sheet (name, gross, stableford, money) plus a "detail" sheet with the full hole-by-hole for each foursome (scores, wolf calls, greenies/polies/sandies).`,
     '',
     'This is an automated disaster-recovery archive — the live leaderboard at https://wolf.dagle.cloud is always authoritative.',
   ].join('\n');

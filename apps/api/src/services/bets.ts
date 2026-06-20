@@ -437,8 +437,12 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
 
 export type SeasonBetHistory = {
   season: { id: number; name: string } | null;
-  /** Per-person season net (+ up / − down), settled bets only, sorted by net desc. */
-  people: Array<{ playerId: number; name: string; net: number }>;
+  /**
+   * Per-person season record, settled bets only, sorted by net desc.
+   * `won` = total dollars collected, `lost` = total dollars paid out (positive),
+   * `net` = won − lost. `wins`/`losses` = count of bets resolved each way.
+   */
+  people: Array<{ playerId: number; name: string; won: number; lost: number; net: number; wins: number; losses: number }>;
   /** Bets that haven't settled yet (rounds in progress, or a net bet that can't grade). */
   pendingCount: number;
 };
@@ -480,7 +484,10 @@ export async function getSeasonBetHistory(): Promise<SeasonBetHistory> {
     else byRound.set(b.roundId, [b]);
   }
 
-  const net = new Map<number, number>();
+  const won = new Map<number, number>();
+  const lost = new Map<number, number>();
+  const winCount = new Map<number, number>();
+  const lossCount = new Map<number, number>();
   let pendingCount = 0;
 
   for (const [roundId, roundBets] of byRound) {
@@ -509,18 +516,36 @@ export async function getSeasonBetHistory(): Promise<SeasonBetHistory> {
       // a push-only stakeholder never appears, and a null side (The House) is left off.
       const winnerId = o.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId;
       const loserId = o.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId;
-      if (winnerId != null) net.set(winnerId, (net.get(winnerId) ?? 0) + o.payout);
-      if (loserId != null) net.set(loserId, (net.get(loserId) ?? 0) - o.payout);
+      if (winnerId != null) {
+        won.set(winnerId, (won.get(winnerId) ?? 0) + o.payout);
+        winCount.set(winnerId, (winCount.get(winnerId) ?? 0) + 1);
+      }
+      if (loserId != null) {
+        lost.set(loserId, (lost.get(loserId) ?? 0) + o.payout);
+        lossCount.set(loserId, (lossCount.get(loserId) ?? 0) + 1);
+      }
     }
   }
 
-  const ids = [...net.keys()];
+  const ids = [...new Set([...won.keys(), ...lost.keys()])];
   const nameRows = ids.length
     ? await db.select({ id: players.id, name: players.name }).from(players).where(inArray(players.id, ids))
     : [];
   const nameOf = new Map(nameRows.map((p) => [p.id, p.name]));
   const people = ids
-    .map((id) => ({ playerId: id, name: nameOf.get(id) ?? `#${id}`, net: net.get(id)! }))
+    .map((id) => {
+      const w = won.get(id) ?? 0;
+      const l = lost.get(id) ?? 0;
+      return {
+        playerId: id,
+        name: nameOf.get(id) ?? `#${id}`,
+        won: w,
+        lost: l,
+        net: w - l,
+        wins: winCount.get(id) ?? 0,
+        losses: lossCount.get(id) ?? 0,
+      };
+    })
     .sort((a, b) => b.net - a.net || a.name.localeCompare(b.name));
 
   return { season, people, pendingCount };
