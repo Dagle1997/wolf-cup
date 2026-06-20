@@ -346,6 +346,70 @@ describe('POST/GET /api/admin/events/:eventId/bets — Story 1.1', () => {
     expect(matrix.totals[ids.rick]).toBe(0);
   });
 
+  test('Story 1.2: per-hole match-play (net) settles by hole-margin into settle-up', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    const { betId } = (await (
+      await postBet(app, ids.eventId, {
+        eventRoundId: ids.eventRoundId,
+        betType: 'per_hole_match',
+        basis: 'net',
+        holeScope: 'full18',
+        stakeCents: 500,
+        sideA: { stakeholderPlayerId: ids.rick, subjectPlayerId: ids.rick },
+        sideB: { stakeholderPlayerId: ids.ben, subjectPlayerId: ids.ben },
+      })
+    ).json()) as { betId: string };
+
+    // Rick beats Ben on holes 1-3 (gross 4 vs 5); Ben beats Rick on hole 4;
+    // holes 5-18 tie. Rick wins 3, loses 1 → 2 up. 2 × $5 = $10.00.
+    const now = Date.now();
+    const ctx = `event:${ids.eventId}`;
+    for (let h = 1; h <= 18; h++) {
+      const rickGross = h === 4 ? 5 : 4;
+      const benGross = h <= 3 ? 5 : h === 4 ? 4 : 4;
+      await db.insert(holeScores).values({
+        id: randomUUID(), roundId: ids.roundId, playerId: ids.rick, holeNumber: h, grossStrokes: rickGross,
+        putts: 2, scorerPlayerId: ids.rick, clientEventId: `r-${h}`, createdAt: now, updatedAt: now,
+        tenantId: TENANT_ID, contextId: ctx,
+      });
+      await db.insert(holeScores).values({
+        id: randomUUID(), roundId: ids.roundId, playerId: ids.ben, holeNumber: h, grossStrokes: benGross,
+        putts: 2, scorerPlayerId: ids.rick, clientEventId: `b-${h}`, createdAt: now, updatedAt: now,
+        tenantId: TENANT_ID, contextId: ctx,
+      });
+    }
+
+    const list = (await (await app.request(`/api/admin/events/${ids.eventId}/bets`)).json()) as {
+      bets: Array<{ betId: string; betType: string; state: string; winnerSubjectId: string | null; marginNet: number }>;
+    };
+    expect(list.bets[0]!.betType).toBe('per_hole_match');
+    expect(list.bets[0]!.state).toBe('settled');
+    expect(list.bets[0]!.winnerSubjectId).toBe(ids.rick);
+    expect(list.bets[0]!.marginNet).toBe(2); // 2 holes up
+
+    const matrix = await computeMoneyMatrix(db, ids.eventId, ids.rick, TENANT_ID);
+    expect(matrix.matrix[ids.rick]![ids.ben]).toBe(1000); // 2 × 500c
+    expect(matrix.actionLedger.matrix[ids.rick]![ids.ben]).toBe(1000);
+    expect(betId).toBeTruthy();
+  });
+
+  test('FR12: putts basis is rejected for per_hole_match at creation (400)', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    const res = await postBet(app, ids.eventId, {
+      eventRoundId: ids.eventRoundId,
+      betType: 'per_hole_match',
+      basis: 'putts',
+      holeScope: 'full18',
+      stakeCents: 500,
+      sideA: { stakeholderPlayerId: ids.rick, subjectPlayerId: ids.rick },
+      sideB: { stakeholderPlayerId: ids.ben, subjectPlayerId: ids.ben },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('unsupported_basis');
+  });
+
   test('open book (FR8/FR10/FR38): non-playing backer Kyle collects and appears in settle-up', async () => {
     const ids = await seed();
     const app = buildApp(ids.organizerId);

@@ -102,6 +102,8 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
   });
 
   const [eventRoundId, setEventRoundId] = useState('');
+  const [betType, setBetType] = useState<'h2h' | 'per_hole_match'>('h2h');
+  const [basis, setBasis] = useState<'net' | 'gross'>('net');
   const [holeScope, setHoleScope] = useState<(typeof HOLE_SCOPES)[number]>('full18');
   const [stakeDollars, setStakeDollars] = useState('20');
   const [subjectA, setSubjectA] = useState('');
@@ -128,8 +130,10 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           eventRoundId,
-          betType: 'h2h',
-          basis: 'net',
+          betType,
+          // h2h is net-only for now (gross is a later story); per_hole_match
+          // offers net or gross.
+          basis: betType === 'h2h' ? 'net' : basis,
           holeScope,
           stakeCents,
           sideA: { stakeholderPlayerId: stA, subjectPlayerId: subjectA },
@@ -216,6 +220,38 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
               ))}
             </select>
           </label>
+
+          <label style={fieldStyle}>
+            <div style={{ marginBottom: 4 }}>Type</div>
+            <select
+              data-testid="type-select"
+              style={inputStyle}
+              value={betType}
+              onChange={(e) => {
+                const next = e.target.value as 'h2h' | 'per_hole_match';
+                setBetType(next);
+                if (next === 'h2h') setBasis('net'); // h2h is net-only for now
+              }}
+            >
+              <option value="h2h">Head-to-head (total)</option>
+              <option value="per_hole_match">Match play (per hole)</option>
+            </select>
+          </label>
+
+          {betType === 'per_hole_match' ? (
+            <label style={fieldStyle}>
+              <div style={{ marginBottom: 4 }}>Scoring</div>
+              <select
+                data-testid="basis-select"
+                style={inputStyle}
+                value={basis}
+                onChange={(e) => setBasis(e.target.value as 'net' | 'gross')}
+              >
+                <option value="net">Net</option>
+                <option value="gross">Gross</option>
+              </select>
+            </label>
+          ) : null}
 
           <label style={fieldStyle}>
             <div style={{ marginBottom: 4 }}>Holes</div>
@@ -368,7 +404,7 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
                   <td style={cellStyle}>
                     {sideLabel(a)} <span style={{ color: 'var(--color-text-muted)' }}>vs</span> {sideLabel(bb)}
                     <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85em' }}>
-                      {b.basis} · {b.holeScope}
+                      {b.betType === 'per_hole_match' ? 'Match play' : 'Head-to-head'} · {b.basis} · {b.holeScope}
                     </div>
                   </td>
                   <td style={cellStyle}>{fmtUsd(b.stakeCents)}</td>

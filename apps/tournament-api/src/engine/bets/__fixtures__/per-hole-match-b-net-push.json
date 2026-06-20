@@ -1,0 +1,29 @@
+{
+  "name": "(b) per-hole match NET — all square (push). Each side wins 3 holes, 12 tied → 0 up; no money moves.",
+  "_contract": "Golden HAND-CALC fixture for per_hole_match (engine/bets/). Proves the level-match PUSH (FR26/FR39): when holesWonA === holesWonB the match is all square and NO SettlementEdge is emitted — a push contributes nothing to settle-up. Per-hole grading: lower value wins the hole; equal = push. Engine consumes per-hole values as a GIVEN (P2). `expected` is hand-calculated truth. Cents.",
+  "input": {
+    "bet": {
+      "id": "bet-phm-b",
+      "betType": "per_hole_match",
+      "basis": "net",
+      "holeScope": "full18",
+      "stakeCents": 1000,
+      "scopedHoles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      "sides": [
+        { "side": "A", "stakeholderPlayerId": "rick", "subjectPlayerId": "rick" },
+        { "side": "B", "stakeholderPlayerId": "ben", "subjectPlayerId": "ben" }
+      ]
+    },
+    "netPerHoleBySubject": {
+      "rick": [3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+      "ben":  [4, 4, 4, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+    }
+  },
+  "expected": {
+    "state": "push",
+    "subjectNetTotal": { "rick": 3, "ben": 3 },
+    "result": { "winnerSide": null, "winnerSubjectId": null, "marginNet": 0 },
+    "edges": []
+  },
+  "_handCalc": "Holes 1–3: Rick 3 vs Ben 4 → Rick wins (3). Holes 4–6: Rick 4 vs Ben 3 → Ben wins (3). Holes 7–18: 4 vs 4 → push (12). Rick wins 3, Ben wins 3 → 0 up, all square. A level match is a PUSH (FR26): no edge, nothing to settle-up."
+}

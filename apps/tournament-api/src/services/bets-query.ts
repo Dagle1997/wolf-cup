@@ -161,6 +161,12 @@ export async function settleActionBet(
   const roundId = runtimeRoundRows[0]!.id;
 
   const ctx = ctxOf(txOrDb, tenantId);
+  // netForSegment is the single canonical source (P2); it returns BOTH net and
+  // gross per hole. A 'gross' bet compares gross strokes, otherwise net. (Note:
+  // netForSegment fails closed without an HI even for gross — a known
+  // limitation; every event player has an HI in practice. Putts never reaches
+  // here — the dispatch rejects it as unsupported.)
+  const useGross = bet.basis === 'gross';
   const netPerHoleBySubject: Record<string, Array<number | null>> = {};
   const trustBySubject: Record<string, NetForSegmentTrust> = {};
   const subjectIds = [...new Set(bet.sides.map((s) => s.subjectPlayerId))];
@@ -168,8 +174,8 @@ export async function settleActionBet(
     const seg = await netForSegment(ctx, { roundId, playerId: subjectId, holeNumbers: scopedHoles });
     trustBySubject[subjectId] = seg.trust;
     // Align to scopedHoles ascending (netForSegment returns hole-ascending).
-    const netByHole = new Map(seg.perHole.map((p) => [p.holeNumber, p.net]));
-    netPerHoleBySubject[subjectId] = scopedHoles.map((h) => netByHole.get(h) ?? null);
+    const valueByHole = new Map(seg.perHole.map((p) => [p.holeNumber, useGross ? p.gross : p.net]));
+    netPerHoleBySubject[subjectId] = scopedHoles.map((h) => valueByHole.get(h) ?? null);
   }
 
   const betDef: BetDef = {

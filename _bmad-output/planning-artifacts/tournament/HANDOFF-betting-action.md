@@ -7,9 +7,18 @@
 
 ## TL;DR — where we are
 
-Planning is COMPLETE (PRD → readiness → architecture → epics → 16 stories, all committed). **Story 1.1 is now FULLY IMPLEMENTED and all green** (the 1.1b server/UI wiring was built 2026-06-20 on top of the previously-committed 1.1a core). API full suite **1107 passed / 2 skipped**, web **354 passed**, `pnpm -r typecheck` clean. **Not yet committed** — the 1.1b work is uncommitted in the working tree (commit/push gated on Josh).
+Planning is COMPLETE (PRD → readiness → architecture → epics → 16 stories, all committed). **Stories 1.1 and 1.2 are FULLY IMPLEMENTED and all green.** 1.1 (h2h-net walking skeleton) is COMMITTED (`102e5db`). **1.2 (per-hole match-play) is built but UNCOMMITTED** in the working tree. API full suite **1115 passed / 2 skipped**, web **354 passed**, `pnpm -r typecheck` + lint clean both packages. **Push/prod-deploy still gated on Josh.**
 
-**Resume point:** review the 1.1b diff, commit it, then **Story 1.2 (per-hole match-play bet type)** — see epics-betting-action.md. Story 1.2 reuses the same engine/IR/route/settle-up spine; it adds a new `per_hole_match` type (golden fixtures first, per the story's hard gate) + `CREATABLE_BET_TYPES` entry in `bets-write.ts`.
+**Resume point:** commit 1.2, then **Story 1.3 (gross basis for head-to-head)** — golden gross fixtures first (hard gate), then flip `CREATABLE_BASES_BY_TYPE.h2h` to `['net','gross']` in `bets-write.ts` and enable gross in the web type selector (the engine + basis-aware net source already handle gross, proven by per_hole_match). See epics-betting-action.md Story 1.3.
+
+### 1.2 — built 2026-06-20 (uncommitted)
+- **Hard gate met:** 3 hand-APPROVED golden fixtures (`engine/bets/__fixtures__/per-hole-match-{a-net-clean-win,b-net-push,c-gross-openbook}.json`) authored + Josh-approved BEFORE engine code.
+- **`engine/bets/per-hole-match.ts`** `settlePerHoleMatch` — lower per-hole value wins the hole, tie pushes, money = **(holesWonA − holesWonB) × stake** (margin × stake, NOT winner-take-stake). Basis-agnostic. Reuses SettlementOutcome (no spine change): `marginNet` = hole margin, `subjectNetTotal` = holes won. Test `per-hole-match.test.ts` (6: 3 fixtures + determinism + provisional + putts-unsupported).
+- **Dispatch** (`index.ts`): `per_hole_match` → `settlePerHoleMatch`, with a **putts → `unsupported`** guard (FR12 fail-loud, P6 defense-in-depth).
+- **Creation** (`bets-write.ts`): replaced the flat CREATABLE lists with **`CREATABLE_BASES_BY_TYPE`** = `{ h2h:['net'], per_hole_match:['net','gross'] }` (per-type basis policy; putts rejected as `unsupported_basis` 400). Josh's call: per_hole_match ships net+gross creatable now.
+- **Basis-aware net source** (`bets-query.ts` `settleActionBet`): picks `p.gross` vs `p.net` from netForSegment per `bet.basis`. **KNOWN LIMITATION:** netForSegment fails closed without an HI even for a gross bet (early return) → a gross bet for a player with no HI is provisional. Every event player has an HI in practice; documented followup if it ever bites.
+- **Web** (`admin.events.$eventId.bets.tsx`): bet-type selector (Head-to-head / Match play) + a basis selector shown for per_hole_match (Net/Gross); h2h forces net. List row shows the type.
+- **Tests:** `admin-event-bets.integration.test.ts` extended to 9 (added per_hole_match net end-to-end settle-into-settle-up + putts-rejected-at-creation).
 
 ### 1.1b — built 2026-06-20 (uncommitted)
 - **Activity/audit:** `action_bet.created/.settled/.voided/.finalized` registered in `engine/types/activity-events.ts` (union + Zod + map) and `lib/audit-log.ts`. **Decision (ratified w/ Josh):** distinct `action_bet.*` types, NOT the legacy `bet.created` — that name is taken by individual_bets (`routes/bets.ts`) with an incompatible payload (P14, never cross-wire). `NET_CALC_VERSION = 1` added to `leaderboard.ts`.

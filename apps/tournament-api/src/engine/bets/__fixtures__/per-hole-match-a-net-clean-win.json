@@ -1,0 +1,31 @@
+{
+  "name": "(a) per-hole match NET — clean win. Subject A (Rick) wins 5 holes, loses 2, ties 11 → 3 up; B's stakeholder pays A's 3 × stake.",
+  "_contract": "Golden HAND-CALC fixture for the NEW bets engine per_hole_match type (engine/bets/). Per-hole MATCH PLAY (FR12): each scoped hole is graded independently — LOWER value wins that hole (+1 to that side), an equal hole is a PUSH (contributes zero). The bet's money is (holesWonA − holesWonB) × stake (NOT winner-take-stake like h2h; the stake is per hole of MARGIN). The engine CONSUMES per-hole values as a GIVEN input (P2 — it never re-derives them; netForSegment is validated separately). `netPerHoleBySubject` holds the per-hole values for the bet's basis (net here); the field name is shared with h2h. `expected` is hand-calculated truth the engine must match. SettlementEdge direction: fromPlayerId PAYS toPlayerId (debtor → creditor). Money in integer cents. result.marginNet here is the HOLE margin (|holesWonA − holesWonB|), and subjectNetTotal holds each subject's HOLES WON (reusing the shared SettlementOutcome shape; no spine change).",
+  "input": {
+    "bet": {
+      "id": "bet-phm-a",
+      "betType": "per_hole_match",
+      "basis": "net",
+      "holeScope": "full18",
+      "stakeCents": 500,
+      "scopedHoles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      "sides": [
+        { "side": "A", "stakeholderPlayerId": "rick", "subjectPlayerId": "rick" },
+        { "side": "B", "stakeholderPlayerId": "ben", "subjectPlayerId": "ben" }
+      ]
+    },
+    "netPerHoleBySubject": {
+      "rick": [3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+      "ben":  [4, 4, 4, 4, 4, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+    }
+  },
+  "expected": {
+    "state": "settled",
+    "subjectNetTotal": { "rick": 5, "ben": 2 },
+    "result": { "winnerSide": "A", "winnerSubjectId": "rick", "marginNet": 3 },
+    "edges": [
+      { "fromPlayerId": "ben", "toPlayerId": "rick", "cents": 1500, "sourceBetId": "bet-phm-a", "sourceType": "per_hole_match" }
+    ]
+  },
+  "_handCalc": "Grade each hole, lower net wins it. Holes 1–5: Rick 3 vs Ben 4 → Rick wins (5 holes). Holes 6–7: Rick 4 vs Ben 3 → Ben wins (2 holes). Holes 8–18: 4 vs 4 → push (11 holes, zero). Rick wins 5, Ben wins 2 → Rick is 5 − 2 = 3 up. Money = margin × stake = 3 × $5.00 = $15.00 = 1500c. Loser's stakeholder (Ben) pays winner's stakeholder (Rick). Exactly one SettlementEdge: ben → rick, 1500c."
+}

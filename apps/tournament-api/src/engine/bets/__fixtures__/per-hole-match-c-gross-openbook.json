@@ -1,0 +1,31 @@
+{
+  "name": "(c) per-hole match GROSS — subject B wins + open book. Madden beats Josh 4 holes to 2 (2 up); Josh's backer Kyle pays Madden's backer Steven 2 × stake.",
+  "_contract": "Golden HAND-CALC fixture for per_hole_match (engine/bets/). Proves THREE things at once: (1) GROSS basis — the engine is basis-agnostic, it compares whatever per-hole values it's fed (here gross strokes), so `netPerHoleBySubject` holds gross; (2) subject B wins (negative A-margin) → edge direction flips correctly; (3) the OPEN BOOK (FR8/FR10/FR38) — the SettlementEdge is between STAKEHOLDERS (Kyle, Steven), NOT the subjects (Josh, Madden); a non-playing backer collects. Engine consumes per-hole values as a GIVEN (P2). `expected` is hand-calculated truth. Edge direction: fromPlayerId PAYS toPlayerId. Cents.",
+  "input": {
+    "bet": {
+      "id": "bet-phm-c",
+      "betType": "per_hole_match",
+      "basis": "gross",
+      "holeScope": "full18",
+      "stakeCents": 1000,
+      "scopedHoles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      "sides": [
+        { "side": "A", "stakeholderPlayerId": "kyle", "subjectPlayerId": "josh" },
+        { "side": "B", "stakeholderPlayerId": "steven", "subjectPlayerId": "madden" }
+      ]
+    },
+    "netPerHoleBySubject": {
+      "josh":   [3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+      "madden": [4, 4, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+    }
+  },
+  "expected": {
+    "state": "settled",
+    "subjectNetTotal": { "josh": 2, "madden": 4 },
+    "result": { "winnerSide": "B", "winnerSubjectId": "madden", "marginNet": 2 },
+    "edges": [
+      { "fromPlayerId": "kyle", "toPlayerId": "steven", "cents": 2000, "sourceBetId": "bet-phm-c", "sourceType": "per_hole_match" }
+    ]
+  },
+  "_handCalc": "Grade each hole on gross, lower wins. Holes 1–2: Josh 3 vs Madden 4 → Josh wins (2). Holes 3–6: Josh 4 vs Madden 3 → Madden wins (4). Holes 7–18: 4 vs 4 → push (12). Josh wins 2, Madden wins 4 → Madden is 4 − 2 = 2 up, so subject B wins by a hole-margin of 2. Money = 2 × $10.00 = $20.00 = 2000c. The money is between STAKEHOLDERS, not subjects: side A's backer is Kyle (backing Josh, the loser), side B's is Steven (backing Madden, the winner). Loser's stakeholder Kyle pays winner's stakeholder Steven. Edge: kyle → steven, 2000c. Kyle/Steven need not have teed off (FR38)."
+}

@@ -43,9 +43,17 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 const TENANT_ID = 'guyan';
 
-/** Bet types/bases that can be CREATED in Story 1.1 (engine-wired end to end). */
-const CREATABLE_BET_TYPES = ['h2h'] as const;
-const CREATABLE_BASES = ['net'] as const;
+/**
+ * Bases that can be CREATED per bet type (FR20 open enum, gated in code not a
+ * DB CHECK). Story 1.1: h2h+net. Story 1.2: per_hole_match+net/gross (putts is
+ * invalid for match play, FR12). h2h gross arrives in Story 1.3. The engine is
+ * basis-agnostic; this map is the creation policy, the source of "unknown type/
+ * basis rejected at creation" (P6).
+ */
+const CREATABLE_BASES_BY_TYPE: Record<string, readonly string[]> = {
+  h2h: ['net'],
+  per_hole_match: ['net', 'gross'],
+};
 
 export class BetWriteError extends Error {
   readonly code: string;
@@ -91,11 +99,12 @@ export async function createActionBet(
   const { eventId, actorPlayerId, input } = args;
 
   // betType/basis open-enum gate (FR20 — rejected at creation, P6).
-  if (!CREATABLE_BET_TYPES.includes(input.betType as (typeof CREATABLE_BET_TYPES)[number])) {
+  const allowedBases = CREATABLE_BASES_BY_TYPE[input.betType];
+  if (!allowedBases) {
     throw new BetWriteError('unsupported_bet_type', `bet type ${input.betType} is not creatable`, 400);
   }
-  if (!CREATABLE_BASES.includes(input.basis as (typeof CREATABLE_BASES)[number])) {
-    throw new BetWriteError('unsupported_basis', `basis ${input.basis} is not creatable`, 400);
+  if (!allowedBases.includes(input.basis)) {
+    throw new BetWriteError('unsupported_basis', `basis ${input.basis} is not valid for ${input.betType}`, 400);
   }
 
   const stakeholderA = input.sideA.stakeholderPlayerId;
