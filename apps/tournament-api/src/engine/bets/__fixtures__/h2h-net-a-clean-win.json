@@ -1,0 +1,31 @@
+{
+  "name": "(a) h2h NET — clean win. Subject A (Rick) total net 70 beats Subject B (Ben) 73; Ben's stakeholder pays Rick's.",
+  "_contract": "Golden HAND-CALC fixture for the NEW bets engine (engine/bets/). The engine CONSUMES net-per-hole as a GIVEN input (P2 — it never re-derives net; netForSegment is validated separately by a net-reconciliation test). The `expected` block is hand-calculated and is the source of truth the engine must match. SettlementEdge direction convention: fromPlayerId PAYS toPlayerId (debtor -> creditor), matching the project's 'X->Y $N' settle-up convention. Money in integer cents.",
+  "input": {
+    "bet": {
+      "id": "bet-h2h-net-a",
+      "betType": "h2h",
+      "basis": "net",
+      "holeScope": "full18",
+      "stakeCents": 2000,
+      "scopedHoles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      "sides": [
+        { "side": "A", "stakeholderPlayerId": "rick", "subjectPlayerId": "rick" },
+        { "side": "B", "stakeholderPlayerId": "ben", "subjectPlayerId": "ben" }
+      ]
+    },
+    "netPerHoleBySubject": {
+      "rick": [4, 4, 3, 4, 5, 4, 4, 3, 4, 4, 4, 4, 3, 4, 4, 4, 4, 4],
+      "ben":  [4, 5, 4, 4, 4, 4, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3]
+    }
+  },
+  "expected": {
+    "state": "settled",
+    "subjectNetTotal": { "rick": 70, "ben": 73 },
+    "result": { "winnerSide": "A", "winnerSubjectId": "rick", "marginNet": 3 },
+    "edges": [
+      { "fromPlayerId": "ben", "toPlayerId": "rick", "cents": 2000, "sourceBetId": "bet-h2h-net-a", "sourceType": "h2h" }
+    ]
+  },
+  "_handCalc": "Rick net total = 35 (front: 4+4+3+4+5+4+4+3+4) + 35 (back: 4+4+4+3+4+4+4+4+4) = 70. Ben net total = 38 (front: 4+5+4+4+4+4+5+4+4) + 35 (back: 4+4+4+4+4+4+4+4+3) = 73. Lower total wins: 70 < 73, so subject A (Rick) wins by a margin of 3. h2h is winner-take-the-stake (not per-stroke): the LOSER's stakeholder (Ben) pays the WINNER's stakeholder (Rick) the full $20.00 = 2000 cents. Exactly one SettlementEdge: ben -> rick, 2000c."
+}

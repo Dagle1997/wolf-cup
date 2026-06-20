@@ -35,6 +35,9 @@ export { auditLog, type AuditLog } from './audit.js';
 export { individualBets, type IndividualBet } from './bets.js';
 export { individualBetRounds, type IndividualBetRound } from './bets.js';
 export { individualBetPresses, type IndividualBetPress } from './bets.js';
+// "The Action" betting schema (FR1–FR54) — NEW, additive; does NOT extend individual_bets
+export { bets, type Bet } from './action-bets.js';
+export { betSides, type BetSide } from './action-bets.js';
 // T6-4 team press log schema
 export { teamPressLog, type TeamPressLog } from './press.js';
 // T7-4 gallery_photos schema

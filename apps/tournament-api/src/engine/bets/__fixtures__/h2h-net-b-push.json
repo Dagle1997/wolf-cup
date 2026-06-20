@@ -1,0 +1,29 @@
+{
+  "name": "(b) h2h NET — push. Subjects tie on total net (70 each); no money moves (FR26).",
+  "_contract": "Golden HAND-CALC fixture for the NEW bets engine (engine/bets/). The engine CONSUMES net-per-hole as a GIVEN input (P2 — never re-derives net). The `expected` block is hand-calculated and is the source of truth. SettlementEdge direction: fromPlayerId PAYS toPlayerId. Money in integer cents.",
+  "input": {
+    "bet": {
+      "id": "bet-h2h-net-b",
+      "betType": "h2h",
+      "basis": "net",
+      "holeScope": "full18",
+      "stakeCents": 2000,
+      "scopedHoles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      "sides": [
+        { "side": "A", "stakeholderPlayerId": "rick", "subjectPlayerId": "rick" },
+        { "side": "B", "stakeholderPlayerId": "ben", "subjectPlayerId": "ben" }
+      ]
+    },
+    "netPerHoleBySubject": {
+      "rick": [4, 4, 3, 4, 5, 4, 4, 3, 4, 4, 4, 4, 3, 4, 4, 4, 4, 4],
+      "ben":  [4, 4, 4, 4, 4, 4, 4, 3, 4, 4, 4, 4, 4, 4, 3, 4, 4, 4]
+    }
+  },
+  "expected": {
+    "state": "push",
+    "subjectNetTotal": { "rick": 70, "ben": 70 },
+    "result": { "winnerSide": null, "winnerSubjectId": null, "marginNet": 0 },
+    "edges": []
+  },
+  "_handCalc": "Rick net total = 35 (front) + 35 (back) = 70. Ben net total = 35 (front: 4+4+4+4+4+4+4+3+4) + 35 (back: 4+4+4+4+4+4+3+4+4) ... = 70. Totals are equal (70 = 70) -> the bet is a PUSH (FR26): no winner, no money moves. Zero SettlementEdges. State = push (distinct from settled-with-edges)."
+}

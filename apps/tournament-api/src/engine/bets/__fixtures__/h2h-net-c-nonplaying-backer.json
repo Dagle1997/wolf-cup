@@ -1,0 +1,31 @@
+{
+  "name": "(c) h2h NET — the open book / Kyle case. Stakeholder != subject; non-playing backer Kyle collects from Steven.",
+  "_contract": "Golden HAND-CALC fixture for the NEW bets engine (engine/bets/). Proves subjects-are-distinct-from-stakeholders (FR8/FR10): the SettlementEdge is between STAKEHOLDERS (Kyle, Steven), NOT subjects (Josh, Madden). Kyle is not in the playing field yet still appears in settle-up (FR38). Engine CONSUMES net-per-hole as a GIVEN input (P2). `expected` is hand-calculated truth. Edge direction: fromPlayerId PAYS toPlayerId. Cents.",
+  "input": {
+    "bet": {
+      "id": "bet-h2h-net-c",
+      "betType": "h2h",
+      "basis": "net",
+      "holeScope": "full18",
+      "stakeCents": 1000,
+      "scopedHoles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      "sides": [
+        { "side": "A", "stakeholderPlayerId": "kyle", "subjectPlayerId": "josh" },
+        { "side": "B", "stakeholderPlayerId": "steven", "subjectPlayerId": "madden" }
+      ]
+    },
+    "netPerHoleBySubject": {
+      "josh":   [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+      "madden": [4, 4, 4, 4, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 4, 4]
+    }
+  },
+  "expected": {
+    "state": "settled",
+    "subjectNetTotal": { "josh": 72, "madden": 74 },
+    "result": { "winnerSide": "A", "winnerSubjectId": "josh", "marginNet": 2 },
+    "edges": [
+      { "fromPlayerId": "steven", "toPlayerId": "kyle", "cents": 1000, "sourceBetId": "bet-h2h-net-c", "sourceType": "h2h" }
+    ]
+  },
+  "_handCalc": "Josh net total = 36 (front, all 4s) + 36 (back, all 4s) = 72. Madden net total = 37 (front: one 5 on hole 5) + 37 (back: one 5 on hole 16) = 74. Lower wins: 72 < 74, subject A (Josh) wins by 2. The money is between the STAKEHOLDERS, not the subjects: side A's stakeholder is Kyle (a roster member NOT playing this round), side B's is Steven. Loser's stakeholder Steven pays winner's stakeholder Kyle $10.00 = 1000c. Edge: steven -> kyle, 1000c. Kyle never teed off but appears in settle-up (FR38). This is the core open-book proof."
+}
