@@ -242,6 +242,24 @@ async function postBet(app: Hono, eventId: string, body: unknown): Promise<Respo
   });
 }
 
+async function patchBet(app: Hono, eventId: string, betId: string, body: unknown): Promise<Response> {
+  return app.request(`/api/admin/events/${eventId}/bets/${betId}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function voidBet(app: Hono, eventId: string, betId: string): Promise<Response> {
+  return app.request(`/api/admin/events/${eventId}/bets/${betId}/void`, { method: 'POST' });
+}
+
+async function listBets(app: Hono, eventId: string) {
+  return (await (await app.request(`/api/admin/events/${eventId}/bets`)).json()) as {
+    bets: Array<{ betId: string; state: string; stakeCents: number; winnerSubjectId: string | null }>;
+  };
+}
+
 describe('POST/GET /api/admin/events/:eventId/bets — Story 1.1', () => {
   test('organizer creates an h2h-net bet; it lists as provisional with no scores', async () => {
     const ids = await seed();
@@ -473,5 +491,210 @@ describe('POST/GET /api/admin/events/:eventId/bets — Story 1.1', () => {
     // Kyle never teed off but is in settle-up (FR38).
     expect(matrix.players.some((p) => p.id === ids.kyle)).toBe(true);
     expect(matrix.totals[ids.kyle]).toBe(2000);
+  });
+});
+
+describe('PATCH/POST-void /api/admin/events/:eventId/bets/:betId — Story 1.4', () => {
+  test('edit recomputes settle-up (FR4): changing the stake changes the amount owed', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    const { betId } = (await (
+      await postBet(app, ids.eventId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }))
+    ).json()) as { betId: string };
+
+    // Rick beats Ben → Ben owes Rick the stake (2000c at create time).
+    await scorePlayer(ids, ids.rick);
+    await scorePlayer(ids, ids.ben, { bumpHole: 7 });
+
+    let matrix = await computeMoneyMatrix(db, ids.eventId, ids.rick, TENANT_ID);
+    expect(matrix.matrix[ids.rick]![ids.ben]).toBe(2000);
+
+    // Organizer corrects the stake to 5000c after play (admin may correct
+    // anytime — no override); recompute-on-read must reflect it.
+    const res = await patchBet(app, ids.eventId, betId, {
+      ...h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }),
+      stakeCents: 5000,
+    });
+    expect(res.status).toBe(200);
+
+    const list = await listBets(app, ids.eventId);
+    expect(list.bets[0]!.stakeCents).toBe(5000);
+    expect(list.bets[0]!.state).toBe('settled');
+
+    matrix = await computeMoneyMatrix(db, ids.eventId, ids.rick, TENANT_ID);
+    expect(matrix.matrix[ids.rick]![ids.ben]).toBe(5000);
+    expect(matrix.matrix[ids.ben]![ids.rick]).toBe(-5000);
+    expect(matrix.totals[ids.rick]).toBe(5000);
+
+    // Edit writes a before/after audit row + activity, in the same tx.
+    const aud = await db.select().from(auditLog);
+    const edit = aud.find((r) => r.eventType === 'action_bet.edited' && r.entityId === betId);
+    expect(edit).toBeTruthy();
+    const payload = JSON.parse(edit!.payloadJson) as { before: { stakeCents: number }; after: { stakeCents: number } };
+    expect(payload.before.stakeCents).toBe(2000);
+    expect(payload.after.stakeCents).toBe(5000);
+    const act = await db.select().from(activity);
+    expect(act.some((r) => r.type === 'action_bet.edited')).toBe(true);
+  });
+
+  test('void: bet drops out of settle-up, ledger stays zero-sum (FR5/FR47), audit preserved', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    const { betId } = (await (
+      await postBet(app, ids.eventId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }))
+    ).json()) as { betId: string };
+    await scorePlayer(ids, ids.rick);
+    await scorePlayer(ids, ids.ben, { bumpHole: 7 });
+
+    // Settled before void.
+    let matrix = await computeMoneyMatrix(db, ids.eventId, ids.rick, TENANT_ID);
+    expect(matrix.matrix[ids.rick]![ids.ben]).toBe(2000);
+
+    const res = await voidBet(app, ids.eventId, betId);
+    expect(res.status).toBe(200);
+
+    const list = await listBets(app, ids.eventId);
+    expect(list.bets[0]!.state).toBe('void');
+
+    // No contribution to settle-up; every total nets to zero.
+    matrix = await computeMoneyMatrix(db, ids.eventId, ids.rick, TENANT_ID);
+    expect(matrix.matrix[ids.rick]![ids.ben]).toBe(0);
+    expect(matrix.matrix[ids.ben]![ids.rick]).toBe(0);
+    for (const p of matrix.players) {
+      expect(matrix.totals[p.id]).toBe(0);
+    }
+
+    // Audit history preserved: both the create and the void rows exist.
+    const aud = await db.select().from(auditLog);
+    expect(aud.some((r) => r.eventType === 'action_bet.created' && r.entityId === betId)).toBe(true);
+    expect(aud.some((r) => r.eventType === 'action_bet.voided' && r.entityId === betId)).toBe(true);
+    const act = await db.select().from(activity);
+    expect(act.some((r) => r.type === 'action_bet.voided')).toBe(true);
+  });
+
+  test('terminal-state guards: a voided bet cannot be voided again or edited (409)', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    const { betId } = (await (
+      await postBet(app, ids.eventId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }))
+    ).json()) as { betId: string };
+    expect((await voidBet(app, ids.eventId, betId)).status).toBe(200);
+
+    const again = await voidBet(app, ids.eventId, betId);
+    expect(again.status).toBe(409);
+    expect(((await again.json()) as { code: string }).code).toBe('cannot_void_terminal');
+
+    const edit = await patchBet(app, ids.eventId, betId, {
+      ...h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }),
+      stakeCents: 9000,
+    });
+    expect(edit.status).toBe(409);
+    expect(((await edit.json()) as { code: string }).code).toBe('cannot_edit_terminal');
+  });
+
+  test('edit/void of an unknown bet → 404', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    const ghost = randomUUID();
+    const edit = await patchBet(app, ids.eventId, ghost, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }));
+    expect(edit.status).toBe(404);
+    expect(((await edit.json()) as { code: string }).code).toBe('bet_not_found');
+    const v = await voidBet(app, ids.eventId, ghost);
+    expect(v.status).toBe(404);
+  });
+
+  test('edit re-validates params: same stakeholder on both sides → 400', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    const { betId } = (await (
+      await postBet(app, ids.eventId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }))
+    ).json()) as { betId: string };
+    const res = await patchBet(app, ids.eventId, betId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.rick, su: ids.ben }));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('same_stakeholder_both_sides');
+  });
+
+  test('non-event-organizer cannot edit or void (403)', async () => {
+    const ids = await seed();
+    const owner = buildApp(ids.organizerId);
+    const { betId } = (await (
+      await postBet(owner, ids.eventId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }))
+    ).json()) as { betId: string };
+
+    const intruder = buildApp(ids.outsiderId, true);
+    const edit = await patchBet(intruder, ids.eventId, betId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }));
+    expect(edit.status).toBe(403);
+    const v = await voidBet(intruder, ids.eventId, betId);
+    expect(v.status).toBe(403);
+  });
+
+  test('FR49 admin override: create after an in-scope score exists is allowed only with override (audited)', async () => {
+    const ids = await seed();
+    await scorePlayer(ids, ids.rick, { count: 1 }); // hole 1 scored — in scope for full18
+    const app = buildApp(ids.organizerId);
+
+    // Without override → blocked (regression with the Story 1.1 cutoff test).
+    const blocked = await postBet(app, ids.eventId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }));
+    expect(blocked.status).toBe(422);
+
+    // With override → allowed, and the override is recorded in the audit row.
+    const res = await postBet(app, ids.eventId, {
+      ...h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }),
+      override: true,
+    });
+    expect(res.status).toBe(200);
+    const { betId } = (await res.json()) as { betId: string };
+    const aud = await db.select().from(auditLog);
+    const created = aud.find((r) => r.eventType === 'action_bet.created' && r.entityId === betId);
+    expect((JSON.parse(created!.payloadJson) as { override: boolean }).override).toBe(true);
+  });
+
+  test('admin may correct a bet anytime: an edit after scores exist is allowed (no override) and audited', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    // Bet placed before any score (legitimately).
+    const { betId } = (await (
+      await postBet(app, ids.eventId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }))
+    ).json()) as { betId: string };
+    // Now scores arrive on in-scope holes — the admin can still correct the bet
+    // (the audit + UI confirmation are the safety net, not a hard block).
+    await scorePlayer(ids, ids.rick, { count: 1 });
+
+    const ok = await patchBet(app, ids.eventId, betId, {
+      ...h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }),
+      stakeCents: 7000,
+    });
+    expect(ok.status).toBe(200);
+    const list = await listBets(app, ids.eventId);
+    expect(list.bets[0]!.stakeCents).toBe(7000);
+    const aud = await db.select().from(auditLog);
+    const edit = aud.find((r) => r.eventType === 'action_bet.edited' && r.entityId === betId);
+    const payload = JSON.parse(edit!.payloadJson) as { before: { stakeCents: number }; after: { stakeCents: number } };
+    expect(payload.before.stakeCents).toBe(2000);
+    expect(payload.after.stakeCents).toBe(7000);
+  });
+
+  test('whole-dollar stakes only: a stake with cents is rejected on create AND edit (400)', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+
+    // Create with $25.50 → rejected.
+    const badCreate = await postBet(app, ids.eventId, {
+      ...h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }),
+      stakeCents: 2550,
+    });
+    expect(badCreate.status).toBe(400);
+    expect(((await badCreate.json()) as { code: string }).code).toBe('non_whole_dollar_stake');
+
+    // Create a valid whole-dollar bet, then try to edit it to a cents value.
+    const { betId } = (await (
+      await postBet(app, ids.eventId, h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }))
+    ).json()) as { betId: string };
+    const badEdit = await patchBet(app, ids.eventId, betId, {
+      ...h2hNetBody(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }),
+      stakeCents: 2599,
+    });
+    expect(badEdit.status).toBe(400);
+    expect(((await badEdit.json()) as { code: string }).code).toBe('non_whole_dollar_stake');
   });
 });

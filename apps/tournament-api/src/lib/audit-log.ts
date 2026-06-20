@@ -32,6 +32,7 @@ export const AUDIT_EVENT_TYPES = {
   // disambiguates these from the legacy individual_bets 'bet.created' via the
   // audit row's entity_id (the action bet's id).
   ACTION_BET_CREATED: 'action_bet.created',
+  ACTION_BET_EDITED: 'action_bet.edited',
   ACTION_BET_SETTLED: 'action_bet.settled',
   ACTION_BET_VOIDED: 'action_bet.voided',
   ACTION_BET_FINALIZED: 'action_bet.finalized',

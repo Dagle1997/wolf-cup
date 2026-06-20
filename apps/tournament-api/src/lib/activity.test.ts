@@ -243,6 +243,12 @@ const validEvents: Record<typeof ACTIVITY_TYPES[number], ActivityEvent> = {
     stakeholderBId: PLAYER_B_ID,
     subjectBId: PLAYER_B_ID,
   },
+  'action_bet.edited': {
+    type: 'action_bet.edited',
+    eventId: EVENT_ID,
+    actorPlayerId: ACTOR_ID,
+    betId: 'abet-1',
+  },
   'action_bet.settled': {
     type: 'action_bet.settled',
     eventId: EVENT_ID,

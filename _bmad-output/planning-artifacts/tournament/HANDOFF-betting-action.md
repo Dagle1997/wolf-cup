@@ -7,9 +7,22 @@
 
 ## TL;DR — where we are
 
-Planning is COMPLETE (PRD → readiness → architecture → epics → 16 stories, all committed). **Stories 1.1, 1.2, and 1.3 are FULLY IMPLEMENTED and all green.** 1.1 + 1.2 are COMMITTED + PUSHED to `origin/feat/tournament-betting-story-1.1` (`102e5db`, `5d7c3ed`). **1.3 (h2h gross basis) is built but UNCOMMITTED** in the working tree. API full suite **1117 passed / 2 skipped**, web **354 passed**, `pnpm -r typecheck` + lint clean both packages. **Push/prod-deploy still gated on Josh.**
+Planning is COMPLETE (PRD → readiness → architecture → epics → 16 stories, all committed). **Stories 1.1, 1.2, and 1.3 are FULLY IMPLEMENTED, COMMITTED + PUSHED** to `origin/feat/tournament-betting-story-1.1` (`102e5db`, `5d7c3ed`, `443614a` — HEAD == origin). **Story 1.4 (organizer edit & void with ledger consistency) is FULLY IMPLEMENTED and all green, but UNCOMMITTED** in the working tree. API full suite **1128 passed / 2 skipped**, web **358 passed**, `pnpm -r typecheck` + lint clean both packages. **Push/prod-deploy still gated on Josh.**
 
-**Resume point:** commit (+push) 1.3, then **Story 1.4 (organizer edit & void with ledger consistency)** — see epics-betting-action.md. 1.4 is the first to use the durable `state` transitions (`void`) + the `voided_at/by` columns already on the table; a voided bet emits no edges (the query already short-circuits void → no edges), and edit must keep settle-up consistent. Epic 1 then finishes with 1.5/1.6.
+**Resume point:** commit (+push) 1.4, then **Story 1.5 (The Action board)** — see epics-betting-action.md. Epic 1 then finishes with 1.6 (settlement robustness — corrections, completeness, fail-closed).
+
+### 1.4 — built 2026-06-20 (uncommitted)
+- **No new engine math** (no golden-fixture gate — those were for the settlement-math stories 1.1–1.3). 1.4 is lifecycle (durable `state`) + ledger-consistency, verified by integration tests. Recompute-on-read means edit just re-validates + replaces config/sides; the outcome re-derives on the next read (FR4).
+- **POLICY (ratified with Josh, supersedes the written FR49 override AC):** the organizer may **change or correct any bet parameter at ANY time** — including after scoring has started. The safety net is (a) every edit writes a **before/after audit row**, and (b) the web UI requires an **explicit warning + confirmation**. So the placement cutoff does NOT gate *edits*; it still gates *new bet creation* (FR49, with an `override` escape on create only). **Stakes are WHOLE DOLLARS ONLY** (no cents — error-proofing the most-missed field; stored/settled in cents as before).
+- **New activity/audit type `action_bet.edited`** registered in `engine/types/activity-events.ts` (interface + union + array + zod + map) and `lib/audit-log.ts` (`ACTION_BET_EDITED`). `action_bet.voided` was already registered (1.1b scaffolding).
+- **`services/bets-write.ts`** — extracted shared `validateBetParams(tx, eventId, input, {allowScoresExist})` (create + edit so they can't disagree); it now also rejects a non-whole-dollar stake (`non_whole_dollar_stake` 400). Added:
+  - `editActionBet(tx, …)` — full-replace of config + both sides; **only a `live` bet is editable** (terminal → 409 `cannot_edit_terminal`); calls `validateBetParams` with `allowScoresExist:true` (admin corrects anytime); writes a **before/after** audit row + `action_bet.edited` activity in one tx. **No `override` param** (edits are always allowed).
+  - `voidActionBet(tx, …)` — sets `state='void'` + `voided_at/by`; only a `live` bet (terminal → 409 `cannot_void_terminal`); audit (`action_bet.voided`, previousState + sides) + activity in one tx. `settleActionBet` already short-circuits `void` → no edges, so a voided bet drops out of settle-up and the ledger stays zero-sum (FR5/FR47/NFR-C4) — verified by test.
+  - `createActionBet(tx, …)` keeps `override?:boolean` (FR49 escape for placing a *new* bet after scores; recorded in the audit row).
+  - `BetWriteError.status` widened to `400 | 404 | 409 | 422`.
+- **Route** `routes/admin-event-bets.ts` — `PATCH /events/:eventId/bets/:betId` (edit, bare params, no override) + `POST /events/:eventId/bets/:betId/void` (void). Added `/events/:eventId/bets/*` middleware so sub-paths get `requireSession`+`requireOrganizer`. Create parses `createBodySchema` (params + optional `override`); `errorLabelFor(status)` maps 404→`not_found`, 409→`conflict`.
+- **Web** `apps/tournament-web/src/routes/admin.events.$eventId.bets.tsx` — whole-dollar stake input (step 1, integer-only validation); per-row **Edit** + **Void** in an "Actions" column. Edit loads the bet into the existing form (edit mode) → "Save changes" → **warning + "Confirm change"** two-step (recompute/audit warning). Void is the existing Void → Confirm void / Cancel two-step. Voided/finalized/unsettleable rows show no actions. Create/edit error alerts incl. `non_whole_dollar_stake`.
+- **Tests:** `admin-event-bets.integration.test.ts` (now 19): edit recomputes settle-up (no override) + before/after audit + activity; **admin may correct after scores (no override) audited**; **whole-dollar rejected on create AND edit**; void drops out + zero-sum + audit preserved; terminal guards (re-void/edit-voided → 409); 404 unknown bet; edit re-validates (same-stakeholder → 400); 403 non-organizer; create-override-after-scores (audited). Web `admin.events.$eventId.bets.test.tsx` (4): two-step void posts once + flips to Void; Cancel no-post; Edit loads form + confirmed change PATCHes whole-dollar cents + exits edit mode; fractional stake disables Save.
 
 ### 1.3 — built 2026-06-20 (uncommitted)
 - **Hard gate met:** golden fixture `engine/bets/__fixtures__/h2h-gross-a-clean-win.json` hand-authored + Josh-approved BEFORE enabling gross creation.
@@ -42,12 +55,9 @@ Planning is COMPLETE (PRD → readiness → architecture → epics → 16 storie
 
 ## Git state
 
-- **Branch: `feat/tournament-betting-story-1.1`** (NOT master — branched per harness rule; Josh's flow is normally master-based, so a `git merge --ff` to master is fine. **Nothing pushed** — push is gated.)
-- Commits on the branch:
-  - `42db435` docs(tournament): planning artifacts (PRD/arch/readiness/epics+16 stories)
-  - `dfdb739` feat(tournament): Story 1.1 foundation — schema + pure h2h-net engine + approved golden fixtures
-  - `7c6c9fa` feat(tournament): Story 1.1 — netForSegment net contract + reconciliation test
-- Working tree: clean except this handoff. **Migration `0018` is generated but NOT applied to prod** (deploy-gated; app has no users yet so DB risk is nil — Josh confirmed).
+- **Branch: `feat/tournament-betting-story-1.1`** (NOT master — branched per harness rule; Josh's flow is normally master-based, so a `git merge --ff` to master is fine). **HEAD == `origin/feat/tournament-betting-story-1.1` through Story 1.3 (`443614a`); Story 1.4 is uncommitted in the working tree** — push of 1.4 is gated on Josh.
+- Pushed commits on the branch (newest last): `42db435` (planning artifacts) → `dfdb739` (1.1 foundation) → `7c6c9fa` (1.1 net contract) → `102e5db` (1.1b) → `5d7c3ed` (1.2) → `443614a` (1.3).
+- Working tree: Story 1.4 changes (bets-write/bets-query untouched, route, schema types, web page + tests) + this handoff. **Migration `0018` is generated but NOT applied to prod** (deploy-gated; 1.4 added NO migration — `voided_at/by` already existed; app has no users yet so DB risk is nil — Josh confirmed).
 - **Three untracked files are NOT part of this work — do not commit them:** `_bmad-output/scouting-group-aware-money-proposal.md`, `apps/tournament-web/e2e/screenshots.spec.ts`, `reference/Wolf-Cup Updates 6-1-2026.pdf`.
 
 ## Verify commands (run from `apps/tournament-api`)

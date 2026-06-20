@@ -1,16 +1,16 @@
 /**
- * "The Action" betting — WRITE service (Story 1.1b).
+ * "The Action" betting — WRITE service (Stories 1.1b, 1.4).
  *
- * Owns bet CREATION. Every write goes through a caller-supplied `tx` so the
- * bet row, its two `bet_sides`, the audit row, and the activity row commit (or
- * roll back) atomically (P9 — audit/activity in the same tx as the mutation).
- * The pure settlement math lives in engine/bets/; this module only validates +
- * persists. Reads/settlement live in bets-query.ts (P8 chokepoint).
+ * Owns bet CREATION, EDIT, and VOID. Every write goes through a caller-supplied
+ * `tx` so the bet row, its `bet_sides`, the audit row, and the activity row
+ * commit (or roll back) atomically (P9 — audit/activity in the same tx as the
+ * mutation). The pure settlement math lives in engine/bets/; this module only
+ * validates + persists. Reads/settlement live in bets-query.ts (P8 chokepoint).
  *
- * Validation (Story 1.1 ACs / FRs):
+ * Validation (Story 1.1 ACs / FRs), shared by create + edit via
+ * `validateBetParams`:
  *   - betType/basis are OPEN enums (FR20) — validated against the CREATABLE
- *     sets here in code (Zod + this service), NOT a DB CHECK. Story 1.1 ships
- *     h2h + net only; an unknown type/basis is rejected AT CREATION (P6).
+ *     sets here in code (Zod + this service), NOT a DB CHECK.
  *   - FR50: the two STAKEHOLDERS must differ. (A stakeholder MAY equal their
  *     own subject — the normal self-backing case, golden fixture (a); FR8 only
  *     means stakeholder CAN differ from subject, the open-book case, NOT must.)
@@ -18,7 +18,18 @@
  *   - FR9/FR51: every stakeholder and subject is a verified roster member of
  *     the event (group_members). Subjects are the score-dependent side.
  *   - FR49: placement cutoff — reject once any in-scope score exists for a
- *     subject on the bound round (can't bet after that segment has begun).
+ *     subject on the bound round (can't bet after that segment has begun),
+ *     UNLESS the organizer passes `override` (FR49 admin override, Story 1.4) —
+ *     the override is recorded explicitly in the audit row.
+ *
+ * Story 1.4 lifecycle (P4 — durable `state` is the single source of truth):
+ *   - edit: only a 'live' bet is editable; the outcome recomputes on read from
+ *     the new config (FR4), so edit just replaces config + sides and writes a
+ *     before/after audit + activity in one tx.
+ *   - void: only a 'live' bet is voidable; sets state='void' + voided_at/by.
+ *     `settleActionBet` already short-circuits 'void' to no edges, so a voided
+ *     bet contributes nothing to settle-up and the ledger stays zero-sum
+ *     (FR5/FR47/NFR-C4) — audit history is preserved.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -37,6 +48,7 @@ import {
 import { AUDIT_ENTITY_TYPES, AUDIT_EVENT_TYPES, writeAudit } from '../lib/audit-log.js';
 import { emitActivity } from '../lib/activity.js';
 import { scopedHolesForScope, type HoleScope } from '../engine/bets/scope.js';
+import { loadBetWithSides } from './bets-query.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -58,8 +70,8 @@ const CREATABLE_BASES_BY_TYPE: Record<string, readonly string[]> = {
 
 export class BetWriteError extends Error {
   readonly code: string;
-  readonly status: 400 | 422;
-  constructor(code: string, message: string, status: 400 | 422) {
+  readonly status: 400 | 404 | 409 | 422;
+  constructor(code: string, message: string, status: 400 | 404 | 409 | 422) {
     super(message);
     this.name = 'BetWriteError';
     this.code = code;
@@ -74,7 +86,8 @@ const sideSchema = z
   })
   .strict();
 
-export const actionBetCreateSchema = z
+/** Bet parameters shared by create + edit (Story 1.4 edit is a full replace). */
+export const actionBetParamsSchema = z
   .object({
     eventRoundId: z.string().uuid(),
     betType: z.string().min(1),
@@ -86,19 +99,24 @@ export const actionBetCreateSchema = z
   })
   .strict();
 
-export type ActionBetCreateInput = z.infer<typeof actionBetCreateSchema>;
+// Back-compat name (Story 1.1 route import) + the edit alias (Story 1.4).
+export const actionBetCreateSchema = actionBetParamsSchema;
+export const actionBetEditSchema = actionBetParamsSchema;
+
+export type ActionBetCreateInput = z.infer<typeof actionBetParamsSchema>;
+export type ActionBetEditInput = ActionBetCreateInput;
 
 /**
- * Create one action bet (bet + 2 sides + audit + activity) in a single tx.
- * Throws BetWriteError on a validation failure (the route maps code+status).
- * Returns the new bet id.
+ * Validate bet parameters for create OR edit. Throws BetWriteError on the first
+ * failure. `allowScoresExist` = the FR49 admin override: when true, the
+ * placement cutoff is skipped (the override is audited by the caller).
  */
-export async function createActionBet(
+async function validateBetParams(
   tx: Tx,
-  args: { eventId: string; actorPlayerId: string; input: ActionBetCreateInput },
-): Promise<string> {
-  const { eventId, actorPlayerId, input } = args;
-
+  eventId: string,
+  input: ActionBetCreateInput,
+  opts: { allowScoresExist: boolean },
+): Promise<void> {
   // betType/basis open-enum gate (FR20 — rejected at creation, P6).
   const allowedBases = CREATABLE_BASES_BY_TYPE[input.betType];
   if (!allowedBases) {
@@ -106,6 +124,12 @@ export async function createActionBet(
   }
   if (!allowedBases.includes(input.basis)) {
     throw new BetWriteError('unsupported_basis', `basis ${input.basis} is not valid for ${input.betType}`, 400);
+  }
+
+  // Whole-dollar stakes only (error-proofing, Josh 2026-06-20): no cents. The
+  // value is still stored/settled in cents; we just reject fractional dollars.
+  if (input.stakeCents % 100 !== 0) {
+    throw new BetWriteError('non_whole_dollar_stake', 'stake must be a whole dollar amount (no cents)', 400);
   }
 
   const stakeholderA = input.sideA.stakeholderPlayerId;
@@ -167,33 +191,57 @@ export async function createActionBet(
   }
 
   // FR49 placement cutoff: if the bound round is live and any in-scope hole
-  // already has a score for a subject, betting on that segment is closed.
-  const runtimeRoundRows = await tx
-    .select({ id: rounds.id })
-    .from(rounds)
-    .where(and(eq(rounds.eventRoundId, input.eventRoundId), eq(rounds.tenantId, TENANT_ID)));
-  if (runtimeRoundRows.length > 0) {
-    const roundIds = runtimeRoundRows.map((r) => r.id);
-    const existing = await tx
-      .select({ holeNumber: holeScores.holeNumber })
-      .from(holeScores)
-      .where(
-        and(
-          inArray(holeScores.roundId, roundIds),
-          inArray(holeScores.playerId, [subjectA, subjectB]),
-          inArray(holeScores.holeNumber, scopedHoles),
-          eq(holeScores.tenantId, TENANT_ID),
-        ),
-      )
-      .limit(1);
-    if (existing.length > 0) {
-      throw new BetWriteError(
-        'betting_closed_scores_exist',
-        'a score already exists on an in-scope hole; betting is closed for this segment',
-        422,
-      );
+  // already has a score for a subject, betting on that segment is closed —
+  // UNLESS the organizer is exercising the admin override (Story 1.4).
+  if (!opts.allowScoresExist) {
+    const runtimeRoundRows = await tx
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(and(eq(rounds.eventRoundId, input.eventRoundId), eq(rounds.tenantId, TENANT_ID)));
+    if (runtimeRoundRows.length > 0) {
+      const roundIds = runtimeRoundRows.map((r) => r.id);
+      const existing = await tx
+        .select({ holeNumber: holeScores.holeNumber })
+        .from(holeScores)
+        .where(
+          and(
+            inArray(holeScores.roundId, roundIds),
+            inArray(holeScores.playerId, [subjectA, subjectB]),
+            inArray(holeScores.holeNumber, scopedHoles),
+            eq(holeScores.tenantId, TENANT_ID),
+          ),
+        )
+        .limit(1);
+      if (existing.length > 0) {
+        throw new BetWriteError(
+          'betting_closed_scores_exist',
+          'a score already exists on an in-scope hole; betting is closed for this segment',
+          422,
+        );
+      }
     }
   }
+}
+
+/**
+ * Create one action bet (bet + 2 sides + audit + activity) in a single tx.
+ * Throws BetWriteError on a validation failure (the route maps code+status).
+ * `override` = FR49 admin override (create after an in-scope score exists);
+ * recorded explicitly in the audit row. Returns the new bet id.
+ */
+export async function createActionBet(
+  tx: Tx,
+  args: { eventId: string; actorPlayerId: string; input: ActionBetCreateInput; override?: boolean },
+): Promise<string> {
+  const { eventId, actorPlayerId, input } = args;
+  const override = args.override ?? false;
+
+  await validateBetParams(tx, eventId, input, { allowScoresExist: override });
+
+  const stakeholderA = input.sideA.stakeholderPlayerId;
+  const subjectA = input.sideA.subjectPlayerId;
+  const stakeholderB = input.sideB.stakeholderPlayerId;
+  const subjectB = input.sideB.subjectPlayerId;
 
   // Persist: bet + two sides + audit + activity, all in this tx.
   const betId = randomUUID();
@@ -250,6 +298,7 @@ export async function createActionBet(
       sideA: { stakeholderPlayerId: stakeholderA, subjectPlayerId: subjectA },
       sideB: { stakeholderPlayerId: stakeholderB, subjectPlayerId: subjectB },
       createdByPlayerId: actorPlayerId,
+      override,
     },
   });
 
@@ -269,4 +318,152 @@ export async function createActionBet(
   });
 
   return betId;
+}
+
+/**
+ * Edit one action bet's parameters (full replace of config + sides) in a single
+ * tx (Story 1.4). The outcome recomputes on read from the new config (FR4), so
+ * this only re-validates, replaces the row + sides, and writes a before/after
+ * audit + activity.
+ *
+ * POLICY (Josh 2026-06-20): the organizer may correct ANY parameter at ANY time
+ * — even after scoring has started — because every edit is captured in the
+ * before/after audit row and the web UI requires an explicit warning +
+ * confirmation. So the placement cutoff does NOT gate edits (`allowScoresExist`
+ * is always true here); it still gates *new* bet creation (FR49). Only a 'live'
+ * bet is editable; a terminal bet (void / finalized / unsettleable) → 409.
+ */
+export async function editActionBet(
+  tx: Tx,
+  args: { eventId: string; actorPlayerId: string; betId: string; input: ActionBetEditInput },
+): Promise<void> {
+  const { eventId, actorPlayerId, betId, input } = args;
+
+  const before = await loadBetWithSides(tx, betId, TENANT_ID);
+  if (!before || before.eventId !== eventId) {
+    throw new BetWriteError('bet_not_found', 'bet not found in this event', 404);
+  }
+  if (before.state !== 'live') {
+    throw new BetWriteError('cannot_edit_terminal', `a ${before.state} bet cannot be edited`, 409);
+  }
+
+  // Admin may correct anytime — the audit + UI confirmation are the safety net.
+  await validateBetParams(tx, eventId, input, { allowScoresExist: true });
+
+  const stakeholderA = input.sideA.stakeholderPlayerId;
+  const subjectA = input.sideA.subjectPlayerId;
+  const stakeholderB = input.sideB.stakeholderPlayerId;
+  const subjectB = input.sideB.subjectPlayerId;
+  const ctx = `event:${eventId}`;
+
+  await tx
+    .update(bets)
+    .set({
+      eventRoundId: input.eventRoundId,
+      holeScope: input.holeScope,
+      betType: input.betType,
+      basis: input.basis,
+      stakeCents: input.stakeCents,
+    })
+    .where(and(eq(bets.id, betId), eq(bets.tenantId, TENANT_ID)));
+
+  // Replace both sides (the edit may move stakeholders/subjects).
+  await tx.delete(betSides).where(and(eq(betSides.betId, betId), eq(betSides.tenantId, TENANT_ID)));
+  await tx.insert(betSides).values([
+    { betId, side: 'A', stakeholderPlayerId: stakeholderA, subjectPlayerId: subjectA, tenantId: TENANT_ID, contextId: ctx },
+    { betId, side: 'B', stakeholderPlayerId: stakeholderB, subjectPlayerId: subjectB, tenantId: TENANT_ID, contextId: ctx },
+  ]);
+
+  const sideOf = (s: 'A' | 'B') => before.sides.find((x) => x.side === s) ?? null;
+  await writeAudit(tx, {
+    eventType: AUDIT_EVENT_TYPES.ACTION_BET_EDITED,
+    entityType: AUDIT_ENTITY_TYPES.BET,
+    entityId: betId,
+    actorPlayerId,
+    payload: {
+      eventId,
+      betId,
+      before: {
+        eventRoundId: before.eventRoundId,
+        betType: before.betType,
+        basis: before.basis,
+        holeScope: before.holeScope,
+        stakeCents: before.stakeCents,
+        sideA: sideOf('A')
+          ? { stakeholderPlayerId: sideOf('A')!.stakeholderPlayerId, subjectPlayerId: sideOf('A')!.subjectPlayerId }
+          : null,
+        sideB: sideOf('B')
+          ? { stakeholderPlayerId: sideOf('B')!.stakeholderPlayerId, subjectPlayerId: sideOf('B')!.subjectPlayerId }
+          : null,
+      },
+      after: {
+        eventRoundId: input.eventRoundId,
+        betType: input.betType,
+        basis: input.basis,
+        holeScope: input.holeScope,
+        stakeCents: input.stakeCents,
+        sideA: { stakeholderPlayerId: stakeholderA, subjectPlayerId: subjectA },
+        sideB: { stakeholderPlayerId: stakeholderB, subjectPlayerId: subjectB },
+      },
+    },
+  });
+
+  await emitActivity(tx, {
+    type: 'action_bet.edited',
+    eventId,
+    actorPlayerId,
+    betId,
+  });
+}
+
+/**
+ * Void one action bet in a single tx (Story 1.4). Sets state='void' +
+ * voided_at/by; `settleActionBet` already short-circuits 'void' to no edges, so
+ * the bet stops contributing to settle-up while its audit history is preserved
+ * (FR5) and the ledger stays zero-sum (FR47/NFR-C4). Only a 'live' bet is
+ * voidable; a terminal bet is rejected (409).
+ */
+export async function voidActionBet(
+  tx: Tx,
+  args: { eventId: string; actorPlayerId: string; betId: string },
+): Promise<void> {
+  const { eventId, actorPlayerId, betId } = args;
+
+  const before = await loadBetWithSides(tx, betId, TENANT_ID);
+  if (!before || before.eventId !== eventId) {
+    throw new BetWriteError('bet_not_found', 'bet not found in this event', 404);
+  }
+  if (before.state !== 'live') {
+    throw new BetWriteError('cannot_void_terminal', `a ${before.state} bet cannot be voided`, 409);
+  }
+
+  const now = Date.now();
+  await tx
+    .update(bets)
+    .set({ state: 'void', voidedAt: now, voidedByPlayerId: actorPlayerId })
+    .where(and(eq(bets.id, betId), eq(bets.tenantId, TENANT_ID)));
+
+  await writeAudit(tx, {
+    eventType: AUDIT_EVENT_TYPES.ACTION_BET_VOIDED,
+    entityType: AUDIT_ENTITY_TYPES.BET,
+    entityId: betId,
+    actorPlayerId,
+    payload: {
+      eventId,
+      betId,
+      previousState: before.state,
+      sides: before.sides.map((s) => ({
+        side: s.side,
+        stakeholderPlayerId: s.stakeholderPlayerId,
+        subjectPlayerId: s.subjectPlayerId,
+      })),
+    },
+  });
+
+  await emitActivity(tx, {
+    type: 'action_bet.voided',
+    eventId,
+    actorPlayerId,
+    betId,
+  });
 }

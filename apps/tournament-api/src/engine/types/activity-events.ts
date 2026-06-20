@@ -124,6 +124,12 @@ export interface ActionBetCreatedEvent extends ActivityEventBase {
   actorPlayerId: string;
 }
 
+export interface ActionBetEditedEvent extends ActivityEventBase {
+  type: 'action_bet.edited';
+  betId: string;
+  actorPlayerId: string;
+}
+
 export interface ActionBetSettledEvent extends ActivityEventBase {
   type: 'action_bet.settled';
   betId: string;
@@ -191,6 +197,7 @@ export type ActivityEvent =
   | PressManualUndoneEvent
   | BetCreatedEvent
   | ActionBetCreatedEvent
+  | ActionBetEditedEvent
   | ActionBetSettledEvent
   | ActionBetVoidedEvent
   | ActionBetFinalizedEvent
@@ -212,6 +219,7 @@ export const ACTIVITY_TYPES = [
   'press.manual_undone',
   'bet.created',
   'action_bet.created',
+  'action_bet.edited',
   'action_bet.settled',
   'action_bet.voided',
   'action_bet.finalized',
@@ -378,6 +386,15 @@ const actionBetCreatedSchema = z
   })
   .strict();
 
+const actionBetEditedSchema = z
+  .object({
+    ...baseFields,
+    type: z.literal('action_bet.edited'),
+    betId: nonEmptyString,
+    actorPlayerId: nonEmptyString,
+  })
+  .strict();
+
 const actionBetSettledSchema = z
   .object({
     ...baseFields,
@@ -468,6 +485,7 @@ export const activityEventSchemas = {
   'press.manual_undone': pressManualUndoneSchema,
   'bet.created': betCreatedSchema,
   'action_bet.created': actionBetCreatedSchema,
+  'action_bet.edited': actionBetEditedSchema,
   'action_bet.settled': actionBetSettledSchema,
   'action_bet.voided': actionBetVoidedSchema,
   'action_bet.finalized': actionBetFinalizedSchema,
