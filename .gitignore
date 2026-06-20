@@ -46,10 +46,13 @@ reference/2025 Playoff Media/
 # Scratch / work-in-progress scorecards (use reference/ for canonical copies)
 _tmp_scorecards/
 
-# Private wolf-strategy cheat sheets — local only, NEVER released/pushed
+# Private wolf-strategy cheat sheets + report cards + generator — local only, NEVER released/pushed
 *Cheat-Sheet*.pdf
+*Report-Card*.pdf
 _tmp_cheatsheet*.html
 _tmp_madden*.html
+_tmp_josh*.html
+_wolf-private/
 
 # E2E (Playwright) — temp seeded DB, handoff, reports, artifacts
 apps/tournament-web/e2e/.tmp/
