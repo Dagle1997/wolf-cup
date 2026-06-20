@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
+import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -391,6 +392,53 @@ describe('POST/GET /api/admin/events/:eventId/bets — Story 1.1', () => {
     const matrix = await computeMoneyMatrix(db, ids.eventId, ids.rick, TENANT_ID);
     expect(matrix.matrix[ids.rick]![ids.ben]).toBe(1000); // 2 × 500c
     expect(matrix.actionLedger.matrix[ids.rick]![ids.ben]).toBe(1000);
+    expect(betId).toBeTruthy();
+  });
+
+  test('Story 1.3: h2h gross settles on GROSS — gross winner differs from net winner', async () => {
+    const ids = await seed();
+    // Give Ben an 18 handicap: his NET would win, but his GROSS loses. A gross
+    // bet resolving to Rick proves the gross column (not net) was used.
+    await db
+      .update(players)
+      .set({ manualHandicapIndex: 18 })
+      .where(and(eq(players.id, ids.ben), eq(players.tenantId, TENANT_ID)));
+    const app = buildApp(ids.organizerId);
+    const { betId } = (await (
+      await postBet(app, ids.eventId, {
+        eventRoundId: ids.eventRoundId,
+        betType: 'h2h',
+        basis: 'gross',
+        holeScope: 'full18',
+        stakeCents: 2500,
+        sideA: { stakeholderPlayerId: ids.rick, subjectPlayerId: ids.rick },
+        sideB: { stakeholderPlayerId: ids.ben, subjectPlayerId: ids.ben },
+      })
+    ).json()) as { betId: string };
+
+    // Rick gross 72 (all 4s). Ben gross 76 (5 on holes 1-4). Gross: Rick wins
+    // (72 < 76). Net: Ben 76 − 18 = 58 beats Rick 72 — a NET bet would flip.
+    await scorePlayer(ids, ids.rick); // all 4s
+    const now = Date.now();
+    const ctx = `event:${ids.eventId}`;
+    for (let h = 1; h <= 18; h++) {
+      await db.insert(holeScores).values({
+        id: randomUUID(), roundId: ids.roundId, playerId: ids.ben, holeNumber: h,
+        grossStrokes: h <= 4 ? 5 : 4, putts: 2, scorerPlayerId: ids.rick,
+        clientEventId: `bg-${h}`, createdAt: now, updatedAt: now, tenantId: TENANT_ID, contextId: ctx,
+      });
+    }
+
+    const list = (await (await app.request(`/api/admin/events/${ids.eventId}/bets`)).json()) as {
+      bets: Array<{ betId: string; basis: string; state: string; winnerSubjectId: string | null; marginNet: number }>;
+    };
+    expect(list.bets[0]!.basis).toBe('gross');
+    expect(list.bets[0]!.state).toBe('settled');
+    expect(list.bets[0]!.winnerSubjectId).toBe(ids.rick); // gross winner, not net
+    expect(list.bets[0]!.marginNet).toBe(4); // |72 − 76| gross
+
+    const matrix = await computeMoneyMatrix(db, ids.eventId, ids.rick, TENANT_ID);
+    expect(matrix.matrix[ids.rick]![ids.ben]).toBe(2500); // winner-take-stake
     expect(betId).toBeTruthy();
   });
 

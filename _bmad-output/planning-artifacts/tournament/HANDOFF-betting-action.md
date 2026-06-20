@@ -7,9 +7,17 @@
 
 ## TL;DR — where we are
 
-Planning is COMPLETE (PRD → readiness → architecture → epics → 16 stories, all committed). **Stories 1.1 and 1.2 are FULLY IMPLEMENTED and all green.** 1.1 (h2h-net walking skeleton) is COMMITTED (`102e5db`). **1.2 (per-hole match-play) is built but UNCOMMITTED** in the working tree. API full suite **1115 passed / 2 skipped**, web **354 passed**, `pnpm -r typecheck` + lint clean both packages. **Push/prod-deploy still gated on Josh.**
+Planning is COMPLETE (PRD → readiness → architecture → epics → 16 stories, all committed). **Stories 1.1, 1.2, and 1.3 are FULLY IMPLEMENTED and all green.** 1.1 + 1.2 are COMMITTED + PUSHED to `origin/feat/tournament-betting-story-1.1` (`102e5db`, `5d7c3ed`). **1.3 (h2h gross basis) is built but UNCOMMITTED** in the working tree. API full suite **1117 passed / 2 skipped**, web **354 passed**, `pnpm -r typecheck` + lint clean both packages. **Push/prod-deploy still gated on Josh.**
 
-**Resume point:** commit 1.2, then **Story 1.3 (gross basis for head-to-head)** — golden gross fixtures first (hard gate), then flip `CREATABLE_BASES_BY_TYPE.h2h` to `['net','gross']` in `bets-write.ts` and enable gross in the web type selector (the engine + basis-aware net source already handle gross, proven by per_hole_match). See epics-betting-action.md Story 1.3.
+**Resume point:** commit (+push) 1.3, then **Story 1.4 (organizer edit & void with ledger consistency)** — see epics-betting-action.md. 1.4 is the first to use the durable `state` transitions (`void`) + the `voided_at/by` columns already on the table; a voided bet emits no edges (the query already short-circuits void → no edges), and edit must keep settle-up consistent. Epic 1 then finishes with 1.5/1.6.
+
+### 1.3 — built 2026-06-20 (uncommitted)
+- **Hard gate met:** golden fixture `engine/bets/__fixtures__/h2h-gross-a-clean-win.json` hand-authored + Josh-approved BEFORE enabling gross creation.
+- **No engine change** — `settleH2h` is basis-agnostic (sums given values), so gross is identical math on gross numbers; the fixture documents the gross winner-take-stake expectation and is added to `h2h.test.ts` (now 6).
+- **Creation** (`bets-write.ts`): `CREATABLE_BASES_BY_TYPE.h2h` flipped to `['net','gross']` (FR13). Putts still rejected.
+- **Gross path** already lived in `bets-query.ts` (basis-aware net source from 1.2) — 1.3 just enables h2h to use it.
+- **Web** (`admin.events.$eventId.bets.tsx`): the Net/Gross basis selector now shows for BOTH types (h2h no longer forced to net).
+- **Tests:** `admin-event-bets.integration.test.ts` (now 10) adds an h2h-gross end-to-end case that proves GROSS (not net) is used — Ben is given an 18 HI so he wins on NET but loses on GROSS; the gross bet resolves to Rick. Net-basis behavior unchanged (regression-safe; the 1.1 net fixtures + tests still pass).
 
 ### 1.2 — built 2026-06-20 (uncommitted)
 - **Hard gate met:** 3 hand-APPROVED golden fixtures (`engine/bets/__fixtures__/per-hole-match-{a-net-clean-win,b-net-push,c-gross-openbook}.json`) authored + Josh-approved BEFORE engine code.

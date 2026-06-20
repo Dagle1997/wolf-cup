@@ -30,6 +30,7 @@ const fixtures: Array<{ file: string; label: string }> = [
   { file: 'h2h-net-a-clean-win.json', label: '(a) clean win — loser stakeholder pays winner stakeholder, full stake' },
   { file: 'h2h-net-b-push.json', label: '(b) push — level totals, no money moves (FR26)' },
   { file: 'h2h-net-c-nonplaying-backer.json', label: '(c) open book — non-playing backer Kyle collects from Steven (FR8/FR10/FR38)' },
+  { file: 'h2h-gross-a-clean-win.json', label: '(gross-a) gross basis — clean win, winner-take-stake on gross totals (FR13)' },
 ];
 
 describe('settleH2h — golden hand-calc fixtures (hard gate)', () => {

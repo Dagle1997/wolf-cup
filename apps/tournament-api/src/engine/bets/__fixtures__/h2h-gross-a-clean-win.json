@@ -1,0 +1,31 @@
+{
+  "name": "(gross-a) h2h GROSS — clean win. Subject A (Rick) gross 75 beats Subject B (Ben) gross 80; Ben's stakeholder pays Rick's the full stake.",
+  "_contract": "Golden HAND-CALC fixture for the h2h engine on a GROSS basis (Story 1.3, FR13). h2h is winner-take-stake (the loser's stakeholder pays the winner's the full stake ONCE, NOT margin × stake) — identical to the net case; only the per-hole VALUES differ (gross strokes, not net). The engine is basis-agnostic and CONSUMES the per-hole values as a GIVEN input (P2 — it never re-derives them; the query layer feeds gross from netForSegment's gross column on a gross bet). `netPerHoleBySubject` holds the gross strokes here (field name shared with the net fixtures). `expected` is hand-calculated truth the engine must match. SettlementEdge direction: fromPlayerId PAYS toPlayerId (debtor → creditor). Money in integer cents. For h2h, result.marginNet is the |gross-total difference| and subjectNetTotal holds each subject's GROSS total.",
+  "input": {
+    "bet": {
+      "id": "bet-h2h-gross-a",
+      "betType": "h2h",
+      "basis": "gross",
+      "holeScope": "full18",
+      "stakeCents": 2500,
+      "scopedHoles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+      "sides": [
+        { "side": "A", "stakeholderPlayerId": "rick", "subjectPlayerId": "rick" },
+        { "side": "B", "stakeholderPlayerId": "ben", "subjectPlayerId": "ben" }
+      ]
+    },
+    "netPerHoleBySubject": {
+      "rick": [5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+      "ben":  [5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+    }
+  },
+  "expected": {
+    "state": "settled",
+    "subjectNetTotal": { "rick": 75, "ben": 80 },
+    "result": { "winnerSide": "A", "winnerSubjectId": "rick", "marginNet": 5 },
+    "edges": [
+      { "fromPlayerId": "ben", "toPlayerId": "rick", "cents": 2500, "sourceBetId": "bet-h2h-gross-a", "sourceType": "h2h" }
+    ]
+  },
+  "_handCalc": "Rick gross total = three 5s (holes 1-3) + fifteen 4s (holes 4-18) = 15 + 60 = 75. Ben gross total = eight 5s (holes 1-8) + ten 4s (holes 9-18) = 40 + 40 = 80. Lower total wins: 75 < 80, so subject A (Rick) wins by a margin of 5 gross strokes. h2h is winner-take-the-stake (not per-stroke): the LOSER's stakeholder (Ben) pays the WINNER's stakeholder (Rick) the full $25.00 = 2500 cents. Exactly one SettlementEdge: ben -> rick, 2500c."
+}

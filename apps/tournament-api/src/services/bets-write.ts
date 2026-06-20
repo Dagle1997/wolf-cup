@@ -45,13 +45,14 @@ const TENANT_ID = 'guyan';
 
 /**
  * Bases that can be CREATED per bet type (FR20 open enum, gated in code not a
- * DB CHECK). Story 1.1: h2h+net. Story 1.2: per_hole_match+net/gross (putts is
- * invalid for match play, FR12). h2h gross arrives in Story 1.3. The engine is
- * basis-agnostic; this map is the creation policy, the source of "unknown type/
- * basis rejected at creation" (P6).
+ * DB CHECK). Story 1.1: h2h+net. Story 1.2: per_hole_match+net/gross. Story 1.3:
+ * h2h+gross (FR13). Putts stays invalid for both (match play FR12; h2h putts is
+ * the Epic 3/4 putting game, not this type). The engine is basis-agnostic; this
+ * map is the creation policy, the source of "unknown type/basis rejected at
+ * creation" (P6).
  */
 const CREATABLE_BASES_BY_TYPE: Record<string, readonly string[]> = {
-  h2h: ['net'],
+  h2h: ['net', 'gross'],
   per_hole_match: ['net', 'gross'],
 };
 
