@@ -66,6 +66,8 @@ beforeAll(async () => {
     { roundId: RR, betType: "odds_win", basis: "net", amountDollars: 50, oddsMarket: "money", odds: 200, subjectAPlayerId: PX, sideAPlayerId: JOSH, sideBPlayerId: KYLE, createdAt: now },
     // Kyle backs PX to win STABLEFORD → miss → layer JAQUINT collects $50 from Kyle.
     { roundId: RR, betType: "odds_win", basis: "net", amountDollars: 50, oddsMarket: "stableford", odds: 200, subjectAPlayerId: PX, sideAPlayerId: KYLE, sideBPlayerId: JAQUINT, createdAt: now },
+    // Jaquint backs PX to win MONEY vs The House (no layer) → miss → Jaquint pays The House $100.
+    { roundId: RR, betType: "odds_win", basis: "net", amountDollars: 100, oddsMarket: "money", odds: 200, subjectAPlayerId: PX, sideAPlayerId: JAQUINT, sideBPlayerId: null, createdAt: now },
   ]);
 });
 
@@ -73,7 +75,8 @@ describe("getBetsBoard.settleUp — pairwise (per counterparty)", () => {
   it("Kyle owes Jaquint AND is owed by Josh — both surface, he is NOT netted to zero", async () => {
     const board = await getBetsBoard(RR);
     expect(board.round?.status).toBe("finalized");
-    expect(board.settleUp).toHaveLength(2);
+    // Josh→Kyle, Kyle→Jaquint, Jaquint→House — three distinct pairwise payments.
+    expect(board.settleUp).toHaveLength(3);
 
     const joshToKyle = board.settleUp.find((s) => s.fromPlayerId === JOSH && s.toPlayerId === KYLE);
     const kyleToJaquint = board.settleUp.find((s) => s.fromPlayerId === KYLE && s.toPlayerId === JAQUINT);
@@ -89,5 +92,14 @@ describe("getBetsBoard.settleUp — pairwise (per counterparty)", () => {
     // The regression guard: Kyle appears as BOTH a payee and a payer.
     expect(board.settleUp.some((s) => s.toPlayerId === KYLE)).toBe(true);
     expect(board.settleUp.some((s) => s.fromPlayerId === KYLE)).toBe(true);
+  });
+
+  it("a bettor who loses to the book pays The House (player → House direction)", async () => {
+    const board = await getBetsBoard(RR);
+    const toHouse = board.settleUp.find((s) => s.toPlayerId === -1);
+    expect(toHouse).toBeDefined();
+    expect(toHouse!.fromPlayerId).toBe(JAQUINT);
+    expect(toHouse!.toName).toBe("The House");
+    expect(toHouse!.amount).toBe(100);
   });
 });

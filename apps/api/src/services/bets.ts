@@ -23,6 +23,12 @@ import { bets, rounds, roundPlayers, holeScores, players, roundResults, seasons 
 
 const DEFAULT_TEE: Tee = "blue";
 
+// The book. An odds_win bet vs the house has a null player side; in settle-up we
+// represent the house as this pseudo-id so "The House pays X" / "X pays The House"
+// is an actionable line like any player-vs-player payment.
+const HOUSE_ID = -1;
+const HOUSE_NAME = "The House";
+
 export type OddsMarket = "stableford" | "money" | "perfect_day";
 
 /**
@@ -331,8 +337,8 @@ export type BetsBoard = {
    * Who pays whom, netted PAIRWISE — only bets between the SAME two stakeholders
    * net against each other. A player who is up vs one person and down vs another
    * shows BOTH payments (netting across different payees would hide real money
-   * owed). Settled player-vs-player bets only; The House (null side) is the book,
-   * not a player, so its bets are left off.
+   * owed). Settled bets only. An odds_win bet vs the book settles against "The
+   * House" (a pseudo-party) so e.g. "The House pays X" is an actionable line too.
    */
   settleUp: SettleUpEntry[];
 };
@@ -384,11 +390,14 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
   for (const b of betRows) {
     const outcome = settleBet(b, totals, day);
     if (outcome.status === "settled") {
-      const winnerId = outcome.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId;
-      const loserId = outcome.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId;
-      // Only player-vs-player bets settle pairwise. A null side is The House
-      // (odds_win vs the book) — not a player, so it's left off the settle-up.
-      if (winnerId != null && loserId != null) {
+      // A null player side is The House — but ONLY odds_win can be booked vs the
+      // book, so only it falls back to the house pseudo-id ("The House pays X").
+      // Any other null side is bad data → skip rather than invent a House line.
+      const houseFallback = b.betType === "odds_win" ? HOUSE_ID : null;
+      const winnerId = (outcome.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId) ?? houseFallback;
+      const loserId = (outcome.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId) ?? houseFallback;
+      // Both present and distinct (never House-vs-House from a double-null).
+      if (winnerId != null && loserId != null && winnerId !== loserId) {
         const lowId = Math.min(winnerId, loserId);
         const highId = Math.max(winnerId, loserId);
         const key = `${lowId}-${highId}`;
@@ -416,7 +425,7 @@ export async function getBetsBoard(roundId?: number): Promise<BetsBoard> {
   }
 
   // Resolve each pair's net into a directional payment (loser → winner).
-  const nameOrId = (id: number) => nameOf.get(id) ?? `#${id}`;
+  const nameOrId = (id: number) => (id === HOUSE_ID ? HOUSE_NAME : nameOf.get(id) ?? `#${id}`);
   const settleUp: SettleUpEntry[] = [];
   for (const { lowId, highId, net: n } of pairNet.values()) {
     if (n === 0) continue; // even pair — nobody owes anybody
@@ -451,7 +460,8 @@ export type SeasonBetHistory = {
  * Season-long betting record: each person's NET across every settled bet in the
  * CURRENT season. Outcomes are recomputed from each round's scores (never stored),
  * so a correction or a later finalize flows in automatically — same as the live
- * board. The House (null side B) is the book, not a player, so it's left off.
+ * board. An odds_win bet vs the book is tracked under "The House" pseudo-party so
+ * the book's season record shows too.
  * Only TERMINAL rounds (finalized | completed) contribute; bets on live rounds —
  * and any that can't grade yet (e.g. a net bet with an unknown tee/HI) — are counted
  * as pending, never as a $0 result.
@@ -514,13 +524,15 @@ export async function getSeasonBetHistory(): Promise<SeasonBetHistory> {
       if (o.status === "push") continue; // resolved, no money moved — matches the live board's settle-up
       // Only money-moving participants register (lazily), exactly like getBetsBoard's settleUp:
       // a push-only stakeholder never appears, and a null side (The House) is left off.
-      const winnerId = o.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId;
-      const loserId = o.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId;
-      if (winnerId != null) {
+      // A null player side is The House — only odds_win is booked vs the book, so
+      // only it falls back to the house pseudo-id (the book's season record shows
+      // too). Any other null side is bad data → skip (guarded below).
+      const houseFallback = b.betType === "odds_win" ? HOUSE_ID : null;
+      const winnerId = (o.winningSide === "A" ? b.sideAPlayerId : b.sideBPlayerId) ?? houseFallback;
+      const loserId = (o.winningSide === "A" ? b.sideBPlayerId : b.sideAPlayerId) ?? houseFallback;
+      if (winnerId != null && loserId != null && winnerId !== loserId) {
         won.set(winnerId, (won.get(winnerId) ?? 0) + o.payout);
         winCount.set(winnerId, (winCount.get(winnerId) ?? 0) + 1);
-      }
-      if (loserId != null) {
         lost.set(loserId, (lost.get(loserId) ?? 0) + o.payout);
         lossCount.set(loserId, (lossCount.get(loserId) ?? 0) + 1);
       }
@@ -538,7 +550,7 @@ export async function getSeasonBetHistory(): Promise<SeasonBetHistory> {
       const l = lost.get(id) ?? 0;
       return {
         playerId: id,
-        name: nameOf.get(id) ?? `#${id}`,
+        name: id === HOUSE_ID ? HOUSE_NAME : nameOf.get(id) ?? `#${id}`,
         won: w,
         lost: l,
         net: w - l,

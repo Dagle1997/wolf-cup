@@ -141,25 +141,22 @@ describe("odds_win settlement — finalize→settle (real money path)", () => {
       expect(house.sideB).toBeNull();
     });
 
-    it("rolls up the right settle-up — pairwise who-pays-whom, House bets excluded", async () => {
+    it("rolls up settle-up pairwise, including The House as a counterparty", async () => {
       const board = await getBetsBoard(R);
       expect(board.round?.status).toBe("finalized");
-      // Among players, only the Alice/Bob pair settles: Alice +1650 (perfect day)
-      // − 50 (lost the money bet) ⇒ BOB owes ALICE 1600, one directional payment.
-      expect(board.settleUp).toHaveLength(1);
-      const pay = board.settleUp[0]!;
-      expect(pay.fromPlayerId).toBe(BOB);
-      expect(pay.toPlayerId).toBe(ALICE);
-      expect(pay.amount).toBe(1600);
-      // Carl's +200 is vs The House (the book, not a player): no player owes it, so
-      // it never shows in the player settle-up — that's where the non-zero-sum lives.
-      expect(board.settleUp.some((s) => s.fromPlayerId === CARL || s.toPlayerId === CARL)).toBe(false);
-      // The House is never a payer or payee.
-      expect(board.settleUp.some((s) => s.fromName === "The House" || s.toName === "The House")).toBe(false);
-      expect(board.settleUp.some((s) => s.fromPlayerId < 0 || s.toPlayerId < 0)).toBe(false);
+      // Alice/Bob: +1650 (perfect day) − 50 (money bet) ⇒ BOB owes ALICE 1600.
+      // Carl beat the book ⇒ The House pays Carl 200. Two directional payments.
+      expect(board.settleUp).toHaveLength(2);
+      const ab = board.settleUp.find((s) => s.fromPlayerId === BOB && s.toPlayerId === ALICE);
+      expect(ab?.amount).toBe(1600);
+      const house = board.settleUp.find((s) => s.toPlayerId === CARL);
+      expect(house).toBeDefined();
+      expect(house!.fromPlayerId).toBe(-1);
+      expect(house!.fromName).toBe("The House");
+      expect(house!.amount).toBe(200);
     });
 
-    it("season record aggregates the same nets (current season, House excluded)", async () => {
+    it("season record rolls up won/lost/net including The House", async () => {
       const history = await getSeasonBetHistory();
       expect(history.season?.id).toBe(1);
       expect(history.pendingCount).toBe(0); // every bet on the only round settled
@@ -167,13 +164,14 @@ describe("odds_win settlement — finalize→settle (real money path)", () => {
       expect(net.get(ALICE)).toBe(1600);
       expect(net.get(BOB)).toBe(-1600);
       expect(net.get(CARL)).toBe(200);
-      expect(net.has(-1)).toBe(false); // The House is not a person on the record
       // Win/Loss breakdown: Alice won the perfect day ($1650) and lost the money bet ($50);
-      // Carl beat the House once ($200, no losses).
+      // Carl beat the House once ($200); the House (book) paid out 200.
       const byId = new Map(history.people.map((p) => [p.playerId, p]));
       expect(byId.get(ALICE)).toMatchObject({ won: 1650, lost: 50, net: 1600, wins: 1, losses: 1 });
       expect(byId.get(BOB)).toMatchObject({ won: 50, lost: 1650, net: -1600, wins: 1, losses: 1 });
       expect(byId.get(CARL)).toMatchObject({ won: 200, lost: 0, net: 200, wins: 1, losses: 0 });
+      expect(byId.get(-1)).toMatchObject({ won: 0, lost: 200, net: -200, wins: 0, losses: 1 });
+      expect(byId.get(-1)!.name).toBe("The House");
       // Sorted by net desc → Alice (top) ... Bob (bottom).
       expect(history.people[0]!.playerId).toBe(ALICE);
       expect(history.people.at(-1)!.playerId).toBe(BOB);
