@@ -144,9 +144,14 @@ function AdminBetsPage() {
     },
   });
 
+  // Two-step delete: the first tap on the trash icon ARMS a row (shows a
+  // distinct Delete/Cancel), so a laggy double-tap can't remove a bet — and if
+  // the list reorders after a delete, a stray tap only re-arms, never deletes.
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const del = useMutation({
     mutationFn: (id: number) => apiFetch(`/admin/bets/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      setConfirmingId(null);
       qc.invalidateQueries({ queryKey: ['admin-bets'] });
       qc.invalidateQueries({ queryKey: ['bets'] });
     },
@@ -368,13 +373,32 @@ function AdminBetsPage() {
                     {b.betType !== 'per_hole' ? ` · $${b.amountDollars}` : ''}
                   </div>
                 </div>
-                <button
-                  className="shrink-0 text-muted-foreground hover:text-red-500"
-                  onClick={() => del.mutate(b.id)}
-                  aria-label={`Delete bet ${nameOf(b.subjectA.id)}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {confirmingId === b.id ? (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      className="rounded-md bg-red-500 px-2 py-1 text-xs font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+                      onClick={() => del.mutate(b.id)}
+                      disabled={del.isPending}
+                    >
+                      {del.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Delete'}
+                    </button>
+                    <button
+                      className="rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
+                      onClick={() => setConfirmingId(null)}
+                      disabled={del.isPending}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="shrink-0 text-muted-foreground hover:text-red-500"
+                    onClick={() => setConfirmingId(b.id)}
+                    aria-label={`Delete bet ${nameOf(b.subjectA.id)}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
