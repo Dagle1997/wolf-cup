@@ -17,3 +17,16 @@ export function shortName(fullName: string, contextNames: readonly string[]): st
   }
   return first;
 }
+
+/**
+ * Always-disambiguated display name: "First L." (last initial), falling back to
+ * the first name when there's no last name. Use where first-name-only is
+ * ambiguous regardless of who else is on screen — e.g. CTP winners, since the
+ * league has several players sharing a first name.
+ */
+export function nameWithInitial(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0] ?? fullName;
+  if (parts.length < 2) return first;
+  return `${first} ${parts[parts.length - 1]![0]}.`;
+}

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
-import { shortName } from '@/lib/names';
+import { nameWithInitial } from '@/lib/names';
 
 // Matches server response from GET /rounds/:id/ctp-entries.
 type CtpEntry = {
@@ -61,14 +61,6 @@ export function CtpSideGameCard({ roundId, name, format, roundStatus }: Props) {
     ? PAR3_HOLES.filter((h) => winners[String(h)] != null).length
     : 0;
 
-  // Disambiguation context for shortName — all current CTP winners this
-  // round. Prevents "Matt S." / "Matt D." collisions on the card.
-  const contextNames = winners
-    ? PAR3_HOLES.map((h) => winners[String(h)]?.playerName).filter(
-        (n): n is string => typeof n === 'string',
-      )
-    : [];
-
   return (
     <div className="rounded-xl border bg-card p-3 mb-3">
       <div className="flex items-baseline justify-between mb-1">
@@ -97,9 +89,9 @@ export function CtpSideGameCard({ roundId, name, format, roundStatus }: Props) {
         </p>
       )}
 
-      {/* 2-col on narrow phones (≤360px), 4-col from sm up. Uses shortName
-          to avoid truncation — first name only, with last initial if another
-          winner shares a first name. */}
+      {/* 2-col on narrow phones (≤360px), 4-col from sm up. Always shows the
+          last initial ("Matt J.") — the league has several shared first names,
+          so first-name-only is ambiguous. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
         {PAR3_HOLES.map((hole) => {
           const w = winners?.[String(hole)];
@@ -116,7 +108,7 @@ export function CtpSideGameCard({ roundId, name, format, roundStatus }: Props) {
                   className="text-sm font-semibold truncate"
                   title={w.playerName}
                 >
-                  {shortName(w.playerName, contextNames)}
+                  {nameWithInitial(w.playerName)}
                 </p>
               ) : (
                 <p className="text-sm text-muted-foreground">—</p>
