@@ -6,6 +6,93 @@ Update as items ship.
 ## STATUS (2026-06-15, end of session)
 SHIPPED + DEPLOYED this session: B1 (GHIN search first-name/club/scroll), member-HI live-GHIN display, pairings increase-crash fix, B2a (round tee dropdown in wizard). Also live earlier: event soft-cancel, wizard "Course not listed?" links, Pete Dye seed, GHIN course import, dark mode. PARKED on branch `feat/handicap-lock`: handicap-lock backend (needs UI+tests). NEXT: B2b (roster per-player tee), B3 (TBD course — needs edit-round-course first), then a BMAD/design session for the F-series (rules/side-games rework) + UI/QOL polish. Josh created a real "Pete Dye" test event, added players, exercised the flow.
 
+## 📋 2026-06-21 testing session — new items, verdicts, F1 architecture (Josh)
+
+**BUILT this session (branch `feat/tournament-betting-story-1.1`, NOT deployed):** A1 (admin page reorder to fill-out order), A3 (landing hides cancelled + past behind a toggle), V1 (version/update banner + `GET /api/version`), R1 (roster search clears the used tab after a successful add). Remaining items below are captured, not built.
+
+Hands-on testing of event + course setup. Verified against code (two Explore audits).
+**Deployment context:** the "The Action" betting admin page + the betting UI cohesion pass are on
+branch `feat/tournament-betting-story-1.1` (committed `f5c5b5f`, **NOT pushed/deployed**). So "I
+don't see the bets admin page / the UI pass" = deployment gap, NOT bugs — the bets link IS wired,
+unconditional, at `admin.events.$eventId.index.tsx:212`.
+
+### ⭐ F1 DATA-MODEL PRINCIPLE (ratified — drives the whole rework)
+**The player is the atomic unit.** Scores, greenies, polies, sandies all attach to `player_id`
+(+round+hole). Teams and matchups are LATE-BOUND compositions over players — re-team Rick from
+Stu→Jeff and everything recomputes because nothing is tied to the team/foursome/group. Consequences:
+- **Cross-group games fall out for free** (X-GROUP below). The foursome-internal money path becomes
+  the special case, not the rule.
+- Claim-based items (greenie via tee-on-green, polies, sandies) are **self-verified manual inputs per
+  player** — not auto-tracked; v1 = self-report, no opponent confirmation.
+- Settle-up already supports this: the betting `SettlementEdge {from,to,cents}` IR is debtor→creditor
+  between ANY two players — already cross-foursome. The foursome-internal limit lives only in the
+  legacy `money.ts` 2v2 path. → **F1 should compute via the SettlementEdge IR, not the foursome path.**
+
+### X-GROUP. Cross-foursome Guyan game (NEW, F1 requirement; "next trip", not Pete Dye)
+Some trips run the full Guyan 2v2 ACROSS foursomes — Rick & Stu (group 1) vs Ronnie & Scott (group 2)
+— then reconcile by hand post-round ("low ball 3, team total 8, we had a greenie — what'd you have?").
+All hole scores are already tracked → score-based parts (low ball/best-net, team total, net-birdie
+points) are fully computable; only greenie/poly/sandie are self-reported. Breaks the foursome-internal
+invariant → compute via SettlementEdge IR + arbitrary team scope. Pete Dye likely doesn't need it
+(teams are within-foursome). Folds into F1.
+
+### Admin IA + setup flow
+- **A1. Reorder the admin event page to fill-out order:** Roster → Rule set → Pairings/Tees → Start
+  round → rest. Today (`admin.events.$eventId.index.tsx`) order is Pairings, Rounds, Join codes,
+  Who-can-score, Lock handicaps, The Action, Start round, Roster(conditional), Rule set(conditional),
+  Sub-games. Roster should be FIRST + always visible (most things flow from it). **QUICK WIN.**
+- **A2. Event-creation wizard: ask # of players + optionally seed roster + invites at creation.**
+  Today the wizard (`admin.events.new.tsx`) is Basics → Rounds → Review; no player count, no roster,
+  no rule-set selection. Medium.
+- **A3. Landing page: hide CANCELLED events** (71 at Pinehurst still shows) **+ hide PAST rounds**
+  behind a "show past / review stats" toggle. Add an admin "see all events" view (cancelled/past
+  visible there only). **QUICK WIN.**
+
+### Capabilities (verified)
+- **SMS: NONE** anywhere in the repo. Texting invites = a new paid integration (Twilio/etc.).
+- **Email: Wolf Cup only** (`apps/api/src/lib/email.ts`, nodemailer + Gmail SMTP, weekly xlsx
+  export). Tournament-api has no email. Reusable for invites but needs porting (extract to a shared
+  package + generalize beyond the xlsx shape).
+- **Invites today = join-codes (B0, shipped + works).** Recommendation: lean on join-codes; email
+  invites = optional later; SMS = only if worth a paid dep.
+
+### V1. Version/update banner (QUICK WIN — port from Wolf Cup)
+Wolf Cup polls `GET /api/version` every 60s → "new version — tap to refresh" banner
+(`apps/web/src/routes/__root.tsx:19-100`). Tournament has NEITHER the banner NOR a `/api/version`
+endpoint. Port both (add `GET /api/version` to tournament-api + the banner to tournament-web
+`__root.tsx`).
+
+### Roster QOL + Favorites/Global roster (expands F3)
+- **R1. Roster search: clear the name after a SUCCESSFUL add** (not after each search — GHIN search
+  needs first-name+club). **QUICK-ISH.**
+- **R2. Favorites / global roster** (expands F3): add a player once, favorite them, they appear in a
+  dropdown every round. Bigger: **multiple named global rosters** (Guyan group, Wolf group, best
+  friends). Today NONE exists — players are only deduped by GHIN (`players.ghin` unique); no
+  favorites/global-roster model, **no phone/email on players.** Adding contact info = new PII columns
+  + the security/auth hardening Josh flagged. Needs design + decision (per-organizer favorites vs
+  shared named rosters; whether to store contact info at all).
+
+### Teams (expands F2)
+- **Global/persistent teams:** set 2-man partners ONCE, applied every round (this weekend = same
+  partner each round). Today teams are PER-ROUND, derived from pairing slots 1&2 vs 3&4
+  (`resolveFoursomeTeams`); no persistent team table. New schema + UI + pairing integration. Caveat
+  (Josh): a group might play an intra-foursome game throwing balls for teams → you can be globally
+  teamed with someone AND against them in a sub-game. Global team ≠ sub-game opponent (the
+  player-centric model handles this).
+
+### Rules & Sub-games reality (folds into F1 / F1b)
+- **Sub-games "Coming":** only **Skins** is built. CTP / Sandies / Putting are labeled "Coming in
+  v1.5"; the api rejects them (`admin-event-rounds.ts:264`) / engine throws 501 (`sub-games.ts:76`).
+  NOT a regression — never implemented. Sub-games admin UI is a "name dump" (confirmed) — needs UX.
+- **Rule set "No rule set — defaults apply":** the message exists (`index.tsx:281`) but the defaults
+  are NOT enforced at runtime when none is set (confirmed incomplete); NO per-event/global rule-set
+  selection (tenant-scoped; per-event link deferred T5-11e). → core of F1.
+
+### Bug verdicts
+- **Regenerate unpinned "does nothing":** code IS fully wired (real mutation → `/pairings/suggest`,
+  `pairings.tsx:522` + handler `261`). Likely the stale undeployed build OR all pairings pinned
+  (nothing to regen). **Needs a live repro on the current build before calling it a bug.**
+
 ## 🔴 Setup blockers (in progress — building now)
 
 ### B0. Join via CODE — ✅ SHIPPED 2026-06-15 (commit 66db5f8)

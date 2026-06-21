@@ -138,104 +138,9 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
       ) : null}
 
       <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 24px', display: 'grid', gap: 8 }}>
-        <li>
-          <Link
-            to="/admin/events/$eventId/pairings"
-            params={{ eventId }}
-            style={cardStyle}
-            data-testid="admin-link-pairings"
-          >
-            <strong>Pairings + per-player tees</strong>
-            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
-              Set foursomes per round + override individual players&apos; tees.
-            </div>
-          </Link>
-        </li>
-
-        <li>
-          <Link
-            to="/admin/events/$eventId/rounds"
-            params={{ eventId }}
-            style={cardStyle}
-            data-testid="admin-link-rounds"
-          >
-            <strong>Rounds &amp; courses</strong>
-            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
-              Change or assign each round&apos;s course + tee (before scoring starts).
-            </div>
-          </Link>
-        </li>
-
-        <li>
-          <Link
-            to="/admin/events/$eventId/join-codes"
-            params={{ eventId }}
-            style={cardStyle}
-            data-testid="admin-link-join-codes"
-          >
-            <strong>Join codes</strong>
-            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
-              Per-player codes so people can join without a Google account.
-            </div>
-          </Link>
-        </li>
-
-        <li>
-          <Link
-            to="/admin/events/$eventId/scorer-policy"
-            params={{ eventId }}
-            style={cardStyle}
-            data-testid="admin-link-scorer-policy"
-          >
-            <strong>Who can score?</strong>
-            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
-              Foursome members, designated scorers (caddie), or open.
-            </div>
-          </Link>
-        </li>
-
-        <li>
-          <Link
-            to="/admin/events/$eventId/lock-handicaps"
-            params={{ eventId }}
-            style={cardStyle}
-            data-testid="admin-link-lock-handicaps"
-          >
-            <strong>Lock handicaps</strong>
-            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
-              Freeze everyone&apos;s handicap index as of a date for the whole event.
-            </div>
-          </Link>
-        </li>
-
-        <li>
-          <Link
-            to="/admin/events/$eventId/bets"
-            params={{ eventId }}
-            style={cardStyle}
-            data-testid="admin-link-bets"
-          >
-            <strong>The Action</strong>
-            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
-              Enter head-to-head bets that auto-settle into the pairwise settle-up.
-            </div>
-          </Link>
-        </li>
-
-        <li>
-          <Link
-            to="/admin/events/$eventId/start-round"
-            params={{ eventId }}
-            style={cardStyle}
-            data-testid="admin-link-start-round"
-          >
-            <strong>Start round</strong>
-            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
-              Begin scoring a round — pick who scores each locked foursome.
-            </div>
-          </Link>
-        </li>
-
+        {/* Setup flow order: roster first (everything flows from it), then the
+            week's rules, then pairings/tees, then the rest. */}
+        {/* 1. Roster */}
         {ctx.groups.length === 0 ? (
           <li
             style={{
@@ -268,6 +173,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           ))
         )}
 
+        {/* 2. Rule set */}
         {ctx.ruleSet === null ? (
           <li
             style={{
@@ -297,6 +203,112 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           </li>
         )}
 
+        {/* 3. Pairings + per-player tees */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/pairings"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-pairings"
+          >
+            <strong>Pairings + per-player tees</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Set foursomes per round + override individual players&apos; tees.
+            </div>
+          </Link>
+        </li>
+
+        {/* 4. Rounds & courses */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/rounds"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-rounds"
+          >
+            <strong>Rounds &amp; courses</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Change or assign each round&apos;s course + tee (before scoring starts).
+            </div>
+          </Link>
+        </li>
+
+        {/* 5. Lock handicaps */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/lock-handicaps"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-lock-handicaps"
+          >
+            <strong>Lock handicaps</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Freeze everyone&apos;s handicap index as of a date for the whole event.
+            </div>
+          </Link>
+        </li>
+
+        {/* 6. Join codes */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/join-codes"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-join-codes"
+          >
+            <strong>Join codes</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Per-player codes so people can join without a Google account.
+            </div>
+          </Link>
+        </li>
+
+        {/* 7. Who can score? */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/scorer-policy"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-scorer-policy"
+          >
+            <strong>Who can score?</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Foursome members, designated scorers (caddie), or open.
+            </div>
+          </Link>
+        </li>
+
+        {/* 8. Start round */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/start-round"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-start-round"
+          >
+            <strong>Start round</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Begin scoring a round — pick who scores each locked foursome.
+            </div>
+          </Link>
+        </li>
+
+        {/* 9. The Action (betting) */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/bets"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-bets"
+          >
+            <strong>The Action</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Enter head-to-head bets that auto-settle into the pairwise settle-up.
+            </div>
+          </Link>
+        </li>
+
+        {/* 10. Sub-games (per round) */}
         {ctx.eventRounds.map((er) => (
           <li key={er.id}>
             <Link

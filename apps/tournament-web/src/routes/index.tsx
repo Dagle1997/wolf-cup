@@ -14,7 +14,7 @@
 
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthSession } from '../hooks/use-auth-session';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
@@ -52,6 +52,7 @@ function formatDateRange(startMs: number, endMs: number, timeZone: string): stri
 function IndexPage() {
   const session = useAuthSession();
   const navigate = useNavigate();
+  const [showArchived, setShowArchived] = useState(false);
 
   const eventsQuery = useQuery<EventListResponse, Error>({
     queryKey: ['events-list'],
@@ -61,16 +62,21 @@ function IndexPage() {
     retry: false,
   });
 
-  // Auto-redirect when there's exactly one event so the user lands on
-  // their event home without an extra tap. Multi-event case stays on
-  // the list (the user picks). The redirect runs in an effect (not at
-  // render time) so React-Router's location state stays clean.
   const events = eventsQuery.data?.events ?? [];
-  // A lone cancelled event must NOT silently redirect — the organizer needs
-  // the list (with its Cancelled badge → admin → restore). Only auto-redirect
-  // when the single event is active.
+  // The landing shows CURRENT events only. An event is "archived" when it's
+  // cancelled or already over — hidden by default behind a toggle so the list
+  // stays clean; the organizer still reaches them to review stats / restore.
+  const now = Date.now();
+  const isArchived = (e: EventListItem) => e.cancelledAt != null || e.endDate < now;
+  const activeEvents = events.filter((e) => !isArchived(e));
+  const archivedEvents = events.filter(isArchived);
+  const visibleEvents = showArchived ? events : activeEvents;
+
+  // Auto-redirect only when the user's single event is active (no extra tap).
+  // A lone cancelled/past event must NOT silently redirect — show the list so
+  // the toggle (and the Cancelled badge → admin → restore) stays reachable.
   const autoRedirectId =
-    events.length === 1 && events[0]!.cancelledAt == null ? events[0]!.id : null;
+    events.length === 1 && !isArchived(events[0]!) ? events[0]!.id : null;
   useEffect(() => {
     if (session.player !== null && autoRedirectId !== null) {
       void navigate({ to: '/events/$eventId', params: { eventId: autoRedirectId } });
@@ -192,12 +198,17 @@ function IndexPage() {
     );
   }
 
-  // Multi-event: pick list.
+  // Multi-event: pick list (current events by default; archived behind a toggle).
   return (
     <div style={{ padding: 16 }}>
       <h1>Your events</h1>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-        {events.map((ev) => (
+      {visibleEvents.length === 0 ? (
+        <p data-testid="no-current-events" style={{ color: 'var(--color-text-muted)' }}>
+          No current events.
+        </p>
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+          {visibleEvents.map((ev) => (
           <li key={ev.id}>
             <Link
               to="/events/$eventId"
@@ -248,8 +259,32 @@ function IndexPage() {
               </div>
             </Link>
           </li>
-        ))}
-      </ul>
+          ))}
+        </ul>
+      )}
+      {archivedEvents.length > 0 ? (
+        <p style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            data-skip-base-style
+            data-testid="toggle-archived"
+            onClick={() => setShowArchived((v) => !v)}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              color: 'var(--color-brand-primary)',
+              fontWeight: 600,
+              cursor: 'pointer',
+              minHeight: 'auto',
+            }}
+          >
+            {showArchived
+              ? 'Hide past & cancelled'
+              : `Show past & cancelled (${archivedEvents.length})`}
+          </button>
+        </p>
+      ) : null}
       {session.player.isOrganizer ? (
         <p style={{ marginTop: 16 }}>
           <Link to="/admin/events/new" data-testid="home-create-event">

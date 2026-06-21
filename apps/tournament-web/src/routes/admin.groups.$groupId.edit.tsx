@@ -192,10 +192,19 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
         releaseController(ac);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       setTopLevelError(null);
-      setManualName('');
-      setManualHandicap('');
+      // Clear the inputs of whichever tab was used, so the field is ready for
+      // the next person (GHIN: clears last+first name + collapses results;
+      // re-search if adding several who share a last name).
+      if (variables.mode === 'ghin') {
+        setGhinSearchTerm('');
+        setGhinFirstName('');
+        setGhinSearchTriggered(false);
+      } else {
+        setManualName('');
+        setManualHandicap('');
+      }
       void qc.invalidateQueries({ queryKey: ['group', groupId] });
     },
     onError: (err) => {

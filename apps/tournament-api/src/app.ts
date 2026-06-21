@@ -56,6 +56,11 @@ app.get('/api/health', (c) =>
   c.json({ status: 'ok', startupTime: STARTUP_TIME }),
 );
 
+// Version probe for the web "new version — refresh" banner. `version` is the
+// process startup time: a redeploy restarts the process → the value changes →
+// clients polling this notice and prompt a refresh (mirrors Wolf Cup).
+app.get('/api/version', (c) => c.json({ version: STARTUP_TIME }));
+
 // Auth router (T1-6b). Mounted at /api/auth so routes appear at
 // /api/auth/status, /api/auth/google, /api/auth/google/callback.
 app.route('/api/auth', authRouter);
