@@ -9,33 +9,33 @@ import { fileURLToPath } from "node:url";
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PDF_EXTRACTOR_SCRIPT = path.join(SERVER_DIR, "extract_pdf.py");
 
-const SERVER_NAME = "codex_review";
+const SERVER_NAME = "gemini_review";
 const SERVER_VERSION = "0.1.0";
-const DEFAULT_MODEL = process.env.CODEX_REVIEW_MODEL || "gpt-5.5";
-const DEFAULT_REASONING_EFFORT = process.env.CODEX_REVIEW_REASONING_EFFORT || "high";
-const DEFAULT_MAX_FILES = clampInteger(process.env.CODEX_REVIEW_MAX_FILES, 12, 1, 50);
+const DEFAULT_MODEL = process.env.GEMINI_REVIEW_MODEL || "gemini-pro-latest";
+const DEFAULT_REASONING_EFFORT = process.env.GEMINI_REVIEW_REASONING_EFFORT || "high";
+const DEFAULT_MAX_FILES = clampInteger(process.env.GEMINI_REVIEW_MAX_FILES, 12, 1, 50);
 const DEFAULT_MAX_CHARS_PER_FILE = clampInteger(
-  process.env.CODEX_REVIEW_MAX_CHARS_PER_FILE,
+  process.env.GEMINI_REVIEW_MAX_CHARS_PER_FILE,
   30000,
   1000,
   100000,
 );
-const DEFAULT_OUTPUT_PATH = "_bmad-output/reviews/codex-review-latest.md";
+const DEFAULT_OUTPUT_PATH = "_bmad-output/reviews/gemini-review-latest.md";
 const MAX_DIFF_CHARS = 40000;
 
 const TOOL_NAME = "review_code";
 const TOOL_DESCRIPTION =
-  "Run an external Codex review on changed code or selected files and return concrete findings.";
+  "Run an external Gemini review on changed code or selected files and return concrete findings.";
 
 const CRITIQUE_TOOL_NAME = "critique_review";
 const CRITIQUE_TOOL_DESCRIPTION =
-  "Debate mode: critique another reviewer's findings (typically from gemini_review). Returns per-finding stances (agree/partial/disagree/theoretical/missing_evidence), any net-new findings Codex catches that the prior reviewer missed, and a ship/hold/escalate verdict. Use after running review_code on both Codex and Gemini for high-stakes external comms.";
-const CRITIQUE_DEFAULT_OUTPUT_PATH = "_bmad-output/reviews/codex-critique-latest.md";
+  "Debate mode: critique another reviewer's findings (typically from codex_review). Returns per-finding stances (agree/partial/disagree/theoretical/missing_evidence), any net-new findings Gemini catches that the prior reviewer missed, and a ship/hold/escalate verdict. Use after running review_code on both Codex and Gemini for high-stakes external comms.";
+const CRITIQUE_DEFAULT_OUTPUT_PATH = "_bmad-output/reviews/gemini-critique-latest.md";
 
 const SYNTHESIZE_TOOL_NAME = "synthesize_reviews";
 const SYNTHESIZE_TOOL_DESCRIPTION =
   "Final stage of the debate ensemble. Takes 2+ prior outputs (reviews and/or critiques) from different reviewers and produces a single unified consensus report: high-confidence findings (where reviewers agreed), divergent findings (where they disagreed and must be resolved), dismissed findings (theoretical/wrong), a prioritized action list, and a ship/hold/escalate verdict with confidence level. Run after review_code (both servers) and critique_review.";
-const SYNTHESIZE_DEFAULT_OUTPUT_PATH = "_bmad-output/reviews/codex-synthesis-latest.md";
+const SYNTHESIZE_DEFAULT_OUTPUT_PATH = "_bmad-output/reviews/gemini-synthesis-latest.md";
 
 const IGNORED_DIR_NAMES = new Set([
   ".git",
@@ -127,17 +127,18 @@ const TOOL_INPUT_SCHEMA = {
     },
     model: {
       type: "string",
-      description: "OpenAI model ID to use for the review.",
+      description: "Gemini model ID to use for the review (e.g. gemini-2.5-pro, gemini-2.5-flash).",
     },
     reasoning_effort: {
       type: "string",
       enum: ["none", "low", "medium", "high", "xhigh"],
-      description: "Reasoning effort for supported OpenAI reasoning models.",
+      description:
+        "Reasoning effort. Mapped to Gemini thinkingBudget: none=0, low=2048, medium=8192, high=16384, xhigh=32768.",
     },
     output_path: {
       type: "string",
       description:
-        "Optional path for the review report. Defaults to _bmad-output/reviews/codex-review-latest.md.",
+        "Optional path for the review report. Defaults to _bmad-output/reviews/gemini-review-latest.md.",
     },
     include_git_changes: {
       type: "boolean",
@@ -161,18 +162,15 @@ const TOOL_INPUT_SCHEMA = {
       maximum: 100000,
       description: "Maximum characters to read from each file.",
     },
-    enable_web_search: {
-      type: "boolean",
-      description:
-        "When true, attach OpenAI's web_search_preview built-in tool so the reviewer can verify factual claims against current public sources. Defaults to false.",
-    },
   },
   required: ["review_request"],
 };
 
+// Gemini structured-output schema. Uses OpenAPI 3.0 conventions:
+// - no `additionalProperties`
+// - nullable via `nullable: true` instead of `type: ["x", "null"]`
 const REVIEW_RESPONSE_SCHEMA = {
   type: "object",
-  additionalProperties: false,
   properties: {
     summary: {
       type: "string",
@@ -185,7 +183,6 @@ const REVIEW_RESPONSE_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           severity: {
             type: "string",
@@ -201,7 +198,8 @@ const REVIEW_RESPONSE_SCHEMA = {
             type: "integer",
           },
           line_end: {
-            type: ["integer", "null"],
+            type: "integer",
+            nullable: true,
           },
           why_it_matters: {
             type: "string",
@@ -219,7 +217,6 @@ const REVIEW_RESPONSE_SCHEMA = {
           "title",
           "file",
           "line_start",
-          "line_end",
           "why_it_matters",
           "fix_hint",
           "confidence",
@@ -237,7 +234,7 @@ const REVIEW_RESPONSE_SCHEMA = {
 };
 
 const REVIEW_SYSTEM_PROMPT = [
-  "You are Codex acting as a strict, evidence-first code reviewer.",
+  "You are Gemini acting as a strict, evidence-first code reviewer.",
   "Review only the provided diff and file contents.",
   "Prioritize concrete bugs, regressions, missing validation, security issues, data loss risks, and missing tests.",
   "Avoid style nits unless they would likely cause maintenance or correctness problems.",
@@ -245,10 +242,13 @@ const REVIEW_SYSTEM_PROMPT = [
   "Use the provided line numbers when you cite files.",
 ].join(" ");
 
-const REVIEW_SYSTEM_PROMPT_WITH_WEB = [
-  REVIEW_SYSTEM_PROMPT,
-  "You also have the web_search_preview tool. Use it to verify externally-checkable factual claims (patent statuses, deal values and dates, named personnel, public URLs and pages, marketing claims, financial figures). When you use it, cite the source URL or page in the finding's why_it_matters or fix_hint. If a claim cannot be verified, mark the finding as low-confidence rather than asserting it is wrong.",
-].join(" ");
+const REASONING_TO_THINKING_BUDGET = {
+  none: 0,
+  low: 2048,
+  medium: 8192,
+  high: 16384,
+  xhigh: 32768,
+};
 
 const CRITIQUE_INPUT_SCHEMA = {
   type: "object",
@@ -262,12 +262,12 @@ const CRITIQUE_INPUT_SCHEMA = {
     prior_review: {
       type: "string",
       description:
-        "Full text of the prior reviewer's report (typically the contents of _bmad-output/reviews/gemini-review-latest.md or a paste of their findings).",
+        "Full text of the prior reviewer's report (typically the contents of _bmad-output/reviews/codex-review-latest.md or a paste of their findings).",
     },
     prior_reviewer: {
       type: "string",
       description:
-        "Label for the prior reviewer (e.g. 'gemini-2.5-pro', 'claude', 'human-josh'). Used in the output report header.",
+        "Label for the prior reviewer (e.g. 'gpt-5.2', 'claude', 'human-josh'). Used in the output report header.",
     },
     workspace_root: {
       type: "string",
@@ -278,9 +278,7 @@ const CRITIQUE_INPUT_SCHEMA = {
       type: "array",
       description:
         "Optional files or directories to include as evidence for the critique. Relative paths are resolved from workspace_root.",
-      items: {
-        type: "string",
-      },
+      items: { type: "string" },
     },
     diff: {
       type: "string",
@@ -288,17 +286,18 @@ const CRITIQUE_INPUT_SCHEMA = {
     },
     model: {
       type: "string",
-      description: "OpenAI model ID to use for the critique.",
+      description: "Gemini model ID to use for the critique.",
     },
     reasoning_effort: {
       type: "string",
       enum: ["none", "low", "medium", "high", "xhigh"],
-      description: "Reasoning effort for supported OpenAI reasoning models.",
+      description:
+        "Reasoning effort. Mapped to Gemini thinkingBudget: none=0, low=2048, medium=8192, high=16384, xhigh=32768.",
     },
     output_path: {
       type: "string",
       description:
-        "Optional path for the critique report. Defaults to _bmad-output/reviews/codex-critique-latest.md.",
+        "Optional path for the critique report. Defaults to _bmad-output/reviews/gemini-critique-latest.md.",
     },
     include_git_changes: {
       type: "boolean",
@@ -322,22 +321,16 @@ const CRITIQUE_INPUT_SCHEMA = {
       maximum: 100000,
       description: "Maximum characters to read from each evidence file.",
     },
-    enable_web_search: {
-      type: "boolean",
-      description:
-        "When true, attach OpenAI's web_search_preview tool so Codex can fact-check the prior reviewer's externally-verifiable claims. Defaults to false.",
-    },
   },
   required: ["review_request", "prior_review"],
 };
 
+// Gemini critique-response schema. Uses OpenAPI 3.0 conventions:
+// no additionalProperties; nullable: true instead of type: ["x", "null"].
 const CRITIQUE_RESPONSE_SCHEMA = {
   type: "object",
-  additionalProperties: false,
   properties: {
-    summary: {
-      type: "string",
-    },
+    summary: { type: "string" },
     overall_agreement: {
       type: "string",
       enum: ["high", "partial", "low"],
@@ -350,19 +343,13 @@ const CRITIQUE_RESPONSE_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
-          of_finding: {
-            type: "string",
-            description: "Title or paraphrase of the prior finding being critiqued.",
-          },
+          of_finding: { type: "string" },
           stance: {
             type: "string",
             enum: ["agree", "partial", "disagree", "theoretical", "missing_evidence"],
           },
-          reasoning: {
-            type: "string",
-          },
+          reasoning: { type: "string" },
         },
         required: ["of_finding", "stance", "reasoning"],
       },
@@ -371,30 +358,17 @@ const CRITIQUE_RESPONSE_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           severity: {
             type: "string",
             enum: ["critical", "high", "medium", "low"],
           },
-          title: {
-            type: "string",
-          },
-          file: {
-            type: "string",
-          },
-          line_start: {
-            type: "integer",
-          },
-          line_end: {
-            type: ["integer", "null"],
-          },
-          why_it_matters: {
-            type: "string",
-          },
-          fix_hint: {
-            type: "string",
-          },
+          title: { type: "string" },
+          file: { type: "string" },
+          line_start: { type: "integer" },
+          line_end: { type: "integer", nullable: true },
+          why_it_matters: { type: "string" },
+          fix_hint: { type: "string" },
           confidence: {
             type: "string",
             enum: ["low", "medium", "high"],
@@ -405,7 +379,6 @@ const CRITIQUE_RESPONSE_SCHEMA = {
           "title",
           "file",
           "line_start",
-          "line_end",
           "why_it_matters",
           "fix_hint",
           "confidence",
@@ -427,29 +400,6 @@ const CRITIQUE_RESPONSE_SCHEMA = {
   ],
 };
 
-const CRITIQUE_SYSTEM_PROMPT = [
-  "You are Codex acting as a second-opinion reviewer in a debate.",
-  "Another reviewer has produced a review of the same material; that review is in the user message.",
-  "For each finding the prior reviewer raised, take an explicit stance:",
-  "  - agree: real risk, holds up under scrutiny against the evidence.",
-  "  - partial: the underlying concern is real but the framing, severity, or remediation is off.",
-  "  - disagree: not actually a risk in this context; explain what they missed.",
-  "  - theoretical: a legal/discovery framing without concrete operational risk. Note this when the cost of mitigating is higher than the marginal risk reduction.",
-  "  - missing_evidence: prior reviewer asserted something the supplied evidence does not support.",
-  "Then list any additional findings the prior reviewer missed (use the same finding schema).",
-  "Finally, provide a verdict:",
-  "  - ship: safe to send/merge as-is or with the critique-flagged tightenings.",
-  "  - hold: do not send/merge until findings are addressed.",
-  "  - escalate: this needs a third opinion (human, lawyer, or another model).",
-  "Be direct. Do not capitulate to the prior reviewer just to avoid conflict — if a finding is theoretical or wrong, say so with reasoning.",
-  "If the prior reviewer was substantially correct, say that explicitly and keep the critiques short.",
-].join(" ");
-
-const CRITIQUE_SYSTEM_PROMPT_WITH_WEB = [
-  CRITIQUE_SYSTEM_PROMPT,
-  "You also have the web_search_preview tool. Use it to verify externally-checkable factual claims raised by the prior reviewer (patent statuses, deal values and dates, named personnel, public URLs and pages, marketing claims, financial figures). When you use it, cite the source URL or page in the reasoning. If a claim cannot be verified, mark the stance as missing_evidence rather than asserting it is wrong.",
-].join(" ");
-
 const SYNTHESIZE_INPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -462,83 +412,43 @@ const SYNTHESIZE_INPUT_SCHEMA = {
       type: "array",
       minItems: 2,
       description:
-        "Two or more prior outputs to synthesize. Each is a labeled report from a reviewer or critique step. Typical: [codex review, gemini review, codex critique of gemini, gemini critique of codex].",
+        "Two or more prior outputs to synthesize. Each is a labeled report from a reviewer or critique step.",
       items: {
         type: "object",
         additionalProperties: false,
         properties: {
           source: {
             type: "string",
-            description:
-              "Label identifying the source — e.g. 'codex-review', 'gemini-review', 'codex-critique-of-gemini', 'gemini-critique-of-codex', 'human-josh'.",
+            description: "Label identifying the source — e.g. 'codex-review', 'gemini-review', 'codex-critique-of-gemini', 'human-josh'.",
           },
           content: {
             type: "string",
-            description: "Full text of the report (markdown or plain text).",
+            description: "Full text of the report.",
           },
         },
         required: ["source", "content"],
       },
     },
-    workspace_root: {
-      type: "string",
-      description: "Absolute or relative path to the project root.",
-    },
-    paths: {
-      type: "array",
-      description: "Optional evidence files to include.",
-      items: { type: "string" },
-    },
-    diff: {
-      type: "string",
-      description: "Optional unified diff to include as evidence.",
-    },
-    model: {
-      type: "string",
-      description: "OpenAI model ID to use for the synthesis.",
-    },
+    workspace_root: { type: "string" },
+    paths: { type: "array", items: { type: "string" } },
+    diff: { type: "string" },
+    model: { type: "string" },
     reasoning_effort: {
       type: "string",
       enum: ["none", "low", "medium", "high", "xhigh"],
-      description: "Reasoning effort for the synthesis pass.",
     },
-    output_path: {
-      type: "string",
-      description:
-        "Optional output path. Defaults to _bmad-output/reviews/codex-synthesis-latest.md.",
-    },
-    include_git_changes: {
-      type: "boolean",
-      description: "When true and no paths are provided, include changed files as evidence.",
-    },
-    include_git_diff: {
-      type: "boolean",
-      description: "When true, include the git diff for selected files as evidence.",
-    },
-    max_files: {
-      type: "integer",
-      minimum: 1,
-      maximum: 50,
-      description: "Maximum number of evidence files to include.",
-    },
-    max_chars_per_file: {
-      type: "integer",
-      minimum: 1000,
-      maximum: 100000,
-      description: "Maximum characters per evidence file.",
-    },
-    enable_web_search: {
-      type: "boolean",
-      description:
-        "When true, attach OpenAI's web_search_preview tool so the synthesizer can verify disputed factual claims. Defaults to false.",
-    },
+    output_path: { type: "string" },
+    include_git_changes: { type: "boolean" },
+    include_git_diff: { type: "boolean" },
+    max_files: { type: "integer", minimum: 1, maximum: 50 },
+    max_chars_per_file: { type: "integer", minimum: 1000, maximum: 100000 },
   },
   required: ["review_request", "prior_outputs"],
 };
 
+// Gemini synthesis-response schema. OpenAPI 3.0: no additionalProperties; nullable: true.
 const SYNTHESIZE_RESPONSE_SCHEMA = {
   type: "object",
-  additionalProperties: false,
   properties: {
     executive_summary: { type: "string" },
     verdict: {
@@ -551,10 +461,8 @@ const SYNTHESIZE_RESPONSE_SCHEMA = {
     },
     high_confidence_findings: {
       type: "array",
-      description: "Findings that 2+ reviewers raised or critiques affirmed — high-priority.",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           title: { type: "string" },
           severity: {
@@ -566,7 +474,6 @@ const SYNTHESIZE_RESPONSE_SCHEMA = {
           sources_agreeing: {
             type: "array",
             items: { type: "string" },
-            description: "Source labels (from prior_outputs) that raised or affirmed this finding.",
           },
           recommended_action: { type: "string" },
         },
@@ -575,10 +482,8 @@ const SYNTHESIZE_RESPONSE_SCHEMA = {
     },
     divergent_findings: {
       type: "array",
-      description: "Findings where reviewers disagreed — caller must resolve manually.",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           title: { type: "string" },
           summary: { type: "string" },
@@ -586,7 +491,6 @@ const SYNTHESIZE_RESPONSE_SCHEMA = {
             type: "array",
             items: {
               type: "object",
-              additionalProperties: false,
               properties: {
                 source: { type: "string" },
                 stance: { type: "string" },
@@ -595,20 +499,15 @@ const SYNTHESIZE_RESPONSE_SCHEMA = {
               required: ["source", "stance", "reasoning"],
             },
           },
-          synthesizer_lean: {
-            type: "string",
-            description: "Optional lean: which position the synthesizer finds more defensible and why.",
-          },
+          synthesizer_lean: { type: "string" },
         },
         required: ["title", "summary", "positions", "synthesizer_lean"],
       },
     },
     dismissed_findings: {
       type: "array",
-      description: "Findings raised by a reviewer but dismissed by critique or synthesis. Document with reason.",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           title: { type: "string" },
           raised_by: { type: "string" },
@@ -623,10 +522,8 @@ const SYNTHESIZE_RESPONSE_SCHEMA = {
     },
     prioritized_actions: {
       type: "array",
-      description: "Concrete actions to take before send/merge, ordered by priority.",
       items: {
         type: "object",
-        additionalProperties: false,
         properties: {
           priority: {
             type: "string",
@@ -639,7 +536,6 @@ const SYNTHESIZE_RESPONSE_SCHEMA = {
     },
     open_questions: {
       type: "array",
-      description: "Items that need human or third-party (lawyer, auditor) judgment before resolving.",
       items: { type: "string" },
     },
   },
@@ -656,25 +552,38 @@ const SYNTHESIZE_RESPONSE_SCHEMA = {
 };
 
 const SYNTHESIZE_SYSTEM_PROMPT = [
-  "You are Codex acting as a tribunal synthesizer at the end of a multi-model debate.",
+  "You are Gemini acting as a tribunal synthesizer at the end of a multi-model debate.",
   "Multiple reviewers (and possibly critiques of those reviews) have produced reports on the same material; those reports are in the user message, each labeled with a source.",
   "Your job is NOT to add new reviewing — it is to consolidate what's already on the table into a single decision-ready output.",
   "Produce:",
   "  - executive_summary: 2-4 sentences. What is being decided, and what is your verdict.",
   "  - verdict: ship | hold | escalate. Ship = safe with at most low-priority cleanups. Hold = must-fix items exist. Escalate = needs human/lawyer/auditor judgment.",
-  "  - confidence_level: how confident the synthesizer is in the verdict given the reviewers' agreement and the strength of evidence.",
+  "  - confidence_level: how confident the synthesizer is in the verdict given reviewer agreement and evidence strength.",
   "  - high_confidence_findings: findings raised by 2+ reviewers, or raised by one and affirmed by a critique. List sources_agreeing.",
-  "  - divergent_findings: findings where reviewers disagreed. Quote the positions verbatim and offer a synthesizer_lean if one side is more defensible.",
-  "  - dismissed_findings: findings that were raised but dismissed for clear reason (theoretical, missing evidence, refuted by critique, duplicate of another finding).",
-  "  - prioritized_actions: concrete pre-send/pre-merge actions. Use must_fix_before_send sparingly — only for findings that would cause real harm if shipped.",
-  "  - open_questions: items the synthesizer cannot resolve from the supplied evidence; flag for human judgment.",
-  "Be decisive. If the reviewers agreed, say so explicitly and don't manufacture divergence. If they disagreed, do not hide behind 'both have merit' — take a lean and explain it.",
-  "Cite source labels in your reasoning so the reader can trace claims back.",
+  "  - divergent_findings: findings where reviewers disagreed. Quote positions and offer a synthesizer_lean if one side is more defensible.",
+  "  - dismissed_findings: findings raised but dismissed for clear reason (theoretical, missing evidence, refuted by critique, duplicate).",
+  "  - prioritized_actions: concrete pre-send/pre-merge actions. Use must_fix_before_send sparingly.",
+  "  - open_questions: items the synthesizer cannot resolve from the supplied evidence.",
+  "Be decisive. If reviewers agreed, say so explicitly. If they disagreed, take a lean and explain it — don't hide behind 'both have merit'.",
+  "Cite source labels in your reasoning so claims can be traced.",
 ].join(" ");
 
-const SYNTHESIZE_SYSTEM_PROMPT_WITH_WEB = [
-  SYNTHESIZE_SYSTEM_PROMPT,
-  "You also have the web_search_preview tool. Use it ONLY to resolve disputed factual claims where the reviewers diverged on a verifiable fact (patent dates, statute text, named entities, public URLs). Cite the source URL in the relevant finding's reasoning. Do not use it to add new findings — your role is synthesis, not new review.",
+const CRITIQUE_SYSTEM_PROMPT = [
+  "You are Gemini acting as a second-opinion reviewer in a debate.",
+  "Another reviewer has produced a review of the same material; that review is in the user message.",
+  "For each finding the prior reviewer raised, take an explicit stance:",
+  "  - agree: real risk, holds up under scrutiny against the evidence.",
+  "  - partial: the underlying concern is real but the framing, severity, or remediation is off.",
+  "  - disagree: not actually a risk in this context; explain what they missed.",
+  "  - theoretical: a legal/discovery framing without concrete operational risk. Note this when the cost of mitigating is higher than the marginal risk reduction.",
+  "  - missing_evidence: prior reviewer asserted something the supplied evidence does not support.",
+  "Then list any additional findings the prior reviewer missed (use the same finding schema).",
+  "Finally, provide a verdict:",
+  "  - ship: safe to send/merge as-is or with the critique-flagged tightenings.",
+  "  - hold: do not send/merge until findings are addressed.",
+  "  - escalate: this needs a third opinion (human, lawyer, or another model).",
+  "Be direct. Do not capitulate to the prior reviewer just to avoid conflict — if a finding is theoretical or wrong, say so with reasoning.",
+  "If the prior reviewer was substantially correct, say that explicitly and keep the critiques short.",
 ].join(" ");
 
 let framingMode = null;
@@ -893,10 +802,10 @@ async function handleToolCall(message) {
 }
 
 async function reviewCode(args) {
-  const apiKey = process.env.OPENAI_API_KEY || "";
-  if (!apiKey.trim()) {
+  const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  if (!apiKey) {
     return toolError(
-      "OPENAI_API_KEY is not set. Set it before launching Claude Code so codex_review can call the OpenAI Responses API.",
+      "GEMINI_API_KEY is not set. Set it before launching Claude Code so gemini_review can call the Gemini API. Get a free key at https://aistudio.google.com/apikey.",
     );
   }
 
@@ -963,16 +872,13 @@ async function reviewCode(args) {
     warnings,
   });
 
-  const enableWebSearch = args.enable_web_search === true;
-  const review = await callOpenAI({
+  const review = await callGemini({
     apiKey,
     model,
     reasoningEffort,
-    systemPrompt: enableWebSearch ? REVIEW_SYSTEM_PROMPT_WITH_WEB : REVIEW_SYSTEM_PROMPT,
+    systemPrompt: REVIEW_SYSTEM_PROMPT,
     requestText,
-    schemaName: "codex_review_report",
     schema: REVIEW_RESPONSE_SCHEMA,
-    enableWebSearch,
   });
 
   const markdown = renderMarkdownReport({
@@ -1006,10 +912,10 @@ async function reviewCode(args) {
 }
 
 async function critiqueReview(args) {
-  const apiKey = process.env.OPENAI_API_KEY || "";
-  if (!apiKey.trim()) {
+  const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  if (!apiKey) {
     return toolError(
-      "OPENAI_API_KEY is not set. Set it before launching Claude Code so codex_review can call the OpenAI Responses API.",
+      "GEMINI_API_KEY is not set. Set it before launching Claude Code so gemini_review can call the Gemini API.",
     );
   }
 
@@ -1084,16 +990,13 @@ async function critiqueReview(args) {
     warnings,
   });
 
-  const enableWebSearch = args.enable_web_search === true;
-  const critique = await callOpenAI({
+  const critique = await callGemini({
     apiKey,
     model,
     reasoningEffort,
-    systemPrompt: enableWebSearch ? CRITIQUE_SYSTEM_PROMPT_WITH_WEB : CRITIQUE_SYSTEM_PROMPT,
+    systemPrompt: CRITIQUE_SYSTEM_PROMPT,
     requestText,
-    schemaName: "codex_critique_report",
     schema: CRITIQUE_RESPONSE_SCHEMA,
-    enableWebSearch,
   });
 
   const markdown = renderCritiqueMarkdownReport({
@@ -1129,10 +1032,10 @@ async function critiqueReview(args) {
 }
 
 async function synthesizeReviews(args) {
-  const apiKey = process.env.OPENAI_API_KEY || "";
-  if (!apiKey.trim()) {
+  const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  if (!apiKey) {
     return toolError(
-      "OPENAI_API_KEY is not set. Set it before launching Claude Code so codex_review can call the OpenAI Responses API.",
+      "GEMINI_API_KEY is not set. Set it before launching Claude Code so gemini_review can call the Gemini API.",
     );
   }
 
@@ -1217,16 +1120,13 @@ async function synthesizeReviews(args) {
     warnings,
   });
 
-  const enableWebSearch = args.enable_web_search === true;
-  const synthesis = await callOpenAI({
+  const synthesis = await callGemini({
     apiKey,
     model,
     reasoningEffort,
-    systemPrompt: enableWebSearch ? SYNTHESIZE_SYSTEM_PROMPT_WITH_WEB : SYNTHESIZE_SYSTEM_PROMPT,
+    systemPrompt: SYNTHESIZE_SYSTEM_PROMPT,
     requestText,
-    schemaName: "codex_synthesis_report",
     schema: SYNTHESIZE_RESPONSE_SCHEMA,
-    enableWebSearch,
   });
 
   const markdown = renderSynthesisMarkdownReport({
@@ -1319,7 +1219,7 @@ function renderSynthesisMarkdownReport({
   warnings,
 }) {
   const lines = [
-    "# Codex Synthesis (Debate Tribunal)",
+    "# Gemini Synthesis (Debate Tribunal)",
     "",
     `- Generated: ${new Date().toISOString()}`,
     `- Synthesized sources: ${priorOutputs.map((p) => p.source).join(", ")}`,
@@ -1431,7 +1331,7 @@ function renderSynthesisToolSummary({
   warnings,
 }) {
   const lines = [
-    `Codex synthesis complete with ${model} (${reasoningEffort}).`,
+    `Gemini synthesis complete with ${model} (${reasoningEffort}).`,
     `Verdict: ${synthesis.verdict.toUpperCase()} (confidence: ${synthesis.confidence_level})`,
     `Sources: ${priorOutputs.map((p) => p.source).join(", ")}`,
     `Report: ${outputPath}`,
@@ -1536,7 +1436,7 @@ function renderCritiqueMarkdownReport({
   warnings,
 }) {
   const lines = [
-    "# Codex Critique",
+    "# Gemini Critique",
     "",
     `- Generated: ${new Date().toISOString()}`,
     `- Critiquing: ${priorReviewer}`,
@@ -1569,7 +1469,7 @@ function renderCritiqueMarkdownReport({
     });
   }
 
-  lines.push("## Additional findings (Codex caught, prior reviewer missed)", "");
+  lines.push("## Additional findings (Gemini caught, prior reviewer missed)", "");
 
   if (!critique.additional_findings.length) {
     lines.push("No additional findings.", "");
@@ -1626,7 +1526,7 @@ function renderCritiqueToolSummary({
   warnings,
 }) {
   const lines = [
-    `Codex critique of ${priorReviewer} complete with ${model} (${reasoningEffort}).`,
+    `Gemini critique of ${priorReviewer} complete with ${model} (${reasoningEffort}).`,
     `Verdict: ${critique.verdict.toUpperCase()} (agreement: ${critique.overall_agreement})`,
     `Report: ${outputPath}`,
     `Evidence: ${relativePaths.length ? relativePaths.join(", ") : "(prior review only)"}`,
@@ -1816,9 +1716,6 @@ function extractPdfText(pdfPath, workspaceRoot) {
     if (result.status === 0) {
       return result.stdout || "";
     }
-    // Exit code 2 from the helper means "fitz not importable in this
-    // interpreter" — try the next candidate. Any other non-zero exit is a
-    // real failure (corrupt/encrypted PDF, IO error); stop trying.
     if (result.status !== 2) {
       return null;
     }
@@ -1828,6 +1725,9 @@ function extractPdfText(pdfPath, workspaceRoot) {
 
 function resolvePythonCandidates(workspaceRoot) {
   const candidates = [];
+  if (process.env.GEMINI_REVIEW_PYTHON) {
+    candidates.push(process.env.GEMINI_REVIEW_PYTHON);
+  }
   if (process.env.CODEX_REVIEW_PYTHON) {
     candidates.push(process.env.CODEX_REVIEW_PYTHON);
   }
@@ -1965,49 +1865,34 @@ function addLineNumbers(text) {
     .join("\n");
 }
 
-async function callOpenAI({
-  apiKey,
-  model,
-  reasoningEffort,
-  systemPrompt,
-  requestText,
-  schemaName,
-  schema,
-  enableWebSearch,
-}) {
+async function callGemini({ apiKey, model, reasoningEffort, systemPrompt, requestText, schema }) {
+  const thinkingBudget =
+    REASONING_TO_THINKING_BUDGET[reasoningEffort] ?? REASONING_TO_THINKING_BUDGET.high;
+
   const requestBody = {
-    model,
-    reasoning: {
-      effort: reasoningEffort,
+    systemInstruction: {
+      parts: [{ text: systemPrompt }],
     },
-    input: [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
+    contents: [
       {
         role: "user",
-        content: requestText,
+        parts: [{ text: requestText }],
       },
     ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: schemaName,
-        strict: true,
-        schema,
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: schema,
+      thinkingConfig: {
+        thinkingBudget,
       },
     },
   };
 
-  if (enableWebSearch) {
-    requestBody.tools = [{ type: "web_search_preview" }];
-  }
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      "x-goog-api-key": apiKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(requestBody),
@@ -2015,52 +1900,56 @@ async function callOpenAI({
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(extractOpenAIError(payload, response.status));
+    throw new Error(extractGeminiError(payload, response.status));
   }
 
-  const outputText = extractOutputText(payload);
+  const outputText = extractGeminiOutputText(payload);
   try {
     return JSON.parse(outputText);
   } catch (error) {
-    throw new Error(`OpenAI returned invalid JSON for the review report: ${error.message}`);
+    throw new Error(`Gemini returned invalid JSON for the review report: ${error.message}`);
   }
 }
 
-function extractOutputText(payload) {
+function extractGeminiOutputText(payload) {
   if (!payload || typeof payload !== "object") {
-    throw new Error("OpenAI returned an empty response.");
+    throw new Error("Gemini returned an empty response.");
   }
 
-  const contentItems = [];
-  for (const item of payload.output ?? []) {
-    for (const content of item.content ?? []) {
-      contentItems.push(content);
+  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+  if (!candidates.length) {
+    const blockReason = payload.promptFeedback?.blockReason;
+    if (blockReason) {
+      throw new Error(`Gemini blocked the prompt: ${blockReason}`);
     }
+    throw new Error("Gemini returned no candidates.");
   }
 
-  const refusal = contentItems.find((item) => typeof item.refusal === "string")?.refusal;
-  if (refusal) {
-    throw new Error(`OpenAI refused the review request: ${refusal}`);
+  const candidate = candidates[0];
+  const finishReason = candidate.finishReason;
+  if (finishReason && !["STOP", "MAX_TOKENS", "FINISH_REASON_UNSPECIFIED"].includes(finishReason)) {
+    throw new Error(`Gemini finished with reason ${finishReason}.`);
   }
 
-  const text = contentItems
-    .filter((item) => typeof item.text === "string")
-    .map((item) => item.text)
-    .join("\n")
+  const parts = candidate.content?.parts ?? [];
+  const text = parts
+    .filter((part) => typeof part.text === "string")
+    .map((part) => part.text)
+    .join("")
     .trim();
 
   if (!text) {
-    throw new Error("OpenAI returned no review text.");
+    throw new Error("Gemini returned no review text.");
   }
 
   return text;
 }
 
-function extractOpenAIError(payload, statusCode) {
+function extractGeminiError(payload, statusCode) {
   const message =
     payload?.error?.message ||
     payload?.message ||
-    `OpenAI request failed with status ${statusCode}.`;
+    `Gemini request failed with status ${statusCode}.`;
   return message;
 }
 
@@ -2073,7 +1962,7 @@ function renderMarkdownReport({
   warnings,
 }) {
   const lines = [
-    "# Codex Review",
+    "# Gemini Review",
     "",
     `- Generated: ${new Date().toISOString()}`,
     `- Model: ${model}`,
@@ -2145,7 +2034,7 @@ function renderToolSummary({
   warnings,
 }) {
   const lines = [
-    `Codex review complete with ${model} (${reasoningEffort}).`,
+    `Gemini review complete with ${model} (${reasoningEffort}).`,
     `Report: ${outputPath}`,
     `Reviewed: ${relativePaths.length ? relativePaths.join(", ") : "(diff-only review)"}`,
     "",
