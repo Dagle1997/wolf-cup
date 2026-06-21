@@ -40,6 +40,9 @@ export const AUDIT_EVENT_TYPES = {
   GALLERY_UPLOADED: 'gallery.uploaded',
   GALLERY_DELETED: 'gallery.deleted',
   INSTALL_PROMPT_SHOWN: 'install_prompt.shown',
+  // F1 "Rules & Games" event-level game-config lifecycle (Story 1.3).
+  GAME_CONFIG_SEEDED: 'game.config_seeded',
+  GAME_CONFIG_UPDATED: 'game.config_updated',
 } as const;
 
 export type AuditEventType =
@@ -54,6 +57,8 @@ export const AUDIT_ENTITY_TYPES = {
   SUBGAME: 'sub_game',
   GALLERY_PHOTO: 'gallery_photo',
   DEVICE_BINDING: 'device_binding',
+  // F1 game_config row (Story 1.3); entity_id = the game_config row id.
+  GAME_CONFIG: 'game_config',
 } as const;
 
 export type AuditEntityType =

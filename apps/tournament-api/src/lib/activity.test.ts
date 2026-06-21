@@ -297,6 +297,16 @@ const validEvents: Record<typeof ACTIVITY_TYPES[number], ActivityEvent> = {
     playerId: PLAYER_A_ID,
     context: { holeNumber: 7, grossStrokes: 3, par: 4 },
   },
+  'game.config_seeded': {
+    type: 'game.config_seeded',
+    eventId: EVENT_ID,
+    actorPlayerId: ACTOR_ID,
+  },
+  'game.config_updated': {
+    type: 'game.config_updated',
+    eventId: EVENT_ID,
+    actorPlayerId: ACTOR_ID,
+  },
 };
 
 // ---- Per-type valid-payload tests -----------------------------------------

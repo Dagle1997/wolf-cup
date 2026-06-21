@@ -184,6 +184,21 @@ export interface AwardTriggeredEvent extends ActivityEventBase {
   };
 }
 
+/**
+ * F1 "Rules & Games" (Story 1.3) — the event-level game-config lifecycle.
+ * `game.config_seeded` is the FIRST write for an event (no prior event-level
+ * `game_config` row); `game.config_updated` is any subsequent point-value or
+ * lock-state change. Payload is just `{ eventId }` (the base field) — the full
+ * before/after config lives in the audit row, not the activity feed.
+ */
+export interface GameConfigSeededEvent extends ActivityEventBase {
+  type: 'game.config_seeded';
+}
+
+export interface GameConfigUpdatedEvent extends ActivityEventBase {
+  type: 'game.config_updated';
+}
+
 // ---- Discriminated union --------------------------------------------------
 
 export type ActivityEvent =
@@ -204,7 +219,9 @@ export type ActivityEvent =
   | RuleSetRevisedEvent
   | SubgameComputedEvent
   | GalleryUploadedEvent
-  | AwardTriggeredEvent;
+  | AwardTriggeredEvent
+  | GameConfigSeededEvent
+  | GameConfigUpdatedEvent;
 
 export type ActivityType = ActivityEvent['type'];
 
@@ -227,6 +244,8 @@ export const ACTIVITY_TYPES = [
   'subgame.computed',
   'gallery.uploaded',
   'award.triggered',
+  'game.config_seeded',
+  'game.config_updated',
 ] as const satisfies readonly ActivityType[];
 
 // ---- Zod schemas ----------------------------------------------------------
@@ -474,6 +493,22 @@ const awardTriggeredSchema = z
   })
   .strict();
 
+// F1 game-config lifecycle (Story 1.3). Payload is just the base eventId; the
+// before/after config diff is captured in the audit row, not the feed.
+const gameConfigSeededSchema = z
+  .object({
+    ...baseFields,
+    type: z.literal('game.config_seeded'),
+  })
+  .strict();
+
+const gameConfigUpdatedSchema = z
+  .object({
+    ...baseFields,
+    type: z.literal('game.config_updated'),
+  })
+  .strict();
+
 export const activityEventSchemas = {
   'score.committed': scoreCommittedSchema,
   'score.corrected': scoreCorrectedSchema,
@@ -493,4 +528,6 @@ export const activityEventSchemas = {
   'subgame.computed': subgameComputedSchema,
   'gallery.uploaded': galleryUploadedSchema,
   'award.triggered': awardTriggeredSchema,
+  'game.config_seeded': gameConfigSeededSchema,
+  'game.config_updated': gameConfigUpdatedSchema,
 } as const satisfies Record<ActivityType, z.ZodSchema>;

@@ -595,7 +595,7 @@ development_status:
   # 1.3 Admin seed "Standard Guyan" + event-wide default (kills the dead card).
   # Scaffolds the Rules & Games setup page; an event-level game_config row
   # classifies the event as F1 (routing check, cutover_state default native).
-  1-3-admin-seed-standard-guyan-event-default: backlog
+  1-3-admin-seed-standard-guyan-event-default: done
 
   # 1.4 Settle the F1 event into the pairwise settle-up (dual-read + chokepoint
   # + money mode). Per-event dual-read routes to EITHER legacy money.ts OR the

@@ -43,6 +43,38 @@ async function fetchAdminContext(eventId: string): Promise<AdminContextResponse>
   return (await res.json()) as AdminContextResponse;
 }
 
+type GameConfigSummary = {
+  config: {
+    lockState: 'locked' | 'unlocked' | null;
+    configJson: string;
+  } | null;
+};
+
+async function fetchGameConfig(eventId: string): Promise<GameConfigSummary> {
+  const res = await fetch(
+    `/api/admin/events/${encodeURIComponent(eventId)}/game-config`,
+    { credentials: 'same-origin' },
+  );
+  if (!res.ok) throw new Error(`http_${res.status}`);
+  return (await res.json()) as GameConfigSummary;
+}
+
+/** Human-readable stake for the seeded-config summary on the admin landing. */
+function describePointValue(configJson: string): string {
+  try {
+    const cfg = JSON.parse(configJson) as {
+      pointValueSchedule:
+        | { kind: 'flat'; cents: number }
+        | { kind: 'front-back'; frontCents: number; backCents: number };
+    };
+    const s = cfg.pointValueSchedule;
+    if (s.kind === 'flat') return `$${s.cents / 100}/pt`;
+    return `$${s.frontCents / 100} front / $${s.backCents / 100} back`;
+  } catch {
+    return 'custom stake';
+  }
+}
+
 const cardStyle: React.CSSProperties = {
   display: 'block',
   padding: 12,
@@ -59,6 +91,16 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
   const query = useQuery<AdminContextResponse, Error>({
     queryKey: ['admin-context', eventId],
     queryFn: () => fetchAdminContext(eventId),
+    retry: false,
+    staleTime: 30_000,
+  });
+
+  // F1 "Rules & Games" — drives the "Set up Rules & Games" link vs. summary
+  // (replaces the dead "No rule set seeded" card). Failures fall back to the
+  // unseeded link (the setup page surfaces the real error).
+  const gameConfigQuery = useQuery<GameConfigSummary, Error>({
+    queryKey: ['game-config', eventId],
+    queryFn: () => fetchGameConfig(eventId),
     retry: false,
     staleTime: 30_000,
   });
@@ -173,35 +215,34 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           ))
         )}
 
-        {/* 2. Rule set */}
-        {ctx.ruleSet === null ? (
-          <li
-            style={{
-              ...cardStyle,
-              background: 'var(--color-warning-bg)',
-              borderColor: 'var(--color-warning-text)',
-            }}
+        {/* 2. Rules & Games (F1) — preset-first setup; kills the dead card. */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/game-config"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-game-config"
           >
-            <strong>Rule set</strong>
-            <div style={{ fontSize: '0.85em', color: 'var(--color-warning-text)' }}>
-              No rule set seeded yet. Defaults apply until one is created.
-            </div>
-          </li>
-        ) : (
-          <li>
-            <Link
-              to="/admin/rule-sets/$id/edit"
-              params={{ id: ctx.ruleSet.id }}
-              style={cardStyle}
-              data-testid="admin-link-ruleset"
-            >
-              <strong>Rule set — {ctx.ruleSet.name}</strong>
-              <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
-                Cents per hole, sandies, greenies, skins mode.
-              </div>
-            </Link>
-          </li>
-        )}
+            {gameConfigQuery.data?.config ? (
+              <>
+                <strong>
+                  Rules &amp; Games — Standard Guyan ({describePointValue(gameConfigQuery.data.config.configJson)},{' '}
+                  {gameConfigQuery.data.config.lockState === 'unlocked' ? 'unlocked' : 'locked'})
+                </strong>
+                <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+                  Edit the stake or lock state. Every foursome inherits this.
+                </div>
+              </>
+            ) : (
+              <>
+                <strong>Set up Rules &amp; Games</strong>
+                <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+                  Seed the Standard Guyan game (low ball, skin, team total + net-skins) and set the stake.
+                </div>
+              </>
+            )}
+          </Link>
+        </li>
 
         {/* 3. Pairings + per-player tees */}
         <li>
