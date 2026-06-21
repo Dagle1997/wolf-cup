@@ -1,69 +1,112 @@
 # Codex Review
 
-- Generated: 2026-06-21T14:42:33.233Z
+- Generated: 2026-06-21T15:58:42.081Z
 - Model: gpt-5.2
 - Reasoning effort: high
 - Workspace root: D:\wolf-cup
-- Reviewed files: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md
+- Reviewed files: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md
 
 ## Summary
 
-Holistically, the doc is close to architecture-ready: the ADR spine, risk register, journey set (now incl. Journey 5), and the FR/NFR blocks are individually strong. The remaining blockers are *cross-section coherence* issues that can mislead architecture/epic decomposition—mainly (1) Product Scope (MVP vs Growth) not reflecting the actual Product-A FR surface area, (2) a Journey-1 example that appears to promise cross-foursome head-to-head in Product A, and (3) team/provenance storage semantics not being specified at the data-model level despite FR29/NFR-D1 requiring pinned team composition. There’s also a small but concrete drift: the engine signature still says `scores` only in a couple places despite claims now being first-class inputs.
+The patterns section is strong on the big-ticket safety rails (pure engine, integer cents, golden fixtures, recompute-on-read, single chokepoints). The main risk is that some rules are underspecified where D1–D7 depend on *precise* semantics: (a) what exactly is “pinned config” vs the mutable `game_config` cascade, especially under forward-effective edits, (b) how producer disjointness is mechanically checkable given the simplified SettlementEdge shape, and (c) the dual-read switch and config-row existence rules (preventing “config exists but is ignored” situations). Several MUSTs are currently aspirational unless paired with named CI tests/lints.
 
 Overall risk: high
 
 ## Findings
 
-1. [high] MVP/Product A scope list is out of sync with the Product-A FR surface area (likely to mis-sequence architecture → epics)
-   - File: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md:127-138
+1. [critical] Pinned-config vs live cascade is ambiguous; finalized money could drift if recompute reads mutable `game_config` rows
+   - File: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md:159-168
    - Confidence: high
-   - Why it matters: The “Product Scope → MVP (Product A)” list enumerates only 5 items (engine generalization, seed, cascade+lock, migration, leaderboard mode switch). But the overall document (Journeys + Domain + later FR set) clearly positions additional must-ship Product-A capabilities as part of F1’s story goal (e.g., teams, on-course claims capture, per-hole breakdown/traceability, finalize/un-finalize + audit logging, fail-closed/unsettleable handling). If the architecture phase uses the MVP list as the authoritative build contract, you risk missing epics/components/tests for money-critical flows, or incorrectly deferring them as “nice-to-have.”
-   - Suggested fix: Update **Product Scope** to explicitly list the major Product-A capabilities that are part of F1’s must-ship behavior (or explicitly mark them as already-shipped v1 functionality if that’s the intent). Also update **Growth/Product B** to include all B-tagged capabilities that appear in FRs (not just unlock UI), so the A/B boundary is consistent across the entire doc.
+   - Why it matters: D5 says finalized-frozen is guaranteed because recompute-on-read uses immutable pinned inputs (and D4 says config is pinned via FK to immutable `rule_set_revision_id`). But the patterns also emphasize a live cascade resolver (Pattern 7) and don’t explicitly forbid recompute from consulting the current `game_config` rows for scored/finalized rounds. If a mutable event/round/foursome `game_config.config_json` is edited after a round is finalized (or even after scoring starts), a recompute that re-resolves the cascade could change money, violating D5/NFR-C5 (“finalized = reject edits” only helps if the *only* editable thing is the pinned input set). The current text doesn’t explicitly bind “pinned config” to a fully-resolved immutable snapshot/timeline for that round.
+   - Suggested fix: Add an explicit rule clarifying the boundary between **resolution time** and **compute time**. Suggested edit (new Pattern or expand 5/7/9/13):
+- “For scored rounds, the engine MUST compute from a pinned, immutable config snapshot (or pinned config-timeline) referenced by the round; it MUST NOT re-run cascade resolution against mutable `game_config` rows.”
+- Define how forward-effective (`effective_from_hole`) is represented in pinned inputs (e.g., a pinned config timeline: `{holeStart -> rule_set_revision_id/configSnapshotId}`), so recompute is still purely from pinned data.
+- If you intend to avoid a new snapshot table (per D2), state the concrete mechanism: e.g., materialize the resolved config into a new immutable `rule_set_revision` at pin-time and pin that revision on the round, or store a `resolved_config_json` snapshot on the round/round_state and hash it.
+Also add a CI test: “editing game_config after finalization cannot change recomputed ledger/edges for that round.”
 
-2. [high] Journey 1’s team-game example reads like cross-foursome head-to-head money in Product A, conflicting with the A/B split and FR5 narrative
-   - File: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md:144-156
+2. [high] SettlementEdge shape in Pattern 4 is too underspecified to enforce D1a producer-disjointness; missing namespacing/source identity guidance
+   - File: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md:158-166
    - Confidence: high
-   - Why it matters: Journey 1 (Product A) says Josh sets each day’s team game as “**foursome-vs-foursome, per-hole win/lose, $20/man**” (line 146). Elsewhere, the doc’s scope framing and FR5 text distinguish MVP as intra-foursome 2v2 + event-level pots/standings, with *direct cross-foursome head-to-head money* deferred (Product B). If Journey 1 is read literally, it will drive architecture to design cross-foursome matchup settlement now (or create ambiguity about what “event-level pot/standing” means), which is a big scope and correctness surface.
-   - Suggested fix: Make Journey 1’s example unambiguously **Product-A-compatible** (e.g., describe an event-level aggregated pot/standing rather than a per-hole cross-foursome matchup), or re-tag that part of the journey as **Product B** and ensure Success Criteria / Scope reflect that deferral. Align terminology across Journey 1, Product Scope, and the FRs (FR5 vs FR22/FR25).
+   - Why it matters: D1a’s invariant is phrased as “no (debtor, creditor, reason) edge is emitted by two producers” (line 102). Patterns 4 and 11 define edges as `{fromPlayerId,toPlayerId,cents,sourceType}` and say “Producer disjointness” is enforced, but they don’t define:
+- what the “reason” dimension is (is it `sourceType`? something else?),
+- how `sourceType` is namespaced so producers are provably disjoint (e.g., `f1:guyan`, `legacy:2v2`, `skins`, `betting`),
+- whether a `sourceId`/origin key exists (roundId/foursomeId/hole/claim) to support auditing/idempotency, and
+- how the invariant is actually computed in tests if multiple edges share same from/to/cents.
+Without a stricter contract, agents can emit overlapping or un-auditable edges while still “matching” Pattern 4.
+   - Suggested fix: Tighten Pattern 4/11 with a concrete, checkable contract:
+- Define `sourceType` as a **producer namespace + domain code** (e.g., `f1.guyan`, `f1.eventPot`, `legacy.moneyTs2v2`, `sub_games.skins`, `betting.action`).
+- Add/require a deterministic `sourceId` (or `reasonCode`) field sufficient to compute D1a’s “reason” key and aid audit/debug (e.g., `round:${roundId}:foursome:${foursomeId}:hole:${n}:modifier:${type}`), or explicitly state that `sourceType` is the “reason” and must be unique per producer slice.
+- Update Pattern 17’s “producer-disjointness integration test” to specify the exact uniqueness key it checks, e.g. `(from,to,sourceType,sourceId?)`.
+This makes D1a enforceable rather than interpretive.
 
-3. [high] Teams are required to be pinned for provenance (FR29/NFR-D1), but the data model section doesn’t specify how team composition is stored/versioned/pinned
-   - File: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md:215-226
+3. [high] Dual-read switch (“F1 iff event-level game_config row exists”) needs guardrails to prevent ignored lower-level config and misrouting
+   - File: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md:168-169
    - Confidence: high
-   - Why it matters: The PRD states that a scored round pins config provenance (line 225) and separately that per-round pairings are append-only (line 224). However, teams (as distinct from pairings) are now a first-class concept in Journeys (Journey 5) and the later FR set (FR20–FR21, FR29 “pins… team composition”, and NFR-D1 “pinned config + team revisions”). Without an explicit storage/versioning plan for team composition (event/round/foursome scope, and whether team changes can be forward-effective mid-round like rule changes), architecture can’t correctly implement pin/re-pin, recompute, and audit logging semantics without making unstated product decisions.
-   - Suggested fix: Add an explicit **Team Model & Provenance** subsection under Data Model/Durable History that answers: (1) where team assignments live (tables/entities), (2) what they key off (round_id? pairing_id? hole ranges?), (3) how they are versioned (append-only revisions) and referenced by a scored round to satisfy pinning, and (4) whether team changes mid-round are allowed and, if so, whether they follow the same correction/forward-effective semantics as rules (Diagram 2). If you want to defer these decisions to architecture, mark them explicitly as **arch-time decisions** (like the override-table note at line 220).
+   - Why it matters: Pattern 14 says routing is based solely on presence of an event-level `game_config` row. D2 allows `game_config` rows at event/round/foursome levels. Without an explicit rule, it’s possible to create round/foursome overrides for an event that lacks an event-level row; routing would treat it as non-F1 and run legacy `money.ts`, silently ignoring the new config rows (a money-safety footgun and a migration hazard). Conversely, an empty/invalid event-level row could flip routing unintentionally.
+This is a consistency hole directly related to D1’s “never both engines” guarantee and D2’s polymorphic table model.
+   - Suggested fix: Augment Pattern 14 (and/or add a validation rule under Pattern 7/8):
+- “It is invalid to create `game_config` rows at level=round|foursome unless an event-level row exists for that event.” Enforce in service code (and ideally with a DB-level foreign-key-like check via application validation).
+- Consider an explicit `enabled`/`mode` field (or `seed_rule_set_revision_id` presence) rather than row existence to avoid accidental flips.
+- Add an integration test: creating a round/foursome config without event-level config fails with a specific error code; and routing never uses both engines for the same event.
 
-4. [medium] Engine/domain signature drift: `computeFoursome` is still described as scores-only in places, contradicting the new claims-first model
-   - File: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md:194-233
-   - Confidence: high
-   - Why it matters: Domain Patterns state `computeFoursome(itsOwnConfig, itsOwnScores) → foursomeLedger` (line 196) and the Engine section repeats scores-only (line 229), but Journey 5 and Diagram 1 clearly make **claims** (greenie/polie/sandie) part of the compute inputs (Diagram 1 uses `itsOwnScores+claims`, line 275). This kind of drift is exactly what causes downstream architecture and test harnesses to omit a required input dimension, which is money correctness critical.
-   - Suggested fix: Update all occurrences of the compute signature to consistently include claims (and, if teams are not derivable from config alone, include team composition/pinned team revision as an explicit input too). Ensure the “structural isolation by signature” argument remains true after adding claims/teams (i.e., still cannot read other foursomes’ data).
-
-5. [low] Dangling internal reference: “inherits NFR-D8” doesn’t match the NFR section naming in this document
-   - File: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md:194-199
-   - Confidence: high
-   - Why it matters: The Domain Patterns section says “inherits NFR-D8” (line 195), but the NFR taxonomy in this PRD is C1–C8, T1, D1–D3, etc. This is small, but it undermines trust in cross-references when architecture/QA trace requirements to test gates.
-   - Suggested fix: Replace “NFR-D8” with the correct NFR id(s) in this doc (likely NFR-C2 purity + NFR-D3 reconstructability and/or NFR-D2 atomicity) or remove the id reference if it’s meant as a general statement.
-
-6. [medium] Product B scope description doesn’t enumerate all B-tagged capabilities, risking scope drift later
-   - File: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md:136-138
-   - Confidence: high
-   - Why it matters: Growth/Product B is summarized as “per-foursome self-service unlock + adjust UI” (lines 136–138). But the later FR list includes additional Product B capabilities (notably cross-foursome/cross-group team games and SettlementEdge-style settlement). If Growth scope doesn’t list these explicitly, architecture may not leave the right seams—or, conversely, may accidentally pull them into MVP because they appear elsewhere in the doc.
-   - Suggested fix: Expand the **Growth — Product B** scope section to explicitly list the B-tagged capability buckets (self-serve foursome overrides; cross-foursome/cross-group settlement path/SettlementEdges) and any hard “must-not-foreclose” seams needed in Product A.
-
-7. [medium] Traceability gap: at least one Success Criterion is not explicitly backed by an FR (could be dropped during epic creation)
-   - File: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md:87-96
+4. [medium] LWW + idempotency details for claim/score writes are not precise enough to prevent agent divergence and nondeterminism
+   - File: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md:162-163
    - Confidence: medium
-   - Why it matters: Success Criteria include “**The dead ‘No rule set seeded’ card is gone**” (line 94) and the ≤5 min setup guardrail (line 90). While the doc implies these through other sections, they are not clearly mapped to a specific FR id in the FR list. Given the PRD’s own “capability contract” stance, lack of explicit trace raises the risk that architecture/epics focus on the engine/cascade and omit the concrete UX removal of the dead-end entry point (which is positioned as a primary value unlock).
-   - Suggested fix: Add explicit FR(s) (or a short Traceability table) mapping key Success Criteria to FR/NFR ids—especially the “dead card removed / always a working create/seed path” and the time-on-task guardrail (if it is meant to be enforced via UX constraints like preset-first + zero blank-slate).
+   - Why it matters: D6 says each claim row carries `updated_at` / a client sequence and uses LWW; Pattern 8 repeats LWW and mentions `client_event_id` idempotency. However, it does not pin down:
+- the exact LWW ordering key (server `updated_at` vs client sequence vs (seq, updated_at) tuple),
+- the required uniqueness scope for `client_event_id` (global? per scorer? per device?),
+- how deletes are idempotent (FR39) under offline replay.
+Because determinism/order-independence is an explicit NFR driver, leaving the tiebreak undefined invites inconsistent implementations across agents and can cause different outcomes when queues replay differently.
+   - Suggested fix: Clarify Pattern 8 with explicit, testable rules:
+- Define the LWW comparator exactly, e.g. `ORDER BY client_seq DESC, client_updated_at_ms DESC, server_updated_at DESC` (or pick one) and state what happens on ties.
+- Define idempotency uniqueness: e.g. `UNIQUE (round_id, scorer_player_id, client_event_id)` and mandate `client_event_id` is a UUIDv4 generated client-side.
+- Define delete semantics as an upsert of `is_deleted=1` tombstone vs physical delete, or if physical delete is required, define how replayed deletes behave.
+Add a property test ensuring the final claim state is invariant under permutation of the offline event log for a single writer.
+
+5. [medium] Recompute-on-read lacks an explicit transactional snapshot rule; reads can mix versions of scores/claims/config
+   - File: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md:159-171
+   - Confidence: medium
+   - Why it matters: Pattern 5 mandates recompute-on-read; Pattern 8 mandates one-tx writes. But there is no rule that a recompute read must fetch all pinned inputs + scores + claims in a single consistent snapshot/transaction. In SQLite, concurrent writes can interleave such that a multi-query read sees partial updates unless wrapped in a transaction. For money correctness, a leaderboard/settle-up read should not compute from a mixed state (e.g., new claim row but old score rows).
+   - Suggested fix: Add a small but concrete rule (extend Pattern 5/16):
+- “All recompute reads MUST occur inside a single read transaction (or single SQL statement) that snapshots the round inputs (pinned config/teams/HI/course) + scores + claims.”
+- If you already have a recompute service chokepoint (Pattern 16), require it to own the transaction boundary.
+Add a concurrency test (can be integration-level) that simulates interleaved writes and asserts recompute output is always from a consistent set.
+
+6. [medium] Unknown/forward-incompatible modifier types and config versions are not covered; risk of silent ignore vs fail-closed
+   - File: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md:155-166
+   - Confidence: high
+   - Why it matters: Patterns 6/7 define a registry and deep-merge resolver, but do not state what happens when config JSON includes an unknown `modifier.type` (FR20-style open-enum extensibility is mentioned earlier in requirements). If different agents choose “ignore unknown” vs “throw error,” you get inconsistent settlement and potentially under/over-payment. For real-money, this must be fail-closed and surfaced clearly.
+   - Suggested fix: Add an explicit consistency rule (new Pattern suggested between 6 and 7):
+- “Unknown `game.type` / `modifier.type` / config schema version MUST fail closed: engine returns `unsettleable` with `unsupported_*` code; UI surfaces to organizer; no partial settlement.”
+- Require a `configSchemaVersion` field and Zod discriminated unions keyed by version/type.
+Add golden fixtures that include an unknown modifier to assert the fail-closed behavior.
+
+7. [low] Enforcement section has several non-checkable MUSTs; name the CI tests/lints that make them real
+   - File: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md:174-177
+   - Confidence: high
+   - Why it matters: Patterns 3/17/Enforcement state “hard gates” (fixtures required; no iteration-order; no stored money; producer disjointness; one chokepoint), but only some are tied to concrete tests (Pattern 17). Without naming the exact tests/CI checks, multi-agent work can still drift while believing they complied.
+   - Suggested fix: Extend “### Enforcement” with a short list of concrete, existing-or-to-add checks:
+- `engine/games/fixtures.runner.test.ts` that enumerates fixtures and fails if any registered game/modifier lacks a fixture.
+- `engine/games/*.property.test.ts` must include permutation/order-independence checks for edges.
+- `integration/producer-disjointness.test.ts` defines and asserts the D1a uniqueness key.
+- A grep/lint-like check is optional, but at least require that *all API routes* call the single recompute service.
+This keeps the MUSTs enforceable in CI rather than cultural.
+
+8. [low] “Pin-at-round-start” trigger is underspecified (what exact event starts scoring?), risking inconsistent pin timing across agents
+   - File: _bmad-output/planning-artifacts/tournament/architecture-f1-rules-games.md:167-168
+   - Confidence: medium
+   - Why it matters: Pattern 13 says pin when scoring starts, but doesn’t define the precise trigger (first hole score write? first claim write? explicit “start round” action?) or its idempotency behavior. Different agents may pin at different times, causing subtle drift in which locked-HI/team snapshot/config gets frozen.
+   - Suggested fix: Define “scoring starts” precisely and make it idempotent:
+- e.g., “On the first successful mutation to `hole_scores` OR `hole_claims` for a round, in the same transaction: if `round_state.scoring_started_at` is null, set it and capture all pinned snapshots.”
+- Clarify whether a claim-only action counts as starting scoring.
+Add an integration test that two concurrent “first writes” result in exactly one snapshot/pin event.
 
 ## Strengths
 
-- ADR spine + risk register align well with the later recompute/finalize posture (correction vs forward-effective vs frozen) and the migration dual-read + golden gate.
-- Journey set is now complete for the new MVP additions (Journey 5), and the Journey Requirements Summary properly calls out teams/claims/breakdown as a top-level requirement.
-- The “Required Clarity Artifact” (plain-language provenance + Mermaid diagrams) is exactly the kind of architecture-unblocking content that prevents pin/re-pin confusion downstream.
-- Correctness posture is strong and architecture-friendly: golden fixtures + property/fuzz invariants + integer-cents purity + order-independence + deterministic remainder allocation.
-- Security/privacy stance is clear at the doc level: money bounded to authenticated roster members; separation of money vs public stats is explicitly called out for forward compatibility.
+- Patterns align well with the core architectural spine: pure engine (P1), integer cents + determinism focus (P2), recompute-on-read (P5), and a single consumer/chokepoint (P16).
+- Explicitly calling out producer disjointness (P11) and requiring a dedicated integration test (P17) is a strong guard against double-count regressions under D1/D1a.
+- Clear operational rules that reduce multi-agent divergence: one polymorphic config table + deep-merge (P7), single-writer + offline idempotency (P8/15), and “rule = data + resolver” (P6/18).
 
 ## Warnings
 
-- Truncated file content for review: _bmad-output/planning-artifacts/tournament/prd-f1-rules-games.md
+None.
