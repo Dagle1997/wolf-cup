@@ -273,3 +273,76 @@ body {
   outline: 3px solid var(--color-brand-primary);
   outline-offset: 1px;
 }
+
+/*
+ * Button primitive (components/button.tsx renders data-skip-base-style + these
+ * classes so the base <button> rule opts out and the variant fully controls
+ * appearance). Variants: primary (brand green), secondary (outline/neutral),
+ * danger (destructive red — so "Confirm void"/"Confirm change" read as
+ * destructive, not green-primary). All share the 48px tap-target floor.
+ */
+.btn {
+  appearance: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 0 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 0;
+  min-height: var(--control-height);
+  box-sizing: border-box;
+  transition: background 80ms ease, transform 80ms ease;
+}
+.btn:active { transform: scale(0.98); }
+.btn:focus-visible { outline: 3px solid var(--color-brand-strong); outline-offset: 2px; }
+.btn:disabled {
+  background: var(--color-border);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+  transform: none;
+}
+.btn-primary { background: var(--color-brand-primary); border-color: var(--color-brand-primary); color: #fff; }
+.btn-primary:active { background: var(--color-brand-strong); border-color: var(--color-brand-strong); }
+.btn-secondary { background: var(--color-surface); border-color: var(--color-border); color: var(--color-text-primary); }
+.btn-secondary:active { background: var(--color-surface-sunken); }
+.btn-danger { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }
+.btn-danger:active { background: var(--color-danger); border-color: var(--color-danger); }
+
+/*
+ * FormField primitive (components/form-field.tsx) — a flex-column label + control
+ * unit. Zeroes the base control's bottom-margin/max-width so fields line up in a
+ * wrap row with token spacing instead of per-page inline style objects.
+ */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 140px;
+  margin: 0;
+}
+.form-field > .form-field__label {
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.form-field > select,
+.form-field > input,
+.form-field > textarea {
+  margin: 0;
+  width: 100%;
+  max-width: none;
+}
+
+/* Inline row of actions/controls with token spacing (replaces ad-hoc flex). */
+.actions-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}

@@ -153,9 +153,10 @@ export function SettleUpPage({ eventId, viewerId }: SettleUpPageProps) {
           role="alert"
           style={{
             backgroundColor: 'var(--color-danger-bg)',
-            border: '1px solid var(--color-danger)',
-            padding: '0.5rem 1rem',
-            marginBottom: '1rem',
+            border: '1px solid var(--color-danger-border)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-2) var(--space-4)',
+            marginBottom: 'var(--space-4)',
           }}
         >
           ⚠ Balances don&apos;t sum to zero ({formatCents(totalSum)}). Try

@@ -23,6 +23,7 @@ import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
+import { Card } from '../components/card';
 import { formatCents } from '../lib/format-cents';
 
 // ---- Types ----------------------------------------------------------------
@@ -78,8 +79,8 @@ async function fetchBets(eventId: string): Promise<FetchOutcome> {
 // ---- Helpers --------------------------------------------------------------
 
 function netColor(cents: number): string | undefined {
-  if (cents > 0) return 'var(--color-brand-primary)';
-  if (cents < 0) return '#dc2626';
+  if (cents > 0) return 'var(--color-money-pos)';
+  if (cents < 0) return 'var(--color-money-neg)';
   return undefined;
 }
 
@@ -148,27 +149,22 @@ export function BetsPage({ eventId }: BetsPageProps) {
     <PageShell title="Bets">
       <BackLink to="/events/$eventId" params={{ eventId }} />
       {bets.map((bet) => (
-        <section
+        <Card
           key={bet.betId}
           aria-label={`Bet vs ${bet.opponentName}`}
-          style={{
-            border: '1px solid var(--color-border)',
-            borderRadius: 8,
-            padding: 12,
-            marginBottom: 12,
-          }}
+          style={{ marginBottom: 'var(--space-3)' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
             <div>
               <strong>vs {bet.opponentName}</strong>
-              <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
+              <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}>
                 {betTypeLabel(bet.betType)} · {formatCents(bet.stakePerHoleCents)}/hole
               </div>
             </div>
             <div
               style={{
                 fontWeight: 'bold',
-                fontSize: '1.1rem',
+                fontSize: 'var(--font-md)',
                 color: netColor(bet.totalNetToViewerCents),
               }}
             >
@@ -176,7 +172,7 @@ export function BetsPage({ eventId }: BetsPageProps) {
             </div>
           </div>
 
-          <ul style={{ marginTop: 8, paddingLeft: 16 }}>
+          <ul style={{ marginTop: 'var(--space-2)', paddingLeft: 'var(--space-4)' }}>
             {bet.perRoundStanding.map((r) => {
               const total = r.holesPlayed + r.holesRemaining;
               return (
@@ -192,9 +188,9 @@ export function BetsPage({ eventId }: BetsPageProps) {
           </ul>
 
           {bet.presses.length > 0 ? (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Presses</div>
-              <ul style={{ paddingLeft: 16 }}>
+            <div style={{ marginTop: 'var(--space-2)' }}>
+              <div style={{ fontSize: 'var(--font-sm)', fontWeight: 'bold' }}>Presses</div>
+              <ul style={{ paddingLeft: 'var(--space-4)' }}>
                 {bet.presses.map((p) => (
                   <li key={p.betPressId}>
                     Hole {p.firedAtHole} — {p.triggerType} press, ×{p.multiplier}
@@ -203,7 +199,7 @@ export function BetsPage({ eventId }: BetsPageProps) {
               </ul>
             </div>
           ) : null}
-        </section>
+        </Card>
       ))}
     </PageShell>
   );
