@@ -590,7 +590,7 @@ development_status:
   # ADD COLUMN only (no CHECK-driven rebuilds — T13-4); enums validated in Zod.
   # Pins the resolved-config snapshot + per-player effective-HI/CH + course-rev
   # + pairings + team composition at the round's in_progress transition.
-  1-2-additive-schema-game-config-provenance-pin: backlog
+  1-2-additive-schema-game-config-provenance-pin: done
 
   # 1.3 Admin seed "Standard Guyan" + event-wide default (kills the dead card).
   # Scaffolds the Rules & Games setup page; an event-level game_config row
