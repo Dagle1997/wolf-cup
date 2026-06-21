@@ -1,5 +1,5 @@
 name: create-story-tournament
-description: 'Tournament variant of create-story. Writes tournament story files into _bmad-output/implementation-artifacts/tournament/ and updates the tournament-scoped sprint-status. Reads tournament epics from _bmad-output/planning-artifacts/tournament/epics-phase1.md. Wolf Cup tracking and paths are untouched. Use when the user says "create the next tournament story" or "create tournament story [T<epic>.<story>]".'
+description: 'Tournament variant of create-story. Writes tournament story files into _bmad-output/implementation-artifacts/tournament/ and updates the tournament-scoped sprint-status. Reads tournament epics from _bmad-output/planning-artifacts/tournament/epics-f1-rules-games.md (F1 build; T1-T14 epics in epics-phase1.md are done). Wolf Cup tracking and paths are untouched. Use when the user says "create the next tournament story" or "create tournament story [T<epic>.<story>]".'
 
 # Critical variables from config (same shared config as Wolf Cup — only paths below diverge)
 config_source: "{project-root}/_bmad/bmm/config.yaml"
@@ -26,7 +26,11 @@ validation: "{installed_path}/checklist.md"
 # ux_file:         tournament has no standalone UX file (reserved; fallback pattern matches nothing)
 # default_output_file: tournament stories write into implementation-artifacts/tournament/
 sprint_status: "{implementation_artifacts}/tournament/sprint-status.yaml"
-epics_file: "{planning_artifacts}/tournament/epics-phase1.md"
+# epics_file repointed 2026-06-21 to the F1 "Rules & Games" build spec. The
+# original T1-T14 epics live in epics-phase1.md and are all done/deferred; the
+# active build backlog is the F1 epics (Epic 1-6, Stories 1.1-6.3). To build a
+# T-story again, repoint this back to epics-phase1.md.
+epics_file: "{planning_artifacts}/tournament/epics-f1-rules-games.md"
 prd_file: "{planning_artifacts}/tournament/prd.md"
 architecture_file: "{planning_artifacts}/tournament/architecture.md"
 ux_file: "{planning_artifacts}/tournament/*ux*.md"
@@ -53,7 +57,7 @@ input_file_patterns:
     sharded: "{planning_artifacts}/tournament/*ux*/*.md"
     load_strategy: "SELECTIVE_LOAD"
   epics:
-    description: "Tournament enhanced epics+stories file (epics-phase1.md) with BDD and source hints"
-    whole: "{planning_artifacts}/tournament/epics-phase1.md"
+    description: "Tournament F1 'Rules & Games' epics+stories file (epics-f1-rules-games.md) with BDD and source hints"
+    whole: "{planning_artifacts}/tournament/epics-f1-rules-games.md"
     sharded: "{planning_artifacts}/tournament/*epic*/*.md"
     load_strategy: "SELECTIVE_LOAD"

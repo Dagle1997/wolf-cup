@@ -557,3 +557,48 @@ development_status:
   # bug-log table feeding new T13/T14 stories. The on-course drill itself remains
   # Josh's operational work; this only structures it.
   T14-5-operational-artifacts: done
+
+  # ===========================================================================
+  # F1 "Rules & Games" — the real-money Guyan engine (Pete Dye's test fixture).
+  # Planning COMPLETE & adversarially hardened: PRD (FR1-FR45), Architecture
+  # (D1-D7, 18 patterns), and Epics/Stories (6 epics, 27 stories, all gated) at
+  # _bmad-output/planning-artifacts/tournament/epics-f1-rules-games.md. Handoff:
+  # HANDOFF-f1-build.md. The create-story workflow-tournament.yaml epics_file
+  # was repointed to that file (2026-06-21). Per Josh's call this session, ONLY
+  # Epic 1 (the walking skeleton) is registered now; Epics 2-6 get registered
+  # when Epic 1 lands. Story keys use F1's native numbering (1.x -> "1-x-...")
+  # so create-story resolves story_id "1.x" to "### Story 1.x" in the F1 file.
+  #
+  # HARD GATE (NFR-C1): golden hand-calc fixtures authored + Josh-approved
+  # BEFORE any settlement code merges. Story 1.1 carries the first golden.
+  # ---------------------------------------------------------------------------
+  # Epic 1: The Rule-Set Spine — seed a game, settle it end-to-end
+  # (walking skeleton + foundation). FRs: the base 2v2 low-ball + net-birdie
+  # game, game_config + provenance-pin schema, Standard Guyan seed + lock
+  # toggle + point value, settle into the pairwise settle-up (dual-read +
+  # chokepoint + money mode). Tournament paths ONLY (FD-1/FD-2).
+  # ---------------------------------------------------------------------------
+  epic-1: backlog
+
+  # 1.1 Walking skeleton: golden fixtures + pure engine for the base Guyan 2v2
+  # game (base 2v2 low-ball + net-birdie). Golden-bearing — hand-calc fixture
+  # approved before resolver code (NFR-C1). Carries fallback split 1.1a/1.1b
+  # if it stalls (see epics file). Integer cents, pure functions, stable sorts.
+  1-1-walking-skeleton-golden-fixtures-pure-engine: backlog
+
+  # 1.2 Additive schema: game_config + provenance-pin storage. CREATE TABLE /
+  # ADD COLUMN only (no CHECK-driven rebuilds — T13-4); enums validated in Zod.
+  # Pins the resolved-config snapshot + per-player effective-HI/CH + course-rev
+  # + pairings + team composition at the round's in_progress transition.
+  1-2-additive-schema-game-config-provenance-pin: backlog
+
+  # 1.3 Admin seed "Standard Guyan" + event-wide default (kills the dead card).
+  # Scaffolds the Rules & Games setup page; an event-level game_config row
+  # classifies the event as F1 (routing check, cutover_state default native).
+  1-3-admin-seed-standard-guyan-event-default: backlog
+
+  # 1.4 Settle the F1 event into the pairwise settle-up (dual-read + chokepoint
+  # + money mode). Per-event dual-read routes to EITHER legacy money.ts OR the
+  # F1 engine, never both. Money = recompute-on-read. Carries fallback split
+  # 1.4a/1.4b if it stalls (see epics file).
+  1-4-settle-f1-event-into-pairwise-settle-up: backlog
