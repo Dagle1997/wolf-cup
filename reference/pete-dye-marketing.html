@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pete Dye Invitational — The App</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --green: #16a34a;
+    --green-dark: #15803d;
+    --green-deeper: #0f5c2e;
+    --gold: #f59e0b;
+    --dark: #0a0f0a;
+    --grey: #6b7280;
+  }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #e5e7eb;
+    color: #1a1a1a;
+    line-height: 1.5;
+  }
+
+  /* Phone-portrait pages — sized so each PDF page fills an iPhone screen
+     with no pinch-zoom. ~5:9 aspect. */
+  @page { size: 400px 720px; margin: 0; }
+
+  .page {
+    width: 400px;
+    height: 720px;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+    page-break-inside: avoid;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ===== SHARED ===== */
+  .section-label {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .section-title {
+    font-size: 27px;
+    font-weight: 800;
+    letter-spacing: -0.4px;
+    line-height: 1.12;
+    margin-bottom: 10px;
+  }
+
+  .section-desc {
+    font-size: 15px;
+    line-height: 1.55;
+    margin-bottom: 18px;
+  }
+
+  .shot {
+    align-self: center;
+    width: 190px;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 8px 26px rgba(0,0,0,0.18);
+    border: 2px solid #e5e7eb;
+    background: #f3f4f6;
+  }
+  .shot img { width: 100%; height: auto; display: block; }
+
+  /* bounded window for very tall screenshots — shows the top, no blow-out */
+  .shot.win { width: 210px; height: 300px; }
+  .shot.win img { height: 100%; object-fit: cover; object-position: top; }
+
+  .shot.dark { border-color: rgba(255,255,255,0.12); box-shadow: 0 8px 26px rgba(0,0,0,0.45); background: #11161a; }
+
+  .bullets { list-style: none; padding: 0; }
+  .bullets li {
+    font-size: 14px;
+    padding: 5px 0 5px 24px;
+    position: relative;
+    line-height: 1.45;
+  }
+  .bullets li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--green);
+    font-weight: 800;
+  }
+  .dark-bullets li { color: rgba(255,255,255,0.82); }
+  .dark-bullets li::before { color: var(--green); }
+
+  /* ===== PAGE 1: HERO ===== */
+  .hero-page {
+    background: linear-gradient(165deg, var(--dark) 0%, #0d1f0d 42%, var(--green-deeper) 100%);
+    color: white;
+    padding: 24px 28px 22px;
+  }
+
+  .hero-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .hero-top-left { display: flex; align-items: center; gap: 8px; }
+  .hero-logo { font-size: 22px; }
+  .hero-brand {
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--green);
+    line-height: 1.15;
+    max-width: 130px;
+  }
+  .studio-badge {
+    text-align: right;
+    font-size: 10px;
+    font-weight: 800;
+    color: rgba(255,255,255,0.65);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    line-height: 1.2;
+  }
+  .studio-badge .studio-sub {
+    display: block;
+    font-size: 7px;
+    font-weight: 500;
+    letter-spacing: 1px;
+    opacity: 0.5;
+  }
+
+  .hero-presents {
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .hero-headline {
+    font-size: 31px;
+    font-weight: 900;
+    line-height: 1.06;
+    letter-spacing: -1px;
+    margin-bottom: 12px;
+  }
+  .hero-headline .accent { color: var(--green); }
+  .hero-sub {
+    font-size: 14px;
+    font-weight: 300;
+    color: rgba(255,255,255,0.72);
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+
+  .hero-features { display: flex; flex-direction: column; gap: 8px; }
+  .hero-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 9px 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+  }
+  .hero-feature-icon { font-size: 20px; flex-shrink: 0; line-height: 1.2; }
+  .hero-feature-title { font-size: 14px; font-weight: 700; margin-bottom: 1px; }
+  .hero-feature-desc { font-size: 11.5px; color: rgba(255,255,255,0.5); line-height: 1.35; }
+
+  .hero-bottom { margin-top: auto; padding-top: 12px; text-align: center; }
+  .hero-url-text { font-size: 22px; font-weight: 800; color: var(--green); letter-spacing: -0.3px; }
+  .hero-url-note { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 4px; }
+  .hero-tagline { font-size: 11px; color: rgba(255,255,255,0.4); font-style: italic; margin-top: 8px; }
+
+  /* ===== FEATURE PAGES ===== */
+  .feature-page {
+    padding: 30px 28px;
+    background: white;
+  }
+  .feature-page.light .section-label { color: var(--green); }
+  .feature-page.light .section-title { color: var(--dark); }
+  .feature-page.light .section-desc { color: var(--grey); }
+  .feature-page.light .bullets li { color: #374151; }
+
+  .feature-page.dark { background: var(--dark); color: white; }
+  .feature-page.dark .section-label { color: var(--gold); }
+  .feature-page.dark .section-title { color: white; }
+  .feature-page.dark .section-desc { color: rgba(255,255,255,0.55); }
+
+  .shot-wrap { margin: 4px 0 18px; }
+
+  /* ===== HANDICAP LOCK MOCK ===== */
+  .lock-mock {
+    align-self: center;
+    width: 280px;
+    background: white;
+    border-radius: 16px;
+    border: 2px solid #e5e7eb;
+    box-shadow: 0 8px 26px rgba(0,0,0,0.12);
+    overflow: hidden;
+    margin: 4px 0 18px;
+  }
+  .lock-mock-head { background: var(--green-deeper); color: white; padding: 13px 15px; }
+  .lock-mock-head .lm-title { font-size: 15px; font-weight: 800; }
+  .lock-mock-head .lm-sub { font-size: 11px; opacity: 0.7; margin-top: 1px; }
+  .lock-chip {
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 10px;
+    background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 999px; padding: 5px 11px; font-size: 11.5px; font-weight: 700;
+  }
+  .lock-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 15px; border-bottom: 1px solid #f0f1f2; font-size: 13px;
+  }
+  .lock-row:last-of-type { border-bottom: none; }
+  .lock-row .lr-name { font-weight: 600; color: #1f2937; }
+  .lock-row .lr-hi { display: flex; align-items: center; gap: 6px; color: var(--grey); }
+  .lock-row .lr-arrow { color: #cbd5e1; }
+  .lock-row .lr-locked { color: var(--green-dark); font-weight: 800; }
+  .lock-foot { padding: 9px 15px; font-size: 10.5px; color: #9ca3af; background: #fafafa; }
+
+  /* ===== LONG-DRIVE EASTER EGG (CSS mock, unofficial) ===== */
+  .ld-card {
+    align-self: center;
+    width: 300px;
+    margin: 8px 0 16px;
+    border-radius: 18px;
+    overflow: hidden;
+    background: white;
+    border: 2px solid var(--gold);
+    box-shadow: 0 10px 28px rgba(245,158,11,0.22);
+  }
+  .ld-head {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: #1a1200;
+    padding: 11px 16px;
+    text-align: center;
+  }
+  .ld-kicker { font-size: 10.5px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; opacity: 0.85; }
+  .ld-head .ld-title { font-size: 16px; font-weight: 900; letter-spacing: -0.3px; }
+  /* drive → score split */
+  .ld-split { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 18px 16px 10px; }
+  .ld-stat { text-align: center; }
+  .ld-yards { font-size: 40px; font-weight: 900; color: #d97706; line-height: 1; letter-spacing: -2px; }
+  .ld-yards span { font-size: 14px; font-weight: 700; color: var(--grey); letter-spacing: 0; margin-left: 3px; }
+  .ld-stat-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.2px; color: #9ca3af; margin-top: 6px; }
+  .ld-arrow { font-size: 20px; font-weight: 800; color: #d1d5db; }
+  /* scorecard "double-bogey-or-worse" square */
+  .ld-score-box {
+    width: 56px; height: 56px; margin: 0 auto;
+    border: 3px solid #dc2626; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; font-weight: 900; color: #dc2626;
+  }
+  /* "Nice drive, Johnny" rubber stamp */
+  .ld-stampwrap { text-align: center; padding: 6px 0 14px; }
+  .ld-stamp {
+    display: inline-block; transform: rotate(-5deg);
+    border: 2.5px solid #16a34a; border-radius: 7px;
+    color: #16a34a; font-size: 15px; font-weight: 900;
+    letter-spacing: 0.3px; padding: 5px 12px; text-transform: uppercase;
+  }
+  .ld-foot { padding: 11px 16px; font-size: 10.5px; color: #9ca3af; background: #fffdf7; line-height: 1.5; text-align: center; }
+  .ld-scouting {
+    font-size: 13px; color: var(--grey); line-height: 1.55; text-align: center;
+    max-width: 320px; align-self: center;
+  }
+  .ld-scouting strong { color: var(--dark); }
+
+  /* ===== FORMATS PAGE ===== */
+  .formats-list { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+  .format-item {
+    display: flex; gap: 13px; align-items: flex-start;
+    padding: 13px 14px; border-radius: 12px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09);
+  }
+  .format-item .fi-icon { font-size: 24px; flex-shrink: 0; line-height: 1.1; }
+  .format-item .fi-title { font-size: 15px; font-weight: 800; margin-bottom: 2px; }
+  .format-item .fi-desc { font-size: 12.5px; color: rgba(255,255,255,0.55); line-height: 1.4; }
+
+  .formats-foot {
+    margin-top: auto;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--green);
+    letter-spacing: 0.2px;
+    padding-top: 18px;
+  }
+
+  /* ===== CTA PAGE ===== */
+  .cta-page { background: linear-gradient(170deg, #fafafa 0%, white 45%, #f0fdf4 100%); padding: 28px; }
+
+  .steps { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+  .step-card {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: white; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 13px 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .step-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; flex-shrink: 0;
+    background: var(--green); color: white; border-radius: 50%;
+    font-size: 13px; font-weight: 800;
+  }
+  .step-card h4 { font-size: 15px; font-weight: 700; color: var(--dark); margin-bottom: 3px; }
+  .step-card p { font-size: 12.5px; color: var(--grey); line-height: 1.45; }
+
+  .cta-box {
+    text-align: center; padding: 18px; background: white;
+    border-radius: 16px; border: 2px solid var(--green);
+    box-shadow: 0 4px 18px rgba(22,163,74,0.1);
+  }
+  .cta-box h2 { font-size: 21px; font-weight: 900; color: var(--dark); margin-bottom: 5px; }
+  .cta-box p { font-size: 13px; color: var(--grey); margin-bottom: 8px; }
+  .cta-url { font-size: 23px; font-weight: 800; color: var(--green); }
+  .cta-install { font-size: 11px; color: var(--grey); margin-top: 9px; line-height: 1.55; }
+
+  .cta-footer { text-align: center; margin-top: auto; padding-top: 12px; }
+  .cta-footer .cf-main { font-size: 10.5px; color: #9ca3af; margin-bottom: 3px; }
+  .cta-footer .cf-fine { font-size: 9px; color: #b8bcc2; line-height: 1.5; }
+
+  @media print {
+    body { background: white; }
+    .page { page-break-after: always; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== PAGE 1: HERO ===== -->
+<div class="page hero-page">
+  <div class="hero-top">
+    <div class="hero-top-left">
+      <span class="hero-logo">⛳</span>
+      <span class="hero-brand">Pete Dye<br>Invitational</span>
+    </div>
+    <div class="studio-badge">Stollie Productions<span class="studio-sub">Software Studio</span></div>
+  </div>
+
+  <div class="hero-presents">Built by Stollie Productions</div>
+
+  <h1 class="hero-headline">The whole weekend.<br><span class="accent">Live on your phone.</span></h1>
+
+  <p class="hero-sub">
+    Live scoring, instant standings, and head-to-head money — right from the cart.
+    No "what'd you make on 3?" after the round. Score the hole, and everybody already knows.
+  </p>
+
+  <div class="hero-features">
+    <div class="hero-feature">
+      <span class="hero-feature-icon">📱</span>
+      <div>
+        <div class="hero-feature-title">Score from your phone</div>
+        <div class="hero-feature-desc">One scorer per foursome taps in scores hole-by-hole. Net, best-ball & money calculate instantly.</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">📊</span>
+      <div>
+        <div class="hero-feature-title">Live leaderboard</div>
+        <div class="hero-feature-desc">Standings, match-play points & money move the second a hole is saved — no waiting.</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">💸</span>
+      <div>
+        <div class="hero-feature-title">Money settled as you play</div>
+        <div class="hero-feature-desc">Best-ball-vs-par, the 2v2 game & side bets — tracked per hole, settled per man.</div>
+      </div>
+    </div>
+    <div class="hero-feature">
+      <span class="hero-feature-icon">🔒</span>
+      <div>
+        <div class="hero-feature-title">Handicaps locked by date</div>
+        <div class="hero-feature-desc">Indexes frozen as of a date you set. Fair strokes for everyone — nobody sandbags week-of.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-bottom">
+    <div class="hero-url-text">tournament.dagle.cloud</div>
+    <div class="hero-url-note">Works on any phone — add it to your home screen</div>
+    <div class="hero-tagline">Member-Guest · June 26–27, 2026 · Pete Dye Golf Club</div>
+  </div>
+</div>
+
+<!-- ===== PAGE 2: THE HUB ===== -->
+<div class="page feature-page light">
+  <div class="section-label">One App, Whole Weekend</div>
+  <div class="section-title">Everything for the trip, in one place</div>
+  <div class="section-desc">
+    Your schedule, your foursome, the live leaderboard, the money, and the trip photos — all behind one link.
+  </div>
+
+  <div class="shot-wrap shot win">
+    <img src="tournament-screenshots/hub.png" alt="Event home — live hub">
+  </div>
+
+  <ul class="bullets">
+    <li><strong>Leaderboard</strong> — live team &amp; individual standings</li>
+    <li><strong>My Money</strong> — your running P&amp;L by game</li>
+    <li><strong>Settle Up</strong> — one clean who-pays-who at the end</li>
+    <li><strong>Photo Gallery</strong> — drop the trip pics in one spot</li>
+    <li><strong>What's Happening</strong> — a live feed of every score</li>
+  </ul>
+</div>
+
+<!-- ===== PAGE 3: SCORING + LEADERBOARD ===== -->
+<div class="page feature-page light">
+  <div class="section-label">Instant Results</div>
+  <div class="section-title">Score the hole. Everybody already knows.</div>
+  <div class="section-desc">
+    No more rebuilding the round on 18. One person taps in the four scores after every hole — and the
+    leaderboard moves in real time.
+  </div>
+
+  <div class="shot-wrap shot">
+    <img src="tournament-screenshots/leaderboard.png" alt="Live leaderboard">
+  </div>
+
+  <ul class="bullets">
+    <li>One scorer per foursome — tap "I'll score" to take over</li>
+    <li>Gross in → net, best-ball &amp; to-par computed instantly</li>
+    <li>Anyone on the trip can follow live — no login to watch</li>
+  </ul>
+</div>
+
+<!-- ===== PAGE 4: HOLE-BY-HOLE RESULTS ===== -->
+<div class="page feature-page dark">
+  <div class="section-label">Hole By Hole</div>
+  <div class="section-title">Every hole, settled as you go</div>
+  <div class="section-desc">
+    The math that used to take a calculator and an argument now happens the instant the score lands.
+  </div>
+
+  <div class="shot-wrap shot win dark">
+    <img src="tournament-screenshots/foursome-results.png" alt="Foursome hole-by-hole results">
+  </div>
+
+  <ul class="bullets dark-bullets">
+    <li>Best-ball net per team, computed every hole</li>
+    <li>Hole winner &amp; running match status</li>
+    <li>To-par totals for the $50/man best-ball pot</li>
+  </ul>
+</div>
+
+<!-- ===== PAGE 5: MONEY ===== -->
+<div class="page feature-page dark">
+  <div class="section-label">The Money</div>
+  <div class="section-title">Who owes who — done.</div>
+  <div class="section-desc">
+    Team money and individual bets stay separate and clear. At the end, the app rolls it into one simple
+    settle-up. No spreadsheet, no "I think you owe me."
+  </div>
+
+  <div class="shot-wrap shot win dark">
+    <img src="tournament-screenshots/money.png" alt="Head-to-head money matrix">
+  </div>
+
+  <ul class="bullets dark-bullets">
+    <li>Head-to-head matrix — what each man is up on each man</li>
+    <li>Team money kept separate from individual side bets</li>
+    <li>One end-of-trip settle-up that nets everybody out</li>
+  </ul>
+</div>
+
+<!-- ===== PAGE 6: HANDICAP LOCK ===== -->
+<div class="page feature-page light">
+  <div class="section-label">Fair Play</div>
+  <div class="section-title">Lock in handicaps by date</div>
+  <div class="section-desc">
+    A member-guest only works if the strokes are fair. The organizer freezes everyone's index as of a date
+    you pick — set, posted, identical for everybody. No mystery sandbagging week-of.
+  </div>
+
+  <div class="lock-mock">
+    <div class="lock-mock-head">
+      <div class="lm-title">Locked Handicaps</div>
+      <div class="lm-sub">Pete Dye Invitational</div>
+      <span class="lock-chip">🔒 Locked as of Jun 24, 2026</span>
+    </div>
+    <div class="lock-row"><span class="lr-name">Player A</span><span class="lr-hi">8.1 <span class="lr-arrow">→</span> <span class="lr-locked">7.9</span></span></div>
+    <div class="lock-row"><span class="lr-name">Player B</span><span class="lr-hi">12.4 <span class="lr-arrow">→</span> <span class="lr-locked">12.4</span></span></div>
+    <div class="lock-row"><span class="lr-name">Player C</span><span class="lr-hi">3.2 <span class="lr-arrow">→</span> <span class="lr-locked">3.0</span></span></div>
+    <div class="lock-foot">Pulled from GHIN · today's index → locked index, shown for everyone</div>
+  </div>
+
+  <ul class="bullets">
+    <li>Pick the as-of date — the whole field locks to it</li>
+    <li>Course handicaps computed slope-aware for your tee</li>
+    <li>Everyone sees the same locked numbers — full transparency</li>
+  </ul>
+</div>
+
+<!-- ===== PAGE 7: FORMATS ===== -->
+<div class="page feature-page dark">
+  <div class="section-label">This Weekend</div>
+  <div class="section-title">All four games, tracked automatically</div>
+  <div class="section-desc">
+    Set up once by the organizer — then it just keeps score.
+  </div>
+
+  <div class="formats-list">
+    <div class="format-item">
+      <span class="fi-icon">🏆</span>
+      <div>
+        <div class="fi-title">Best-ball vs. par — $50/man</div>
+        <div class="fi-desc">2-man teams, 2 days, winner-take-all. Cumulative net-to-par across both rounds.</div>
+      </div>
+    </div>
+    <div class="format-item">
+      <span class="fi-icon">⚔️</span>
+      <div>
+        <div class="fi-title">Match-play points board</div>
+        <div class="fi-desc">The two teams in your foursome play each other — win 1, halve ½, tracked live.</div>
+      </div>
+    </div>
+    <div class="format-item">
+      <span class="fi-icon">💵</span>
+      <div>
+        <div class="fi-title">2v2 best-ball in the foursome</div>
+        <div class="fi-desc">Your group's house game, per hole, settled inside the foursome — kept separate from the pot.</div>
+      </div>
+    </div>
+    <div class="format-item">
+      <span class="fi-icon">🔒</span>
+      <div>
+        <div class="fi-title">Handicaps locked 6/24</div>
+        <div class="fi-desc">Indexes frozen as-of the date — fair, posted strokes for the whole field.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="formats-foot">No spreadsheets. No "who owes who." Just golf.</div>
+</div>
+
+<!-- ===== PAGE 8: LONG DRIVE (easter egg) ===== -->
+<div class="page feature-page light">
+  <div class="section-label" style="color: var(--gold);">🌭 Side Action · Unofficial</div>
+  <div class="section-title">Long Drive of the Weekend</div>
+  <div class="section-desc">
+    The one number the app won't track for you — long drive's still measured the old-fashioned way:
+    a marker in the fairway and an honest tape.
+  </div>
+
+  <div class="ld-card">
+    <div class="ld-head">
+      <div class="ld-kicker">Hole 11 · Par 5 · 561 yds</div>
+      <div class="ld-title">🌭 Johnny Hotdog</div>
+    </div>
+    <div class="ld-split">
+      <div class="ld-stat">
+        <div class="ld-yards">427<span>yds</span></div>
+        <div class="ld-stat-label">off the tee</div>
+      </div>
+      <div class="ld-arrow">→</div>
+      <div class="ld-stat">
+        <div class="ld-score-box">9</div>
+        <div class="ld-stat-label">on the hole</div>
+      </div>
+    </div>
+    <div class="ld-stampwrap"><span class="ld-stamp">Nice drive, Johnny 👏</span></div>
+    <div class="ld-foot">Longest drive of the day, by a mile · 134 in for his second · in the hole in nine · unofficial, naturally</div>
+  </div>
+
+  <div class="ld-scouting">
+    <strong>David's scouting report:</strong> Johnny bombs the drive, Cuban flights the fairway woods,
+    hybrids-and-putter the rest of the way. Target: break 80 both days. <em>The 9 was an outlier.</em>
+  </div>
+</div>
+
+<!-- ===== PAGE 9: JOIN + CTA ===== -->
+<div class="page cta-page">
+  <div class="section-label" style="color: var(--green);">Getting In</div>
+  <div class="section-title" style="color: var(--dark);">Two taps and you're on the roster</div>
+  <div class="section-desc" style="color: var(--grey); margin-bottom: 14px;">Pick whichever is easier:</div>
+
+  <div class="steps">
+    <div class="step-card">
+      <div class="step-number">1</div>
+      <div>
+        <h4>Open the link</h4>
+        <p>Tap <strong>tournament.dagle.cloud</strong> on your phone — works in any browser.</p>
+      </div>
+    </div>
+    <div class="step-card">
+      <div class="step-number">2</div>
+      <div>
+        <h4>Join the event</h4>
+        <p>Sign in with Google, or punch in the personal join code Josh texts you — no account needed.</p>
+      </div>
+    </div>
+    <div class="step-card">
+      <div class="step-number">3</div>
+      <div>
+        <h4>Add to home screen</h4>
+        <p>Save it like an app so the leaderboard is one tap away all weekend.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-box">
+    <h2>See you at Pete Dye</h2>
+    <p>Open the link. Add to home screen. That's the whole setup.</p>
+    <div class="cta-url">tournament.dagle.cloud</div>
+    <div class="cta-install">
+      iPhone: Safari → Share → "Add to Home Screen"<br>
+      Android: Chrome → Menu (⋮) → "Add to Home Screen"
+    </div>
+  </div>
+
+  <div class="cta-footer">
+    <div class="cf-main">Built by Stollie Productions · for the Pete Dye member-guest</div>
+    <div class="cf-fine">© 2026 Stollie Productions. Accept no imitations. Screens from a live build; may differ on game day.</div>
+  </div>
+</div>
+
+</body>
+</html>
