@@ -12,6 +12,20 @@
         "CODEX_REVIEW_MAX_FILES": "${CODEX_REVIEW_MAX_FILES:-12}",
         "CODEX_REVIEW_MAX_CHARS_PER_FILE": "${CODEX_REVIEW_MAX_CHARS_PER_FILE:-30000}"
       }
+    },
+    "gemini_review": {
+      "command": "node",
+      "args": [
+        "./scripts/gemini-review-mcp/server.mjs"
+      ],
+      "env": {
+        "GEMINI_API_KEY": "${GEMINI_API_KEY:-}",
+        "GOOGLE_API_KEY": "${GOOGLE_API_KEY:-}",
+        "GEMINI_REVIEW_MODEL": "${GEMINI_REVIEW_MODEL:-gemini-pro-latest}",
+        "GEMINI_REVIEW_REASONING_EFFORT": "${GEMINI_REVIEW_REASONING_EFFORT:-xhigh}",
+        "GEMINI_REVIEW_MAX_FILES": "${GEMINI_REVIEW_MAX_FILES:-12}",
+        "GEMINI_REVIEW_MAX_CHARS_PER_FILE": "${GEMINI_REVIEW_MAX_CHARS_PER_FILE:-30000}"
+      }
     }
   }
 }
