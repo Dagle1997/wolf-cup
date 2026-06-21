@@ -1,0 +1,37 @@
+{
+  "name": "Guyan 2v2 base (Wolf Cup money replicated, fixed teams) — flat $5/point. 3 team points/hole (low ball, skin[net<=par], team total) + net-skins bonus. Covers TT-only, full sweep, eagle-beats-birdie, equal-birdie no-blood.",
+  "_contract": "Golden HAND-CALC fixture for the F1 games engine (engine/games/). It REPLICATES Wolf Cup packages/engine/src/money.ts calc2v2 + bonuses.ts apply2v2 (READ-ONLY reference, never imported; FD-1/FD-2), adapted to FIXED 2v2 teams. The engine CONSUMES per-player NET-per-hole as GIVEN (allocation is Story 1.4). MODEL (ratified Josh 2026-06-21, 'pull wolf money 100%, set 2v2'): every hole awards THREE team points, each worth +1 to each winning-team player and -1 to each losing-team player (zero-sum): (1) LOW BALL = team's best (min) net, lower wins, tie=0; (2) SKIN = follows the low-ball winner but only if the winning team's low ball net is <= par, else 0 (low-ball tie => 0); (3) TEAM TOTAL = team's combined (sum) net, lower wins, tie=0 (independent of low ball). On top, a NET-SKINS bonus (default ON) awards bonus points by NET level winner-takes-all: birdie(par-1)=1, eagle(par-2)=2, double_eagle(par-3+)=3; strictly-higher best level wins that many points; equal best level = NO BLOOD. Each point in money = pointValueCents; a player's hole money = (net points won) * pointValueCents. Per-player ledger is zero-sum; edges lower per-player balances to 4 cross-team edges of (per-player net cents / 2). SCOPE: net-only, single. Gross double-birdie/eagle => Story 2.5; greenie/polie/sandie claims => Epic 2. SettlementEdge direction: fromPlayerId PAYS toPlayerId. Integer cents.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "flat", "cents": 500 },
+      "modifiers": [
+        { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } }
+      ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 1, "par": 4, "net": { "a1": 3, "a2": 5, "b1": 3, "b2": 6 } },
+      { "holeNumber": 2, "par": 4, "net": { "a1": 3, "a2": 5, "b1": 4, "b2": 4 } },
+      { "holeNumber": 3, "par": 3, "net": { "a1": 3, "a2": 4, "b1": 2, "b2": 3 } },
+      { "holeNumber": 4, "par": 5, "net": { "a1": 5, "a2": 4, "b1": 6, "b2": 5 } },
+      { "holeNumber": 5, "par": 4, "net": { "a1": 3, "a2": 6, "b1": 2, "b2": 5 } },
+      { "holeNumber": 6, "par": 4, "net": { "a1": 3, "a2": 4, "b1": 5, "b2": 6 } }
+    ],
+    "sourceId": "fixture-guyan-base-flat"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 1500, "a2": 1500, "b1": -1500, "b2": -1500 },
+    "edges": [
+      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-base-flat" },
+      { "fromPlayerId": "b1", "toPlayerId": "a2", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-base-flat" },
+      { "fromPlayerId": "b2", "toPlayerId": "a1", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-base-flat" },
+      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-base-flat" }
+    ],
+    "ledgerTotalCents": 3000
+  },
+  "_handCalc": "Teams: A = {a1,a2}, B = {b1,b2}. pointValue = 500c/point. Per hole, 3 base points (low ball / skin / team total) + net-skins bonus; each point = +1 to each winner, -1 to each loser. netPointsA = (A points - B points). Player money this hole = netPointsA * 500 for A players, -netPointsA * 500 for B players.\n\nHOLE 1 (par 4): a1=3 a2=5 b1=3 b2=6. LOW: lowA=3 lowB=3 => TIE => 0. SKIN: low-ball tie => 0. TEAM TOTAL: A=8 B=9 => A lower => A +1. NET-SKINS: A best net3=birdie(1), B best net3=birdie(1) => EQUAL => NO BLOOD => 0. netPointsA = +1. (Demonstrates team-total-only + equal-birdie no-blood.)\n\nHOLE 2 (par 4): a1=3 a2=5 b1=4 b2=4. LOW: lowA=3 lowB=4 => A +1. SKIN: A wins, winLow=3<=4 => A +1. TEAM TOTAL: A=8 B=8 => TIE => 0. NET-SKINS: A best3=birdie(1), B best4=0 => A +1. netPointsA = +1+1+0+1 = +3.\n\nHOLE 3 (par 3): a1=3 a2=4 b1=2 b2=3. LOW: lowA=3 lowB=2 => B +1. SKIN: B wins, winLow=2<=3 => B +1. TEAM TOTAL: A=7 B=5 => B +1. NET-SKINS: A best3 on par3=0, B best2 on par3=birdie(1) => B +1. netPointsB = +4 => netPointsA = -4.\n\nHOLE 4 (par 5): a1=5 a2=4 b1=6 b2=5. LOW: lowA=4 lowB=5 => A +1. SKIN: winLow=4<=5 => A +1. TEAM TOTAL: A=9 B=11 => A +1. NET-SKINS: A best4 on par5=birdie(1), B best5=0 => A +1. netPointsA = +4.\n\nHOLE 5 (par 4): a1=3 a2=6 b1=2 b2=5. LOW: lowA=3 lowB=2 => B +1. SKIN: winLow=2<=4 => B +1. TEAM TOTAL: A=9 B=7 => B +1. NET-SKINS: A best net3=birdie(1), B best net2=EAGLE(2) => B level2 > A level1 => B wins bonus = 2 (A's birdie gets NOTHING). netPointsB = 1+1+1+2 = +5 => netPointsA = -5.\n\nHOLE 6 (par 4): a1=3 a2=4 b1=5 b2=6. LOW: lowA=3 lowB=5 => A +1. SKIN: winLow=3<=4 => A +1. TEAM TOTAL: A=7 B=11 => A +1. NET-SKINS: A best3=birdie(1), B best5=0 => A +1. netPointsA = +4.\n\nROUND netPointsA = +1 +3 -4 +4 -5 +4 = +3. Each A player = +3 * 500 = +1500c (+$15); each B player = -1500c (-$15). Zero-sum (1500+1500-1500-1500=0).\n\nEDGES: per-player a1=a2=+1500, b1=b2=-1500. Canonical decomposition = 4 cross-team edges of (1500/2)=750c: b1->a1 750, b1->a2 750, b2->a1 750, b2->a2 750. Sorted by (from,to). ledgerTotal = 4*750 = 3000c.\n\nCROSS-CHECK: A won points on H1(1)+H2(3)+H4(4)+H6(4)=12; B won on H3(4)+H5(5)=9; net A = +3 points. Agrees."
+}

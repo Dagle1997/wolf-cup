@@ -578,13 +578,13 @@ development_status:
   # toggle + point value, settle into the pairwise settle-up (dual-read +
   # chokepoint + money mode). Tournament paths ONLY (FD-1/FD-2).
   # ---------------------------------------------------------------------------
-  epic-1: backlog
+  epic-1: in-progress
 
   # 1.1 Walking skeleton: golden fixtures + pure engine for the base Guyan 2v2
   # game (base 2v2 low-ball + net-birdie). Golden-bearing — hand-calc fixture
   # approved before resolver code (NFR-C1). Carries fallback split 1.1a/1.1b
   # if it stalls (see epics file). Integer cents, pure functions, stable sorts.
-  1-1-walking-skeleton-golden-fixtures-pure-engine: backlog
+  1-1-walking-skeleton-golden-fixtures-pure-engine: done
 
   # 1.2 Additive schema: game_config + provenance-pin storage. CREATE TABLE /
   # ADD COLUMN only (no CHECK-driven rebuilds — T13-4); enums validated in Zod.

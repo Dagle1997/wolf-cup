@@ -1,0 +1,93 @@
+{
+  "name": "Cascade resolver + lock gate (AC18-20). Event>Round>Foursome precedence, modifiers merged by type, event lock_state gates lower overrides, fail-closed on unknown/orphan.",
+  "cases": [
+    {
+      "name": "event-only resolves to the event config",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "net-skins", "enabled": true } ], "lockState": "unlocked", "configVersion": 1 } }
+      ],
+      "expected": { "ok": true, "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "net-skins", "enabled": true } ], "cap": null, "lockState": "unlocked", "configVersion": 1, "scope": null } }
+    },
+    {
+      "name": "unlocked: round overrides the point value (most-specific wins)",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "net-skins", "enabled": true } ], "lockState": "unlocked", "configVersion": 1 } },
+        { "level": "round", "config": { "pointValueSchedule": { "kind": "flat", "cents": 1000 } } }
+      ],
+      "expected": { "ok": true, "pointValueCents": 1000 }
+    },
+    {
+      "name": "unlocked: foursome disables net-skins (modifier merged by type)",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "net-skins", "enabled": true } ], "lockState": "unlocked", "configVersion": 1 } },
+        { "level": "foursome", "config": { "modifiers": [ { "type": "net-skins", "enabled": false } ] } }
+      ],
+      "expected": { "ok": true, "netSkinsEnabled": false }
+    },
+    {
+      "name": "locked: round override is IGNORED (event config wins outright)",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "net-skins", "enabled": true } ], "lockState": "locked", "configVersion": 1 } },
+        { "level": "round", "config": { "pointValueSchedule": { "kind": "flat", "cents": 1000 } } }
+      ],
+      "expected": { "ok": true, "pointValueCents": 500 }
+    },
+    {
+      "name": "orphan round (no event-level row) fails closed",
+      "rows": [
+        { "level": "round", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "configVersion": 1 } }
+      ],
+      "expected": { "ok": false, "reason": "no_event_level_config" }
+    },
+    {
+      "name": "unknown modifier type fails closed",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "greenie", "enabled": true } ], "lockState": "unlocked", "configVersion": 1 } }
+      ],
+      "expected": { "ok": false, "reason": "unknown_modifier:greenie" }
+    },
+    {
+      "name": "config_version newer than the engine fails closed",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [], "lockState": "unlocked", "configVersion": 2 } }
+      ],
+      "expected": { "ok": false, "reason": "config_version_too_new:2" }
+    },
+    {
+      "name": "enabled gross net-skins variant fails closed (Story 1.1 is net/single only)",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "net-skins", "enabled": true, "variant": { "basis": "gross", "bonus": "single" } } ], "lockState": "unlocked", "configVersion": 1 } }
+      ],
+      "expected": { "ok": false, "reason": "unsupported_net_skins_variant:gross/single" }
+    },
+    {
+      "name": "enabled double-bonus net-skins variant fails closed",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "double" } } ], "lockState": "unlocked", "configVersion": 1 } }
+      ],
+      "expected": { "ok": false, "reason": "unsupported_net_skins_variant:net/double" }
+    },
+    {
+      "name": "duplicate event-level rows fail closed (order-independence)",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [], "lockState": "unlocked", "configVersion": 1 } },
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 1000 }, "modifiers": [], "lockState": "unlocked", "configVersion": 1 } }
+      ],
+      "expected": { "ok": false, "reason": "duplicate_event_level_config" }
+    },
+    {
+      "name": "odd (non-even) point value fails closed (2v2 split needs even cents)",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 501 }, "modifiers": [], "lockState": "unlocked", "configVersion": 1 } }
+      ],
+      "expected": { "ok": false, "reason": "point_value_not_even:501" }
+    },
+    {
+      "name": "duplicate modifier types within a row fail closed (before merge de-dupes)",
+      "rows": [
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "net-skins", "enabled": true }, { "type": "net-skins", "enabled": false } ], "lockState": "unlocked", "configVersion": 1 } }
+      ],
+      "expected": { "ok": false, "reason": "duplicate_modifier:net-skins" }
+    }
+  ]
+}

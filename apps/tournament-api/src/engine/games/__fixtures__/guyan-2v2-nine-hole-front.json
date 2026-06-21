@@ -1,0 +1,32 @@
+{
+  "name": "Guyan 2v2 — 9-hole round (front only). A front/back schedule where every hole is 1-9, so the FRONT point value applies throughout (FR3/R5).",
+  "_contract": "Same model as guyan-2v2-base-flat.json. The round has only front-nine holes (holeNumber <= 9); with a front/back schedule, all use frontCents (500). Proves a 9-hole round prices every hole off the front segment. Money integer cents.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "front-back", "frontCents": 500, "backCents": 1000 },
+      "modifiers": [ { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } } ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 1, "par": 4, "net": { "a1": 3, "a2": 5, "b1": 4, "b2": 4 } },
+      { "holeNumber": 5, "par": 3, "net": { "a1": 2, "a2": 4, "b1": 3, "b2": 3 } },
+      { "holeNumber": 9, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 3, "b2": 5 } }
+    ],
+    "sourceId": "fixture-guyan-nine-front"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 1500, "a2": 1500, "b1": -1500, "b2": -1500 },
+    "edges": [
+      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" },
+      { "fromPlayerId": "b1", "toPlayerId": "a2", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" },
+      { "fromPlayerId": "b2", "toPlayerId": "a1", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" },
+      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" }
+    ],
+    "ledgerTotalCents": 3000
+  },
+  "_handCalc": "All holes 1-9 => FRONT pv=500 (half 250).\n\nH1 (par4): 3/5/4/4. low A3<B4 => A. skin 3<=4 => A. TT 8=8 tie => 0. net-skins A best3=birdie(1), B4=0 => A+1. netPointsA=+3. cross += +750.\nH5 (par3): 2/4/3/3. low A2<B3 => A. skin 2<=3 => A. TT 6=6 tie => 0. net-skins A best net2 on par3=birdie(1), B3=0 => A+1. netPointsA=+3. cross += +750.\nH9 (par4): 4/4/3/5. low A4>B3 => B. skin 3<=4 => B. TT 8=8 tie => 0. net-skins A4=0, B best3=birdie(1) => B+1. netPointsA=-3. cross += -750.\n\ncross per pair = 750+750-750 = +750. 4 edges b->a 750. per-player a=+1500, b=-1500. total 3000. All priced at front pv (500)."
+}
