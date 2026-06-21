@@ -96,12 +96,24 @@ endpoint. Port both (add `GET /api/version` to tournament-api + the banner to to
 ## 🟣 Wolf-parity in-round experience (scoped 2026-06-21 via 3 Explore audits)
 Goal: make Tournament's in-round UX match Wolf Cup's. Effort/verdict per item.
 
-- **W1. Score entry — copy Wolf's screen, minus the Wolf section.** UI-ONLY port (~1 day). Wolf
-  `apps/web/src/routes/score-entry-hole.tsx` 2-col card grid + hole dots + focus progression; OMIT the
-  Wolf partner-pick (lines 1191–1300) + Greenie/Polie/Sandie bonus block (1114–1189) + wolf schedule.
-  Tournament's `rounds.$roundId.score-entry.tsx` already has the same endpoints, offline queue, iOS
-  keyboard fix. **Team tab-adjacency ALREADY HOLDS** — members render in slot order (1,2,3,4 =
-  teammate,teammate,opp,opp); no change needed.
+- **⚡ KEY INSIGHT (Josh, 2026-06-21): greenies/polies/sandies = the Guyan game = REAL MONEY, not an
+  optional sub-game.** Same mechanics as Wolf's bonuses but settled as cash at the end (not points).
+  The ruleset options (skin-for-net-birdie y/n, greenie carryover y/n, sandie on/off, polie variant,
+  $/point, cap) live in the SAME system. Score entry (capture), leaderboard (running money), and
+  settle-up are VIEWS on top of it. **This is F1.** The in-round Wolf-parity UI cannot be finished
+  before F1 — F1 is the foundation, the UI is the roof. Build F1 first (it's ~70% designed: PRD to
+  step 8/11 `prd-f1-rules-games.md`, brainstorming model `brainstorming-session-2026-06-16.md`, +
+  the player-centric atomic principle above).
+- **W1. Score entry — copy Wolf's screen, minus the Wolf section.** SPLIT:
+  - **W1a (UI-only, do anytime):** drop the −/+ steppers → single number input, auto-advance once
+    typed (2–9 instant; leading "1" briefly waits so 10+ blow-up holes stay recordable — do NOT hard
+    cap at 9, golf needs >9); keep par-color + offline sync + skip + sticky save; no wolf section.
+    Tournament's `rounds.$roundId.score-entry.tsx` already has endpoints/offline/iOS-fix. **Team
+    tab-adjacency ALREADY HOLDS** (slot order 1,2,3,4 = teammate,teammate,opp,opp).
+  - **W1b (prev/next hole nav + edit a scored hole):** currentHole is auto-derived (forward-only)
+    today; revisiting a scored hole to EDIT needs the score-CORRECTION backend path. Medium, not pure UI.
+  - **W1c (greenie/polie/sandie capture below the score):** **= F1.** Needs backend (per-player-per-hole
+    claim storage, self-reported) + Guyan settlement into money. Build with F1, not before.
 - **W2. Leaderboard player-detail drill-down.** NEW BUILD (~1–2 days). Today
   `events.$eventId.leaderboard.tsx` rows aren't clickable + there's NO per-player per-hole scorecard.
   Need: (a) expandable rows, (b) new `GET /api/.../players/:playerId/scorecard` (per-hole gross/net/
