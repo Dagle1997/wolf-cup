@@ -1,6 +1,6 @@
 ---
 name: 'tournament-director'
-description: 'Orchestrates one full BMAD story cycle for the Tournament app (create-story → codex-review spec → implement → codex-review impl → party-mode review → codex-review party → commit → mark done). Picks the next backlog story from the tournament sprint-status automatically. Use when the user says "run tournament director" or "next tournament story" or is invoked via /loop.'
+description: 'Orchestrates one full BMAD story cycle for the Tournament app (create-story → review spec → implement → review impl → party-mode review → review party → commit → mark done). Each review point runs a dual-model ensemble (codex_review + gemini_review in parallel, union of findings; escalates to the full cross-critique + synthesis debate at the impl review or when the models disagree). Picks the next backlog story from the tournament sprint-status automatically. Use when the user says "run tournament director" or "next tournament story" or is invoked via /loop.'
 ---
 
 # Tournament Director
@@ -36,7 +36,7 @@ Schema:
 
 If the file is absent or malformed, treat as `{ "version": 1, "auto_approve_clean_specs": false }`. Do not auto-create the file.
 
-- `auto_approve_clean_specs: true` — at step 4, if the spec codex-review returns PASS with **zero** High and **zero** Medium findings AND every path the spec touches falls inside this story's allowlist, skip the user spec gate and proceed directly to step 5. The auto-approval MUST be recorded in the commit body as `Spec gate: auto-approved (codex PASS, 0 H/M)`. Any High or Medium finding falls back to manual gate. Any SHARED-path touch falls back to manual gate. Default: `false`.
+- `auto_approve_clean_specs: true` — at step 4, if the spec review ensemble returns PASS from **BOTH** codex AND gemini with **zero** High and **zero** Medium findings (union clean) AND every path the spec touches falls inside this story's allowlist, skip the user spec gate and proceed directly to step 5. The auto-approval MUST be recorded in the commit body as `Spec gate: auto-approved (codex + gemini PASS, 0 H/M)`. Any High or Medium finding from EITHER reviewer falls back to manual gate. Any SHARED-path touch falls back to manual gate. Default: `false`.
 
 `.director-config.json` lives under an ALLOWED path but MUST NOT be staged or committed. Treat it as a local coordination file alongside `.director-pending-gate.json`.
 
@@ -52,7 +52,7 @@ Classify every intended edit before making it. Put each changed path into exactl
 - `apps/tournament-web/**`
 - `_bmad-output/implementation-artifacts/tournament/**`
 - `_bmad-output/planning-artifacts/tournament/**`
-- `_bmad-output/reviews/**` (codex-review and party-review outputs)
+- `_bmad-output/reviews/**` (codex + gemini review, cross-critique, synthesis, and party-review outputs)
 - `_bmad/bmm/workflows/**/workflow-tournament.yaml` (tournament workflow forks)
 
 ### SHARED — requires explicit user approval this story (HARD STOP on first attempt)
@@ -151,47 +151,53 @@ Invoke the create-story workflow explicitly against the tournament yaml:
 
 This writes the story file to `_bmad-output/implementation-artifacts/tournament/{story-key}.md` and flips the story status to `ready-for-dev` in `sprint-status.yaml`.
 
-### 3. Codex-review the spec
+### Review ensemble (codex + gemini) — the shared procedure for steps 3, 7, 9
 
-Invoke `mcp__codex_review__review_code`:
+Every review point runs **both** external reviewers in parallel and acts on the **union** of their findings. Codex (`mcp__codex_review__review_code`, model `gpt-5.2`) and Gemini (`mcp__gemini_review__review_code`, model `gemini-pro-latest`) are independent model families; a finding from **either** is a real finding. Both MCP servers also expose `critique_review` and `synthesize_reviews` (used in the debate escalation, step D). The `.mcp.json` servers are `codex_review` and `gemini_review`; if either fails to load, re-confirm via `ToolSearch "select:mcp__codex_review__review_code,mcp__gemini_review__review_code"`.
 
-- `workspace_root`: `D:/wolf-cup`
-- `review_request`: story goal + acceptance criteria + "review spec for ambiguity, missing ACs, path-allowlist violations, boundary violations vs FD-1/FD-2, and layering errors (forward FKs, schema-not-yet-migrated, contradicts architecture)"
+**A. Parallel reviews (fire BOTH in ONE message).** With phase tag `{phase}` ∈ {spec, impl, party}:
+- `mcp__codex_review__review_code` → `output_path: _bmad-output/reviews/{story-key}-{phase}-codex.md`
+- `mcp__gemini_review__review_code` → `output_path: _bmad-output/reviews/{story-key}-{phase}-gemini.md`
+- Pass **identical** `workspace_root` (`D:/wolf-cup`), `paths`, and `review_request` to both; both `reasoning_effort: "high"`. Output paths are **unique per story and per phase** — never reuse `codex-review-latest.md`.
+
+**B. Freshness check — apply to EACH report (two-signal: STOP only when both signals fail for a reviewer).**
+1. **Reviewed-files signal (primary).** Read the report's "Reviewed files" header. If it contains the `paths` you passed → PASS; if missing → FAIL (consult signal 2).
+2. **mtime signal (secondary).** Capture `T_call_returned` and stat `output_path`'s mtime. If `|T_call_returned − mtime| ≤ 10 minutes` → PASS; drift > 10 min either direction → FAIL (clock skew / slow IO / MCP retries — not alone proof of staleness).
+3. **Decision matrix (per reviewer):** Both PASS → that report is fresh. Reviewed-files PASS / mtime FAIL → log a note, proceed (Reviewed-files is the strong signal). Reviewed-files FAIL / mtime PASS → log a note, proceed with caution (verify the Findings actually reference your file before any auto-fix). **Both FAIL → that reviewer is stale.**
+4. If EITHER reviewer is stale, retry **that reviewer** once; if still both-FAIL, write gate marker `gate_type: "codex-stale"` (this gate covers staleness of **either** reviewer — name the stale one in the question) and STOP. A single stale reviewer does NOT let the other's verdict stand alone; both must be fresh before gating.
+5. Quote each report's header (`Generated`, `Model`, `Reviewed files`) and finding count in your announcement. Do NOT match the header date string against today's date (timezone/format variance causes false negatives).
+
+**C. Union gating.** Pool codex + gemini findings; de-duplicate same-issue findings into one at the **higher** severity. Apply **the findings gating rule** (see below) to the pooled set — any High from **either** reviewer gates exactly as a codex High would. Report both counts (e.g. "codex 1H/2M, gemini 0H/1M → union 1H/3M").
+
+**D. Debate escalation (full five-step ensemble, per `/director-review`).** Escalate when EITHER: (i) this is the **impl review (step 7)** — always, because impl is the money-correctness gate; or (ii) codex and gemini **materially disagree** at any point — one flags a High/Medium the other dismisses or is silent on, in the same area. To escalate: fire `mcp__codex_review__critique_review` (critiques gemini; `prior_reviewer: "gemini-pro-latest"`, `prior_review` = gemini's full text → `…-{phase}-codex-critique.md`) and `mcp__gemini_review__critique_review` (critiques codex; `prior_reviewer: "gpt-5.2"` → `…-{phase}-gemini-critique.md`) in parallel; then `mcp__codex_review__synthesize_reviews` with all four `prior_outputs` → `…-{phase}-synthesis.md`. Act on the **synthesis** verdict + prioritized action list: `HOLD` = a blocking High (gate/fix); `MINOR-FIXES` = mechanically-fixable (apply per the gating rule); `SHIP` = proceed. `must_fix_before_send` → gate/fix; `should_fix`/`optional` → followups.
+
+**E. Re-review after fixes.** After auto-applying mechanical fixes, re-run **both** reviewers once (step A) — NOT the full debate again (per `/director-review` guidance: after the first synthesis, a confirming re-review is parallel-both only, unless they disagree again).
+
+### 3. Review the spec (ensemble)
+
+Run the **review ensemble** (above) with `{phase} = spec`:
 - `paths`: `["_bmad-output/implementation-artifacts/tournament/{story-key}.md"]`
-- `output_path`: `_bmad-output/reviews/{story-key}-spec-codex.md`  (**unique per story and per phase — do not reuse `codex-review-latest.md`**)
+- `review_request`: story goal + acceptance criteria + "review spec for ambiguity, missing ACs, path-allowlist violations, boundary violations vs FD-1/FD-2, and layering errors (forward FKs, schema-not-yet-migrated, contradicts architecture)"
+- Debate escalation (step D) fires here only if codex and gemini materially disagree.
 
-**Freshness check (two-signal: STOP only when both fail).** After the MCP call returns, evaluate two independent signals. Neither alone is sufficient to STOP; STOP fires only when both indicate staleness.
-
-1. **Reviewed-files signal (primary).** Read the report's "Reviewed files" header line. Confirm it contains the path(s) you passed in `paths`. If the path matches → signal PASS. If the path is missing → signal FAIL (suspicious; consult signal 2).
-2. **mtime signal (secondary).** Capture the current wall-clock time `T_call_returned` and stat `output_path` for its mtime. If `|T_call_returned − mtime| ≤ 10 minutes` → signal PASS. If drift exceeds 10 minutes (in either direction — future-mtime is also suspicious clock skew) → signal FAIL. mtime drift can be caused by clock skew between MCP host and local filesystem, slow IO, or retries inside MCP — none of which alone mean the report is wrong.
-3. **Decision matrix:**
-   - Both PASS → proceed.
-   - Reviewed-files PASS, mtime FAIL → log a note (`Note: codex report mtime drifted {N} minutes; Reviewed-files matched, proceeding`) and proceed. Do NOT STOP — Reviewed-files is the strong signal.
-   - Reviewed-files FAIL, mtime PASS → log a note (`Note: codex report Reviewed-files header did not include {path}; mtime fresh, proceeding with caution`) and proceed. The MCP may have written the report to a different scope key than expected; check the Findings section actually references your file before applying any auto-fix. Do NOT STOP on this alone.
-   - Both FAIL → write gate marker `gate_type: "codex-stale"` and STOP.
-4. Retry once before stopping the first time; if retry is also FAIL/FAIL, write the marker and STOP.
-5. Quote the file header (`Generated`, `Model`, `Reviewed files`) and the finding count in your announcement.
-
-Do NOT match the report's header date string against today's date — timezone offsets and format variance (`2026-04-30` vs `Apr 30 2026`) cause false negatives.
-
-Apply **the findings gating rule** (see below). If the spec passes or all High findings are auto-fixed cleanly, proceed to step 4. If any High requires user input, write gate marker `gate_type: "codex-high-user-decision"`, set `context_path` to the codex report, and STOP. Question: `Codex flagged a High on the spec that requires your decision: "{finding-summary}". Apply the suggested fix, defer to followups, or stop the cycle? [gate-id: ...]`
+Apply union gating. If the spec passes or all High findings are auto-fixed cleanly, proceed to step 4. If any High (from either reviewer, or the synthesis) requires user input, write gate marker `gate_type: "codex-high-user-decision"`, set `context_path` to the relevant report (codex/gemini/synthesis), and STOP. Question: `A reviewer flagged a High on the spec that requires your decision: "{finding-summary}" (raised by {codex|gemini|both}). Apply the suggested fix, defer to followups, or stop the cycle? [gate-id: ...]`
 
 ### 4. Spec gate (user, with opt-in auto-approve)
 
-After spec codex review (and any auto-applied fixes + re-review):
+After the spec review ensemble (and any auto-applied fixes + re-review):
 
 **Auto-approve check (only if `auto_approve_clean_specs: true` in director config):**
 
 If ALL of the following hold:
-1. Codex returned `PASS` with **zero** High findings AND **zero** Medium findings.
+1. **BOTH** codex AND gemini returned `PASS` with **zero** High findings AND **zero** Medium findings on first pass (the union is clean — if EITHER reviewer flags any H/M, auto-approve is disallowed and the director falls back to the manual `spec` gate).
 2. The spec contains a clearly delineated, machine-checkable list of intended edit paths under a section literally titled `## Files this story will edit` (or `### Files this story will edit`) where each entry is a single repo-relative path on its own line, optionally prefixed with `- `. Free-form prose is NOT acceptable; "or equivalent" is NOT acceptable. If the section is absent, contains glob patterns or directory references instead of explicit paths, or mixes paths with prose annotations that prevent line-by-line classification, auto-approve is disallowed and the director MUST fall back to the manual `spec` gate. Once a parseable list is found, every listed path must classify into ALLOWED. Zero SHARED, zero FORBIDDEN.
-3. No mechanically-applied fixes were required during step 3 (i.e., codex was clean on first pass — `FIXED N` does NOT auto-approve, only true `PASS`).
+3. No mechanically-applied fixes were required during step 3 (i.e., both reviewers were clean on first pass — `FIXED N` does NOT auto-approve, only true `PASS` from both). Any debate escalation that returned `MINOR-FIXES`/`HOLD` also disqualifies auto-approve.
 
-Then: announce `Director: spec auto-approved per .director-config.json (codex PASS, 0 H/M, declared files all ALLOWED)`, skip the user gate, and proceed to step 5. The auto-approval will be recorded in the commit body at step 10c. Note that step 5b's pre-test classification gate will still catch any post-spec edits that drift outside the declared list — auto-approve does not weaken that gate.
+Then: announce `Director: spec auto-approved per .director-config.json (codex + gemini PASS, 0 H/M, declared files all ALLOWED)`, skip the user gate, and proceed to step 5. The auto-approval will be recorded in the commit body at step 10c. Note that step 5b's pre-test classification gate will still catch any post-spec edits that drift outside the declared list — auto-approve does not weaken that gate.
 
 Otherwise (any check fails, or auto-approve disabled): write a gate marker with `gate_type: "spec"`, generate gate-id token per the Loop pause protocol, and STOP with the user-facing message:
 
-> "Spec for {story-key} approved? Codex: {PASS | FIXED N | STOP-on-High description}. Proceed to implementation? `[gate-id: {director_message_id}]`"
+> "Spec for {story-key} approved? Reviews — codex {PASS | FIXED N}, gemini {PASS | FIXED N} (or STOP-on-High description). Proceed to implementation? `[gate-id: {director_message_id}]`"
 
 The `[gate-id: ...]` substring is the conversation anchor for step 0's resume procedure. End the message there. Take no further actions until the user answers. Under `/loop`, the next iteration's step 0 detects the pending gate and idles (see "Loop pause protocol").
 
@@ -225,7 +231,7 @@ If all paths classify into ALLOWED (or SHARED with prior approval) → proceed t
 
 ### 6. Run regression tests
 
-Before codex-review-on-impl, run the full regression set:
+Before the impl review (step 7), run the full regression set:
 
 - `pnpm --filter @wolf-cup/engine test`
 - `pnpm --filter @wolf-cup/api test`
@@ -238,7 +244,7 @@ Before codex-review-on-impl, run the full regression set:
 
 If any check fails and the cause is outside the Tournament allowlist, write gate marker `gate_type: "tests-failed"` (with the failing-paths summary in the question) and STOP; do not cross-work to fix Wolf Cup code. If the cause is within the allowlist, fix it, re-run, and document in the story file. Only write the gate marker if the failure persists after a single in-allowlist fix attempt — fix-and-rerun loops within the same invocation are fine.
 
-### 7. Codex-review the implementation
+### 7. Review the implementation (ensemble + mandatory debate)
 
 Capture the change set using the same union approach as the pre-commit verification step:
 
@@ -246,17 +252,15 @@ Capture the change set using the same union approach as the pre-commit verificat
 - `git diff --name-only` (unstaged tracked changes)
 - `git status --porcelain=v1 -z` (untracked files, renames, deletions — parse the status codes)
 
-The union of these three, de-duplicated, is the codex `paths` input. Do NOT use `git diff --name-only HEAD` — it mixes staged/unstaged and omits untracked files (see the Verification step above). Verify every path classifies into ALLOWED or approved-SHARED before proceeding (step 5b should already have made this true, but re-check in case the dev-story added more files between step 5b and step 7).
+The union of these three, de-duplicated, is the `paths` input. Do NOT use `git diff --name-only HEAD` — it mixes staged/unstaged and omits untracked files (see the Verification step above). Verify every path classifies into ALLOWED or approved-SHARED before proceeding (step 5b should already have made this true, but re-check in case the dev-story added more files between step 5b and step 7).
 
-Invoke `mcp__codex_review__review_code`:
-
-- `review_request`: story acceptance criteria + "review implementation for correctness, allowlist violations, security (path traversal, injection, prompt-injection for any LLM-facing code), missing tests, drift from spec, and any unreviewed post-implementation edits. **External-integration check:** if the diff touches any external API client (e.g., new imports of `@anthropic-ai/sdk`, `arctic`, raw `fetch`/`axios` against external hosts), or modifies anything under `apps/tournament-api/src/integrations/**`, flag any absence of a real-API smoke test or HTTP-roundtrip test as a Medium finding (per the 2026-04-26 lesson — codex/party/mocked-unit-tests missed an Anthropic strict-mode subset bug that only real-API smoke caught)."
+Run the **review ensemble** with `{phase} = impl`. **The full debate (step D) is MANDATORY here** — impl is the money-correctness gate, so always run cross-critique + synthesis, even if codex and gemini agree:
 - `paths`: the union from above
-- `output_path`: `_bmad-output/reviews/{story-key}-impl-codex.md` (**unique per story and per phase**)
+- `review_request`: story acceptance criteria + "review implementation for correctness, allowlist violations, security (path traversal, injection, prompt-injection for any LLM-facing code), missing tests, drift from spec, and any unreviewed post-implementation edits. **External-integration check:** if the diff touches any external API client (e.g., new imports of `@anthropic-ai/sdk`, `arctic`, raw `fetch`/`axios` against external hosts), or modifies anything under `apps/tournament-api/src/integrations/**`, flag any absence of a real-API smoke test or HTTP-roundtrip test as a Medium finding (per the 2026-04-26 lesson — codex/party/mocked-unit-tests missed an Anthropic strict-mode subset bug that only real-API smoke caught)."
 
-Run the freshness check (step 3's mtime-based procedure). Apply the findings gating rule. If all findings clear or are auto-fixed cleanly, proceed to step 8. If any High requires user input, write gate marker `gate_type: "codex-high-user-decision"`, set `context_path` to the impl codex report, and STOP. Question: `Codex flagged a High on the implementation that requires your decision: "{finding-summary}". Apply the suggested fix, defer to followups, or stop the cycle? [gate-id: ...]`
+Apply the freshness check (per reviewer) + union gating, then act on the **synthesis verdict**. If all findings clear or are auto-fixed cleanly (synthesis `SHIP`, or `MINOR-FIXES` mechanically applied + a confirming parallel-both re-review), proceed to step 8. If any High / synthesis `HOLD` requires user input, write gate marker `gate_type: "codex-high-user-decision"`, set `context_path` to the synthesis report (or the specific reviewer report), and STOP. Question: `A reviewer flagged a High on the implementation that requires your decision: "{finding-summary}" (raised by {codex|gemini|both}; synthesis verdict {HOLD|MINOR-FIXES}). Apply the suggested fix, defer to followups, or stop the cycle? [gate-id: ...]`
 
-**No-drift rule.** After impl codex-review passes, do NOT modify any code until party-mode or the user explicitly directs it. If any file changes between the impl codex-review and the party-mode step, re-run impl codex-review against the new diff before proceeding.
+**No-drift rule.** After the impl review passes, do NOT modify any code until party-mode or the user explicitly directs it. If any file changes between the impl review and the party-mode step, re-run the impl review (parallel-both; full debate only if they disagree) against the new diff before proceeding.
 
 ### 8. Flip status to `review` and run party-mode review
 
@@ -276,15 +280,14 @@ If the resolved party review surfaces required changes:
 - Re-run step 6 (regression tests) after any code changes.
 - Re-run step 5b (path classification) after any code changes.
 
-### 9. Codex-review the party-mode output + any resulting changes
+### 9. Review the party-mode output + any resulting changes (ensemble)
 
-Invoke `mcp__codex_review__review_code`:
-
-- `review_request`: story acceptance criteria + party-review summary + "review party-mode output and any resulting code changes for correctness, completeness, and drift from spec; flag any party recommendations that were accepted but not implemented, or that cross allowlist boundaries"
+Run the **review ensemble** with `{phase} = party`:
 - `paths`: `["_bmad-output/reviews/{story-key}-party-review.md", ...any files changed after step 7...]`
-- `output_path`: `_bmad-output/reviews/{story-key}-party-codex.md`
+- `review_request`: story acceptance criteria + party-review summary + "review party-mode output and any resulting code changes for correctness, completeness, and drift from spec; flag any party recommendations that were accepted but not implemented, or that cross allowlist boundaries"
+- Debate escalation (step D) fires here only if codex and gemini materially disagree.
 
-Freshness check (mtime-based) + gating rule. If any High requires user input, write gate marker `gate_type: "codex-high-user-decision"`, set `context_path` to the party codex report, and STOP. Question: `Codex flagged a High on the party-mode review or post-party changes that requires your decision: "{finding-summary}". Apply the suggested fix, defer to followups, or stop the cycle? [gate-id: ...]` Otherwise proceed.
+Apply the freshness check (per reviewer) + union gating. If any High (from either reviewer, or the synthesis) requires user input, write gate marker `gate_type: "codex-high-user-decision"`, set `context_path` to the relevant report, and STOP. Question: `A reviewer flagged a High on the party-mode review or post-party changes that requires your decision: "{finding-summary}" (raised by {codex|gemini|both}). Apply the suggested fix, defer to followups, or stop the cycle? [gate-id: ...]` Otherwise proceed.
 
 ### 10. Stage and commit (atomic with status=done)
 
@@ -365,10 +368,10 @@ tournament: {story-key} {short title}
 
 {1-3 sentence body describing what shipped}
 
-Codex: spec {PASS|FIXED N|auto-approved}, impl {PASS|FIXED N}, party {PASS|FIXED N}
+Reviews (codex+gemini): spec {PASS|FIXED N|auto-approved}, impl {PASS|FIXED N, synthesis SHIP|MINOR-FIXES}, party {PASS|FIXED N}
 ```
 
-If the spec was auto-approved per the director config (step 4 auto-approve check), the spec line MUST read `Spec gate: auto-approved (codex PASS, 0 H/M)` somewhere in the body so the audit trail is preserved.
+If the spec was auto-approved per the director config (step 4 auto-approve check), the spec line MUST read `Spec gate: auto-approved (codex + gemini PASS, 0 H/M)` somewhere in the body so the audit trail is preserved.
 
 No `Co-Authored-By` footer unless the user has asked for one. No push.
 
@@ -385,11 +388,11 @@ Status is now `done` AND committed in the same atomic step. This step number is 
 Report in ≤8 lines:
 
 - Story: `{story-key}`
-- Spec codex: PASS / FIXED N / STOPPED-on-High / auto-approved
+- Spec review: codex {PASS/FIXED N} + gemini {PASS/FIXED N} / STOPPED-on-High / auto-approved
 - Tests: engine Δ, api Δ, tournament-api Δ (deltas vs start-of-story)
-- Impl codex: PASS / FIXED N
+- Impl review: codex {PASS/FIXED N} + gemini {PASS/FIXED N}, synthesis {SHIP/MINOR-FIXES/HOLD}
 - Party review: `{reviews/{story-key}-party-review.md}` — N recommendations, M implemented
-- Party codex: PASS / FIXED N
+- Party review (codex+gemini): {PASS/FIXED N}
 - Commit: `{sha}` (local, unpushed; status=done included)
 - Next in queue: `{next-story-key}` or "epic {T#} complete — awaiting user gate"
 
@@ -397,9 +400,9 @@ If the current epic is now complete, STOP and wait for the user to clear the epi
 
 ---
 
-## Findings gating (applies to every codex-review call)
+## Findings gating (applies to the UNION of every review — codex AND gemini)
 
-For each finding codex returns, classify it into exactly one bucket:
+Pool the codex + gemini findings (and, where the debate ran, the synthesis action list); de-duplicate same-issue findings at the higher severity. For each pooled finding, classify it into exactly one bucket. "Re-review once" below means re-run **both** reviewers (parallel-both per ensemble step E), not just codex:
 
 ### Low / Medium
 - Report in the final summary. Do not block.
@@ -410,7 +413,7 @@ For each finding codex returns, classify it into exactly one bucket:
 
 A High finding is "mechanically fixable" **ONLY IF ALL of the following are true**:
 
-1. Codex provides a concrete patch-level fix (specific code change with specific file/line).
+1. A reviewer (codex or gemini, or the synthesis action list) provides a concrete patch-level fix (specific code change with specific file/line).
 2. The observation is verifiably correct — you can confirm it by inspecting the code.
 3. The fix does NOT change any of:
    - Acceptance-criteria wording
@@ -420,11 +423,11 @@ A High finding is "mechanically fixable" **ONLY IF ALL of the following are true
    - Database schema or migrations
    - Error-handling or user-visible behavior beyond strict correctness
 4. The fix touches only ALLOWED paths (any SHARED or FORBIDDEN path → not mechanically fixable).
-5. You can and will **quote the exact codex text** AND **quote the exact diff you plan to apply** in your announcement before applying.
+5. You can and will **quote the exact reviewer finding text** (naming codex/gemini/synthesis) AND **quote the exact diff you plan to apply** in your announcement before applying.
 
 If any of 1–5 fails, the finding is NOT mechanically fixable. Treat as "requires user decision."
 
-After auto-applying a fix, **re-run codex-review once**. If the re-review still flags High in the same area, treat as "requires user decision." A fix applied via this path means the spec gate at step 4 is NOT eligible for auto-approve (the auto-approve check requires `PASS` on first pass, not `FIXED N`).
+After auto-applying a fix, **re-run BOTH reviewers once** (parallel-both, per ensemble step E). If the re-review still flags High in the same area (from either reviewer), treat as "requires user decision." A fix applied via this path means the spec gate at step 4 is NOT eligible for auto-approve (the auto-approve check requires `PASS` on first pass from both reviewers, not `FIXED N`).
 
 ### High — **requires user decision** (STOP)
 
@@ -527,18 +530,20 @@ This gives `/loop` a machine-checkable signal across iterations without dependin
 
 ## Anti-patterns
 
-- Silently merging codex auto-fixes without re-reviewing.
+- Silently merging review auto-fixes without re-reviewing (re-review = both reviewers, parallel-both).
 - Marking status `done` before the commit lands (status flip and commit are atomic per step 10).
 - Skipping tests "in the interest of progress."
 - Cross-working into Wolf Cup paths to fix adjacent issues.
 - Amending commits, force-pushing, or using `--no-verify`.
 - Using `git add -A` / `git add .`.
-- Reading a stale `codex-review-latest.md` when the MCP call errored — director uses unique per-story-per-phase output paths.
+- Reading a stale `codex-review-latest.md` (or any reused review path) when an MCP call errored — director uses unique per-story-per-phase-per-reviewer output paths (`{story-key}-{phase}-{codex|gemini}.md`).
+- Proceeding on one reviewer's verdict when the other is stale, errored, or never ran — the ensemble requires BOTH codex and gemini fresh before gating.
+- Skipping the mandatory impl-review debate (step 7 always runs cross-critique + synthesis), or running the full debate on every patch re-review instead of parallel-both.
 - Writing "this is probably fine" to justify skipping a gate.
 - Writing a gate marker without embedding `[gate-id: ...]` in the user-facing question.
 - Re-emitting `[gate-id: ...]` in any non-gate-write message (e.g., quoting the marker's `question` field in the step-0 idle line). Step 0's anchor search would mis-resolve to the most recent message containing the substring, ignoring the user's reply.
 - STOPping without writing a gate marker on any failure path — every STOP under /loop must persist a marker. Specifically: codex-High user decisions (steps 3/7/9), test failures (step 6), workflow misconfig (steps 2/5), schema violations / duplicate story-keys (step 1), MCP/codex-stale failures, dirty tree, commit-failed, overall completion. Any STOP without a marker is a contract violation that will cause /loop to spin on the failure.
-- Auto-approving a spec gate when codex returned `FIXED N` rather than true `PASS` — auto-approve requires zero applied fixes on first pass.
+- Auto-approving a spec gate when either reviewer returned `FIXED N` rather than true `PASS` from BOTH — auto-approve requires zero applied fixes on first pass with both codex and gemini clean.
 - Auto-approving a spec gate when the spec's `## Files this story will edit` section is missing, uses globs, or contains free-form prose — declared file lists must be machine-parseable for auto-approve to be safe.
 - Resolving a `forbidden-path` gate with `decision: approve`. FORBIDDEN paths are not approvable; only revert/extract/abandon directives are valid.
 - Using `git checkout`, `git restore`, or `git reset --hard` on `sprint-status.yaml` as part of step 10 recovery — only `git reset HEAD --` (for index) and atomic backup-rename (for working tree) are sanctioned.
@@ -550,8 +555,8 @@ This gives `/loop` a machine-checkable signal across iterations without dependin
 - **Story file already exists for the selected `backlog` story** → someone started it manually. STOP; ask whether to resume.
 - **`workflow-tournament.yaml` missing for create-story, dev-story, or code-review** → STOP; do not fall back to Wolf Cup variants. Request the missing fork.
 - **Tests cannot be resolved** → STOP; report the failure cleanly with logs. Do not skip.
-- **Codex MCP unavailable or times out** → retry once. If still failing, write gate marker `gate_type: "mcp-failure"` and STOP. Question: `Codex MCP appears unavailable after retry. Retry now, skip this story, or stop the loop? [gate-id: ...]`
-- **Codex output file is stale or missing** → write gate marker `gate_type: "codex-stale"` and STOP. Question: `Codex output for {phase} appears stale (mtime drift > 5min, or report doesn't reference requested path). Retry, investigate, or stop the loop? [gate-id: ...]`
+- **A review MCP (codex_review or gemini_review) unavailable or times out** → retry that server once. If still failing, write gate marker `gate_type: "mcp-failure"` and STOP. Question: `Review MCP {codex_review|gemini_review} appears unavailable after retry. Retry now, skip this story, or stop the loop? [gate-id: ...]` Do NOT proceed on a single reviewer when the other is down — the ensemble needs both.
+- **A review output file (codex or gemini) is stale or missing** → write gate marker `gate_type: "codex-stale"` (the ensemble's review-staleness gate; covers either reviewer) and STOP. Question: `{codex|gemini} output for {phase} appears stale (mtime drift, or report doesn't reference requested path). Retry, investigate, or stop the loop? [gate-id: ...]`
 - **Dirty working tree at orient** → write gate marker `gate_type: "dirty-tree"` and STOP. Question: `Working tree is dirty before story start: {paths}. Commit, stash, or discard before continuing? [gate-id: ...]`
 - **Commit failed at step 10c** → restore yaml from backup; write gate marker `gate_type: "commit-failed"` and STOP. Question: `Commit failed at step 10c ({error summary}). Retry the commit, investigate, or revert the story? [gate-id: ...]`
 - **Party-mode produces no clear output or user is absent** → STOP at the party step; wait for user to resume.
@@ -563,4 +568,4 @@ This gives `/loop` a machine-checkable signal across iterations without dependin
 
 - **One story**: user types `/tournament-director`. Run exactly one cycle, stop at the final report.
 - **Continuous**: user types `/loop /tournament-director`. Run one cycle per iteration, pacing self. Respect every gate via the loop-pause protocol. The loop does not bypass user gates.
-- **Auto-approve clean specs**: user creates `_bmad-output/implementation-artifacts/tournament/.director-config.json` with `{ "version": 1, "auto_approve_clean_specs": true }` to skip the spec gate when codex returns PASS with zero High/Med findings on first pass and the spec touches only ALLOWED paths. SHARED-touching specs and Codex-High gates still require manual approval. Toggle off by setting the flag to `false` or deleting the file.
+- **Auto-approve clean specs**: user creates `_bmad-output/implementation-artifacts/tournament/.director-config.json` with `{ "version": 1, "auto_approve_clean_specs": true }` to skip the spec gate when BOTH codex and gemini return PASS with zero High/Med findings on first pass and the spec touches only ALLOWED paths. SHARED-touching specs and any reviewer-High gates still require manual approval. Toggle off by setting the flag to `false` or deleting the file.
