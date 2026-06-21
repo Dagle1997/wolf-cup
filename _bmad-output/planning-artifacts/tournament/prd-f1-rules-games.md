@@ -1,6 +1,6 @@
 ---
-stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-02b-vision', 'step-02c-executive-summary', 'step-03-success', 'step-04-journeys', 'step-05-domain', 'step-06-innovation', 'step-07-project-type', 'step-08-scoping']
-status: 'PAUSED at step 8/11 (2026-06-16) — pivoted to tactical Pete Dye build; resume at step-09-functional'
+stepsCompleted: ['step-01-init', 'step-02-discovery', 'step-02b-vision', 'step-02c-executive-summary', 'step-03-success', 'step-04-journeys', 'step-05-domain', 'step-06-innovation', 'step-07-project-type', 'step-08-scoping', 'step-01b-continue', 'step-09-functional', 'step-10-nonfunctional', 'step-11-polish', 'step-12-complete']
+status: 'COMPLETE 2026-06-21 — full F1 PRD (12/12). 45 FRs + NFRs (C1-C8/T1/D1-D3/M1/P1-P2/R1-R3/O1/S1-S2/X1-X3/A1-A3) + Journey 5 + cascade/edit-semantics diagrams. FRs, NFRs, and the whole document each Party-Mode + Codex-reviewed. Ready for architecture → epics → golden-fixture-gated build.'
 inputDocuments:
   - _bmad-output/brainstorming/brainstorming-session-2026-06-16.md
   - _bmad-output/planning-artifacts/tournament/prd.md
@@ -134,7 +134,7 @@ Two invariants protect the felt value: **(1) config cost is paid once, at setup 
 5. **Leaderboard mode switch** — money/P&L (locked) vs scores-only + private My Money (unlocked).
 
 ### Growth — Product B (deferred within F1)
-Per-foursome self-service unlock + player-facing "Adjust Guyan Game Rules" recognition-not-recall UI (gated by H1 join identity).
+Per-foursome self-service unlock + player-facing "Adjust Guyan Game Rules" recognition-not-recall UI (gated by H1 join identity) + **cross-group / cross-foursome games** (FR22/FR25) settled via the SettlementEdge IR + player self-reported claims (FR16 self-report).
 
 ### Vision (Future)
 Container-agnostic **Season** (the Sunday group) · new modifier/game types via the registry (add = data + one resolver) · F1b player-driven 1v1 bets surfacing · rule-set sharing across groups.
@@ -143,7 +143,7 @@ Container-agnostic **Season** (the Sunday group) · new modifier/game types via 
 
 ### Journey 1 — Josh the Organizer: seed + lock a trip *(Product A, happy path)*
 **Opening.** Josh is setting up the next Pinehurst-style trip. He opens the event admin and — instead of the dead "No rule set seeded yet" card — sees **"Set up Rules & Games."**
-**Rising action.** He taps it. It opens **preset-first**: "Start from *Standard Guyan Game*." He confirms the modifiers (net-birdie on, polie on-anything, gross sandie, greenie carryover), sets the point value ($5/pt), names it, saves. He sets each day's **team game** (foursome-vs-foursome, per-hole win/lose, $20/man). He leaves foursomes **LOCKED to admin**. The setup also prompts a **handicap-lock reminder** ("Lock handicaps as of: ___") so he doesn't forget — he sets as-of = the Wednesday before (the H1 feature; can be set retroactively since GHIN history is dated).
+**Rising action.** He taps it. It opens **preset-first**: "Start from *Standard Guyan Game*." He confirms the modifiers (net-birdie on, polie on-anything, gross sandie, greenie carryover), sets the point value ($5/pt), names it, saves. He sets each day's **team game** — the intra-foursome 2v2 plus the event-level pot (best-ball-vs-par, $20/man) per FR5; direct cross-foursome head-to-head money is Product B. He leaves foursomes **LOCKED to admin**. The setup also prompts a **handicap-lock reminder** ("Lock handicaps as of: ___") so he doesn't forget — he sets as-of = the Wednesday before (the H1 feature; can be set retroactively since GHIN history is dated).
 **Climax.** He doesn't configure anything per-foursome. Every foursome inherits the event rule set automatically — zero further setup.
 **Resolution.** Under 5 minutes, self-serve, no spreadsheet. The trip is rules-ready; the locked leaderboard will show money standings.
 *Reveals:* rule-set create/seed UI (preset library), modifier config with variants, point-value, team-game config, single lock toggle, the cascade's event-default level, **a handicap-lock setup-flow reminder (cross-ref H1/H1b)**.
@@ -169,6 +169,13 @@ Container-agnostic **Season** (the Sunday group) · new modifier/game types via 
 **Resolution.** Money's corrected where it's safe, protected where it's settled. Nobody's paid-up balance silently changed.
 *Reveals:* edit/correction flow, retroactive recompute (non-finalized only), finalized-frozen guard, diff banner, recompute-in-the-wild.
 
+### Journey 5 — Teams, on-course claims, and the breakdown *(Product A, resume-era FRs — 2026-06-21)*
+**Opening.** Josh builds the roster, then taps **"Make teams"** and picks **high-low handicap (A/B)** — the app pairs an A-player with a B-player per team (or he chooses random, or drags pairs manually). *(FR20–21.)*
+**Rising action.** Day 1, hole 4 (par 3). Ronnie misses the green but gets up-and-down from the bunker. The scorer, entering the foursome's scores, taps **Sandie** on Ronnie's row **inline** — no second screen. On hole 7 a greenie goes unclaimed and **carries** to hole 8. *(FR15–FR16, FR40.)*
+**Climax.** At the cart, Stu opens the leaderboard, taps **Ronnie's name**, and sees the per-hole breakdown — "Hole 4: won + sandie = +$X." Every dollar is explained. *(FR41, NFR-T1.)*
+**Resolution.** Teams set in seconds, claims captured without breaking flow, money self-explaining — no notepad.
+*Reveals:* team-formation methods (FR20), team-as-composition (FR21), inline claim capture (FR16), stateful carryover (FR40), per-hole money breakdown (FR41).
+
 ### Journey Requirements Summary
 - **Rule-set authoring:** create/seed from a preset library; modifier config `{type, enabled, variant}`; point-value (flat + segmented) + cap; team-game config. *(J1)*
 - **Cascade + lock:** Event-default → Round → Foursome resolution; single admin lock toggle; zero-tap inherit as default. *(J1, J3)*
@@ -176,6 +183,7 @@ Container-agnostic **Season** (the Sunday group) · new modifier/game types via 
 - **Intent visibility:** plain-language active-rules summary per foursome. *(J3)*
 - **Edit/recompute:** correction (non-finalized, retroactive) vs forward-effective; finalized-frozen guard; diff banner. *(J4)*
 - **Leaderboard mode:** money standings when locked, scores-only + private My Money when unlocked. *(J1, J2)*
+- **Teams, claims & breakdown:** team-formation methods + team-as-composition (FR20–21); inline greenie/polie/sandie capture + carryover (FR16, FR40); per-hole money breakdown (FR41). *(J5)*
 - **Handicap-lock setup touchpoint** *(cross-ref H1/H1b, not F1 build):* the setup flow reminds the organizer to lock handicaps as-of a date; lock is correct retroactively (GHIN dated history); future-dating needs the scheduled-lock enhancement (H1b).
 
 ## Domain-Specific Requirements
@@ -184,8 +192,8 @@ Container-agnostic **Season** (the Sunday group) · new modifier/game types via 
 - **None.** Golf side-game scoring; no regulated data class; no in-app payments (cash settle-up off-app). Matches the v1 PRD "no regulatory burden."
 
 ### Domain Patterns (golf money engine)
-- **Deterministic pure engines, integer cents** — all money computed by pure functions of (scores + config); no floats; recompute is reproducible (inherits NFR-D8 + the Wolf Cup discipline).
-- **Foursome-isolation is STRUCTURAL, by signature** — the per-foursome money compute takes only *that* foursome's config + *its own* four players' scores: `computeFoursome(itsOwnConfig, itsOwnScores) → foursomeLedger`. The engine cannot read another foursome's config, so cross-foursome contamination is **unrepresentable** — the safety property the entire unlock feature relies on is enforced by the type/signature, not merely by a test.
+- **Deterministic pure engines, integer cents** — all money computed by pure functions of (scores + claims + config); no floats; recompute is reproducible (inherits the v1 deterministic-engine discipline + Wolf Cup; see NFR-C2/C6).
+- **Foursome-isolation is STRUCTURAL, by signature** — the per-foursome money compute takes only *that* foursome's config + *its own* four players' scores **and claims**: `computeFoursome(itsOwnConfig, itsOwnScores+claims) → foursomeLedger`. The engine cannot read another foursome's config, so cross-foursome contamination is **unrepresentable** — the safety property the entire unlock feature relies on is enforced by the type/signature, not merely by a test.
 - **Slope-aware course-handicap allocation (hard reuse pointer)** — any F1 game/modifier that computes a *net* score MUST import the existing allocation: `calcCourseHandicap` / `allocateNetThroughHole` (`services/handicap.ts`), `getHandicapStrokes` (`engine/handicap-strokes.ts`), `buildTeeByPlayer` (`services/per-player-tee.ts`). **Zero new allocation math** — reimplementing net resurrects the `Math.round(HI)`-wrong-on-non-blue-tees bug family.
 - **Loss-less decomposition** — combined and split ledgers sum to the identical total; caps never double-pay (the T13-5 half-share invariant).
 
@@ -209,6 +217,7 @@ Golden fixtures cover *examples*; **property/fuzz tests** cover the *invariants*
 - **`event_game_config`** *(new, Product A)* — per event: `event_id`, `seed_rule_set_revision_id`, `lock_state` ('locked'|'unlocked'), `team_game_config`, ecosystem columns (FD-6).
 - **`round_game_config`** *(new, Product A)* — per-round override: the daily team game + any round-level rule overrides (admin sets the team game each day).
 - **`foursome_game_config`** *(new, Product B only)* — FKs **`pairings.id`** (existing T4-2); scoped to *(round, foursome-slot)*, re-inherited each round as pairings reshuffle; **locked once the round starts** (R3).
+- **Team composition** *(new, Product A — FR20–21)* — formed from the roster (manual / random / high-low HI A/B). A scored round **pins its team composition** alongside the config revision (FR29 / NFR-D1) so re-teaming never rewrites past money. *(Open for architecture: a dedicated `team` / `team_member` store vs deriving + pinning from `pairing_members` slot order, which is how teams are read today.)*
 - *(Open for architecture: `round_game_config` + `foursome_game_config` could collapse into one `(level, ref_id, config)` override table.)*
 - **Dual-read migration:** events with no `event_game_config` fall back to today's tenant-`rule_sets` behavior (existing events untouched; reversible).
 
@@ -218,7 +227,7 @@ Golden fixtures cover *examples*; **property/fuzz tests** cover the *invariants*
 
 ### Engine (pure, registry-based)
 - **`resolveConfig(event, round, foursome)`** — cascade resolver, most-specific-wins (Foursome→Round→Event default), gated by `lock_state`. Golden-tested incl. lock gate (R6).
-- **`computeFoursome(itsOwnConfig, itsOwnScores) → foursomeLedger`** — structural isolation (cannot read another foursome's config).
+- **`computeFoursome(itsOwnConfig, itsOwnScores+claims) → foursomeLedger`** — structural isolation (cannot read another foursome's config).
 - **Modifier/game registry** — `register(type, resolver)`; add a rule = data + one pure resolver (no schema/UI change).
 - Net scoring imports the existing slope-aware allocation (`calcCourseHandicap`/`allocateNetThroughHole`/`getHandicapStrokes`/`buildTeeByPlayer`) — zero new allocation math.
 - **Recompute reuses the existing post-score-commit path** (press-orchestrator/money) — no new trigger.
@@ -247,6 +256,39 @@ Golden fixtures cover *examples*; **property/fuzz tests** cover the *invariants*
 ### Required Clarity Artifact
 The architecture/PRD must include a **diagram** of: cascade resolution (Event-default→Round→Foursome, gated by lock) + the edit-semantics decision (correction | forward-effective | frozen) + the pin/re-pin lifecycle — plus a plain-language definition of "config provenance." (Prevents the "I fixed the rule, why didn't last week's money change?" confusion — which is *correct* behavior.)
 
+**Config provenance (plain language):** a scored round *remembers* the exact rules + teams it was computed under (it "pins" them). Editing the rule set later changes *future* rounds, not past ones — so last week's money is intentionally unchanged. Only an in-progress **correction** re-pins and recomputes a round.
+
+**Diagram 1 — Cascade resolution (most-specific-wins, gated by lock):**
+
+```mermaid
+flowchart TD
+  E[Event default rule set] --> R{Round override?}
+  R -- yes --> RC[Round config]
+  R -- no --> E2[Event default]
+  RC --> L{Event locked?}
+  E2 --> L
+  L -- locked --> INH[Foursome inherits — 0 config taps]
+  L -- unlocked --> FO{Foursome override? · Product B}
+  FO -- yes --> FC[Foursome config]
+  FO -- no --> INH
+  INH --> RES[Resolved config]
+  FC --> RES
+  RES --> CF["computeFoursome(itsOwnConfig, itsOwnScores+claims)"]
+  CF --> LED[Foursome ledger → shared settle-up]
+```
+
+**Diagram 2 — Edit semantics + pin/re-pin lifecycle:**
+
+```mermaid
+flowchart TD
+  SC[Round scored] --> PIN[Pins config revision + team composition]
+  PIN --> ED{Organizer edits a rule?}
+  ED -- "round in_progress / editable" --> COR[Correction: recompute whole round, re-pin, diff banner to participants]
+  ED -- "mid-round, going forward" --> FWD[Forward-effective from hole N]
+  ED -- "round finalized" --> FRZ[REFUSED — finalized = frozen<br/>needs audited un-finalize]
+  ED -- "edit rule set later (new round)" --> NEW[New round uses new config;<br/>past round money UNCHANGED]
+```
+
 ### Forward-Compatibility — NOTE ONLY, zero F1 build
 These shape v1 schema (don't-foreclose), they are NOT F1 work:
 - **Money is NEVER public.** Two visibility tiers: (1) **Money** — bounded to your group (FR-D9 posture), with an event/season total surfacing to another group ONLY by the player's manual per-group approval; (2) **Public/cross-user stats** — performance only (avg by par 3/4/5, birdies, …), **never any dollar figure**. The tiers must stay structurally separable.
@@ -264,10 +306,10 @@ These shape v1 schema (don't-foreclose), they are NOT F1 work:
 
 ### MVP Feature Set (Phase 1 = Product A)
 - **Journeys supported:** J1 (organizer seed + lock), J3 (zero-tap inherit / "Mark test"), J4 (mid-trip correction). *(J2 unlock → Phase 2.)*
-- **Must-have capabilities:** pure engine + modifier/game registry · admin create/seed rule-set UI (preset-first) · `event_game_config` + `round_game_config` · cascade resolver + lock toggle · additive dual-read migration (golden-gated) · leaderboard mode (money vs scores) · finalized-frozen with explanatory message · per-round config-provenance pinning · intent-visibility active-rules summary.
+- **Must-have capabilities:** pure engine + modifier/game registry · admin create/seed rule-set UI (preset-first) · `event_game_config` + `round_game_config` · cascade resolver + lock toggle · additive dual-read migration (golden-gated) · leaderboard mode (money vs scores) · finalized-frozen with explanatory message · per-round config-provenance pinning · intent-visibility active-rules summary · **score + claim capture (greenie/polie/sandie) incl. edit/remove (FR16/FR39) + stateful carryover (FR40)** · **team formation incl. random/high-low/manual picker (FR20–21)** · **per-hole money breakdown view (FR41)** · **finalize / audited un-finalize (FR43)** · **fail-closed/unsettleable surfacing (FR44)**.
 
 ### Post-MVP
-- **Phase 2 (Product B):** per-foursome unlock · player "Adjust Guyan Game Rules" recognition-not-recall UI · `foursome_game_config`.
+- **Phase 2 (Product B):** per-foursome unlock · player "Adjust Guyan Game Rules" recognition-not-recall UI · `foursome_game_config` · cross-group/cross-foursome games (FR22/FR25) · player self-reported claims (FR16).
 - **Phase 3 (Vision):** container-agnostic **Season** (Sunday group) · new modifier/game types via the registry · F1b player-driven 1v1 bets surfacing · public/private profiles (money-never-public) · cross-event stats · rule-set sharing.
 
 ### Risk Mitigation Strategy
@@ -277,4 +319,119 @@ These shape v1 schema (don't-foreclose), they are NOT F1 work:
 
 ---
 
-> **⏸️ PRD PAUSED at Step 8/11 (2026-06-16).** Pivoted to a tactical Pete Dye Invitational build (hard deadline Jun 26–27) that does NOT rush the F1 foundation. Resume at `step-09-functional`. Pete Dye is a real-world F1 test fixture (event team-game + foursome Guyan games + handicap lock + a draw) to fold back in on resume.
+> **Note:** Everything above (Foundation → Project Scoping) is the original spine (authored 2026-06-16). The Functional + Non-Functional Requirements below were authored on resume (2026-06-21); decisions ratified since the pause are tagged **🆕** in the FR list.
+
+## Functional Requirements
+
+> **Capability contract.** UX, architecture, and epics implement ONLY what's here. Tags: **🆕** = added on resume (2026-06-21); **(B)** = Product B (Growth, deferred within F1); **(note)** = forward-compat, zero F1 build. Untagged = Product A (must-ship MVP). FR list validated via Party Mode (PM/Architect/QA/UX/Analyst) + Codex review. (Business/trust success criteria — demo→usable, zero settle-up disputes — are validated *outcomes*, not FRs; correctness criteria map to the NFRs.)
+
+### A. Rule-Set Authoring & Preset Library
+- FR1: An organizer can create an event's rule set by starting from a preset (never blank-slate).
+- FR2: An organizer can enable/disable each modifier (net-birdie point, polie, sandie, greenie) and choose its variant (e.g. sandie = up-and-down for par vs any score; greenie carryover on/off).
+- FR3: An organizer can set a game's point value as flat ($/pt) or a segmented schedule (e.g. $5 front / $10 back); segments map to holes explicitly (front 1–9 / back 10–18), defined for 9-hole rounds and the round's play sequence (golden-tested at the boundary, R5).
+- FR4: An organizer can set a payout cap and how a capped payout resolves (e.g. "345" — $3/pt, $45 max).
+- FR5: An organizer can configure team games at two MVP scopes — the **intra-foursome 2v2** (foursome-internal money) and an **event-level pot/standing** (e.g. best-ball-vs-par winner-take-all, aggregated across teams). Direct **cross-foursome head-to-head money** is FR22/FR25 (Product B).
+- FR6: An organizer can name and save a rule set as a reusable preset.
+- FR7: The system maintains a selectable preset library (Standard Guyan, Wolf-Cup variant, "345").
+
+### B. Configuration Cascade & Lock
+- FR8: An organizer can set an event-wide default rule set that rounds/foursomes inherit.
+- FR9: An organizer can override the rule set / team game at the round level.
+- FR10: An organizer can lock/unlock foursome configuration with a single toggle.
+- FR11: In a locked event, a foursome plays inherited rules with zero config taps.
+- FR12: The system resolves active config for any (event, round, foursome), most-specific-wins, gated by lock state.
+- FR13 **(B)**: When unlocked, a joined foursome member can adjust their own foursome's game via preset + named-modifier toggles (recognition-not-recall).
+- FR14 **(B)**: A foursome's config locks once its round starts.
+
+### C. Score & Claim Capture (the Guyan inputs)
+- FR15: A scorer can enter each player's gross score per hole.
+- FR16 🆕: The round's **scorer** records per-player, per-hole **greenie / polie / sandie** claims. Claims are **accepted as entered** — the system does NOT validate eligibility (e.g. greenie-only-on-par-3) in v1; correctness is the group's (trust + audit). Claims inherit scores' single-writer + offline-dedup contract; player self-report deferred (B).
+- FR17 🆕: All scores and claims attach to the **individual player** (atomic unit), independent of team/foursome — re-teaming recomputes with no re-entry.
+- FR18: A scorer can record putts per player per hole (for putting-based games).
+- FR19: Score/claim entry works offline and reconciles on reconnect.
+- FR39 🆕: A scorer can **edit or remove** a previously recorded greenie/polie/sandie claim on a non-finalized round.
+
+### D. Teams
+- FR20 🆕: An organizer can form teams from the roster via **manual, random, or high-low handicap-index (A/B)** selection.
+- FR21 🆕: A team is a late-bound composition of players; changing membership recomputes dependent games/money with no re-entry.
+- FR22 🆕 **(B)**: A team/matchup can span foursomes (cross-group), not only within one foursome.
+
+### E. Money Settlement Engine
+- FR23: The system computes each foursome's ledger from *its own* players' scores + claims + resolved config (structural foursome-internal isolation).
+- FR24: The system settles the Guyan game (low-ball / team-total / net-birdie points / modifiers) into **real money**, per round and per event.
+- FR25 🆕 **(B)**: The system settles cross-group team games as **player-to-player SettlementEdges** — a distinct path that never reads another foursome's config (preserves FR23 isolation) and feeds the one shared settle-up.
+- FR26: Capped games never exceed the cap; a combined ledger and its splits always sum to the identical total (loss-less, no double-pay).
+- FR27: Net-scoring games compute net from the event's **locked, slope-aware course handicap**, applied consistently across every game (no per-game handicap divergence).
+- FR28: Every participant in a game appears in the settle-up with their net position. (Non-playing **backers** are a betting / "The Action" concept — already shipped — not F1.)
+- FR40 🆕: The system supports **stateful modifiers** whose outcome carries across holes (e.g. greenie carryover when unclaimed) — golden-tested incl. carryover onto a non-par-3.
+- FR42 🆕: Every game resolves **ties / pushes / halves deterministically** per its configured rule (hole halved, point split or none, or carryover) — golden-tested.
+- FR44 🆕: When required data is missing or untrustworthy (no handicap, DNF/pickup, incomplete holes), a game **fails closed** — marked unsettleable and surfaced for organizer resolution — never settled on a guess.
+
+### F. Edit, Recompute & Provenance
+- FR29: A scored round pins **both the config revision AND the team composition** it was computed under — later rule edits or re-teaming (FR21) don't change a past round's money; a new round uses the new config/teams.
+- FR30: An organizer can apply a **correction** to a non-finalized round (recomputes the whole round).
+- FR31: An organizer can apply a **forward-effective** rule change mid-round (from a given hole).
+- FR32: The system refuses money-changing edits to a finalized round (frozen), with an explanation; changing it needs an audited un-finalize.
+- FR33: A correction surfaces a diff/notice to affected participants (nothing changes silently).
+- FR43 🆕: An organizer can **finalize** a round (freezes its money) and **un-finalize** it (audited) to re-enable corrections.
+- FR45 🆕: Every money-affecting input or edit (score, claim, config change, finalize/un-finalize) is **audit-logged** with actor + timestamp.
+
+### G. Standings, Visibility & Migration
+- FR34: A viewer sees money/P&L mode when locked, scores-only (+ private My Money) when unlocked, with a mode signpost. Money/P&L is **audience-bounded to roster members of the group** (non-roster / cross-group viewers never see dollar figures — FR36).
+- FR35: Every foursome can read a plain-language summary of its active rules (intent visibility).
+- FR41 🆕: A viewer can see a **per-hole money/points breakdown** for a player/foursome (which scores + claims paid what) — intent-visibility + the leaderboard drill-down.
+- FR36 **(note)**: Money is never public — group-bounded money vs performance-only stats stay structurally separable.
+- FR37: An organizer can adopt the new config model with existing events untouched (additive); a migrated event's money is byte-identical old-vs-new before cutover.
+- FR38: The Rules & Games setup flow reminds the organizer to lock handicaps as-of a date (cross-ref H1).
+
+## Non-Functional Requirements
+
+> **Selective** — only attributes that matter for a real-money golf engine on a private PWA. **Scalability and heavy compliance are intentionally omitted** (small private group; cash settle-up is off-app; no regulated data). Validated via Party Mode (Architect/QA/UX/Analyst/Dev) + Codex review. The defining attribute is **money correctness**.
+
+### Correctness & Money Integrity *(defining attribute)*
+- NFR-C1: Every game type + modifier ships a **golden-file fixture matching hand-calculation**; settlement is byte-identical to the fixture (engine definition-of-done).
+- NFR-C2: Money is computed in **integer cents by pure functions** of (scores + claims + config); no floats; identical inputs → identical output.
+- NFR-C3: **Property/fuzz invariants** hold for all configs (foursome isolation, loss-less decomposition `sum(splits)==combined`, cap-never-exceeds) — via `fast-check`.
+- NFR-C4: **Adversarial fixtures** pass — greenie carryover→non-par-3, cap-on-boundary, all-push hole, plus-handicap, segmented front/back boundary.
+- NFR-C5: **Zero money mutations on finalized rounds** (recompute only on non-finalized).
+- NFR-C6: Settlement output is **order-independent** — invariant to map/iteration/insertion/sort order (stable sorts); property-tested. *(Closes the alphabetical-teams / runtime-round-pick bug class.)*
+- NFR-C7: **Rounding/remainder is explicit and deterministic** — splits and capped payouts allocate leftover pennies by a fixed rule; the total is always conserved (no penny created or lost), property-tested alongside loss-less decomposition (C3).
+- NFR-C8: **Time-based decisions use a well-defined clock/timezone** — handicap as-of dates resolve against dated GHIN history (H1, proven), and round start / finalize / forward-effective-hole timing are unambiguous across timezones.
+- *(Note: C1 happy-path goldens and C4 adversarial goldens are complementary; C2 purity/no-float and C6 order-independence are complementary — not redundant.)*
+
+### Auditability & Traceability
+- NFR-T1: Every settled dollar is **traceable** to the scores + claims + config that produced it; the per-hole breakdown (FR41) reconciles exactly to round + event totals. No unexplainable money.
+
+### Durability
+- NFR-D1: Money-relevant history is **never overwritten** — pinned config + team revisions (FR29) and append-only pairings persist; a re-pair or rule edit never destroys a prior round's provenance.
+- NFR-D2: Money-affecting writes are **atomic** — a settlement, or a score/claim/config mutation that touches multiple rows, commits all-or-nothing; a partial failure leaves no half-applied money (single transaction, inherits the betting tx discipline).
+- NFR-D3: Money-relevant data is **backed up on a regular cadence and recoverable**; because money is recomputed (pure) from durable inputs (scores + claims + config + pairings), it is fully **reconstructable from those inputs** after a restore (no separate money-state to lose).
+
+### Migration Safety
+- NFR-M1: Existing events untouched (additive dual-read); backfilled events pass an **automated, CI-runnable** byte-identical old-vs-new money comparison before cutover; reversible.
+
+### Performance
+- NFR-P1: Score/claim entry echoes input within ~100ms on a mid-tier phone; a hole save commits + advances without blocking the next entry.
+- NFR-P2: Leaderboard / money standings render **<2s warm**; recompute-on-score-commit doesn't degrade entry responsiveness.
+
+### Reliability & Offline
+- NFR-R1: Score/claim entry works **fully offline** and reconciles deterministically on reconnect (idempotent via clientEventId — no double-write, no loss).
+- NFR-R2: **Correction-recompute correctness is an automated test gate.** (Field "recompute correct in the wild" is tracked as a success signal, not a CI gate.)
+- NFR-R3: **Concurrency is safe** — concurrent scoring across different foursomes is independent (no cross-foursome corruption); within a foursome, single-writer + idempotent clientEventId dedup prevents conflicts; a config edit during scoring resolves via the edit-semantics (correction / forward-effective / frozen), never a silent overwrite.
+
+### Observability & Error Surfacing
+- NFR-O1: **Fail-closed / unsettleable games (FR44) and recompute failures are surfaced to the organizer** (never silent) and logged with enough context to diagnose — a game that can't be graded is visible, not silently missing from the money.
+
+### Security & Privacy
+- NFR-S1: Money/P&L is visible only to **authenticated roster members of the group**; non-roster / cross-group never receive dollar figures (structurally separable from performance-only stats).
+- NFR-S2: Money mutations (config/score/claim/finalize) require an **authenticated session** (Google OAuth or the H1 device-binding bridge — the accepted participant identity-assurance level), are **CSRF-protected**, **role-authorized** (organizer routes; Product-B player routes gated by unlock + foursome membership + round-not-started), and **audit-logged with the actor**.
+
+### Maintainability & Extensibility
+- NFR-X1: A new modifier/game type = **data + one pure resolver** (registry) — no schema or UI rewrite.
+- NFR-X2: **Zero Wolf Cup regressions**; the tournament + engine + wolf-cup suites stay green (CI gate).
+- NFR-X3: Net scoring reuses the **single existing slope-aware allocation** (no duplicate handicap math).
+
+### Accessibility & On-Course Usability
+- NFR-A1: On-course UI meets the shipped floor — ≥44–48px tap targets, 16px input (no iOS zoom), AA sunlight contrast, one-handed phone use.
+- NFR-A2: **Zero-math invariant** — config is paid once at setup; a locked foursome plays with **0 config taps** on course.
+- NFR-A3: In an observed session, a non-technical player reads the active-rules summary (FR35) and correctly states their game **without help**; claim capture lives inside the score-entry flow (no second screen).
