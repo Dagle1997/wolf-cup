@@ -90,8 +90,42 @@ endpoint. Port both (add `GET /api/version` to tournament-api + the banner to to
 
 ### Bug verdicts
 - **Regenerate unpinned "does nothing":** code IS fully wired (real mutation → `/pairings/suggest`,
-  `pairings.tsx:522` + handler `261`). Likely the stale undeployed build OR all pairings pinned
-  (nothing to regen). **Needs a live repro on the current build before calling it a bug.**
+  `pairings.tsx:522` + handler `261`); identical on prod. NOT a deploy gap → likely all-pairings-pinned
+  or no-visible-change. Becomes moot once W6 (locked teams) reworks it.
+
+## 🟣 Wolf-parity in-round experience (scoped 2026-06-21 via 3 Explore audits)
+Goal: make Tournament's in-round UX match Wolf Cup's. Effort/verdict per item.
+
+- **W1. Score entry — copy Wolf's screen, minus the Wolf section.** UI-ONLY port (~1 day). Wolf
+  `apps/web/src/routes/score-entry-hole.tsx` 2-col card grid + hole dots + focus progression; OMIT the
+  Wolf partner-pick (lines 1191–1300) + Greenie/Polie/Sandie bonus block (1114–1189) + wolf schedule.
+  Tournament's `rounds.$roundId.score-entry.tsx` already has the same endpoints, offline queue, iOS
+  keyboard fix. **Team tab-adjacency ALREADY HOLDS** — members render in slot order (1,2,3,4 =
+  teammate,teammate,opp,opp); no change needed.
+- **W2. Leaderboard player-detail drill-down.** NEW BUILD (~1–2 days). Today
+  `events.$eventId.leaderboard.tsx` rows aren't clickable + there's NO per-player per-hole scorecard.
+  Need: (a) expandable rows, (b) new `GET /api/.../players/:playerId/scorecard` (per-hole gross/net/
+  stableford/bonuses), (c) a ScorecardPanel (port Wolf `index.tsx:214–519`, drop the wolf row). Also
+  noted: a per-round dropdown (replace the 2-option toggle) needs an event-rounds list endpoint.
+- **W3. Team-score displays.** Member-guest = DONE (`team-standings.tsx` best-ball-vs-par +
+  `match-play-standings.tsx`). **Sub-game team scores = BLOCKED on F1** (only Skins built;
+  CTP/Sandies/Putting are v1.5 stubs that 501). Build the sub-games first.
+- **W4. Gallery — pull Wolf's recent streamlined change. ✅ BUILT 2026-06-21 (branch).** Ported the
+  Wolf streamlined flow: separate Camera (capture, one-shot) + Library (multi) buttons, a background
+  upload queue (keep shooting while uploads run), and the one-tap "Take another" loop. Kept
+  Tournament's lightbox + organizer delete. **Trip vs round gallery:** confirmed the API already does
+  the right thing — no active round + no roundId → `round_id` NULL → lands in the **"Trip photos"**
+  section (renamed from "Other photos"); NO error (Wolf Cup errors here, Tournament doesn't). Backend
+  unchanged (R2). Gallery test 9 ✓.
+- **W5. New-joiner nav.** MOSTLY ALREADY WORKS. No attendance page (by design — one-off trip).
+  Event-home has Leaderboard/Bets/Team Standings/Match Play/Money/Settle-up/Gallery + a live-round CTA;
+  leaderboard renders with no active round. Verify by joining via code on prod. Optional: trim the
+  9-card grid toward Leaderboard/Bets/Standings emphasis.
+- **W6. Regenerate with LOCKED TEAMS + random group assignment.** NEW FEATURE (~30–40h). = the F2
+  global/persistent-teams item. Pin model is per-player-per-cell (no pair concept); engine
+  (`engine/pairings/suggest.ts`) is team-agnostic. Needs a persisted teams model + engine changes
+  (treat 2-man teams as atomic blocks, random foursome placement) + UI. **Design spike first.** Ties to
+  the F1 player-centric model. Decision: full build vs a narrow v1 (lock pairs to slots, manual shuffle).
 
 ## 🔴 Setup blockers (in progress — building now)
 

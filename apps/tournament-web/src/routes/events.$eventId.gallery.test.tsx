@@ -93,7 +93,7 @@ describe('GalleryPage', () => {
     // and not in the accessibility tree (intentional — we don't want the
     // image elements announced as standalone content).
     expect(screen.getByRole('heading', { name: /Round 1/ })).toBeInTheDocument();
-    expect(screen.getByText('Other photos')).toBeInTheDocument();
+    expect(screen.getByText('Trip photos')).toBeInTheDocument();
     expect(container.querySelectorAll('img').length).toBe(3);
   });
 
@@ -108,7 +108,7 @@ describe('GalleryPage', () => {
     await waitFor(() => {
       expect(screen.getByText('No photos yet')).toBeInTheDocument();
     });
-    expect(screen.getByText(/camera button to add the first photo/i)).toBeInTheDocument();
+    expect(screen.getByText(/add the first photo/i)).toBeInTheDocument();
   });
 
   it('renders forbidden state on 403', async () => {
@@ -175,7 +175,7 @@ describe('GalleryPage', () => {
     expect(screen.getByText(/Delete this photo\?/i)).toBeInTheDocument();
   });
 
-  it('FAB triggers hidden file input', async () => {
+  it('Camera button triggers the camera input; Library button the library input', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify(EMPTY_FIXTURE), {
         status: 200,
@@ -186,10 +186,43 @@ describe('GalleryPage', () => {
     await waitFor(() => {
       expect(screen.getByText('No photos yet')).toBeInTheDocument();
     });
-    const input = screen.getByTestId('gallery-file-input') as HTMLInputElement;
-    const clickSpy = vi.spyOn(input, 'click');
-    fireEvent.click(screen.getByRole('button', { name: /Upload photos/i }));
-    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const cameraInput = screen.getByTestId('gallery-file-input') as HTMLInputElement;
+    const libraryInput = screen.getByTestId('gallery-library-input') as HTMLInputElement;
+    const cameraSpy = vi.spyOn(cameraInput, 'click');
+    const librarySpy = vi.spyOn(libraryInput, 'click');
+    fireEvent.click(screen.getByTestId('gallery-camera-btn'));
+    expect(cameraSpy).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('gallery-library-btn'));
+    expect(librarySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('camera shot reveals the one-tap "Take another" affordance', async () => {
+    let getCalls = 0;
+    vi.mocked(fetch).mockImplementation(async (url, init) => {
+      const u = String(url);
+      const method = init?.method ?? 'GET';
+      if (u.endsWith('/gallery') && method === 'GET') {
+        getCalls += 1;
+        return new Response(JSON.stringify(EMPTY_FIXTURE), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (u.endsWith('/gallery') && method === 'POST') {
+        return new Response(JSON.stringify({ id: 'new', roundId: null, signedUrl: 'x' }), { status: 200 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    renderPage({ eventId: 'evt-1', isOrganizer: false });
+    await waitFor(() => expect(screen.getByText('No photos yet')).toBeInTheDocument());
+
+    const cameraInput = screen.getByTestId('gallery-file-input') as HTMLInputElement;
+    const shot = new File([new Uint8Array([1])], 'shot.jpg', { type: 'image/jpeg' });
+    fireEvent.change(cameraInput, { target: { files: [shot] } });
+
+    // "Take another" appears after a camera shot and stays until Done.
+    await waitFor(() => expect(screen.getByTestId('gallery-take-another')).toBeInTheDocument());
+    expect(getCalls).toBeGreaterThanOrEqual(2); // initial + per-upload invalidate
   });
 
   it('sequential upload: progress text + per-file failure banner', async () => {

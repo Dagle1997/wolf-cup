@@ -24,6 +24,7 @@ import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
+import { Button } from '../components/button';
 import { useMarkMutation } from '../hooks/use-first-mutation';
 
 // ---- Auth-status loader (mirror T7-1) ------------------------------------
@@ -65,7 +66,9 @@ async function fetchGallery(eventId: string): Promise<FetchOutcome> {
 // ---- Helpers --------------------------------------------------------------
 
 function groupLabel(group: Group): string {
-  if (group.roundId === null) return 'Other photos';
+  // A photo with no round (taken when no round was active) is a TRIP photo;
+  // per-round photos group under their round. Two galleries, one page.
+  if (group.roundId === null) return 'Trip photos';
   if (group.roundNumber !== null) return `Round ${group.roundNumber}`;
   return 'Round';
 }
@@ -84,8 +87,16 @@ export type GalleryPageProps = {
 export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
   const qc = useQueryClient();
   const markMutation = useMarkMutation();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement | null>(null);
+  // Background upload queue (Wolf Cup streamlined pattern): each photo uploads
+  // one-at-a-time so you can keep shooting while earlier shots upload. No
+  // caption/confirm tap — selecting fires the upload; `cameraActive` reveals the
+  // one-tap "Take another" affordance after a camera shot.
+  const queueRef = useRef<File[]>([]);
+  const drainingRef = useRef(false);
+  const [uploading, setUploading] = useState(0);
+  const [cameraActive, setCameraActive] = useState(false);
   const [uploadErrors, setUploadErrors] = useState<
     Array<{ filename: string; reason: string }>
   >([]);
@@ -112,8 +123,11 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
     },
   });
 
-  function openPicker() {
-    fileInputRef.current?.click();
+  function openCamera() {
+    cameraInputRef.current?.click();
+  }
+  function openLibrary() {
+    libraryInputRef.current?.click();
   }
 
   async function uploadOne(file: File): Promise<void> {
@@ -136,26 +150,47 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
     markMutation();
   }
 
-  async function handleFilesSelected(files: FileList | null) {
-    if (!files || files.length === 0) return;
-    const list = Array.from(files);
-    setUploadErrors([]);
-    setProgress({ current: 0, total: list.length });
-
+  // Drain the queue one file at a time; each lands in the grid as it completes
+  // (per-photo invalidate). Per-file failures accumulate into the banner.
+  async function drainQueue() {
+    if (drainingRef.current) return;
+    drainingRef.current = true;
     const errs: Array<{ filename: string; reason: string }> = [];
-    for (let i = 0; i < list.length; i++) {
-      setProgress({ current: i + 1, total: list.length });
+    while (queueRef.current.length > 0) {
+      const file = queueRef.current.shift()!;
+      setUploading(queueRef.current.length + 1); // queued + this one in flight
       try {
-        await uploadOne(list[i]!);
+        await uploadOne(file);
+        await qc.invalidateQueries({ queryKey: ['gallery', eventId] });
       } catch (e) {
-        const reason = e instanceof Error ? e.message : String(e);
-        errs.push({ filename: list[i]!.name, reason });
+        errs.push({ filename: file.name, reason: e instanceof Error ? e.message : String(e) });
       }
     }
-    setProgress(null);
-    setUploadErrors(errs);
-    await qc.invalidateQueries({ queryKey: ['gallery', eventId] });
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    drainingRef.current = false;
+    setUploading(0);
+    if (errs.length > 0) setUploadErrors((prev) => [...prev, ...errs]);
+  }
+
+  function enqueue(files: File[]) {
+    if (files.length === 0) return;
+    setUploadErrors([]);
+    queueRef.current.push(...files);
+    setUploading(queueRef.current.length);
+    void drainQueue();
+  }
+
+  function handleCameraSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.currentTarget.files;
+    if (files && files.length > 0) {
+      enqueue(Array.from(files));
+      setCameraActive(true); // keep the "Take another" path visible
+    }
+    e.currentTarget.value = ''; // allow re-capture of an identical frame
+  }
+  function handleLibrarySelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.currentTarget.files;
+    if (files && files.length > 0) enqueue(Array.from(files));
+    e.currentTarget.value = '';
   }
 
   if (query.isPending) {
@@ -197,25 +232,51 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
   return (
     <PageShell title="Gallery">
       <BackLink to="/events/$eventId" params={{ eventId }} />
-      <div style={{ paddingBottom: 96 }}>
-      <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: 12 }}>
+      <div style={{ paddingBottom: 24 }}>
+      <div style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', marginBottom: 'var(--space-3)' }}>
         {count === 0
           ? 'No photos yet'
           : `${count} photo${count === 1 ? '' : 's'}`}
       </div>
 
-      {progress && (
+      {/* Camera-direct (one shot) + Library (multi-select). Both feed the
+          background queue so you can keep shooting while uploads run. */}
+      <div className="actions-row" style={{ marginBottom: 'var(--space-3)' }}>
+        <Button data-testid="gallery-camera-btn" onClick={openCamera}>
+          📷 Camera
+        </Button>
+        <Button variant="secondary" data-testid="gallery-library-btn" onClick={openLibrary}>
+          🖼 Library
+        </Button>
+      </div>
+
+      {(uploading > 0 || cameraActive) && (
         <div
           role="status"
           aria-live="polite"
           style={{
-            marginBottom: 12,
-            padding: '8px 12px',
+            marginBottom: 'var(--space-3)',
+            padding: 'var(--space-2) var(--space-3)',
             background: 'var(--color-brand-tint)',
-            borderRadius: 6,
+            borderRadius: 'var(--radius-md)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
           }}
         >
-          Uploading {progress.current} of {progress.total}…
+          <span style={{ flex: 1 }}>
+            {uploading > 0 ? `Uploading ${uploading} photo${uploading > 1 ? 's' : ''}…` : 'Uploaded'}
+          </span>
+          {cameraActive && (
+            <span className="actions-row">
+              <Button data-testid="gallery-take-another" onClick={openCamera}>
+                Take another
+              </Button>
+              <Button variant="secondary" onClick={() => setCameraActive(false)}>
+                Done
+              </Button>
+            </span>
+          )}
         </div>
       )}
 
@@ -250,8 +311,8 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
         </div>
       )}
 
-      {groups.length === 0 && !progress && (
-        <EmptyState icon="📸" title="Tap the camera button to add the first photo." />
+      {groups.length === 0 && uploading === 0 && (
+        <EmptyState icon="📸" title="Tap Camera or Library to add the first photo." />
       )}
 
       {groups.map((g) => (
@@ -341,40 +402,26 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
         </section>
       ))}
 
-      {/* Hidden file input — triggered by FAB. */}
+      {/* Camera → straight to the camera (one shot per tap on iOS). */}
       <input
-        ref={fileInputRef}
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
-        multiple
         style={{ display: 'none' }}
-        onChange={(e) => void handleFilesSelected(e.currentTarget.files)}
+        onChange={handleCameraSelect}
         data-testid="gallery-file-input"
       />
-
-      {/* Floating action button (camera). */}
-      <button
-        type="button"
-        onClick={openPicker}
-        aria-label="Upload photos"
-        style={{
-          position: 'fixed',
-          right: 16,
-          bottom: 16,
-          width: 56,
-          height: 56,
-          borderRadius: '50%',
-          border: 0,
-          background: 'var(--color-money-pos)',
-          color: '#fff',
-          fontSize: '1.5rem',
-          cursor: 'pointer',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-        }}
-      >
-        📷
-      </button>
+      {/* Library → pick existing photos, multi-select. */}
+      <input
+        ref={libraryInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{ display: 'none' }}
+        onChange={handleLibrarySelect}
+        data-testid="gallery-library-input"
+      />
 
       {/* Lightbox. */}
       {lightbox && (
