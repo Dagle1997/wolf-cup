@@ -59,11 +59,11 @@ Drafted Epics 2–6 (Epic 1 was already storied), then ran an **automated per-ep
 ## Tooling notes
 - Review MCP servers verified working this session: `codex_review` + `gemini_review` (`review_code` / `critique_review` / `synthesize_reviews`). After any restart, re-confirm they load via `ToolSearch "select:mcp__gemini_review__review_code,mcp__codex_review__review_code"`.
 - **GOTCHA:** the epics file is **>100KB** → the director MCP truncates at `max_chars_per_file: 100000`. To review a later section, **extract it to a temp file** (e.g. `sed -n '1,188p' + the target epic`) and point the reviewer at that. Cross-critique stages were skipped each epic (codex+gemini never disagreed materially).
-- `.mcp.json`, `scripts/gemini-review-mcp/`, `scripts/codex-review-mcp/server.mjs` are this session's tooling changes — **uncommitted**, in the shared working tree.
+- `.mcp.json`, `scripts/gemini-review-mcp/`, `scripts/codex-review-mcp/server.mjs` tooling is now **COMMITTED** (2026-06-21: `f133758` code + `5573666` `.mcp.json` registration). No longer uncommitted.
 
 ## Git / file state
 - **Committed `cc11650` (master, NOT pushed):** `epics-f1-rules-games.md`, `HANDOFF-f1-epics.md`, + 15 `*f1-epic*` review files (17 files, 2204 insertions). Planning-only — **no app code, nothing deployed.**
-- **Shared working tree — another instance has uncommitted changes** (`.mcp.json`, `scripts/codex-review-mcp/server.mjs` modified; `scripts/gemini-review-mcp/`, `apps/tournament-web/e2e/screenshots.spec.ts`, `_bmad-output/scouting-group-aware-money-proposal.md`, the Pete Dye PDF, the `.bak` untracked). **When you commit, stage F1 paths EXPLICITLY — never `git add -A`.**
+- **Working tree CLEAN as of 2026-06-21.** The previously-uncommitted shared-tree changes (the "other instance" warning) were ORPHANED work from now-closed sessions — Josh confirmed no other instance is open. All captured in 3 cleanup commits: `f133758` (tooling code), `c63481d` (parked drops: screenshots spec, scouting proposal, Pete Dye PDF), `5573666` (`.mcp.json`). The `.bak` was deleted. **Start Story 1.1 directly on a clean tree.** Still: stage F1 paths EXPLICITLY at commit time — never `git add -A`.
 - This handoff (`HANDOFF-f1-build.md`) committed alongside (see the follow-up commit).
 
 ## Open / non-blocking (flag to Josh at build time)
