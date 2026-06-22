@@ -603,3 +603,24 @@ development_status:
   # F1 engine, never both. Money = recompute-on-read. Carries fallback split
   # 1.4a/1.4b if it stalls (see epics file).
   1-4-settle-f1-event-into-pairwise-settle-up: done
+
+  # ---------------------------------------------------------------------------
+  # Epic 2: The Full Game Vocabulary — modifiers, variants, templates & caps
+  # Registered 2026-06-21 after Epic 1 complete + retro. Source of truth:
+  # epics-f1-rules-games.md (Story 2.1-2.8). Golden-bearing stories (hand-calc
+  # Josh-approves at build): 2.2, 2.3, 2.4, 2.5, 2.6, 2.8. NOTE (Epic 1 retro
+  # lesson): front-load fail-closed/edge tests into each spec; never delegate
+  # the money-safety review. 2.5 (gross/natural birdie) + 2.6 (cap) are
+  # money-bearing. 2.8 is the Wolf-Cup cross-validation golden (output-only,
+  # never imports Wolf Cup — FD-1/FD-2).
+  # ---------------------------------------------------------------------------
+  epic-2: backlog
+
+  2-1-inline-claim-capture-hole-claims: backlog
+  2-2-greenie-modifier-stateful-carryover: backlog
+  2-3-polie-modifier: backlog
+  2-4-sandie-modifier-par-vs-any-score-variant: backlog
+  2-5-birdie-modifier-generalized-net-gross-single-double: backlog
+  2-6-payout-cap-345-cap-never-exceeds: backlog
+  2-7-rules-page-template-picker-save-preset: backlog
+  2-8-comparison-harness-wolf-cup-cross-validation-golden: backlog
