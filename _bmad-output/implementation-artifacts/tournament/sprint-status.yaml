@@ -638,7 +638,7 @@ development_status:
   # plumbing edits reverted to keep 2-1a's commit clean). Resumes after 2-1a so the
   # greenie golden lands against whole-dollar 1-to-1 edges. On resume: spec is done
   # + approved (skip create-story + spec-gate) -> implement directly.
-  2-2-greenie-modifier-stateful-carryover: backlog
+  2-2-greenie-modifier-stateful-carryover: ready-for-dev
   2-3-polie-modifier: backlog
   2-4-sandie-modifier-par-vs-any-score-variant: backlog
   2-5-birdie-modifier-generalized-net-gross-single-double: backlog
