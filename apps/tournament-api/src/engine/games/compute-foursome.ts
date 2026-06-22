@@ -9,6 +9,7 @@
 import type { FoursomeInput, GameConfig, Ledger } from './types.js';
 import { holeNetPointsA, pointValueCents } from './games/guyan-2v2.js';
 import { greenieFold } from './modifiers/greenie.js';
+import { polieActive, poliePoints } from './modifiers/polie.js';
 import { validateResolvedConfig } from './registry.js';
 
 export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledger {
@@ -51,6 +52,12 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
   // pts*(pv/2) split path is NOT forked — greenie only changes `pts`.
   const { pointsByHole } = greenieFold(config, holes, input.teamSplit);
 
+  // Polie (Story 2.3) — STATELESS per-hole claim points; hoist the active check
+  // out of the loop (find() once, not per hole). poliePoints reads the per-hole
+  // gross only when the bogey-or-better gate is on; base game + greenie ignore
+  // gross, so it is base-money-neutral.
+  const polieOn = polieActive(config);
+
   const members = [teamA[0], teamA[1], teamB[0], teamB[1]];
   for (const hole of holes) {
     // Complete-cell gate (INTENTIONAL, matches Wolf Cup best-ball-2v2 + the
@@ -62,7 +69,10 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
     // Base 2v2 points + this hole's greenie award (0 when none / deferred by the
     // fold barrier). Added BEFORE the pts===0 short-circuit so a hole won on the
     // greenie alone still settles, valued at this hole's point value.
-    const pts = holeNetPointsA(hole, teamA, teamB, config) + (pointsByHole.get(hole.holeNumber) ?? 0);
+    const pts =
+      holeNetPointsA(hole, teamA, teamB, config) +
+      (pointsByHole.get(hole.holeNumber) ?? 0) +
+      (polieOn ? poliePoints(hole, teamA, teamB, config) : 0);
     if (pts === 0) continue;
 
     const pv = pointValueCents(config.pointValueSchedule, hole.holeNumber);

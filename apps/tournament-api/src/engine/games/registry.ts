@@ -33,9 +33,10 @@ export function registeredModifierTypes(): string[] {
   return [...modifierRegistry].sort();
 }
 
-// Story 1.1 registers net-skins; Story 2.2 registers greenie.
+// Story 1.1 registers net-skins; Story 2.2 registers greenie; Story 2.3 registers polie.
 registerModifier('net-skins');
 registerModifier('greenie');
+registerModifier('polie');
 
 export type Validation = { ok: true } | { ok: false; reason: string };
 
@@ -125,6 +126,10 @@ export function validateResolvedConfig(config: GameConfig): Validation {
       if (m.variant?.carryover !== undefined) {
         return { ok: false, reason: `unsupported_net_skins_variant:carryover` };
       }
+      // polieBogeyOrBetter is a POLIE-only lever (Story 2.3) — reject on net-skins.
+      if (m.variant?.polieBogeyOrBetter !== undefined) {
+        return { ok: false, reason: `unsupported_net_skins_variant:polieBogeyOrBetter` };
+      }
     }
     // Story 2.2: greenie's ONLY lever is `carryover` (FR2). An enabled greenie
     // carrying a net-skins lever (basis/bonus) is a malformed config → fail
@@ -142,6 +147,33 @@ export function validateResolvedConfig(config: GameConfig): Validation {
       // compute the wrong money. Fail closed instead.
       if (m.variant?.carryover !== undefined && typeof m.variant.carryover !== 'boolean') {
         return { ok: false, reason: `unsupported_greenie_variant:carryover_type` };
+      }
+      // polieBogeyOrBetter is a POLIE-only lever (Story 2.3) — reject on greenie.
+      if (m.variant?.polieBogeyOrBetter !== undefined) {
+        return { ok: false, reason: `unsupported_greenie_variant:polieBogeyOrBetter` };
+      }
+    }
+    // Story 2.3: polie's ONLY lever is `polieBogeyOrBetter` (Y/N). An enabled
+    // polie carrying a net-skins/greenie lever (basis/bonus/carryover) is a
+    // malformed config → fail closed rather than silently ignore the stray key.
+    if (m.type === 'polie' && m.enabled) {
+      if (m.variant?.basis !== undefined) {
+        return { ok: false, reason: `unsupported_polie_variant:basis=${m.variant.basis}` };
+      }
+      if (m.variant?.bonus !== undefined) {
+        return { ok: false, reason: `unsupported_polie_variant:bonus=${m.variant.bonus}` };
+      }
+      if (m.variant?.carryover !== undefined) {
+        return { ok: false, reason: `unsupported_polie_variant:carryover` };
+      }
+      // Type-check polie's ONLY lever. computeFoursome relies on this guard for
+      // ANY direct caller (bypassing Zod); polieBogeyOrBetter's `?? false` would
+      // mis-interpret a non-boolean via JS truthiness. Fail closed instead.
+      if (
+        m.variant?.polieBogeyOrBetter !== undefined &&
+        typeof m.variant.polieBogeyOrBetter !== 'boolean'
+      ) {
+        return { ok: false, reason: `unsupported_polie_variant:polieBogeyOrBetter_type` };
       }
     }
   }

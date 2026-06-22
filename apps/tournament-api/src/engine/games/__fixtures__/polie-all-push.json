@@ -1,0 +1,28 @@
+{
+  "name": "Polie all-push hole (the orphaned NFR-C4 adversarial) — one hole where every player pushes (no base net winner) AND no polie is checked => pts=0 => the hole is skipped => EMPTY SettlementEdge[]. Not a crash, not a phantom split, not a zero-cent edge.",
+  "_contract": "Golden HAND-CALC fixture for the F1 polie modifier (Story 2.3) homing the NFR-C4 all-push case. base points 0 (all nets = par) + polie 0 (no claims) => per-hole pts = 0 => compute-foursome's `if (pts === 0) continue` skips it => no cross-cell money => empty edges. Proves no phantom money on a hole with no winner and no claim.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "flat", "cents": 500 },
+      "modifiers": [
+        { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } },
+        { "type": "polie", "enabled": true }
+      ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 1, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 } }
+    ],
+    "sourceId": "fixture-polie-all-push"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 0, "a2": 0, "b1": 0, "b2": 0 },
+    "edges": [],
+    "ledgerTotalCents": 0
+  },
+  "_handCalc": "One hole (par4), all nets = par => low-ball tie (0), skin 0, team-total tie (0), net-skins equal-level no-blood (0). No polie claims => polie 0. pts = 0 => hole skipped => no money moves. perPlayer all 0; edges = []; ledgerTotal = 0c. (NFR-C4: no winner + no claim => empty edges, never a phantom split.)"
+}

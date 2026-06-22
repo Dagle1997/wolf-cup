@@ -410,6 +410,11 @@ async function settleFoursome(
 
   try {
     const netByHole = new Map<number, Record<string, number>>();
+    // GROSS per hole (Story 2.3) — sourced DIRECTLY from the scorer's entered
+    // strokes, NOT reconstructed from net (net is relative/off-the-low and not
+    // invertible). Read ONLY by the polie bogey-or-better gate; base game +
+    // greenie ignore it (base-money-neutral).
+    const grossByHole = new Map<number, Record<string, number>>();
     for (const s of scoreRows) {
       const si = siByHole.get(s.holeNumber);
       if (si === undefined) continue; // hole outside holes-in-play (e.g. >holesToPlay)
@@ -420,6 +425,9 @@ async function settleFoursome(
       const cell = netByHole.get(s.holeNumber) ?? {};
       cell[s.playerId] = net;
       netByHole.set(s.holeNumber, cell);
+      const grossCell = grossByHole.get(s.holeNumber) ?? {};
+      grossCell[s.playerId] = s.grossStrokes;
+      grossByHole.set(s.holeNumber, grossCell);
     }
 
     // DENSE holes (Story 2.2, AC8): emit a row for EVERY in-play hole — the
@@ -441,7 +449,8 @@ async function settleFoursome(
         const hc = claimsByPlayerHole.get(playerId)?.get(holeNumber);
         if (hc !== undefined) holeClaims[playerId] = hc;
       }
-      holes.push({ holeNumber, par: parByHole.get(holeNumber) ?? 0, net, claims: holeClaims });
+      const gross = grossByHole.get(holeNumber) ?? {};
+      holes.push({ holeNumber, par: parByHole.get(holeNumber) ?? 0, net, gross, claims: holeClaims });
     }
 
     const foursomeInput: FoursomeInput = { teamSplit, holes };

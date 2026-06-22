@@ -16,23 +16,34 @@ const members = ['a1', 'a2', 'b1', 'b2'] as const;
  */
 function holeArb(holeNumber: number): fc.Arbitrary<HoleState> {
   const net = fc.integer({ min: 1, max: 9 });
+  const gross = fc.integer({ min: 1, max: 12 });
   const box = fc.boolean();
   return fc
     .record({
       par: fc.constantFrom(3, 4, 5),
       a1: net, a2: net, b1: net, b2: net,
-      ga1: box, ga2: box, gb1: box, gb2: box,
+      ga1: box, ga2: box, gb1: box, gb2: box, // greenie boxes (2.2)
+      pa1: box, pa2: box, pb1: box, pb2: box, // polie boxes (2.3)
+      xa1: gross, xa2: gross, xb1: gross, xb2: gross, // gross (2.3 — polie gate)
     })
     .map((r): HoleState => {
       const claims: Record<string, HoleClaims> = {};
-      if (r.ga1) claims['a1'] = { greenie: true };
-      if (r.ga2) claims['a2'] = { greenie: true };
-      if (r.gb1) claims['b1'] = { greenie: true };
-      if (r.gb2) claims['b2'] = { greenie: true };
+      const set = (p: string, k: 'greenie' | 'polie') => {
+        claims[p] = { ...(claims[p] ?? {}), [k]: true };
+      };
+      if (r.ga1) set('a1', 'greenie');
+      if (r.ga2) set('a2', 'greenie');
+      if (r.gb1) set('b1', 'greenie');
+      if (r.gb2) set('b2', 'greenie');
+      if (r.pa1) set('a1', 'polie');
+      if (r.pa2) set('a2', 'polie');
+      if (r.pb1) set('b1', 'polie');
+      if (r.pb2) set('b2', 'polie');
       return {
         holeNumber,
         par: r.par,
         net: { a1: r.a1, a2: r.a2, b1: r.b1, b2: r.b2 },
+        gross: { a1: r.xa1, a2: r.xa2, b1: r.xb1, b2: r.xb2 },
         claims,
       };
     });
@@ -49,11 +60,14 @@ const configArb: fc.Arbitrary<GameConfig> = fc
     netSkins: fc.boolean(),
     greenie: fc.boolean(),
     carryover: fc.boolean(),
+    polie: fc.boolean(),
+    polieGate: fc.boolean(),
   })
-  .map(({ dollars, netSkins, greenie, carryover }) => {
+  .map(({ dollars, netSkins, greenie, carryover, polie, polieGate }) => {
     const modifiers: Modifier[] = [];
     if (netSkins) modifiers.push({ type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } });
     if (greenie) modifiers.push({ type: 'greenie', enabled: true, variant: { carryover } });
+    if (polie) modifiers.push({ type: 'polie', enabled: true, variant: { polieBogeyOrBetter: polieGate } });
     return {
       game: 'guyan-2v2',
       pointValueSchedule: { kind: 'flat', cents: dollars * 100 } as const,
@@ -148,6 +162,70 @@ describe('guyan-2v2 engine — money-correctness invariants (fast-check)', () =>
 
         expect(lhs).toBe(rhs);
         expect(fold.finalCarryPoints).toBeGreaterThanOrEqual(0);
+      }),
+    );
+  });
+
+  // Polie additivity (Story 2.3, NFR-C3/C6). Non-tautological: LHS from the engine
+  // ledger, RHS re-derived independently from the raw inputs. Constrained to
+  // POLIE-ONLY config + FLAT PV + gate OFF + nets=par (base 0) so a single `cents`
+  // constant is exact and polie is the only money. Asserts ALL FOUR per-player
+  // cents (so a within-team misallocation can't hide) + shuffle invariance.
+  it('polie additivity (polie-only, flat PV, gate off, nets=par): perPlayer === cents * Σ(#A−#B), shuffle-invariant', () => {
+    const polieOnlyArb: fc.Arbitrary<GameConfig> = fc
+      .integer({ min: 1, max: 20 })
+      .map((dollars) => ({
+        game: 'guyan-2v2',
+        pointValueSchedule: { kind: 'flat', cents: dollars * 100 } as const,
+        modifiers: [{ type: 'polie', enabled: true, variant: { polieBogeyOrBetter: false } as const }],
+        lockState: 'locked' as const,
+        configVersion: 1,
+      }));
+
+    // par-fixed holes with nets=par (base 0) + random polie boxes; gross irrelevant (gate off).
+    function polieHoleArb(holeNumber: number): fc.Arbitrary<HoleState> {
+      const box = fc.boolean();
+      return fc
+        .record({ par: fc.constantFrom(3, 4, 5), pa1: box, pa2: box, pb1: box, pb2: box })
+        .map((r): HoleState => {
+          const claims: Record<string, HoleClaims> = {};
+          if (r.pa1) claims['a1'] = { polie: true };
+          if (r.pa2) claims['a2'] = { polie: true };
+          if (r.pb1) claims['b1'] = { polie: true };
+          if (r.pb2) claims['b2'] = { polie: true };
+          const par = r.par;
+          return { holeNumber, par, net: { a1: par, a2: par, b1: par, b2: par }, claims };
+        });
+    }
+    const polieInputArb = fc
+      .integer({ min: 1, max: 9 })
+      .chain((count) => fc.tuple(...Array.from({ length: count }, (_, i) => polieHoleArb(i + 1))))
+      .map((holes) => ({ teamSplit, holes }));
+
+    fc.assert(
+      fc.property(polieOnlyArb, polieInputArb, (config, input) => {
+        const cents = (config.pointValueSchedule as { kind: 'flat'; cents: number }).cents;
+        // RHS: independently summed signed polie points from the raw inputs.
+        let sum = 0;
+        for (const h of input.holes) {
+          const a = (h.claims?.['a1']?.polie === true ? 1 : 0) + (h.claims?.['a2']?.polie === true ? 1 : 0);
+          const b = (h.claims?.['b1']?.polie === true ? 1 : 0) + (h.claims?.['b2']?.polie === true ? 1 : 0);
+          sum += a - b;
+        }
+        const ledger = computeFoursome(config, input);
+        const expectedA = cents * sum;
+        // `-expectedA || 0` normalizes JS negative zero (−0) to +0 so toBe's
+        // Object.is comparison matches the engine's +0 when sum === 0.
+        const expectedB = -expectedA || 0;
+        expect(ledger.perPlayerCents['a1']).toBe(expectedA);
+        expect(ledger.perPlayerCents['a2']).toBe(expectedA);
+        expect(ledger.perPlayerCents['b1']).toBe(expectedB);
+        expect(ledger.perPlayerCents['b2']).toBe(expectedB);
+
+        // Shuffle invariance (stateless).
+        const reversed = computeFoursome(config, { ...input, holes: [...input.holes].reverse() });
+        expect(reversed.perPlayerCents).toEqual(ledger.perPlayerCents);
+        expect(reversed.cross).toEqual(ledger.cross);
       }),
     );
   });
