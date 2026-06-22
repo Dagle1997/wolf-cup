@@ -15,10 +15,11 @@ import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { eventRounds, events, rounds, roundStates } from '../db/schema/index.js';
+import { eventRounds, events, gameConfig, rounds, roundStates } from '../db/schema/index.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
+import { f1MoneyEnabled } from '../lib/env.js';
 import {
   computeLeaderboard,
   type LeaderboardOpts,
@@ -26,6 +27,43 @@ import {
 } from '../services/leaderboard.js';
 
 const TENANT_ID = 'guyan';
+
+/**
+ * F1 leaderboard MODE (Story 1.4, AC8). Resolves whether the event is F1 (an
+ * event-level game_config row) and its lock_state → the leaderboard money mode.
+ *   - locked   → money / P&L mode
+ *   - unlocked → scores-only + private My Money
+ * `moneyEnabled` mirrors the TOURNAMENT_F1_MONEY_ENABLED exposure gate; while
+ * off, the web surface shows "F1 money not yet enabled" rather than dollars.
+ */
+type F1LeaderboardMode = {
+  isF1: true;
+  lockState: 'locked' | 'unlocked';
+  mode: 'money' | 'scores_only';
+  moneyEnabled: boolean;
+} | { isF1: false };
+
+async function resolveF1Mode(eventId: string): Promise<F1LeaderboardMode> {
+  const rows = await db
+    .select({ lockState: gameConfig.lockState })
+    .from(gameConfig)
+    .where(
+      and(
+        eq(gameConfig.level, 'event'),
+        eq(gameConfig.refId, eventId),
+        eq(gameConfig.tenantId, TENANT_ID),
+      ),
+    )
+    .limit(1);
+  if (rows.length === 0) return { isF1: false };
+  const lockState = rows[0]!.lockState === 'unlocked' ? 'unlocked' : 'locked';
+  return {
+    isF1: true,
+    lockState,
+    mode: lockState === 'locked' ? 'money' : 'scores_only',
+    moneyEnabled: f1MoneyEnabled(),
+  };
+}
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type RoundSummary = {
@@ -40,6 +78,8 @@ type LeaderboardResponse = {
   round: RoundSummary | null;
   scope: 'round' | 'event';
   computedAt: string;
+  /** F1 leaderboard money mode (Story 1.4, AC8); omitted for non-F1 events. */
+  f1?: { lockState: 'locked' | 'unlocked'; mode: 'money' | 'scores_only'; moneyEnabled: boolean };
 };
 
 export const eventsLeaderboardRouter = new Hono();
@@ -85,11 +125,15 @@ eventsLeaderboardRouter.get(
       if (currentId === null) {
         // Event exists but has zero rounds yet. Per spec section 7,
         // return 200 with empty rows + null round.
+        const f1Mode = await resolveF1Mode(eventId);
         const response: LeaderboardResponse = {
           rows: [],
           round: null,
           scope: 'round',
           computedAt: new Date().toISOString(),
+          ...(f1Mode.isF1
+            ? { f1: { lockState: f1Mode.lockState, mode: f1Mode.mode, moneyEnabled: f1Mode.moneyEnabled } }
+            : {}),
         };
         return c.json(response, 200);
       }
@@ -132,11 +176,15 @@ eventsLeaderboardRouter.get(
         eventId,
         opts,
       );
+      const f1Mode = await resolveF1Mode(eventId);
       const response: LeaderboardResponse = {
         rows,
         round: resolvedRound,
         scope: opts.scope,
         computedAt: new Date().toISOString(),
+        ...(f1Mode.isF1
+          ? { f1: { lockState: f1Mode.lockState, mode: f1Mode.mode, moneyEnabled: f1Mode.moneyEnabled } }
+          : {}),
       };
       return c.json(response, 200);
     } catch (err) {

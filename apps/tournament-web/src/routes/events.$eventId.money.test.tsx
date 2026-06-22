@@ -114,6 +114,47 @@ describe('MoneyPage', () => {
   });
 });
 
+describe('MoneyPage — F1 (Story 1.4)', () => {
+  it('renders an explicit "not yet enabled" state when f1.exposed is false (AC10)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...MATRIX_FIXTURE,
+          f1: { isF1: true, lockState: 'locked', exposed: false, unsettleable: [] },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    renderWithQueryClient('evt-1', 'pA');
+    await waitFor(() => {
+      expect(screen.getByText(/money not yet enabled/i)).toBeInTheDocument();
+    });
+    // It must NOT render a silent-zero ledger that reads as "everyone's even".
+    expect(screen.queryByText(/Standings/)).not.toBeInTheDocument();
+  });
+
+  it('renders the fail-closed "Calculation paused" line for an unsettleable foursome (AC11)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...MATRIX_FIXTURE,
+          f1: {
+            isF1: true,
+            lockState: 'locked',
+            exposed: true,
+            unsettleable: [{ foursomeNumber: 2, reason: 'missing_handicap', detail: 'missing handicap for player X' }],
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    renderWithQueryClient('evt-1', 'pA');
+    await waitFor(() => {
+      expect(screen.getByText(/Calculation paused — unsettleable/i)).toBeInTheDocument();
+    });
+  });
+});
+
 describe('formatCents', () => {
   it('formats positive cents', () => {
     expect(formatCents(4700)).toBe('+$47.00');

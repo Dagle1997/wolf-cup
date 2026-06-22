@@ -43,6 +43,9 @@ export const AUDIT_EVENT_TYPES = {
   // F1 "Rules & Games" event-level game-config lifecycle (Story 1.3).
   GAME_CONFIG_SEEDED: 'game.config_seeded',
   GAME_CONFIG_UPDATED: 'game.config_updated',
+  // F1 round-pin written at round-start (Story 1.4) — the money-affecting input
+  // (resolved config + per-player CH + course-rev) frozen for the round (AC14).
+  ROUND_PINNED: 'round.pinned',
 } as const;
 
 export type AuditEventType =
@@ -59,6 +62,8 @@ export const AUDIT_ENTITY_TYPES = {
   DEVICE_BINDING: 'device_binding',
   // F1 game_config row (Story 1.3); entity_id = the game_config row id.
   GAME_CONFIG: 'game_config',
+  // F1 round-pin (Story 1.4); entity_id = the round id.
+  ROUND_PIN: 'round_pin',
 } as const;
 
 export type AuditEntityType =

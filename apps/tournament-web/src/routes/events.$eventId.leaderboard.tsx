@@ -35,6 +35,8 @@ type LeaderboardRow = {
   playerId: string;
   playerName: string;
   handicapIndex: number | null;
+  /** F1 (Story 1.4): pinned course handicap for an F1 round-scope read. */
+  courseHandicap?: number | null;
   grossThroughHole: number | null;
   netThroughHole: number | null;
   throughHole: number;
@@ -42,6 +44,13 @@ type LeaderboardRow = {
   tiedWith: number;
   /** T6-14: skins pot share across finalized rounds. Null until any finalize. */
   skinsCents: number | null;
+};
+
+/** F1 leaderboard money mode (Story 1.4, AC8). */
+type F1Mode = {
+  lockState: 'locked' | 'unlocked';
+  mode: 'money' | 'scores_only';
+  moneyEnabled: boolean;
 };
 
 type RoundSummary = {
@@ -56,6 +65,7 @@ type LeaderboardResponse = {
   round: RoundSummary | null;
   scope: 'round' | 'event';
   computedAt: string;
+  f1?: F1Mode;
 };
 
 type FetchOutcome =
@@ -239,6 +249,10 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   // Hide the Skins column entirely until a round finalizes and a share exists —
   // an all-dashes column is noise during live play.
   const showSkins = data.rows.some((r) => r.skinsCents !== null);
+  // F1 (Story 1.4): show the pinned Course-handicap column only when present
+  // (an F1 round-scope read). Mode signpost from the F1 metadata (AC8).
+  const showCH = data.rows.some((r) => r.courseHandicap != null);
+  const f1 = data.f1;
 
   return (
     <PageShell title="Leaderboard">
@@ -276,6 +290,36 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
         })}
       </div>
 
+      {/* F1 money-mode signpost (Story 1.4, AC8). A locked event is money/P&L
+          mode; an unlocked event is scores-only + private My Money. While F1
+          money is dark-launched (flag off), say so explicitly. */}
+      {f1 ? (
+        <div
+          data-testid="f1-mode-signpost"
+          style={{
+            marginBottom: 'var(--space-3)',
+            padding: 'var(--space-2) var(--space-3)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 'var(--font-sm)',
+            backgroundColor: 'var(--color-surface-sunken)',
+            color: 'var(--color-text-secondary)',
+          }}
+        >
+          {f1.mode === 'money' ? (
+            <>
+              <strong>Money mode</strong> — standings show real money. See{' '}
+              <Link to="/events/$eventId/money" params={{ eventId }}>the money board</Link>
+              {f1.moneyEnabled ? null : ' (money not yet enabled for this event).'}
+            </>
+          ) : (
+            <>
+              <strong>Scores only</strong> — this event is unlocked; money is private. See{' '}
+              <Link to="/events/$eventId/my-money" params={{ eventId }}>your own money</Link>.
+            </>
+          )}
+        </div>
+      ) : null}
+
       {/* Round header: name + status pill + foursome-results link. */}
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
         {data.round !== null ? (
@@ -311,6 +355,7 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
               <th scope="col">Rank</th>
               <th scope="col">Player</th>
               <th scope="col">HCP</th>
+              {showCH ? <th scope="col">CH</th> : null}
               <th scope="col">Thru</th>
               <th scope="col">Gross</th>
               <th scope="col">Net</th>
@@ -328,6 +373,7 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{rankBadge(row)}</td>
                   <td>{row.playerName}{isViewer ? ' (you)' : ''}</td>
                   <td>{formatHandicap(row.handicapIndex)}</td>
+                  {showCH ? <td>{row.courseHandicap != null ? String(row.courseHandicap) : '—'}</td> : null}
                   <td>{row.throughHole}</td>
                   <td>{formatScore(row.grossThroughHole)}</td>
                   <td>{formatScore(row.netThroughHole)}</td>

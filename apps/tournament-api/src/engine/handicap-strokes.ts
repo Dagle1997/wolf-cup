@@ -67,6 +67,40 @@ export function calcCourseHandicap(input: CalcCourseHandicapInput): number {
 }
 
 /**
+ * Per-hole handicap-stroke allocation FROM AN ALREADY-COMPUTED course handicap.
+ *
+ * This is the canonical allocation kernel: it does NOT compute (and never
+ * re-derives) a course handicap from a handicap index + tee — the CH is passed
+ * in. It exists so the F1 recompute-on-read path (Story 1.4) can allocate per
+ * hole from the PINNED course handicap (money-safety invariant: reads never
+ * call `calcCourseHandicap` / read a live HI). `getHandicapStrokes` below
+ * delegates here, so the base/extra split lives in exactly one place — this is
+ * NOT new allocation math, it is the existing formula reached via the CH
+ * directly.
+ *
+ * Plus-handicap clamp: returns 0 when CH ≤ 0 (AC-13(vii)).
+ */
+export function allocateStrokesFromCourseHandicap(
+  courseHandicap: number,
+  strokeIndex: number,
+): number {
+  if (!Number.isInteger(strokeIndex) || strokeIndex < 1 || strokeIndex > 18) {
+    throw new RangeError(
+      `allocateStrokesFromCourseHandicap: strokeIndex must be integer in [1, 18] (got ${strokeIndex})`,
+    );
+  }
+  if (!Number.isInteger(courseHandicap)) {
+    throw new TypeError(
+      `allocateStrokesFromCourseHandicap: courseHandicap must be an integer (got ${courseHandicap})`,
+    );
+  }
+  if (courseHandicap <= 0) return 0;
+  const base = Math.floor(courseHandicap / 18);
+  const extra = courseHandicap % 18;
+  return base + (strokeIndex <= extra ? 1 : 0);
+}
+
+/**
  * Per-hole handicap-stroke allocation. Mirrors
  * `packages/engine/src/stableford.ts:11-16`'s math.
  *
@@ -77,14 +111,6 @@ export function getHandicapStrokes(
   strokeIndex: number,
   tee: TeeShape,
 ): number {
-  if (!Number.isInteger(strokeIndex) || strokeIndex < 1 || strokeIndex > 18) {
-    throw new RangeError(
-      `getHandicapStrokes: strokeIndex must be integer in [1, 18] (got ${strokeIndex})`,
-    );
-  }
   const ch = calcCourseHandicap({ handicapIndex, ...tee });
-  if (ch <= 0) return 0;
-  const base = Math.floor(ch / 18);
-  const extra = ch % 18;
-  return base + (strokeIndex <= extra ? 1 : 0);
+  return allocateStrokesFromCourseHandicap(ch, strokeIndex);
 }

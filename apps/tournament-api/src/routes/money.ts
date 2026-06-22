@@ -18,12 +18,53 @@ import { eventRounds } from '../db/schema/index.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
-import { computeMoneyMatrix } from '../services/money.js';
+import { computeMoneyMatrix, type MoneyMatrix } from '../services/money.js';
 import { computeFoursomeResults, computeMyMoney } from '../services/money-detail.js';
 import { computeTeamStandings } from '../services/team-standings.js';
 import { computeMatchPlayStandings } from '../services/match-play-standings.js';
 
 const TENANT_ID = 'guyan';
+
+/**
+ * Audience-bound the money matrix for the requesting viewer (Story 1.4, AC8/AC12).
+ *
+ * - NON-F1 events, and F1 events in LOCKED mode: returned UNCHANGED (the
+ *   participant gate already excludes non-roster viewers; locked = money/P&L
+ *   mode shows the full N×N matrix, today's behavior — ZERO regression).
+ * - F1 events in UNLOCKED mode (scores-only): the cross-player matrix is redacted
+ *   to the viewer's OWN row + column + total only; every other pair's dollars are
+ *   zeroed server-side so the open matrix cannot leak intra-roster dollars. My
+ *   Money (`/my-money`) remains the viewer-private money surface in this mode.
+ */
+function boundMoneyMatrixForViewer(matrix: MoneyMatrix, viewerId: string): MoneyMatrix {
+  if (!matrix.f1 || matrix.f1.lockState !== 'unlocked') return matrix;
+
+  const redactLedger = (ledger: { matrix: Record<string, Record<string, number>>; totals: Record<string, number> }) => {
+    const out: Record<string, Record<string, number>> = {};
+    for (const a of Object.keys(ledger.matrix)) {
+      out[a] = {};
+      for (const b of Object.keys(ledger.matrix[a]!)) {
+        // Keep only the cells the viewer is party to; zero the rest.
+        out[a]![b] = a === viewerId || b === viewerId ? (ledger.matrix[a]![b] ?? 0) : 0;
+      }
+    }
+    const totals: Record<string, number> = {};
+    for (const a of Object.keys(ledger.totals)) {
+      totals[a] = a === viewerId ? (ledger.totals[a] ?? 0) : 0;
+    }
+    return { matrix: out, totals };
+  };
+
+  const combined = redactLedger({ matrix: matrix.matrix, totals: matrix.totals });
+  return {
+    ...matrix,
+    matrix: combined.matrix,
+    totals: combined.totals,
+    teamLedger: redactLedger(matrix.teamLedger),
+    individualLedger: redactLedger(matrix.individualLedger),
+    actionLedger: redactLedger(matrix.actionLedger),
+  };
+}
 
 export const moneyRouter = new Hono();
 
@@ -40,7 +81,14 @@ moneyRouter.get(
     try {
       const matrix = await computeMoneyMatrix(db, eventId, player.id, TENANT_ID);
       c.header('cache-control', 'no-store');
-      return c.json(matrix, 200);
+      // Audience-bounding / F1 money MODE (Story 1.4, AC8/AC12). Non-roster
+      // viewers never reach here (requireEventParticipant 403s them, organizer
+      // exempt). For an F1 event in UNLOCKED mode the full cross-player matrix is
+      // scores-only — redact every other player's dollars to the viewer's own
+      // row server-side, so the open matrix can't leak intra-roster dollars via
+      // a raw API call; My Money stays the viewer-private money surface.
+      const bounded = boundMoneyMatrixForViewer(matrix, player.id);
+      return c.json(bounded, 200);
     } catch (err) {
       log.error({
         msg: 'GET /money threw',

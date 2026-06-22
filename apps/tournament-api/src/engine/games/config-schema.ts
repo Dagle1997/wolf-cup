@@ -48,10 +48,30 @@ export const gameConfigSchema = z
  * Per-player handicap snapshot ({ [playerId]: { hi, ch } }) stored on the
  * round pin. `.finite()` rejects NaN/Infinity so a bad snapshot can never
  * break recompute determinism downstream.
+ *
+ * `hi`/`ch` are `number | null`: a real handicap (including a legit scratch
+ * HI of 0) pins finite numbers; a player with NO handicap at all (absent —
+ * no HI/GHIN) pins `null` (Story 1.4 fix). The read-path fail-closed gate
+ * (games-money.ts / leaderboard.ts) treats a `null` ch as `missing_handicap`
+ * → that foursome is unsettleable, NEVER silently settled as scratch. A finite
+ * 0 is a normal scratch and settles normally.
  */
 export const perPlayerHandicapsSchema = z.record(
   z.string().min(1),
-  z.object({ hi: z.number().finite(), ch: z.number().finite() }).strict(),
+  z
+    .object({
+      hi: z.number().finite().nullable(),
+      // `ch` is a slope-aware COURSE handicap — `calcCourseHandicap` always rounds
+      // to an integer. A non-integer ch is a corrupt-but-finite snapshot that the
+      // schema deliberately does NOT reject here: the read-path try/catch around
+      // `allocateStrokesFromCourseHandicap` (which THROWS on a non-integer CH) is
+      // the primary fail-closed guard, marking only the affected foursome/round
+      // unsettleable rather than rejecting the whole pin. Keeping `.finite()` (not
+      // `.int()`) means a corrupt CH still flows to that guard, where it fails
+      // closed per-foursome (AC11) instead of nuking every foursome in the round.
+      ch: z.number().finite().nullable(),
+    })
+    .strict(),
 );
 
 export type PerPlayerHandicaps = z.infer<typeof perPlayerHandicapsSchema>;

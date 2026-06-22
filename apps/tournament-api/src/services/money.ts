@@ -67,6 +67,8 @@ import { loadLockedHandicapsByEvent, applyLockedToNumberMap } from './event-hand
 import { resolveFoursomeTeams } from './foursome-teams.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
 import { computeActionBetEdgesForEvent } from './bets-query.js';
+import { computeF1EventEdges, type UnsettleableFoursome } from './games-money.js';
+import { f1MoneyEnabled } from '../lib/env.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -89,6 +91,24 @@ export type MoneyMatrix = {
   actionLedger: Ledger;
   computedAt: string;
   visibilityMode: 'open' | 'participant' | 'self_only';
+  /**
+   * F1 "Rules & Games" status (Story 1.4). Present only for F1 events (an
+   * event-level game_config row). Drives the dual-read: when `isF1`, the
+   * legacy 2v2 producer + presses are OFF and the `teamLedger` carries the F1
+   * `f1_game` edges instead — but ONLY when `exposed` (the
+   * TOURNAMENT_F1_MONEY_ENABLED gate). When `isF1 && !exposed`, the team ledger
+   * is intentionally empty and `exposed:false` tells the reader to render an
+   * explicit "F1 money not yet enabled" state, never a silent-zero ledger.
+   */
+  f1?: {
+    isF1: true;
+    /** Event-level lock_state → leaderboard money MODE (AC8). */
+    lockState: 'locked' | 'unlocked';
+    /** Whether F1 dollars are exposed on reader surfaces (the env gate). */
+    exposed: boolean;
+    /** Per-foursome fail-closed surface (AC11) — non-blocking. */
+    unsettleable: UnsettleableFoursome[];
+  };
 };
 
 /**
@@ -228,8 +248,46 @@ export async function computeMoneyMatrix(
   const individualMatrix = zeroMatrix();
   const actionMatrix = zeroMatrix();
 
-  // ── (3) Aggregate 2v2 best ball per round. ──
-  const config = await fetchActive2v2Config(txOrDb, tenantId);
+  // ── (3) Aggregate the 2v2 (team / ball) game per round. ──
+  // DUAL-READ SWITCH (Story 1.4, AC10): an F1 event (an event-level game_config
+  // row) routes the 2v2-GAME producer to the F1 chokepoint (games-money.ts) and
+  // SKIPS the legacy compute2v2BestBall path + presses entirely — so the 2v2
+  // game is produced by EXACTLY ONE producer (no double-counting). Individual
+  // bets + skins + action are independent coexisting producers and run for F1
+  // events unchanged (they are NOT the 2v2 game).
+  //
+  // The routing keys on `isF1` (config-row-exists). EXPOSURE of F1 dollars on
+  // reader surfaces is separately gated by TOURNAMENT_F1_MONEY_ENABLED: when the
+  // flag is OFF, the F1 event still skips the legacy 2v2 (no double-count) but
+  // the F1 edges are NOT folded in — `f1.exposed:false` tells the reader to show
+  // an explicit "not yet enabled" state instead of a silent-zero ledger.
+  const f1 = await computeF1EventEdges(txOrDb, eventId, tenantId);
+  let f1Meta: MoneyMatrix['f1'] | undefined;
+  if (f1.isF1) {
+    const exposed = f1MoneyEnabled();
+    f1Meta = {
+      isF1: true,
+      lockState: f1.lockState ?? 'locked',
+      exposed,
+      unsettleable: f1.unsettleable,
+    };
+    if (exposed) {
+      // Fold the F1 `f1_game` edges into combined + team ledgers. Direction:
+      // `from` PAYS `to`, so `to` is up on `from`. matrix[a][b] = a up on b.
+      for (const edge of f1.edges) {
+        const to = edge.toPlayerId;
+        const from = edge.fromPlayerId;
+        if (!matrix[to] || !matrix[from]) continue; // outside event scope — skip
+        matrix[to]![from] = (matrix[to]![from] ?? 0) + edge.cents;
+        matrix[from]![to] = (matrix[from]![to] ?? 0) - edge.cents;
+        teamMatrix[to]![from] = (teamMatrix[to]![from] ?? 0) + edge.cents;
+        teamMatrix[from]![to] = (teamMatrix[from]![to] ?? 0) - edge.cents;
+      }
+    }
+  }
+
+  // Legacy 2v2 best-ball — SUPPRESSED for F1 events (dual-read switch above).
+  const config = f1.isF1 ? null : await fetchActive2v2Config(txOrDb, tenantId);
   if (config) {
     // Read all rounds for this event.
     const eventRoundRows = await txOrDb
@@ -668,5 +726,6 @@ export async function computeMoneyMatrix(
     actionLedger: { matrix: actionMatrix, totals: totalsFor(actionMatrix) },
     computedAt,
     visibilityMode,
+    ...(f1Meta ? { f1: f1Meta } : {}),
   };
 }

@@ -172,3 +172,25 @@ export function pressesDisabled(): boolean {
   const v = process.env['TOURNAMENT_PRESSES_DISABLED'];
   return v === 'true' || v === '1';
 }
+
+/**
+ * F1 "Rules & Games" money EXPOSURE gate (Story 1.4, AC10). Read at call time
+ * (not cached at module load) so tests can flip it via `vi.stubEnv`, mirroring
+ * `pressesDisabled()`.
+ *
+ * DEFAULT OFF. This is a short-lived dark-launch gate: an F1 event's money is
+ * ROUTED to the chokepoint (the dual-read switch keys on the event having a
+ * game_config row, independent of this flag) so the legacy 2v2 producer is
+ * suppressed and there is never double-counting — but reader surfaces
+ * (leaderboard money mode / money / settle-up / my-money) only EXPOSE the F1
+ * dollar figures when `TOURNAMENT_F1_MONEY_ENABLED=true`. While off, those
+ * surfaces render an explicit "F1 money not yet enabled" state, NOT a
+ * silently-empty / zeroed ledger.
+ *
+ * No real F1 event runs real money before this flag is on (F1 isn't live until
+ * Story 1.4 ships), so the gate cannot cause real-world mis-settlement.
+ */
+export function f1MoneyEnabled(): boolean {
+  const v = process.env['TOURNAMENT_F1_MONEY_ENABLED'];
+  return v === 'true' || v === '1';
+}

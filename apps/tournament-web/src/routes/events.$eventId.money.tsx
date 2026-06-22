@@ -46,6 +46,13 @@ type MoneyMatrixResponse = {
   individualLedger: Ledger;
   computedAt: string;
   visibilityMode: 'open' | 'participant' | 'self_only';
+  /** F1 (Story 1.4): present only for F1 events. */
+  f1?: {
+    isF1: true;
+    lockState: 'locked' | 'unlocked';
+    exposed: boolean;
+    unsettleable: Array<{ foursomeNumber: number; reason: string; detail: string }>;
+  };
 };
 
 type FetchOutcome =
@@ -175,7 +182,7 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
     );
   }
 
-  const { players, totals, teamLedger, individualLedger } = outcome.data;
+  const { players, totals, teamLedger, individualLedger, f1 } = outcome.data;
   if (players.length === 0) {
     return (
       <PageShell title="Money">
@@ -185,11 +192,55 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
     );
   }
 
+  // F1 (Story 1.4, AC10): money is dark-launched until the exposure flag is on.
+  // Render an EXPLICIT "not yet enabled" state — never a silent-zero ledger that
+  // could read as "everyone's even".
+  if (f1 && !f1.exposed) {
+    return (
+      <PageShell title="Money">
+        <BackLink to="/events/$eventId" params={{ eventId }} />
+        <EmptyState
+          icon="🔒"
+          title="Money not yet enabled."
+          // The game is configured; dollars are turned on once the round runs.
+        />
+        <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)', marginTop: 'var(--space-3)' }}>
+          This event's game is set up, but money isn't enabled yet. Scores still
+          count — the board will show dollars once money is turned on.
+        </p>
+      </PageShell>
+    );
+  }
+
   const standings = [...players].sort((a, b) => (totals[b.id] ?? 0) - (totals[a.id] ?? 0));
 
   return (
     <PageShell title="Money">
       <BackLink to="/events/$eventId" params={{ eventId }} />
+
+      {/* F1 unlocked-mode note: the matrix is redacted to your own money. */}
+      {f1 && f1.lockState === 'unlocked' ? (
+        <div
+          data-testid="f1-unlocked-note"
+          style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', fontSize: 'var(--font-sm)', backgroundColor: 'var(--color-surface-sunken)', color: 'var(--color-text-secondary)' }}
+        >
+          This event is unlocked — money is private. You only see your own figures here.
+        </div>
+      ) : null}
+
+      {/* F1 fail-closed surface (AC11): foursomes that couldn't settle, isolated. */}
+      {f1 && f1.unsettleable.length > 0 ? (
+        <div
+          data-testid="f1-unsettleable"
+          style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', fontSize: 'var(--font-sm)', backgroundColor: 'var(--color-surface-sunken)', color: 'var(--color-money-neg)' }}
+        >
+          {f1.unsettleable.map((u) => (
+            <div key={u.foursomeNumber}>
+              Foursome {u.foursomeNumber}: Calculation paused — unsettleable: {u.detail}.
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {/* Headline: where everyone stands overall (what settles). */}
       <section aria-label="Combined total" style={{ marginBottom: 'var(--space-5)' }}>

@@ -69,6 +69,8 @@ import {
 } from '../db/schema/index.js';
 import { INITIAL_ROUND_STATE, isEventOrganizerByEventId } from '../services/round-state.js';
 import { isEligibleScorer, isScorerPolicy } from '../lib/scorer-eligibility.js';
+import { isF1Event } from '../services/games-money.js';
+import { pinRoundAtStart } from '../services/pin-round-at-start.js';
 
 const SAVE_BODY_LIMIT_BYTES = 8 * 1024;
 const TENANT_ID = 'guyan';
@@ -644,6 +646,15 @@ adminEventRoundsRouter.post(
       }
     }
 
+    // F1 (Story 1.4): an event with an event-level game_config row pins its
+    // resolved config + per-player CH + course-rev at round-start so money +
+    // leaderboard recompute deterministically off the pin (never live HI). This
+    // routing key is read BEFORE the tx; the pin write rides INSIDE the tx so it
+    // is atomic with the round creation. A pin FAILURE must never block the
+    // round from starting (logged + skipped → the round is fail-closed
+    // unsettleable on read, never settled against live data).
+    const eventIsF1 = await isF1Event(db, eventId, TENANT_ID);
+
     // 6. Create rounds + round_states + scorer_assignments atomically.
     const roundId = randomUUID();
     const now = Date.now();
@@ -683,6 +694,35 @@ adminEventRoundsRouter.post(
             tenantId: TENANT_ID,
             contextId,
           });
+        }
+        // F1 pin (atomic with round creation). A config/data problem returns
+        // `{ ok: false }` (logged, round still starts → fail-closed on read);
+        // an unexpected throw would roll back the tx, so it is caught + logged
+        // OUTSIDE the round-creation invariant below (we do NOT abort the start
+        // for a pin error).
+        if (eventIsF1) {
+          try {
+            const pinRes = await pinRoundAtStart(tx, {
+              roundId,
+              eventRoundId,
+              eventId,
+              tenantId: TENANT_ID,
+              createdAt: now,
+              actorPlayerId: player.id,
+            });
+            if (!pinRes.ok) {
+              log.warn({ event: 'f1_pin_skipped', roundId, eventRoundId, reason: pinRes.reason });
+            }
+          } catch (pinErr) {
+            // Swallow inside the tx so the round still commits + starts. The
+            // unpinned F1 round is fail-closed (unsettleable) on read.
+            log.warn({
+              event: 'f1_pin_failed',
+              roundId,
+              eventRoundId,
+              message: (pinErr as { message?: unknown } | null)?.message ?? null,
+            });
+          }
         }
       });
     } catch (err) {

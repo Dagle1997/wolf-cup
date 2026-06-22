@@ -37,7 +37,9 @@ import {
   type HoleScoreShape,
   type IndividualBetType,
 } from '../engine/rules/individual-bets.js';
-import { getHandicapStrokes } from '../engine/handicap-strokes.js';
+import { getHandicapStrokes, allocateStrokesFromCourseHandicap } from '../engine/handicap-strokes.js';
+import { perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
+import { roundPins } from '../db/schema/index.js';
 import { fetchActive2v2Config } from './money.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
 import {
@@ -49,6 +51,8 @@ import { resolveFoursomeTeams } from './foursome-teams.js';
 import { bets as actionBetsTable } from '../db/schema/index.js';
 import { loadBetWithSides, settleActionBet } from './bets-query.js';
 import { scopedHolesForScope } from '../engine/bets/scope.js';
+import { computeF1PerPlayerNet, computeF1EventEdges, isF1Event } from './games-money.js';
+import { f1MoneyEnabled } from '../lib/env.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -101,6 +105,7 @@ export async function computeFoursomeResults(
   const erRows = await txOrDb
     .select({
       id: eventRounds.id,
+      eventId: eventRounds.eventId,
       roundNumber: eventRounds.roundNumber,
       teeColor: eventRounds.teeColor,
       courseRevisionId: eventRounds.courseRevisionId,
@@ -117,6 +122,15 @@ export async function computeFoursomeResults(
     roundNumber: er.roundNumber,
     foursomes: [],
   };
+
+  // DUAL-READ (Story 1.4 fix): for an F1 event this endpoint must NEVER compute /
+  // return the legacy live-HI 2v2 dollars (the F1 game is settled ONLY through the
+  // pinned F1 chokepoint, which honors the money-safety invariant + exposure flag
+  // + lock-state). Route to the F1-aware builder instead; the legacy
+  // compute2v2BestBall path below runs only for non-F1 events.
+  if (await isF1Event(txOrDb, er.eventId, tenantId)) {
+    return computeF1FoursomeResults(txOrDb, er, tenantId, empty);
+  }
 
   const config = await fetchActive2v2Config(txOrDb, tenantId);
   if (!config) return empty;
@@ -294,6 +308,208 @@ export async function computeFoursomeResults(
   return { eventRoundId, roundNumber: er.roundNumber, foursomes };
 }
 
+/**
+ * F1-aware foursome results (Story 1.4 fix). Builds the per-foursome roster +
+ * per-hole gross/net from the PINNED CH (matching settled money, AC2) and the
+ * per-foursome F1 settlement totals from the pinned chokepoint — NEVER the legacy
+ * live-HI compute2v2BestBall. Money fields are exposed ONLY when F1 money is
+ * enabled AND the event is LOCKED (money/P&L mode); when the flag is off or the
+ * event is unlocked (scores-only), all dollar fields are ZEROED so this endpoint
+ * cannot leak F1 dollars (audience-bounding is additionally enforced by the route
+ * gate). Per-hole F1 money breakdown is Epic 4 → per-hole money stays 0 here.
+ */
+async function computeF1FoursomeResults(
+  txOrDb: Tx | Db,
+  er: {
+    id: string;
+    eventId: string;
+    roundNumber: number;
+    teeColor: string;
+    courseRevisionId: string;
+    holesToPlay: number;
+  },
+  tenantId: string,
+  empty: FoursomeResultsResponse,
+): Promise<FoursomeResultsResponse> {
+  // Expose F1 dollars only when enabled AND locked (money mode). Otherwise the
+  // structure renders with zeroed money (scores-only / not-yet-enabled).
+  const f1 = await computeF1EventEdges(txOrDb, er.eventId, tenantId);
+  const exposeMoney = f1MoneyEnabled() && f1.lockState === 'locked';
+
+  // Runtime round (same deterministic pick as money.ts / the chokepoint).
+  const runtimeRoundRows = await txOrDb
+    .select({ id: rounds.id })
+    .from(rounds)
+    .where(and(eq(rounds.eventRoundId, er.id), eq(rounds.tenantId, tenantId)))
+    .orderBy(asc(rounds.createdAt), asc(rounds.id))
+    .limit(1);
+  if (runtimeRoundRows.length === 0) return empty;
+  const roundId = runtimeRoundRows[0]!.id;
+
+  // Per-foursome F1 team total (teamA-signed cents) from the edges, keyed by the
+  // edge sourceId `${roundId}:${foursomeNumber}`. Direction: from PAYS to.
+  // teamATotal = Σ over edges of this foursome where teamA is `to` (+) or `from` (−).
+  // We reconstruct teamA membership below to sign correctly.
+  const f1EdgesBySource = new Map<string, typeof f1.edges>();
+  for (const e of f1.edges) {
+    const arr = f1EdgesBySource.get(e.sourceId) ?? [];
+    arr.push(e);
+    f1EdgesBySource.set(e.sourceId, arr);
+  }
+
+  // Pinned per-player CH + course stroke index/par for the net display.
+  const pinRows = await txOrDb
+    .select({
+      perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
+      courseRevisionId: roundPins.courseRevisionId,
+    })
+    .from(roundPins)
+    .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, tenantId)))
+    .limit(1);
+  const chByPlayer = new Map<string, number>();
+  if (pinRows.length > 0) {
+    let rawHcp: unknown;
+    try {
+      rawHcp = JSON.parse(pinRows[0]!.perPlayerHandicapsJson);
+      const parsed = perPlayerHandicapsSchema.safeParse(rawHcp);
+      if (parsed.success) {
+        for (const [pid, h] of Object.entries(parsed.data)) {
+          if (h.ch !== null && Number.isFinite(h.ch)) chByPlayer.set(pid, h.ch);
+        }
+      }
+    } catch {
+      // corrupt pin → no net display; money stays unsettleable/zeroed.
+    }
+  }
+  const pinnedCourseRevId = pinRows[0]?.courseRevisionId ?? er.courseRevisionId;
+
+  const holeRows = await txOrDb
+    .select({ holeNumber: courseHoles.holeNumber, par: courseHoles.par, si: courseHoles.si })
+    .from(courseHoles)
+    .where(
+      and(
+        eq(courseHoles.courseRevisionId, pinnedCourseRevId),
+        eq(courseHoles.tenantId, tenantId),
+      ),
+    )
+    .orderBy(courseHoles.holeNumber);
+  const holesInPlay = holeRows.filter((h) => h.holeNumber <= er.holesToPlay);
+  const siByHole = new Map(holesInPlay.map((h) => [h.holeNumber, h.si]));
+  const parByHole = new Map(holesInPlay.map((h) => [h.holeNumber, h.par]));
+
+  const pairingRows = await txOrDb
+    .select({ id: pairings.id, foursomeNumber: pairings.foursomeNumber })
+    .from(pairings)
+    .where(and(eq(pairings.eventRoundId, er.id), eq(pairings.tenantId, tenantId)))
+    .orderBy(pairings.foursomeNumber);
+
+  const foursomes: FoursomeResult[] = [];
+  for (const pairing of pairingRows) {
+    const memberRows = await txOrDb
+      .select({ playerId: pairingMembers.playerId, slotNumber: pairingMembers.slotNumber })
+      .from(pairingMembers)
+      .where(
+        and(eq(pairingMembers.pairingId, pairing.id), eq(pairingMembers.tenantId, tenantId)),
+      );
+    const teams = resolveFoursomeTeams(memberRows);
+    if (!teams) continue;
+    const { teamA: teamAIds, teamB: teamBIds, ordered } = teams;
+
+    const nameRows = await txOrDb
+      .select({ id: players.id, name: players.name })
+      .from(players)
+      .where(and(inArray(players.id, [...ordered]), eq(players.tenantId, tenantId)));
+    const nameById = new Map(nameRows.map((p) => [p.id, p.name]));
+
+    const scoreRows = await txOrDb
+      .select({
+        playerId: holeScores.playerId,
+        holeNumber: holeScores.holeNumber,
+        grossStrokes: holeScores.grossStrokes,
+      })
+      .from(holeScores)
+      .where(
+        and(
+          eq(holeScores.roundId, roundId),
+          inArray(holeScores.playerId, [...ordered]),
+          eq(holeScores.tenantId, tenantId),
+        ),
+      );
+    const grossByCell = new Map<string, number>();
+    for (const s of scoreRows) grossByCell.set(`${s.playerId}|${s.holeNumber}`, s.grossStrokes);
+
+    const perHole: FoursomeHoleResult[] = holesInPlay.map((h) => {
+      const playerHoles: FoursomePlayerHole[] = ordered.map((pid) => {
+        const gross = grossByCell.get(`${pid}|${h.holeNumber}`) ?? null;
+        const si = siByHole.get(h.holeNumber);
+        const ch = chByPlayer.get(pid);
+        // Net from the PINNED CH only (never a live HI). Null when gross/SI/CH
+        // missing — an absent pinned CH (fail-closed handicap) shows no net.
+        //
+        // Fail-closed isolation (AC11): a corrupt-but-schema-valid pin (non-integer
+        // CH, out-of-range stroke index) makes `allocateStrokesFromCourseHandicap`
+        // THROW. Wrap it so the throw marks THIS cell unsettleable (net null)
+        // instead of crashing the /foursome-results endpoint (no 500). Other cells,
+        // other players, and every other foursome still render. Mirrors the
+        // settlement path's per-foursome try/catch (games-money.ts).
+        let net: number | null = null;
+        if (gross !== null && si !== undefined && ch !== undefined) {
+          try {
+            net = gross - allocateStrokesFromCourseHandicap(ch, si);
+          } catch {
+            net = null; // corrupt pinned CH / stroke index → no net display
+          }
+        }
+        return { playerId: pid, gross, net };
+      });
+      return {
+        holeNumber: h.holeNumber,
+        par: parByHole.get(h.holeNumber) ?? 0,
+        // Per-hole F1 team net/winner/money breakdown is Epic 4 — not surfaced here.
+        teamABestNet: null,
+        teamBBestNet: null,
+        winner: null,
+        moneyTeamACents: 0,
+        players: playerHoles,
+      };
+    });
+
+    // Per-foursome F1 team total + cross-pair, from the pinned edges. Zeroed
+    // unless money is exposed (flag on + locked mode).
+    let teamATotalCents = 0;
+    const perPair: Record<string, Record<string, number>> = {};
+    for (const id of ordered) perPair[id] = {};
+    if (exposeMoney) {
+      const edges = f1EdgesBySource.get(`${roundId}:${pairing.foursomeNumber}`) ?? [];
+      const teamASet = new Set<string>(teamAIds);
+      for (const e of edges) {
+        // from PAYS to. teamA total gains when a teamA player is `to`, loses when
+        // a teamA player is `from`.
+        if (teamASet.has(e.toPlayerId)) teamATotalCents += e.cents;
+        if (teamASet.has(e.fromPlayerId)) teamATotalCents -= e.cents;
+        // Cross-pair antisymmetric: to is up `cents` on from.
+        perPair[e.toPlayerId] ??= {};
+        perPair[e.fromPlayerId] ??= {};
+        perPair[e.toPlayerId]![e.fromPlayerId] =
+          (perPair[e.toPlayerId]![e.fromPlayerId] ?? 0) + e.cents;
+        perPair[e.fromPlayerId]![e.toPlayerId] =
+          (perPair[e.fromPlayerId]![e.toPlayerId] ?? 0) - e.cents;
+      }
+    }
+
+    foursomes.push({
+      foursomeNumber: pairing.foursomeNumber,
+      teamA: teamAIds.map((id) => ({ playerId: id, name: nameById.get(id) ?? null })),
+      teamB: teamBIds.map((id) => ({ playerId: id, name: nameById.get(id) ?? null })),
+      perHole,
+      teamATotalCents,
+      perPair,
+    });
+  }
+
+  return { eventRoundId: er.id, roundNumber: er.roundNumber, foursomes };
+}
+
 // ── My Money: viewer-centric P&L decomposed by game ───────────────────────
 
 export type MyMoneyHole = {
@@ -365,6 +581,31 @@ export async function computeMyMoney(
     .orderBy(eventRounds.roundNumber);
   const holesToPlayByEventRound = new Map(erRows.map((r) => [r.id, r.holesToPlay]));
 
+  // DUAL-READ (Story 1.4): for an F1 event the 2v2 "foursome" game settles from
+  // the F1 chokepoint (pinned CH), NOT the legacy live-HI computeFoursomeResults
+  // — so it matches the settled money and honors the money-safety invariant
+  // (AC2). EXPOSURE is gated: when TOURNAMENT_F1_MONEY_ENABLED is off, the F1
+  // foursome game is omitted (the my-money page renders the "not yet enabled"
+  // state from the money matrix's f1 metadata, not a silent number here).
+  const f1Net = await computeF1PerPlayerNet(txOrDb, eventId, tenantId);
+  if (f1Net.isF1) {
+    if (f1MoneyEnabled()) {
+      const net = f1Net.netByPlayer.get(viewerId) ?? 0;
+      games.push({
+        kind: 'foursome',
+        key: 'foursome',
+        label: '2v2 Guyan Game',
+        opponentName: null,
+        netToViewerCents: net,
+        // No per-hole F1 breakdown surface in MVP (Epic 4); a single summary
+        // round carrying the net keeps Σ games === the combined matrix total.
+        perRound: [],
+      });
+    }
+    // F1 event but flag off → omit the foursome game entirely (no silent zero).
+    // Fall through to individual bets + action below, which are unaffected.
+  } else {
+
   const foursomeRounds: MyMoneyGameRound[] = [];
   for (const er of erRows) {
     const fr = await computeFoursomeResults(txOrDb, er.id, tenantId);
@@ -423,6 +664,7 @@ export async function computeMyMoney(
       perRound: foursomeRounds,
     });
   }
+  } // end non-F1 legacy foursome game (dual-read)
 
   // ── Individual side games — one per bet the viewer is in. ──
   const roundNumberByEventRound = new Map(erRows.map((r) => [r.id, r.roundNumber]));

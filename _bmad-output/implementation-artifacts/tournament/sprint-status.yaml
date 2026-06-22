@@ -601,4 +601,4 @@ development_status:
   # + money mode). Per-event dual-read routes to EITHER legacy money.ts OR the
   # F1 engine, never both. Money = recompute-on-read. Carries fallback split
   # 1.4a/1.4b if it stalls (see epics file).
-  1-4-settle-f1-event-into-pairwise-settle-up: backlog
+  1-4-settle-f1-event-into-pairwise-settle-up: done

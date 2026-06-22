@@ -24,22 +24,31 @@ import {
   courseRevisions,
   courseTees,
   eventRounds,
+  gameConfig,
   groupMembers,
   groups,
   holeScores,
   players,
   rounds,
+  roundPins,
 } from '../db/schema/index.js';
 import { allocateNetThroughHole, calcCourseHandicap } from './handicap.js';
-import { getHandicapStrokes } from '../engine/handicap-strokes.js';
+import { getHandicapStrokes, allocateStrokesFromCourseHandicap } from '../engine/handicap-strokes.js';
 import { aggregateSkinsForEvent } from './sub-games.js';
 import { loadLockedHandicapsByEvent } from './event-handicap-overrides.js';
+import { perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
 
 export type LeaderboardRow = {
   playerId: string;
   playerName: string;
   /** Player's manual handicap index (null if not on file). */
   handicapIndex: number | null;
+  /**
+   * F1 (Story 1.4, AC9): the player's PINNED course handicap for the round, when
+   * this is a round-scope F1 leaderboard read (the CH the money was/will be
+   * settled off, always visible after the fact). Null for non-F1 or event-scope.
+   */
+  courseHandicap?: number | null;
   /** Sum of gross strokes across the scope. Null if unscored. */
   grossThroughHole: number | null;
   /**
@@ -95,6 +104,49 @@ type PlayerAccum = {
    * is the sum of per-round (gross − allocated_handicap).
    */
   perRound: Map<string /* roundId */, { gross: number; holes: number }>;
+  /**
+   * F1 (Story 1.4): per-round per-hole gross (holeNumber → gross), so an F1
+   * round's net is allocated per-stroke-index from the PINNED course handicap
+   * (matching the settled money, AC2/AC4) instead of the proportional approx.
+   * Only populated for rounds that have a pin.
+   */
+  perRoundHoleGross: Map<string /* roundId */, Map<number, number>>;
+};
+
+/**
+ * Pinned context for an F1 round (Story 1.4). The leaderboard derives F1-round
+ * net from this — the pinned per-player CH + the pinned course-rev stroke index
+ * — never a live HI/course (AC2). `null`-valued CH means the player had no
+ * usable handicap in the pin (net falls back to gross for them, like the legacy
+ * null-HI behavior).
+ */
+type RoundPinContext = {
+  chByPlayer: Map<string, number>;
+  hiByPlayer: Map<string, number>;
+  /**
+   * Stroke index per hole, RESTRICTED to holes in play (≤ holesToPlay). The F1
+   * net build iterates the player's scored holes against this map; restricting it
+   * to holes-in-play means a 9-hole F1 round's net counts only the front 9, and a
+   * stray hole_score beyond holesToPlay is ignored — matching the settlement
+   * path's `holesInPlay` filter (games-money.ts) so leaderboard net can't diverge
+   * from settled money by counting extra holes (Story 1.4 hardening).
+   */
+  siByHole: Map<number, number>;
+};
+
+/**
+ * F1 pin context for the in-scope rounds (Story 1.4).
+ *   - `isF1`: the event has an event-level game_config row. When true, EVERY
+ *     in-scope round is an F1 round and MUST derive net from its pin only — a
+ *     round absent from `pinsByRound` (missing/corrupt/incomplete pin) is
+ *     FAIL-CLOSED (net null), NEVER a live-HI/course fallback (the money-safety
+ *     invariant, AC2/AC11). For a non-F1 event `isF1` is false and the legacy
+ *     proportional live-CH path runs unchanged (ZERO regression).
+ *   - `pinsByRound`: per-round pin context for rounds with a VALID pin.
+ */
+type F1PinScope = {
+  isF1: boolean;
+  pinsByRound: Map<string, RoundPinContext>;
 };
 
 /**
@@ -137,6 +189,7 @@ export async function computeLeaderboard(
       totalGross: 0,
       totalThroughHole: 0,
       perRound: new Map(),
+      perRoundHoleGross: new Map(),
     });
   }
 
@@ -255,12 +308,126 @@ export async function computeLeaderboard(
     perRound.gross += h.grossStrokes;
     perRound.holes += 1;
     accum.perRound.set(h.roundId, perRound);
+    let holeGross = accum.perRoundHoleGross.get(h.roundId);
+    if (!holeGross) {
+      holeGross = new Map();
+      accum.perRoundHoleGross.set(h.roundId, holeGross);
+    }
+    holeGross.set(h.holeNumber, h.grossStrokes);
   }
+
+  // F1 (Story 1.4): for an F1 event, every in-scope round that has a pin derives
+  // its net from the PINNED per-player CH + the pinned course stroke index
+  // (matching the settled money, AC2). Build the pin context per round. Non-F1
+  // events have no event-level game_config row → this map is empty → the legacy
+  // proportional path runs unchanged (ZERO regression).
+  const f1Scope = await loadF1RoundPins(ctx.db, eventId, tenantId, roundIdsInScope);
 
   // T6-14: aggregate skins pot shares from finalized rounds.
   const skinsByPlayer = await aggregateSkinsForEvent(ctx.db, eventId, tenantId);
 
-  return assignRanksAndBuildRows(participantMap, roundCtxMap, skinsByPlayer);
+  return assignRanksAndBuildRows(
+    participantMap,
+    roundCtxMap,
+    skinsByPlayer,
+    f1Scope,
+    opts.scope === 'round',
+  );
+}
+
+/**
+ * Load the pin context (per-player CH/HI + per-hole stroke index from the pinned
+ * course revision) for each in-scope round of an F1 event. Returns an EMPTY map
+ * for a non-F1 event (no event-level game_config row), so the legacy net path is
+ * untouched. Reads ONLY the pin — never live HI/course (AC2).
+ */
+async function loadF1RoundPins(
+  database: typeof DbType,
+  eventId: string,
+  tenantId: string,
+  roundIds: string[],
+): Promise<F1PinScope> {
+  const pinsByRound = new Map<string, RoundPinContext>();
+  if (roundIds.length === 0) return { isF1: false, pinsByRound };
+
+  // Only F1 events (event-level game_config row) pin for money.
+  const isF1 = (
+    await database
+      .select({ id: gameConfig.id })
+      .from(gameConfig)
+      .where(
+        and(
+          eq(gameConfig.level, 'event'),
+          eq(gameConfig.refId, eventId),
+          eq(gameConfig.tenantId, tenantId),
+        ),
+      )
+      .limit(1)
+  ).length > 0;
+  if (!isF1) return { isF1: false, pinsByRound };
+
+  // Tenant-scoped pin read (Story 1.4 fix) — a read can never load another
+  // tenant's pin even if a round_id collided. Join event_rounds for holesToPlay
+  // so the F1 net only counts holes in play (front 9 vs 18), matching settlement.
+  const pinRows = await database
+    .select({
+      roundId: roundPins.roundId,
+      perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
+      courseRevisionId: roundPins.courseRevisionId,
+      holesToPlay: eventRounds.holesToPlay,
+    })
+    .from(roundPins)
+    .innerJoin(rounds, eq(rounds.id, roundPins.roundId))
+    .innerJoin(eventRounds, eq(eventRounds.id, rounds.eventRoundId))
+    .where(
+      and(
+        inArray(roundPins.roundId, roundIds),
+        eq(roundPins.tenantId, tenantId),
+        eq(rounds.tenantId, tenantId),
+        eq(eventRounds.tenantId, tenantId),
+      ),
+    );
+
+  for (const pin of pinRows) {
+    let rawHcp: unknown;
+    try {
+      rawHcp = JSON.parse(pin.perPlayerHandicapsJson);
+    } catch {
+      // Corrupt pin JSON: do NOT add a context. For an F1 event the builder
+      // fail-closes this round (net null) — it must NEVER fall back to live data.
+      continue;
+    }
+    const parsed = perPlayerHandicapsSchema.safeParse(rawHcp);
+    if (!parsed.success) continue; // partial/corrupt pin → fail-closed (no context)
+    const chByPlayer = new Map<string, number>();
+    const hiByPlayer = new Map<string, number>();
+    for (const [playerId, h] of Object.entries(parsed.data)) {
+      // A `null` ch is an ABSENT handicap (no HI/GHIN at pin-time) — leave the
+      // player OUT of chByPlayer so the builder marks them not-computable
+      // (fail-closed, never settled as scratch). A finite 0 is a legit scratch.
+      if (h.ch !== null && Number.isFinite(h.ch)) chByPlayer.set(playerId, h.ch);
+      if (h.hi !== null && Number.isFinite(h.hi)) hiByPlayer.set(playerId, h.hi);
+    }
+    const holeRows = await database
+      .select({ holeNumber: courseHoles.holeNumber, si: courseHoles.si })
+      .from(courseHoles)
+      .where(
+        and(
+          eq(courseHoles.courseRevisionId, pin.courseRevisionId),
+          eq(courseHoles.tenantId, tenantId),
+        ),
+      );
+    // Restrict to holes in play (≤ holesToPlay) so the F1 net counts only the
+    // front 9 on a 9-hole round and ignores stray scores beyond it — matching the
+    // settlement path's holesInPlay filter (games-money.ts).
+    const siByHole = new Map(
+      holeRows
+        .filter((h) => h.holeNumber <= pin.holesToPlay)
+        .map((h) => [h.holeNumber, h.si]),
+    );
+    pinsByRound.set(pin.roundId, { chByPlayer, hiByPlayer, siByHole });
+  }
+  return { isF1: true, pinsByRound };
 }
 
 /**
@@ -271,22 +438,95 @@ function assignRanksAndBuildRows(
   participants: Map<string, PlayerAccum>,
   roundCtxMap?: Map<string, RoundContextRow>,
   skinsByPlayer?: Map<string, number>,
+  f1Scope?: F1PinScope,
+  isRoundScope = false,
 ): LeaderboardRow[] {
+  const isF1Event = f1Scope?.isF1 ?? false;
+  const f1RoundPins = f1Scope?.pinsByRound;
   // Compute net per accumulator (sum of per-round (gross − allocated handicap)).
   const partial: Array<{
     accum: PlayerAccum;
     grossThroughHole: number | null;
     netThroughHole: number | null;
+    /** Pinned course handicap for an F1 round-scope read (AC9); null otherwise. */
+    courseHandicap: number | null;
+    /** Pinned HI for an F1 round-scope read (AC9); null otherwise. */
+    pinnedHandicapIndex: number | null;
   }> = [];
   for (const accum of participants.values()) {
     if (accum.totalThroughHole === 0) {
-      partial.push({ accum, grossThroughHole: null, netThroughHole: null });
+      partial.push({ accum, grossThroughHole: null, netThroughHole: null, courseHandicap: null, pinnedHandicapIndex: null });
       continue;
     }
     let netSum = 0;
-    let netComputable = accum.handicapIndex !== null && roundCtxMap !== undefined;
+    let netComputable = roundCtxMap !== undefined;
+    let pinnedCH: number | null = null;
+    let pinnedHI: number | null = null;
     if (netComputable) {
       for (const [roundId, perRound] of accum.perRound) {
+        const pin = f1RoundPins?.get(roundId);
+        if (pin) {
+          // F1 round (Story 1.4, AC2): net = Σ per scored hole
+          // (gross − allocateStrokesFromCourseHandicap(pinnedCH, strokeIndex)).
+          // The CH comes from the PIN, never a live HI; SI from the pinned course.
+          const ch = pin.chByPlayer.get(accum.playerId);
+          if (ch === undefined) {
+            // Player not in this pin (absent handicap) → no usable F1 net for this
+            // round; fail-closed (NEVER a live fallback).
+            netComputable = false;
+            break;
+          }
+          // Surface the pinned CH/HI ONLY for a round-scope read (AC9). Event-scope
+          // mixes rounds, so a single per-round CH/HI is misleading → leave null.
+          if (isRoundScope) {
+            pinnedCH = ch;
+            pinnedHI = pin.hiByPlayer.get(accum.playerId) ?? null;
+          }
+          const holeGross = accum.perRoundHoleGross.get(roundId);
+          if (!holeGross) {
+            netComputable = false;
+            break;
+          }
+          // Per-round fail-closed isolation (AC11): a corrupt-but-schema-valid pin
+          // (non-integer CH, out-of-range stroke index) makes
+          // `allocateStrokesFromCourseHandicap` THROW. Wrap the allocation so a
+          // throw fails THIS F1 round closed (net null) — exactly like the
+          // missing-pin case above — instead of crashing the leaderboard endpoint
+          // (no 500). Other rounds/players still compute. Mirrors the settlement
+          // path's per-foursome try/catch (games-money.ts).
+          let allocated = 0;
+          try {
+            for (const [holeNumber, gross] of holeGross) {
+              const si = pin.siByHole.get(holeNumber);
+              // `si === undefined` means the hole is OUT OF PLAY (> holesToPlay) —
+              // the SI map is restricted to holes in play. Skip it (matching the
+              // settlement path's holesInPlay filter), NEVER count it.
+              if (si === undefined) continue;
+              allocated += gross - allocateStrokesFromCourseHandicap(ch, si);
+            }
+          } catch {
+            // Corrupt pinned CH / stroke index → this F1 round is unsettleable.
+            // Fail closed (net null), never crash the endpoint.
+            netComputable = false;
+            break;
+          }
+          netSum += allocated;
+          continue;
+        }
+        // FAIL-CLOSED for an F1 event with NO valid pin for this round (Story 1.4
+        // fix): an F1 round whose pin is missing/corrupt/incomplete is NEVER
+        // settled against live HI/course — its net is not computable (null). This
+        // is the money-safety invariant: there must be ZERO read paths that derive
+        // an F1 round's net from live (non-pinned) data.
+        if (isF1Event) {
+          netComputable = false;
+          break;
+        }
+        // Legacy (non-F1) round: proportional allocation off the live CH.
+        if (accum.handicapIndex === null) {
+          netComputable = false;
+          break;
+        }
         const ctx = roundCtxMap?.get(roundId);
         if (!ctx) {
           // Round context missing — net not computable for this scope.
@@ -310,6 +550,10 @@ function assignRanksAndBuildRows(
       accum,
       grossThroughHole: accum.totalGross,
       netThroughHole: netComputable ? netSum : null,
+      // Surface a single pinned CH only when the player has exactly one F1 round
+      // in scope (round-scope reads); otherwise null (event-scope mixes rounds).
+      courseHandicap: pinnedCH,
+      pinnedHandicapIndex: pinnedHI,
     });
   }
 
@@ -346,7 +590,10 @@ function assignRanksAndBuildRows(
       rows.push({
         playerId: p.accum.playerId,
         playerName: p.accum.playerName,
-        handicapIndex: p.accum.handicapIndex,
+        // AC9: for an F1 round-scope read, show the PINNED HI (what the money was
+        // computed off), falling back to the live/manual HI otherwise.
+        handicapIndex: p.pinnedHandicapIndex ?? p.accum.handicapIndex,
+        courseHandicap: p.courseHandicap,
         grossThroughHole: p.grossThroughHole,
         netThroughHole: p.netThroughHole,
         throughHole: p.accum.totalThroughHole,
@@ -364,7 +611,8 @@ function assignRanksAndBuildRows(
     rows.push({
       playerId: p.accum.playerId,
       playerName: p.accum.playerName,
-      handicapIndex: p.accum.handicapIndex,
+      handicapIndex: p.pinnedHandicapIndex ?? p.accum.handicapIndex,
+      courseHandicap: p.courseHandicap,
       grossThroughHole: null,
       netThroughHole: null,
       throughHole: 0,
