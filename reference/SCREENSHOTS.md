@@ -62,3 +62,41 @@ Event name: **Pete Dye Invitational** · Course: **Pete Dye Golf Club**
 The hub + money + foursome shots are shown in fixed-height crop windows in the HTML, so the
 bottom of each tall screenshot (incl. any raw activity-feed rows) is not visible — no manual
 cropping needed.
+
+## F1 money capture — Cuban −$45 (added 2026-06-22)
+
+The shots in the current brochure use the **F1 ("Rules & Games") Guyan 2v2** money model
+(whole-dollar, $5/point, each loser pays ONE opponent the full team amount) — NOT the legacy
+cents/half-dollar 2v2. That needs these **transient** edits on top of the roster swap above
+(all reverted after capture, like the names):
+
+1. **Make the seed event F1** (`apps/tournament-api/src/db/e2e-seed.ts`):
+   - Give the manual members a handicap: `{ mode: 'manual', name, manualHandicapIndex: 0 }`
+     (a null HI makes the round pin fail-closed → F1 won't settle).
+   - Order `memberIds` by `memberNames` so pairing slots are deterministic
+     (`memberNames.map(n => memberRows.find(m => m.name === n)?.playerId)`) — slots 1&2 = Team A
+     = **Cuban & Johnny Hotdog**; the raw select is unordered and scrambles teams.
+   - Drop the individual "cards" bet (keeps the money purely the 2v2 = a clean −$45).
+   - Insert an **event-level `game_config`** row (this is what makes `isF1Event()` true):
+     `{ level:'event', refId:eventId, configJson: {scope:'foursome', game:'guyan-2v2',
+     pointValueSchedule:{kind:'flat',cents:500}, modifiers:[{type:'net-skins',enabled:true,
+     variant:{basis:'net',bonus:'single'}}], lockState:'locked', configVersion:1},
+     lockState:'locked', configVersion:1, … }` — mirrors `__fixtures__/guyan-2v2-base-flat.json`.
+     (Round pins auto-create at start-round for F1 events; no extra step.)
+
+2. **Enable F1 money on the capture's API server** (`apps/tournament-web/e2e/_fixture.ts`):
+   add `TOURNAMENT_F1_MONEY_ENABLED: 'true'` to `API_ENV`.
+
+3. **Score for exactly −$45** (`apps/tournament-web/e2e/screenshots.spec.ts`): score all 18 holes
+   (not 3) with a hand-calc gross table. The Guyan model = 3 team points/hole (low ball, skin,
+   team total) + net-skins bonus, $5/point → −$45 = −9 net points. Team B sweeps the 3 base
+   points on 4 holes (−12), Team A sweeps 1 (+3), the rest are washes (all four make the same
+   score; shared birdies on the par-5s for color). CH=0 → net = gross. Also hide transient
+   overlays before each shot: `page.addStyleTag` `display:none` for
+   `[data-testid="tournament-toast-stack"]`, `[data-testid^="award-celebration"]` (scoring 18
+   holes fires birdie toasts that otherwise cover the shot).
+
+The **color-coded scorecard look** (birdie circles / bogey squares on the foursome-results page)
+depends on the Wolf-style notation feature — being built as a proper Tournament-director story.
+Until it ships, the foursome-results shot needs that change applied transiently too. Re-capture
+once the director lands the real scoreboard (notation + handicap/greenie/polie/sandie dots).
