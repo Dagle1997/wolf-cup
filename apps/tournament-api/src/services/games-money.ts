@@ -422,8 +422,19 @@ async function settleFoursome(
       netByHole.set(s.holeNumber, cell);
     }
 
+    // DENSE holes (Story 2.2, AC8): emit a row for EVERY in-play hole — the
+    // in-play set is exactly the keys of `siByHole` (the stroke-index map derived
+    // from the pinned course revision filtered to holes_to_play, so 9-hole and
+    // other partial formats are handled with no new definition). An unplayed or
+    // partially-scored hole carries whatever net cells exist (possibly empty), so
+    // it appears as a PRESENT-BUT-INCOMPLETE row. Two consumers rely on this:
+    //   - base game: the complete-cell gate already skips incomplete holes, so
+    //     base money is UNCHANGED vs the prior sparse (netByHole-only) build;
+    //   - greenie fold (2.2): its barrier must SEE an unplayed-par-3 gap to defer
+    //     later greenies rather than silently bridge the carry across it.
     const holes: HoleState[] = [];
-    for (const [holeNumber, net] of netByHole) {
+    for (const holeNumber of siByHole.keys()) {
+      const net = netByHole.get(holeNumber) ?? {};
       // Attach this hole's per-player claims (Story 2.1). Empty when none.
       const holeClaims: Record<string, HoleClaims> = {};
       for (const playerId of ordered) {

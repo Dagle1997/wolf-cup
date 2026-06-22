@@ -1,0 +1,35 @@
+{
+  "name": "Greenie carryover OFF — IDENTICAL inputs to carryover-on, proving the lever. With carryover OFF the two unclaimed par-3s (H1, H3) EXPIRE instead of rolling, so the 3rd par-3's won greenie (H5) is worth only 1 point, not 3. Flips $15/side -> $5/side.",
+  "_contract": "Golden HAND-CALC fixture for the F1 greenie modifier (Story 2.2), carryover=false variant. Same count-based rawA rule; the ONLY difference vs greenie-carryover-on.json is the lever: an UNCLAIMED par-3 expires (carryOut 0) instead of rolling (FR40). Proves the carryover boolean is the single greenie lever (FR2). SettlementEdge IR is the post-Story-2.1a whole-dollar 1-to-1 layout. Integer cents; fromPlayerId PAYS toPlayerId.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "flat", "cents": 500 },
+      "modifiers": [
+        { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } },
+        { "type": "greenie", "enabled": true, "variant": { "carryover": false } }
+      ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 1, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 } },
+      { "holeNumber": 2, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 } },
+      { "holeNumber": 3, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 } },
+      { "holeNumber": 4, "par": 5, "net": { "a1": 5, "a2": 5, "b1": 5, "b2": 5 } },
+      { "holeNumber": 5, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 }, "claims": { "a1": { "greenie": true } } }
+    ],
+    "sourceId": "fixture-greenie-carryover-off"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 500, "a2": 500, "b1": -500, "b2": -500 },
+    "edges": [
+      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 500, "sourceType": "f1_game", "sourceId": "fixture-greenie-carryover-off" },
+      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 500, "sourceType": "f1_game", "sourceId": "fixture-greenie-carryover-off" }
+    ],
+    "ledgerTotalCents": 1000
+  },
+  "_handCalc": "Identical inputs to greenie-carryover-on.json; greenie carryover=FALSE. All base points 0 (nets=par). GREENIE FOLD:\n  H1 (par 3): boxes none => UNCLAIMED. carryIn 0 -> carryOut 0 (EXPIRES, carryover off). award 0.\n  H2 (par 4): skipped.\n  H3 (par 3): boxes none => UNCLAIMED. carryIn 0 -> carryOut 0 (EXPIRES). award 0.\n  H4 (par 5): skipped.\n  H5 (par 3): a1 box => rawA=+1, WON. award = +1 + sign*carryIn = +1 + 0 = +1 to A. carryOut 0.\nsettleablePar3Count=3, finalCarryPoints=0, pointsByHole={5:+1}.\n\nSETTLE: pts(H5)= +1. Each cross pair += 1*250=250 => each A +500c (+$5), each B -500c. EDGES (1-to-1): b1->a1 500, b2->a2 500. ledgerTotal=1000c.\n\nCONTRAST: identical inputs; carryover flips H5 from +3 -> +1, i.e. $15/side -> $5/side. CONSERVATION: Sum|pts| + finalCarry = 1 + 0 = 1; but RHS over settleable par-3s with carry off is NOT the conservation invariant (that invariant is stated for carryover ON only) — here the two unclaimed greenies are simply discarded by design."
+}

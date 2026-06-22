@@ -19,8 +19,17 @@ const modifierSchema = z
   .object({
     type: z.string(),
     enabled: z.boolean(),
+    // Each variant key is optional so a modifier carries only its own lever
+    // (Story 2.2: greenie's variant is `{ carryover }` — no basis/bonus). `.strict()`
+    // still rejects any UNKNOWN key; the per-modifier allowlist (registry.ts
+    // validateResolvedConfig) rejects a key that exists but is wrong FOR THAT
+    // modifier (e.g. carryover on net-skins, basis/bonus on greenie) — FR44.
     variant: z
-      .object({ basis: z.enum(['net', 'gross']), bonus: z.enum(['single', 'double']) })
+      .object({
+        basis: z.enum(['net', 'gross']).optional(),
+        bonus: z.enum(['single', 'double']).optional(),
+        carryover: z.boolean().optional(),
+      })
       .strict()
       .optional(),
   })

@@ -1,0 +1,35 @@
+{
+  "name": "Greenie carryover ON — proves carry + non-par-3 skip + multi-par-3 accumulation. Two unclaimed par-3s (H1, H3) roll 1 greenie each; the 3rd par-3 (H5) is won by a1 and SWEEPS the pot, worth 3 points (1 won + 2 carried). All nets = par so every base point is 0 — the ledger reflects GREENIE points only.",
+  "_contract": "Golden HAND-CALC fixture for the F1 greenie modifier (Story 2.2). Greenies are contested ONLY on par-3s and are COUNT-BASED: rawA = (#teamA boxes) - (#teamB boxes), range -2..+2, each unit a team point (+1 each winner-team player / -1 each opponent). Carryover (the only greenie lever): an UNCLAIMED par-3 (zero boxes) rolls 1 greenie to the NEXT par-3 when ON; the winning team SWEEPS the pending pot when a par-3 is finally won (carryover stops once won). Non-par-3 holes are skipped (the pot never lands on a par-4/5). Isolation device: every net = par => all base points (low ball, skin, team total, net-skins) are 0, so the ledger is greenie-only. SettlementEdge IR is the post-Story-2.1a WHOLE-DOLLAR 1-to-1 layout (each loser pays ONE winner the full per-player amount, slot-paired teamA[i]<->teamB[i]); per-player nets + ledger total are identical to the pre-2.1a 4xpv/2 layout. Integer cents; fromPlayerId PAYS toPlayerId.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "flat", "cents": 500 },
+      "modifiers": [
+        { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } },
+        { "type": "greenie", "enabled": true, "variant": { "carryover": true } }
+      ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 1, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 } },
+      { "holeNumber": 2, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 } },
+      { "holeNumber": 3, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 } },
+      { "holeNumber": 4, "par": 5, "net": { "a1": 5, "a2": 5, "b1": 5, "b2": 5 } },
+      { "holeNumber": 5, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 }, "claims": { "a1": { "greenie": true } } }
+    ],
+    "sourceId": "fixture-greenie-carryover-on"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 1500, "a2": 1500, "b1": -1500, "b2": -1500 },
+    "edges": [
+      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 1500, "sourceType": "f1_game", "sourceId": "fixture-greenie-carryover-on" },
+      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 1500, "sourceType": "f1_game", "sourceId": "fixture-greenie-carryover-on" }
+    ],
+    "ledgerTotalCents": 3000
+  },
+  "_handCalc": "Teams A={a1,a2} B={b1,b2}, flat $5/point (pv=500c), net-skins ON (contributes 0 here), greenie ON with carryover=true. Every net = par => low-ball tie, skin 0, team-total tie, net-skins equal-level no-blood => ALL base points 0 on every hole. Ledger = greenie only.\n\nGREENIE FOLD over par-3s in holeNumber order, carry pot in POINTS:\n  H1 (par 3): boxes none => rawA=0, zeroBoxes => UNCLAIMED. carryIn 0 -> carryOut 1 (rolls). award 0.\n  H2 (par 4): NOT a par-3 => skipped; pot untouched (1).\n  H3 (par 3): boxes none => UNCLAIMED. carryIn 1 -> carryOut 2 (rolls). award 0.\n  H4 (par 5): NOT a par-3 => skipped; pot untouched (2).\n  H5 (par 3): a1 box => countA=1 countB=0 => rawA=+1, WON. award = rawA + sign*carryIn = +1 + (+1)*2 = +3 to A. carryOut 0 (sweep stops carry).\nsettleablePar3Count=3, finalCarryPoints=0, pointsByHole={5:+3}.\n\nSETTLE: only H5 has non-zero pts. pts(H5)= base 0 + greenie +3 = +3. pv=500 (whole-dollar). Each of the 4 cross pairs += pts*(pv/2)=3*250=750 toward A => each A player +1500c (+$15), each B player -1500c. Zero-sum (1500+1500-1500-1500=0).\n\nEDGES (Story 2.1a WHOLE-DOLLAR 1-to-1): a1=a2=+1500, b1=b2=-1500. Each loser pays ONE winner the FULL amount, slot-paired teamA[i]<->teamB[i]: b1->a1 1500, b2->a2 1500. Sorted (from,to). ledgerTotal = 2*1500 = 3000c. No half-dollar leg.\n\nCONSERVATION (carryover ON): Sum|pointsByHole| + finalCarry = 3 + 0 = 3. RHS over settleable par-3s (zeroBoxes?1:|rawA|) = H1(1)+H3(1)+H5(|+1|=1) = 3. Agrees: the carry mechanism creates/loses no points."
+}

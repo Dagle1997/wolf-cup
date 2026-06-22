@@ -1,6 +1,6 @@
 # Story 2.2: Greenie modifier (stateful carryover) + golden
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- F1 Epic 2 (Full Game Vocabulary), Story 2.2 — the FIRST money-bearing
 resolver of Epic 2 and the FIRST STATEFUL modifier in the engine. Source:
@@ -77,35 +77,35 @@ This is a **money-bearing, golden-bearing** story. Per NFR-C1 and the Epic-1 ret
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1 — config lever plumbing (AC: 3,11)**
-  - [ ] `engine/games/types.ts`: add optional `carryover?: boolean` to `ModifierVariant` (documented greenie-only).
-  - [ ] `engine/games/config-schema.ts`: add `carryover: z.boolean().optional()` to the variant object in `modifierSchema`, keeping `.strict()`.
-  - [ ] `engine/games/registry.ts`: `registerModifier('greenie')`. In `validateResolvedConfig`, enforce the per-modifier variant allowlist (AC11): enabled greenie with `variant.basis`/`variant.bonus` → `unsupported_greenie_variant:…`; enabled net-skins with `variant.carryover` → `unsupported_net_skins_variant:…` (extend the existing net-skins branch). Disabled modifiers stay inert (variant unconstrained).
-- [ ] **Task 2 — pure resolver / fold `modifiers/greenie.ts` (AC: 2,5,6,7,8,9)**
-  - [ ] Export `greenieActive(config): boolean` (present + enabled) and `greenieCarryover(config): boolean` (`variant?.carryover ?? true`), mirroring `netSkinsActive`.
-  - [ ] Export the pure fold returning **`{ pointsByHole: Map<number,number>; finalCarryPoints: number; settleablePar3Count: number }`** (holeNumber → signed A-positive greenie **points**; carry tracked in integer **points**). Algorithm: take **all** holes, **sort by holeNumber**, iterate; `par !== 3` → `continue`; `par === 3` but **incomplete** (any of 4 nets missing) → **`break`** (BARRIER per AC8 — do **not** filter/drop, do not advance carry past it); else compute `rawA = #A − #B` (count boxes for `teamA ∪ teamB` members only; ignore foreign keys) and apply the AC6 won/unclaimed/contested rule, updating the carry pot. `settleablePar3Count` counts par-3s actually folded. Emit map entries only for non-zero awards. Inactive greenie → empty map / `finalCarryPoints:0` / `settleablePar3Count:0`.
-- [ ] **Task 3 — wire into `compute-foursome.ts` (AC: 7)**
-  - [ ] Compute the fold once (after the sort / dup-hole guard) and take `.pointsByHole`. In the per-hole loop, after the complete-cell `continue`, set `pts = holeNetPointsA(...) + (pointsByHole.get(hole.holeNumber) ?? 0)` BEFORE the `if (pts === 0) continue` short-circuit (so the greenie point is valued at THIS hole's `pointValueCents` — AC7). No change to the `pts * (pv/2)` split; keep the `pointValueCents` even-guard.
-- [ ] **Task 3b — DENSE holes from the service `services/games-money.ts` (AC: 8)** — the **only** change to the money chokepoint, narrowly scoped: build the `holes` array from **every in-play hole**, where the in-play set is **exactly the keys of `siByHole`** (the stroke-index map games-money already derives from the pinned course revision filtered to `holes_to_play` — see the `games-money.ts:416` "outside holes-in-play (e.g. >holesToPlay)" guard; this correctly handles 9-hole and other partial formats with no new definition). Iterate those hole numbers (not just `netByHole`), attaching whatever `net` cells exist (empty/partial for unplayed/partial holes) + that hole's claims; par from `parByHole`. An unplayed par-3 thus appears as a **present-but-incomplete** row so the engine's greenie barrier (AC8) sees the gap. Verify the base game is unchanged (complete-cell gate already skips empty-net holes) — run `games-money.disjointness.test.ts` + the money integration tests; assert byte-identical base-money on a partially-scored fixture. Add a test proving an unplayed par-3 between two complete par-3s defers the later greenie (the dense-array barrier).
-- [ ] **Task 4 — golden fixtures + harness (AC: 1,11)**
-  - [ ] `__fixtures__/greenie-carryover-on.json`, `greenie-carryover-off.json`, and `greenie-two-on-one-hole.json` transcribed **exactly** from the approved Dev-Notes hand-calc (same `name`/`_contract`/`_handCalc` style as `guyan-2v2-base-flat.json`).
-  - [ ] `engine/games/greenie.golden.test.ts` (mirror `guyan-2v2.golden.test.ts`). **Fixture key names match the existing harness exactly**: `expected.perPlayerNetCents`, `expected.edges`, `expected.ledgerTotalCents` — asserted against `ledger.perPlayerCents`, `ledgerToEdges(...)`, and `ledger.totalCents` respectively (do not invent `perPlayerCents`/`totalCents` keys in the JSON). New file; Epic-1 golden test untouched.
-- [ ] **Task 5 — resolver + wiring tests `modifiers/greenie.test.ts` (AC: 5,6,7,8,11)** — front-loaded edges:
-  - [ ] count model: 1 box → +1; both A boxes → +2; one A + one B box → 0 (contested), pot preserved.
-  - [ ] carryover ON accumulation (1st+2nd par-3 unclaimed → 3rd won worth 3); OFF expiry (3rd worth 1).
-  - [ ] **winner-sweeps-with-multi-greenie**: rawA=+2 with carriedIn=2 → +4 (the AC6 default).
-  - [ ] **non-par-3 never lands the pot** (carry rolls past par-4/5).
-  - [ ] **foreign claim key** (playerId not in foursome) ignored.
-  - [ ] **incomplete-par-3 BARRIER**: H1(par3,complete,unclaimed), H3(par3,**incomplete**), H5(par3,complete, a1 box) → H5 award MUST be **0** (no carry bridged); after H3 completes unclaimed → H5 collects **3**.
-  - [ ] **value-at-collecting-hole** (front/back segmented PV via `computeFoursome`): a front par-3 carry collected on a back par-3 uses the **back** PV; assert exact cents (proves points-not-cents + valued-at-collection).
-  - [ ] **terminal pending carry** → 0 money; `finalCarryPoints` reflects the pot.
-  - [ ] **fail-closed**: enabled greenie with `variant.basis/bonus` → `unsupported_greenie_variant`; enabled net-skins with `variant.carryover` → `unsupported_net_skins_variant`.
-  - [ ] greenie inactive (absent/disabled) → empty map / 0 edges (inert).
-- [ ] **Task 6 — property test extension `games.property.test.ts` (AC: 9,10)**
-  - [ ] Extend `configArb` to randomly include an enabled greenie (carryover random); extend `holeArb` to attach random per-player greenie checkboxes.
-  - [ ] New **carryover-conservation** property (ON): `Σ|pointsByHole.values()| + finalCarryPoints === Σ_settleablePar3( zeroBoxes ? 1 : |#A−#B| )`, RHS computed independently from raw inputs; also assert `finalCarryPoints >= 0`.
-  - [ ] Confirm existing **order-independence** + **loss-less/zero-sum** + **isolation** still pass with greenie active.
-- [ ] **Task 7 — regression gate (AC: all)** — `pnpm --filter @tournament/api test`, `pnpm -r typecheck`, `pnpm -r lint` green; engine + wolf-cup + web unchanged (no web/Wolf Cup edits). Epic-1 golden (`guyan-2v2-*.json`) byte-identical (greenie inactive ⇒ zero change).
+- [x] **Task 1 — config lever plumbing (AC: 3,11)**
+  - [x] `engine/games/types.ts`: add optional `carryover?: boolean` to `ModifierVariant` (documented greenie-only).
+  - [x] `engine/games/config-schema.ts`: add `carryover: z.boolean().optional()` to the variant object in `modifierSchema`, keeping `.strict()`.
+  - [x] `engine/games/registry.ts`: `registerModifier('greenie')`. In `validateResolvedConfig`, enforce the per-modifier variant allowlist (AC11): enabled greenie with `variant.basis`/`variant.bonus` → `unsupported_greenie_variant:…`; enabled net-skins with `variant.carryover` → `unsupported_net_skins_variant:…` (extend the existing net-skins branch). Disabled modifiers stay inert (variant unconstrained).
+- [x] **Task 2 — pure resolver / fold `modifiers/greenie.ts` (AC: 2,5,6,7,8,9)**
+  - [x] Export `greenieActive(config): boolean` (present + enabled) and `greenieCarryover(config): boolean` (`variant?.carryover ?? true`), mirroring `netSkinsActive`.
+  - [x] Export the pure fold returning **`{ pointsByHole: Map<number,number>; finalCarryPoints: number; settleablePar3Count: number }`** (holeNumber → signed A-positive greenie **points**; carry tracked in integer **points**). Algorithm: take **all** holes, **sort by holeNumber**, iterate; `par !== 3` → `continue`; `par === 3` but **incomplete** (any of 4 nets missing) → **`break`** (BARRIER per AC8 — do **not** filter/drop, do not advance carry past it); else compute `rawA = #A − #B` (count boxes for `teamA ∪ teamB` members only; ignore foreign keys) and apply the AC6 won/unclaimed/contested rule, updating the carry pot. `settleablePar3Count` counts par-3s actually folded. Emit map entries only for non-zero awards. Inactive greenie → empty map / `finalCarryPoints:0` / `settleablePar3Count:0`.
+- [x] **Task 3 — wire into `compute-foursome.ts` (AC: 7)**
+  - [x] Compute the fold once (after the sort / dup-hole guard) and take `.pointsByHole`. In the per-hole loop, after the complete-cell `continue`, set `pts = holeNetPointsA(...) + (pointsByHole.get(hole.holeNumber) ?? 0)` BEFORE the `if (pts === 0) continue` short-circuit (so the greenie point is valued at THIS hole's `pointValueCents` — AC7). No change to the `pts * (pv/2)` split; keep the `pointValueCents` even-guard.
+- [x] **Task 3b — DENSE holes from the service `services/games-money.ts` (AC: 8)** — the **only** change to the money chokepoint, narrowly scoped: build the `holes` array from **every in-play hole**, where the in-play set is **exactly the keys of `siByHole`** (the stroke-index map games-money already derives from the pinned course revision filtered to `holes_to_play` — see the `games-money.ts:416` "outside holes-in-play (e.g. >holesToPlay)" guard; this correctly handles 9-hole and other partial formats with no new definition). Iterate those hole numbers (not just `netByHole`), attaching whatever `net` cells exist (empty/partial for unplayed/partial holes) + that hole's claims; par from `parByHole`. An unplayed par-3 thus appears as a **present-but-incomplete** row so the engine's greenie barrier (AC8) sees the gap. Verify the base game is unchanged (complete-cell gate already skips empty-net holes) — run `games-money.disjointness.test.ts` + the money integration tests; assert byte-identical base-money on a partially-scored fixture. Add a test proving an unplayed par-3 between two complete par-3s defers the later greenie (the dense-array barrier).
+- [x] **Task 4 — golden fixtures + harness (AC: 1,11)**
+  - [x] `__fixtures__/greenie-carryover-on.json`, `greenie-carryover-off.json`, and `greenie-two-on-one-hole.json` transcribed **exactly** from the approved Dev-Notes hand-calc (same `name`/`_contract`/`_handCalc` style as `guyan-2v2-base-flat.json`).
+  - [x] `engine/games/greenie.golden.test.ts` (mirror `guyan-2v2.golden.test.ts`). **Fixture key names match the existing harness exactly**: `expected.perPlayerNetCents`, `expected.edges`, `expected.ledgerTotalCents` — asserted against `ledger.perPlayerCents`, `ledgerToEdges(...)`, and `ledger.totalCents` respectively (do not invent `perPlayerCents`/`totalCents` keys in the JSON). New file; Epic-1 golden test untouched.
+- [x] **Task 5 — resolver + wiring tests `modifiers/greenie.test.ts` (AC: 5,6,7,8,11)** — front-loaded edges:
+  - [x] count model: 1 box → +1; both A boxes → +2; one A + one B box → 0 (contested), pot preserved.
+  - [x] carryover ON accumulation (1st+2nd par-3 unclaimed → 3rd won worth 3); OFF expiry (3rd worth 1).
+  - [x] **winner-sweeps-with-multi-greenie**: rawA=+2 with carriedIn=2 → +4 (the AC6 default).
+  - [x] **non-par-3 never lands the pot** (carry rolls past par-4/5).
+  - [x] **foreign claim key** (playerId not in foursome) ignored.
+  - [x] **incomplete-par-3 BARRIER**: H1(par3,complete,unclaimed), H3(par3,**incomplete**), H5(par3,complete, a1 box) → H5 award MUST be **0** (no carry bridged); after H3 completes unclaimed → H5 collects **3**.
+  - [x] **value-at-collecting-hole** (front/back segmented PV via `computeFoursome`): a front par-3 carry collected on a back par-3 uses the **back** PV; assert exact cents (proves points-not-cents + valued-at-collection).
+  - [x] **terminal pending carry** → 0 money; `finalCarryPoints` reflects the pot.
+  - [x] **fail-closed**: enabled greenie with `variant.basis/bonus` → `unsupported_greenie_variant`; enabled net-skins with `variant.carryover` → `unsupported_net_skins_variant`.
+  - [x] greenie inactive (absent/disabled) → empty map / 0 edges (inert).
+- [x] **Task 6 — property test extension `games.property.test.ts` (AC: 9,10)**
+  - [x] Extend `configArb` to randomly include an enabled greenie (carryover random); extend `holeArb` to attach random per-player greenie checkboxes.
+  - [x] New **carryover-conservation** property (ON): `Σ|pointsByHole.values()| + finalCarryPoints === Σ_settleablePar3( zeroBoxes ? 1 : |#A−#B| )`, RHS computed independently from raw inputs; also assert `finalCarryPoints >= 0`.
+  - [x] Confirm existing **order-independence** + **loss-less/zero-sum** + **isolation** still pass with greenie active.
+- [x] **Task 7 — regression gate (AC: all)** — `pnpm --filter @tournament/api test`, `pnpm -r typecheck`, `pnpm -r lint` green; engine + wolf-cup + web unchanged (no web/Wolf Cup edits). Epic-1 golden (`guyan-2v2-*.json`) byte-identical (greenie inactive ⇒ zero change).
 
 ## Dev Notes
 
@@ -210,6 +210,47 @@ claude-opus-4-8[1m] (Opus 4.8, 1M context).
 
 ### Debug Log References
 
+- Golden gate ran FIRST: 3 fixtures authored to the Dev-Notes hand-calc, `greenie.golden.test.ts` green before any resolver consumed them (NFR-C1).
+- Full `@tournament/api test`: the only failure is the pre-existing T10-2/T10-3 **load-induced flake** (`round-lifecycle.integration.test.ts` finalize-before-handoff 500-instead-of-422 under concurrent test-file DB contention). It passes 24/24 in isolation and consecutive full-suite runs alternate pass/fail on that one test; Story 2.2 touches zero lifecycle/handoff code. Not a regression.
+
 ### Completion Notes List
 
+- **Edge-representation note (intentional deviation from the Dev-Notes hand-calc):** the spec's Dev-Notes hand-calc tables show the pre-2.1a 4-leg `pv/2` edge layout (e.g. `4 × 750`). Story **2.1a** shipped AFTER that draft and rewrote `ledger-to-edges.ts` to the WHOLE-DOLLAR 1-to-1 layout (2 legs). Per the explicit resume instruction in sprint-status ("the greenie golden lands against whole-dollar 1-to-1 edges"), the three goldens were authored against the **current** representation: `b1→a1`, `b2→a2` (e.g. `2 × 1500`). **Per-player nets and ledger totals are byte-identical to the approved hand-calc** (e.g. a1=a2=+1500, total 3000); only the `edges` IR follows the already-Josh-approved 2.1a change. Each fixture `_handCalc` documents this.
+- AC6 carryover rules implemented exactly: won → winner sweeps pot (`rawA + sign*carry`), carry resets; unclaimed → `+1` when ON / expire when OFF; contested → award 0, pot preserved (defensive — cannot occur in real play).
+- AC8 BARRIER (not filter): the fold `break`s at the first incomplete par-3; the dense `holes` array (Task 3b, built from `siByHole.keys()`) lets the barrier see an unplayed-par-3 gap. DB-proven in `games-money.greenie.test.ts`: with the gap open a1 nets **0** (sparse would wrongly net +1000); once filled, a1 nets **+1500** — monotonic release, no retroactive vanish.
+- AC11 fail-closed allowlist: enabled greenie with `basis`/`bonus` → `unsupported_greenie_variant:…`; enabled net-skins with `carryover` → `unsupported_net_skins_variant:carryover`. `ModifierVariant` keys made optional so greenie's variant is `{ carryover }` only; `.strict()` Zod still rejects unknown keys.
+- AC10 carry-conservation property is non-tautological (LHS from surfaced fold state, RHS re-derived independently from raw holes).
+- Two ALLOWED test fixtures outside the declared file list were updated because greenie is now a **registered** modifier (they used `greenie` as the "unknown modifier" example → switched to `not-a-real-modifier`): `__fixtures__/cascade-resolver-lock-gate.json`, `db/schema/game-config.test.ts`.
+- Base money byte-identical: the Story 1.4 golden gate (Epic-1 fixtures through the dense-holes chokepoint) + `games-money.greenie.test.ts` base-neutral case both green. typecheck + lint clean across all workspaces.
+
+**Impl-review ensemble (codex gpt-5.2 high + gemini-pro high) — applied/deferred:**
+- **APPLIED (codex Medium):** `validateResolvedConfig` now type-checks greenie's `carryover` lever — a non-boolean (e.g. `"false"`/`0`/`null`) reaching `computeFoursome` directly (bypassing Zod) is rejected `unsupported_greenie_variant:carryover_type` instead of being mis-interpreted by `greenieCarryover`'s `?? true`. Mirrors the net-skins value-check; closes a fail-closed defense-in-depth gap (AC11). Test added.
+- **DEFERRED (codex Low → followup, unreachable-by-construction):** `games-money.ts` dense-holes uses `par: parByHole.get(holeNumber) ?? 0`. `siByHole` and `parByHole` are built from the SAME `holesInPlay` map (games-money.ts:246-247) → identical keysets, so the `?? 0` fallback can never trigger for a `siByHole.keys()` iteration. Pre-existing pattern (the prior sparse build used the same default). Hardening it to fail-closed would add dead code and change the base-money path for a corrupt-data case that cannot occur. Logged as a non-blocking followup; not changed in this money story.
+- Gemini review: zero findings ("exceptionally solid"). Codex critique of gemini: SHIP, confirmed gemini's no-findings holds for the production path while upholding the Medium as defense-in-depth.
+- **APPLIED (codex re-review Medium):** non-object `variant` (string/boolean/null/array) on an enabled modifier → reject `invalid_variant_shape:${type}` (completes the carryover-type guard: a malformed variant container would otherwise read as "absent" via optional chaining and silently default the levers). Test added (greenie/net-skins).
+- **SHIP verdict (synthesis, codex gpt-5.2 + gemini-pro, high confidence): `must_fix_before_send` = None.** No reachable production-path money-correctness bug remains. Production always pins a Zod/`parseGameConfig`-validated config (`modifierSchema` is `.strict()` → unknown variant keys already rejected at write); `parByHole`+`siByHole` share the `holesInPlay` source (`par ?? 0` unreachable); the service always builds dense holes.
+- **APPLIED (party-review codex Medium — consistency):** `validateResolvedConfig` now also type-checks `m.enabled` is strictly boolean (`invalid_modifier_enabled:${type}`). `enabled` is read on EVERY modifier to decide active/inactive, so it is as load-bearing as `type`; guarding it completes the direct-caller fail-closed posture consistently with the variant-shape + carryover-type guards (resolves the reviewer's "same threat model, why deferred?" critique). Test added. With this, all THREE load-bearing fields `validateResolvedConfig` reads to move money — `type` (hasModifier), `enabled` (boolean), and the variant levers (allowlist + shape + carryover-type) — are now fail-closed.
+- **FOLLOWUP (deferred on SCOPE grounds — general `validateResolvedConfig` hardening, applies to ALL modifiers, pre-existing since Story 1.1; NOT greenie-specific; production is Zod/`.strict()`-protected so these are non-blocking `should_fix`/`optional`):** (a) reject unknown keys inside an object-shaped `variant` (Zod `.strict()` already rejects them at write; the engine allow-lists known keys, so a stray key defaults its lever — lower-stakes than enabled/type which flip activation); (b) replace `par ?? 0` with a fail-closed throw (unreachable-by-construction today — `parByHole`/`siByHole` share `holesInPlay`); (c) assert/normalize the dense-holes precondition at the greenie-fold boundary for any future direct caller (currently documented in `greenie.ts` JSDoc + guaranteed by the service); (d) guard `validateResolvedConfig` against a malformed TOP-LEVEL config shape (non-array `config.modifiers`, null entries) so it returns a reason instead of throwing for arbitrary unvalidated JSON — today a throw is still caught by the `games-money.ts` service `try/catch` (→ that foursome unsettleable, never an event-wide crash). These are a general-engine hardening pass, intentionally out of this focused greenie story.
+
+**Final review state:** codex (gpt-5.2 high) + gemini (gemini-pro high) both fresh on the final diff — gemini 0 findings; codex consistency-resolved with only the deferred general-engine Low above. Mandatory impl debate synthesis = SHIP (must_fix=None). Party review = SHIP, no open questions.
+
 ### File List
+
+New:
+- apps/tournament-api/src/engine/games/modifiers/greenie.ts
+- apps/tournament-api/src/engine/games/modifiers/greenie.test.ts
+- apps/tournament-api/src/engine/games/greenie.golden.test.ts
+- apps/tournament-api/src/engine/games/__fixtures__/greenie-carryover-on.json
+- apps/tournament-api/src/engine/games/__fixtures__/greenie-carryover-off.json
+- apps/tournament-api/src/engine/games/__fixtures__/greenie-two-on-one-hole.json
+- apps/tournament-api/src/services/games-money.greenie.test.ts
+
+Edited:
+- apps/tournament-api/src/engine/games/types.ts (carryover on ModifierVariant; keys optional)
+- apps/tournament-api/src/engine/games/config-schema.ts (carryover in modifierSchema, keys optional, .strict() preserved)
+- apps/tournament-api/src/engine/games/registry.ts (registerModifier('greenie') + per-modifier variant allowlist)
+- apps/tournament-api/src/engine/games/compute-foursome.ts (fold greenie points into pts)
+- apps/tournament-api/src/engine/games/games.property.test.ts (greenie arbs + carry-conservation property)
+- apps/tournament-api/src/services/games-money.ts (dense holes from siByHole.keys())
+- apps/tournament-api/src/engine/games/__fixtures__/cascade-resolver-lock-gate.json (unknown-modifier fixture → not-a-real-modifier)
+- apps/tournament-api/src/db/schema/game-config.test.ts (unknown-modifier cases → not-a-real-modifier)

@@ -42,9 +42,9 @@
     {
       "name": "unknown modifier type fails closed",
       "rows": [
-        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "greenie", "enabled": true } ], "lockState": "unlocked", "configVersion": 1 } }
+        { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 500 }, "modifiers": [ { "type": "not-a-real-modifier", "enabled": true } ], "lockState": "unlocked", "configVersion": 1 } }
       ],
-      "expected": { "ok": false, "reason": "unknown_modifier:greenie" }
+      "expected": { "ok": false, "reason": "unknown_modifier:not-a-real-modifier" }
     },
     {
       "name": "config_version newer than the engine fails closed",

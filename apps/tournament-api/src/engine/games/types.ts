@@ -17,8 +17,21 @@ export type PointValueSchedule =
   | { kind: 'flat'; cents: number }
   | { kind: 'front-back'; frontCents: number; backCents: number };
 
-/** A modifier rides the base game (Story 1.1: only 'net-skins'). */
-export type ModifierVariant = { basis: 'net' | 'gross'; bonus: 'single' | 'double' };
+/**
+ * A modifier rides the base game. The variant carries each modifier's levers;
+ * which keys are meaningful is modifier-specific (validateResolvedConfig enforces
+ * a per-modifier allowlist, FR44):
+ *  - net-skins (Story 1.1): `basis`/`bonus` (net/single supported; gross/double 2.5).
+ *  - greenie (Story 2.2): `carryover` ONLY (carryover-on/off is the single greenie
+ *    lever, FR2); `basis`/`bonus` on an enabled greenie fail closed.
+ * All keys are optional so each modifier carries only its own lever (a greenie
+ * variant is `{ carryover }`, never forced to also name basis/bonus).
+ */
+export type ModifierVariant = {
+  basis?: 'net' | 'gross';
+  bonus?: 'single' | 'double';
+  carryover?: boolean;
+};
 export type Modifier = { type: string; enabled: boolean; variant?: ModifierVariant };
 
 /** The resolved game configuration the engine settles from. */

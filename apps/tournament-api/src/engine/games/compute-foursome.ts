@@ -8,6 +8,7 @@
  */
 import type { FoursomeInput, GameConfig, Ledger } from './types.js';
 import { holeNetPointsA, pointValueCents } from './games/guyan-2v2.js';
+import { greenieFold } from './modifiers/greenie.js';
 import { validateResolvedConfig } from './registry.js';
 
 export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledger {
@@ -41,6 +42,15 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
     seenHoles.add(h.holeNumber);
   }
 
+  // Greenie fold (Story 2.2) — a STATEFUL modifier resolved across par-3s, so it
+  // cannot live in the per-hole stateless holeNetPointsA. Computed once over the
+  // (sorted, dup-guarded) holes; its per-hole signed team points are folded into
+  // `pts` below, valued at THIS hole's pointValueCents (AC7). The fold's own
+  // barrier defers greenie awards past the first incomplete par-3; base money is
+  // unaffected (greenie contributes 0 where the fold emits nothing). NFR-C7: the
+  // pts*(pv/2) split path is NOT forked — greenie only changes `pts`.
+  const { pointsByHole } = greenieFold(config, holes, input.teamSplit);
+
   const members = [teamA[0], teamA[1], teamB[0], teamB[1]];
   for (const hole of holes) {
     // Complete-cell gate (INTENTIONAL, matches Wolf Cup best-ball-2v2 + the
@@ -49,7 +59,10 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
     // its complete holes; partial holes are skipped, never half-settled.
     if (members.some((p) => hole.net[p] === undefined)) continue;
 
-    const pts = holeNetPointsA(hole, teamA, teamB, config);
+    // Base 2v2 points + this hole's greenie award (0 when none / deferred by the
+    // fold barrier). Added BEFORE the pts===0 short-circuit so a hole won on the
+    // greenie alone still settles, valued at this hole's point value.
+    const pts = holeNetPointsA(hole, teamA, teamB, config) + (pointsByHole.get(hole.holeNumber) ?? 0);
     if (pts === 0) continue;
 
     const pv = pointValueCents(config.pointValueSchedule, hole.holeNumber);

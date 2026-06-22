@@ -1,0 +1,31 @@
+{
+  "name": "Greenie two-on-one-hole — proves the COUNT model end-to-end. On a single par-3, BOTH teammates (a1 AND a2) are checked and neither opponent is => the team wins TWO greenies (+2) on one hole. No carry involved.",
+  "_contract": "Golden HAND-CALC fixture for the F1 greenie modifier (Story 2.2). COUNT model: rawA = (#teamA boxes) - (#teamB boxes); both A teammates inside both opponents => rawA=+2 => the team scores TWO greenie team points on this hole. Software just counts the boxes; at most one team legitimately scores (closest-to-pin is a human judgment). All nets = par => base points 0; ledger is greenie-only. SettlementEdge IR is the post-Story-2.1a whole-dollar 1-to-1 layout (an even point count yields whole-dollar legs directly). Integer cents; fromPlayerId PAYS toPlayerId.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "flat", "cents": 500 },
+      "modifiers": [
+        { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } },
+        { "type": "greenie", "enabled": true, "variant": { "carryover": true } }
+      ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 3, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 }, "claims": { "a1": { "greenie": true }, "a2": { "greenie": true } } }
+    ],
+    "sourceId": "fixture-greenie-two-on-one-hole"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 1000, "a2": 1000, "b1": -1000, "b2": -1000 },
+    "edges": [
+      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 1000, "sourceType": "f1_game", "sourceId": "fixture-greenie-two-on-one-hole" },
+      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 1000, "sourceType": "f1_game", "sourceId": "fixture-greenie-two-on-one-hole" }
+    ],
+    "ledgerTotalCents": 2000
+  },
+  "_handCalc": "Teams A={a1,a2} B={b1,b2}, flat $5/point, greenie ON. Single hole 3 (par 3), all nets = par => base points 0. GREENIE: a1 box + a2 box, b none => countA=2 countB=0 => rawA=+2, WON (no carry). award = +2 to A. pointsByHole={3:+2}, finalCarry=0, settleablePar3Count=1.\n\nSETTLE: pts(H3)=+2. Each cross pair += 2*250=500 => each A +1000c (+$10), each B -1000c. EDGES (1-to-1, +2 is even => whole-dollar directly): b1->a1 1000, b2->a2 1000. ledgerTotal=2000c.\n\nCONSERVATION (carryover ON): Sum|pts| + finalCarry = 2 + 0 = 2 = RHS over settleable par-3s (H3 |rawA|=2). Agrees."
+}

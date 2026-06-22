@@ -92,7 +92,7 @@ describe('parseGameConfig — fail-closed write validation', () => {
 
   const REJECTS: Array<[string, unknown]> = [
     ['unknown game', { ...VALID, game: 'wolf-9' }],
-    ['unknown modifier', { ...VALID, modifiers: [{ type: 'greenie', enabled: true }] }],
+    ['unknown modifier', { ...VALID, modifiers: [{ type: 'not-a-real-modifier', enabled: true }] }],
     ['too-new config_version', { ...VALID, configVersion: 2 }],
     ['odd point value', { ...VALID, pointValueSchedule: { kind: 'flat', cents: 501 } }],
     [
@@ -113,7 +113,7 @@ describe('Zod ↔ engine drift test (AC3) — identical verdicts on structurally
   const CASES: Array<[string, GameConfig]> = [
     ['valid', VALID],
     ['unknown game', { ...VALID, game: 'wolf-9' }],
-    ['unknown modifier', { ...VALID, modifiers: [{ type: 'greenie', enabled: true }] }],
+    ['unknown modifier', { ...VALID, modifiers: [{ type: 'not-a-real-modifier', enabled: true }] }],
     ['too-new version', { ...VALID, configVersion: 2 }],
     ['odd point value', { ...VALID, pointValueSchedule: { kind: 'flat', cents: 501 } }],
     [
