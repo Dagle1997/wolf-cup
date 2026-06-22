@@ -17,6 +17,7 @@ import { inviteRouter } from './routes/invites.js';
 import { joinRouter, adminJoinCodesRouter } from './routes/join.js';
 import { playersRouter } from './routes/players.js';
 import { scoresRouter, eventRoundsCourseRouter } from './routes/scores.js';
+import { claimsRouter } from './routes/claims.js';
 import { eventsLeaderboardRouter } from './routes/events-leaderboard.js';
 import { scorerAssignmentsRouter } from './routes/scorer-assignments.js';
 import { roundLifecycleRouter } from './routes/round-lifecycle.js';
@@ -137,6 +138,13 @@ app.route('/api/events', pdfScheduleRouter);
 // POST /api/rounds/:roundId/holes/:holeNumber/scores. Single-writer
 // enforcement via require-scorer-for-round middleware (FR-B10, FR-H3).
 app.route('/api/rounds', scoresRouter);
+
+// F1 Epic 2 (Story 2.1) inline claim capture. Effective URL:
+// POST /api/rounds/:roundId/claims. Single-writer enforced in-handler via the
+// shared resolveScorerGate helper (requireScorerForRound can't be mounted — it
+// requires :holeNumber + a score-shaped body). Append-only writes-log
+// (hole_claim_writes); idempotent on client_event_id; refuses finalized rounds.
+app.route('/api/rounds', claimsRouter);
 
 // T5-4 course endpoint mounted at /api/events (uses eventId in path so
 // requireEventParticipant can read it). Effective URL:

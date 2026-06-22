@@ -614,9 +614,9 @@ development_status:
   # money-bearing. 2.8 is the Wolf-Cup cross-validation golden (output-only,
   # never imports Wolf Cup — FD-1/FD-2).
   # ---------------------------------------------------------------------------
-  epic-2: backlog
+  epic-2: in-progress
 
-  2-1-inline-claim-capture-hole-claims: backlog
+  2-1-inline-claim-capture-hole-claims: done
   2-2-greenie-modifier-stateful-carryover: backlog
   2-3-polie-modifier: backlog
   2-4-sandie-modifier-par-vs-any-score-variant: backlog

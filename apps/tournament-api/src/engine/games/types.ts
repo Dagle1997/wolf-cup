@@ -36,12 +36,32 @@ export type GameConfig = {
 /** The two fixed teams in a foursome (slots 1&2 vs 3&4 — fed by Story 1.4's resolveFoursomeTeams). */
 export type TeamSplit = { teamA: readonly [string, string]; teamB: readonly [string, string] };
 
-/** One hole's GIVEN inputs: course hole number, par, and each player's net. */
+/**
+ * Per-player claim flags for a hole (Story 2.1). A player may carry any subset
+ * of greenie/polie/sandie. Story 2.1 only POPULATES this from the append-only
+ * `hole_claim_writes` log at the service layer (latest-`set`-write-per-cell);
+ * the resolvers that CONSUME it (greenie 2.2 / polie 2.3 / sandie 2.4) are out
+ * of scope, so a populated claim is INERT until its resolver ships.
+ */
+export type HoleClaims = {
+  greenie?: boolean;
+  polie?: boolean;
+  sandie?: boolean;
+};
+
+/** One hole's GIVEN inputs: course hole number, par, each player's net, claims. */
 export type HoleState = {
   holeNumber: number;
   par: number;
   /** playerId -> net strokes for this hole. */
   net: Record<string, number>;
+  /**
+   * playerId -> the player's current claim set for this hole. Optional: an
+   * undefined `claims` (or an absent player key) means no claims. The pure
+   * engine reads structurally only its own foursome's claims (FR23); the
+   * service layer derives the value (the engine never reads the DB).
+   */
+  claims?: Record<string, HoleClaims>;
 };
 
 /** A foursome's full input to the engine. */

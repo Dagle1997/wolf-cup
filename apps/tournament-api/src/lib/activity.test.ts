@@ -307,6 +307,16 @@ const validEvents: Record<typeof ACTIVITY_TYPES[number], ActivityEvent> = {
     eventId: EVENT_ID,
     actorPlayerId: ACTOR_ID,
   },
+  'game.claim_recorded': {
+    type: 'game.claim_recorded',
+    eventId: EVENT_ID,
+    roundId: ROUND_ID,
+    playerId: PLAYER_A_ID,
+    holeNumber: 7,
+    claimType: 'greenie',
+    op: 'set',
+    actorPlayerId: ACTOR_ID,
+  },
 };
 
 // ---- Per-type valid-payload tests -----------------------------------------

@@ -46,6 +46,10 @@ export const AUDIT_EVENT_TYPES = {
   // F1 round-pin written at round-start (Story 1.4) — the money-affecting input
   // (resolved config + per-player CH + course-rev) frozen for the round (AC14).
   ROUND_PINNED: 'round.pinned',
+  // F1 Epic 2 (Story 2.1) — a greenie/polie/sandie claim set/remove write
+  // (append-only). entity_id = the hole_claim_writes row id; payload carries
+  // round/player/hole/claim_type/op.
+  GAME_CLAIM_RECORDED: 'game.claim_recorded',
 } as const;
 
 export type AuditEventType =
@@ -64,6 +68,8 @@ export const AUDIT_ENTITY_TYPES = {
   GAME_CONFIG: 'game_config',
   // F1 round-pin (Story 1.4); entity_id = the round id.
   ROUND_PIN: 'round_pin',
+  // F1 Epic 2 (Story 2.1); entity_id = the hole_claim_writes row id.
+  HOLE_CLAIM: 'hole_claim',
 } as const;
 
 export type AuditEntityType =

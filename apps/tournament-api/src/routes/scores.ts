@@ -49,6 +49,7 @@ import {
   writeAudit,
 } from '../lib/audit-log.js';
 import { emitActivity } from '../lib/activity.js';
+import { deriveCurrentClaims } from '../services/claim-write.js';
 import {
   BusinessRuleError,
   computeExpectedCells,
@@ -260,6 +261,19 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
         )
     : [];
 
+  // (7) Current F1 claims (Story 2.1) for this foursome's players — derived
+  // from the append-only hole_claim_writes log (latest-set-write-per-cell).
+  // Scoped to the foursome members so the score-entry UI can render existing
+  // claim chips. Empty array when none / not an F1 event.
+  const myClaims =
+    memberPlayerIds.length > 0
+      ? await deriveCurrentClaims(db, {
+          roundId,
+          tenantId: TENANT_ID,
+          restrictToPlayerIds: memberPlayerIds,
+        })
+      : [];
+
   return c.json(
     {
       roundId,
@@ -273,6 +287,7 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
         scorerName,
         members,
         holeScores: myHoleScores,
+        claims: myClaims,
       },
     },
     200,

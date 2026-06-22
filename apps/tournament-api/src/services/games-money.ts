@@ -47,6 +47,8 @@ import type {
 } from '../engine/games/types.js';
 import { parseGameConfig, perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
 import { resolveFoursomeTeams } from './foursome-teams.js';
+import { deriveCurrentClaims } from './claim-write.js';
+import type { HoleClaims } from '../engine/games/types.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -383,6 +385,29 @@ async function settleFoursome(
   // course data). Wrap the net build AND the engine call so a throw marks ONLY
   // this foursome unsettleable — it can NEVER crash the event-wide compute or
   // blank the other foursomes / bets / skins.
+  // Current claims for THIS foursome's players (Story 2.1) — derived from the
+  // append-only hole_claim_writes log (latest-`set`-write-per-cell). Scoped to
+  // the foursome's players (FR23 isolation); the engine never reads the DB.
+  // Story 2.1 only POPULATES holeState.claims; the resolvers that consume them
+  // (greenie/polie/sandie) ship in 2.2-2.4, so claims are INERT here.
+  const claims = await deriveCurrentClaims(txOrDb, {
+    roundId,
+    tenantId,
+    restrictToPlayerIds: [...ordered],
+  });
+  // playerId -> hole -> HoleClaims
+  const claimsByPlayerHole = new Map<string, Map<number, HoleClaims>>();
+  for (const cl of claims) {
+    let byHole = claimsByPlayerHole.get(cl.playerId);
+    if (byHole === undefined) {
+      byHole = new Map<number, HoleClaims>();
+      claimsByPlayerHole.set(cl.playerId, byHole);
+    }
+    const hc = byHole.get(cl.holeNumber) ?? {};
+    hc[cl.claimType] = true;
+    byHole.set(cl.holeNumber, hc);
+  }
+
   let ledger;
   try {
     const netByHole = new Map<number, Record<string, number>>();
@@ -400,7 +425,13 @@ async function settleFoursome(
 
     const holes: HoleState[] = [];
     for (const [holeNumber, net] of netByHole) {
-      holes.push({ holeNumber, par: parByHole.get(holeNumber) ?? 0, net });
+      // Attach this hole's per-player claims (Story 2.1). Empty when none.
+      const holeClaims: Record<string, HoleClaims> = {};
+      for (const playerId of ordered) {
+        const hc = claimsByPlayerHole.get(playerId)?.get(holeNumber);
+        if (hc !== undefined) holeClaims[playerId] = hc;
+      }
+      holes.push({ holeNumber, par: parByHole.get(holeNumber) ?? 0, net, claims: holeClaims });
     }
 
     const foursomeInput: FoursomeInput = { teamSplit, holes };

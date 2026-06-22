@@ -67,6 +67,20 @@ interface HoleScore {
   putts: number | null;
 }
 
+// F1 Epic 2 (Story 2.1) — a current claim cell (latest write was a `set`).
+type ClaimType = 'greenie' | 'polie' | 'sandie';
+interface CurrentClaim {
+  playerId: string;
+  holeNumber: number;
+  claimType: ClaimType;
+}
+const CLAIM_TYPES: readonly ClaimType[] = ['greenie', 'polie', 'sandie'];
+const CLAIM_LABELS: Record<ClaimType, string> = {
+  greenie: 'Greenie',
+  polie: 'Polie',
+  sandie: 'Sandie',
+};
+
 interface RoundDetail {
   roundId: string;
   eventId: string | null;
@@ -79,6 +93,7 @@ interface RoundDetail {
     scorerName: string | null;
     members: Member[]; // sorted by slot_number ASC (load-bearing)
     holeScores: HoleScore[];
+    claims?: CurrentClaim[]; // Story 2.1; absent on older server builds
   };
 }
 
@@ -391,6 +406,19 @@ export function ScoreEntryRoute() {
       'round_finalized',
       'round_cancelled',
       'round_not_found',
+    ]);
+    // F1 Epic 2 (Story 2.1) claim writes: 4xx codes from POST .../claims that
+    // the queue MUST treat as terminal (no transient retry loop). round_not_writable
+    // is the interim finalized-check refusal.
+    registerTerminalErrors('claim', [
+      'invalid_round_id',
+      'invalid_body',
+      'round_state_missing',
+      'round_not_writable',
+      'foursome_has_no_scorer',
+      'player_not_in_any_foursome',
+      'player_not_in_your_foursome',
+      'not_scorer_for_this_foursome',
     ]);
   }, []);
 
@@ -994,6 +1022,75 @@ function StaleQueueBanner({
   );
 }
 
+// ---- ClaimChips (F1 Epic 2, Story 2.1) ------------------------------------
+
+/**
+ * Per-player greenie/polie/sandie claim chips for the CURRENT hole, rendered
+ * INSIDE the score-entry component (AC15: no new route/modal/overlay). Each chip
+ * is a toggle: on => enqueue a `set`, off => enqueue a `remove` (removal is also
+ * a queued mutation). Progressive disclosure at 375px (AC16): the chips wrap
+ * under the player's name in the left column and never widen the row — the
+ * 3 chips fit a 375px row without horizontal overflow. Lock state does NOT gate
+ * claim capture (AC17): a claim is scoring input, not a config tap, so these
+ * chips are always interactive regardless of the foursome's lock state.
+ *
+ * NFR-A1 floor: chips are >=44px tall tap targets, AA-contrast tokens, one-handed.
+ */
+function ClaimChips({
+  playerId,
+  playerName,
+  hole,
+  active,
+  onToggle,
+}: {
+  playerId: string;
+  playerName: string;
+  hole: number;
+  active: ReadonlySet<string>;
+  onToggle: (playerId: string, claimType: ClaimType) => void;
+}) {
+  return (
+    <div
+      data-testid={`claim-chips-${playerId}`}
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 'var(--space-1)',
+        marginTop: 6,
+        maxWidth: '100%',
+      }}
+    >
+      {CLAIM_TYPES.map((claimType) => {
+        const isActive = active.has(`${playerId}:${hole}:${claimType}`);
+        return (
+          <button
+            key={claimType}
+            type="button"
+            data-testid={`claim-${claimType}-${playerId}`}
+            aria-pressed={isActive}
+            aria-label={`${isActive ? 'Remove' : 'Add'} ${CLAIM_LABELS[claimType]} for ${playerName} on hole ${hole}`}
+            onClick={() => onToggle(playerId, claimType)}
+            style={{
+              minHeight: 44,
+              padding: '0 12px',
+              margin: 0,
+              borderRadius: 'var(--radius-md)',
+              fontSize: 'var(--font-sm)',
+              fontWeight: 600,
+              border: `1px solid ${isActive ? 'var(--color-brand-primary)' : 'var(--color-border)'}`,
+              background: isActive ? 'var(--color-brand-tint)' : 'var(--color-surface)',
+              color: isActive ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)',
+              cursor: 'pointer',
+            }}
+          >
+            {CLAIM_LABELS[claimType]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ---- ScoreEntryForm (the load-bearing piece) ------------------------------
 
 function ScoreEntryForm({
@@ -1008,6 +1105,28 @@ function ScoreEntryForm({
   const { roundId, holesToPlay } = data;
   const members = data.myFoursome.members;
   const markMutation = useMarkMutation();
+
+  // F1 Epic 2 (Story 2.1) — current claims keyed `${playerId}:${hole}:${type}`.
+  // Seeded from the server-derived current-claim set; toggled optimistically as
+  // the scorer taps a chip (each toggle is a queued set/remove mutation).
+  const serverClaims = data.myFoursome.claims;
+  const [claimState, setClaimState] = useState<Set<string>>(
+    () => new Set((serverClaims ?? []).map((c) => `${c.playerId}:${c.holeNumber}:${c.claimType}`)),
+  );
+  // Re-seed from server on a fresh poll, but UNION with local optimistic toggles
+  // so an in-flight queued claim isn't clobbered by a poll that predates its
+  // server commit. Server truth wins for cells it knows about; local-only cells
+  // (still draining) are preserved.
+  const serverClaimKey = useMemo(
+    () => (serverClaims ?? []).map((c) => `${c.playerId}:${c.holeNumber}:${c.claimType}`).sort().join('|'),
+    [serverClaims],
+  );
+  useEffect(() => {
+    // serverClaimKey is the stable content hash; serverClaims identity churns
+    // each poll even when unchanged, so we key the effect on the hash and read
+    // the latest serverClaims inside.
+    setClaimState(new Set((serverClaims ?? []).map((c) => `${c.playerId}:${c.holeNumber}:${c.claimType}`)));
+  }, [serverClaimKey, serverClaims]);
 
   // Skip-hole state, persisted to sessionStorage.
   const [skippedHoles, setSkippedHoles] = useState<Set<number>>(() =>
@@ -1330,6 +1449,49 @@ function ScoreEntryForm({
     void queue.drain();
   }, [allValid, currentHole, currentInputs, currentPutts, isSaving, markMutation, members, persistClientEventIdCache, roundId, queue]);
 
+  // Toggle a claim for (player, current hole, type). A toggle ON enqueues a
+  // `set` op; a toggle OFF enqueues a `remove` op (removal is a queued mutation
+  // too — never a client-only delete). Both carry a fresh clientEventId so the
+  // append-only log records each as a distinct write (idempotent on replay).
+  const handleToggleClaim = useCallback(
+    (playerId: string, claimType: ClaimType) => {
+      if (currentHole === null) return;
+      const key = `${playerId}:${currentHole}:${claimType}`;
+      const currentlyActive = claimState.has(key);
+      const op: 'set' | 'remove' = currentlyActive ? 'remove' : 'set';
+      // Optimistic local toggle.
+      setClaimState((prev) => {
+        const next = new Set(prev);
+        if (op === 'set') next.add(key);
+        else next.delete(key);
+        return next;
+      });
+      const clientEventId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      void enqueueMutation({
+        kind: 'claim',
+        url: `/api/rounds/${roundId}/claims`,
+        body: { playerId, holeNumber: currentHole, claimType, op, clientEventId },
+        clientEventId,
+        roundId,
+      })
+        .then(() => queue.drain())
+        .catch(() => {
+          // Enqueue failed — revert the optimistic toggle so the chip reflects
+          // reality. The queue drains on reconnect for already-enqueued writes.
+          setClaimState((prev) => {
+            const next = new Set(prev);
+            if (op === 'set') next.delete(key);
+            else next.add(key);
+            return next;
+          });
+        });
+    },
+    [currentHole, claimState, roundId, queue],
+  );
+
   const handleSkipHole = useCallback(() => {
     if (currentHole === null) return;
     setSkippedHoles((prev) => {
@@ -1425,6 +1587,13 @@ function ScoreEntryForm({
                   aria-label={`Putts for ${member.name}`} placeholder="Putts"
                   value={currentPutts[member.playerId] ?? ''} onChange={(e) => handlePuttsChange(member, e.target.value)}
                   style={{ width: 92, minHeight: 36, marginTop: 6, marginBottom: 0, fontSize: 'var(--font-sm)', padding: '0 8px' }}
+                />
+                <ClaimChips
+                  playerId={member.playerId}
+                  playerName={member.name}
+                  hole={currentHole}
+                  active={claimState}
+                  onToggle={handleToggleClaim}
                 />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>

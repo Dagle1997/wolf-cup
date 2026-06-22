@@ -47,3 +47,5 @@ export { activity, type Activity } from './activity.js';
 // F1 "Rules & Games" — game_config + round-pin provenance (Story 1.2, additive)
 export { gameConfig, type GameConfigRow } from './game-config.js';
 export { roundPins, type RoundPinRow } from './round-pins.js';
+// F1 Epic 2 (Story 2.1) — append-only hole-claim writes-log (greenie/polie/sandie)
+export { holeClaimWrites, type HoleClaimWrite } from './hole-claim-writes.js';

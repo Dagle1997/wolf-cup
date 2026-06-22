@@ -33,6 +33,117 @@ const TENANT_ID = 'guyan';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+type Db = typeof db;
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/**
+ * The single-writer scorer-gate decision, factored out of the middleware so
+ * routes that CAN'T mount `requireScorerForRound` (it requires `:holeNumber`
+ * and a score-shaped body) can reuse the EXACT same per-USER gate logic.
+ * `routes/claims.ts` (Story 2.1) reuses this so the claim write enforces the
+ * same single-writer rule as a score write, with zero duplication.
+ *
+ * Pure of HTTP: takes a db/tx handle + the resolved ids and returns a decision.
+ * The caller maps the decision to its own response shape. Tenant-scoped on
+ * every query. `round.eventRoundId` MUST be non-null (v1 always writes both;
+ * the caller handles the v1.5 standalone-round shape).
+ */
+export type ScorerGateDecision =
+  | { ok: true; foursomeNumber: number }
+  | {
+      ok: false;
+      code:
+        | 'foursome_has_no_scorer'
+        | 'player_not_in_any_foursome'
+        | 'player_not_in_your_foursome'
+        | 'not_scorer_for_this_foursome';
+      currentScorerPlayerId?: string;
+      currentScorerName?: string | null;
+    };
+
+export async function resolveScorerGate(
+  txOrDb: Tx | Db,
+  args: {
+    roundId: string;
+    eventRoundId: string;
+    targetPlayerId: string;
+    callerPlayerId: string;
+    tenantId?: string;
+  },
+): Promise<ScorerGateDecision> {
+  const tenantId = args.tenantId ?? TENANT_ID;
+
+  // All scorer_assignments for this round.
+  const roundScorers = await txOrDb
+    .select({
+      foursomeNumber: scorerAssignments.foursomeNumber,
+      scorerPlayerId: scorerAssignments.scorerPlayerId,
+    })
+    .from(scorerAssignments)
+    .where(
+      and(
+        eq(scorerAssignments.roundId, args.roundId),
+        eq(scorerAssignments.tenantId, tenantId),
+      ),
+    );
+
+  // Locate the foursome containing the target player.
+  const targetFoursomeRows = await txOrDb
+    .select({ foursomeNumber: pairings.foursomeNumber })
+    .from(pairingMembers)
+    .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
+    .where(
+      and(
+        eq(pairings.eventRoundId, args.eventRoundId),
+        eq(pairingMembers.playerId, args.targetPlayerId),
+        eq(pairings.tenantId, tenantId),
+        eq(pairingMembers.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+
+  if (targetFoursomeRows.length === 0) {
+    return { ok: false, code: 'player_not_in_any_foursome' };
+  }
+  const targetFoursomeNumber = targetFoursomeRows[0]!.foursomeNumber;
+  const targetScorer = roundScorers.find(
+    (s) => s.foursomeNumber === targetFoursomeNumber,
+  );
+  if (!targetScorer) {
+    return { ok: false, code: 'foursome_has_no_scorer' };
+  }
+
+  // Happy path: caller IS the designated scorer of the target foursome.
+  if (targetScorer.scorerPlayerId === args.callerPlayerId) {
+    return { ok: true, foursomeNumber: targetFoursomeNumber };
+  }
+
+  // Mismatch — resolve the more-specific 403 code + the current scorer's name.
+  const scorerNameRows = await txOrDb
+    .select({ name: players.name })
+    .from(players)
+    .where(
+      and(
+        eq(players.id, targetScorer.scorerPlayerId),
+        eq(players.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  const currentScorerName =
+    scorerNameRows.length > 0 ? scorerNameRows[0]!.name : null;
+  const isScorerOfAnyOtherFoursome = roundScorers.some(
+    (s) => s.scorerPlayerId === args.callerPlayerId,
+  );
+  return {
+    ok: false,
+    code: isScorerOfAnyOtherFoursome
+      ? 'player_not_in_your_foursome'
+      : 'not_scorer_for_this_foursome',
+    currentScorerPlayerId: targetScorer.scorerPlayerId,
+    currentScorerName,
+  };
+}
+
 export const requireScorerForRound: MiddlewareHandler = async (c, next) => {
   const requestId = c.get('requestId') ?? randomUUID();
   const log = c.get('logger') ?? moduleLogger;
@@ -139,98 +250,44 @@ export const requireScorerForRound: MiddlewareHandler = async (c, next) => {
     );
   }
 
-  // Step 6a: fetch ALL scorer_assignments for this round.
-  const roundScorers = await db
-    .select({
-      foursomeNumber: scorerAssignments.foursomeNumber,
-      scorerPlayerId: scorerAssignments.scorerPlayerId,
-    })
-    .from(scorerAssignments)
-    .where(
-      and(
-        eq(scorerAssignments.roundId, roundId),
-        eq(scorerAssignments.tenantId, TENANT_ID),
-      ),
-    );
+  // Steps 6a/6b + decision-tree delegated to the shared resolveScorerGate
+  // helper (also reused by routes/claims.ts). Behavior is identical to the
+  // prior inline logic; only the response-mapping below is middleware-specific.
+  const decision = await resolveScorerGate(db, {
+    roundId,
+    eventRoundId: round.eventRoundId,
+    targetPlayerId: parsed.data.playerId,
+    callerPlayerId: player.id,
+    tenantId: TENANT_ID,
+  });
 
-  // Step 6b: locate the foursome containing body.playerId.
-  const targetFoursomeRows = await db
-    .select({ foursomeNumber: pairings.foursomeNumber })
-    .from(pairingMembers)
-    .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
-    .where(
-      and(
-        eq(pairings.eventRoundId, round.eventRoundId),
-        eq(pairingMembers.playerId, parsed.data.playerId),
-        eq(pairings.tenantId, TENANT_ID),
-        eq(pairingMembers.tenantId, TENANT_ID),
-      ),
-    )
-    .limit(1);
-
-  if (targetFoursomeRows.length === 0) {
-    return c.json(
-      {
-        error: 'not_found',
-        code: 'player_not_in_any_foursome',
-        requestId,
-      },
-      404,
-    );
-  }
-
-  const targetFoursomeNumber = targetFoursomeRows[0]!.foursomeNumber;
-  const targetScorer = roundScorers.find(
-    (s) => s.foursomeNumber === targetFoursomeNumber,
-  );
-
-  if (!targetScorer) {
-    return c.json(
-      {
-        error: 'unprocessable',
-        code: 'foursome_has_no_scorer',
-        requestId,
-      },
-      422,
-    );
-  }
-
-  // Happy path.
-  if (targetScorer.scorerPlayerId === player.id) {
+  if (decision.ok) {
     await next();
     return;
   }
 
-  // Mismatch: pick the more specific 403 code.
-  // currentScorerName lookup (only on 403 path).
-  const scorerNameRows = await db
-    .select({ name: players.name })
-    .from(players)
-    .where(
-      and(
-        eq(players.id, targetScorer.scorerPlayerId),
-        eq(players.tenantId, TENANT_ID),
-      ),
-    )
-    .limit(1);
-  const currentScorerName =
-    scorerNameRows.length > 0 ? scorerNameRows[0]!.name : null;
-
-  const isScorerOfAnyOtherFoursome = roundScorers.some(
-    (s) => s.scorerPlayerId === player.id,
-  );
-  const code = isScorerOfAnyOtherFoursome
-    ? 'player_not_in_your_foursome'
-    : 'not_scorer_for_this_foursome';
-
-  return c.json(
-    {
-      error: 'forbidden',
-      code,
-      currentScorerPlayerId: targetScorer.scorerPlayerId,
-      currentScorerName,
-      requestId,
-    },
-    403,
-  );
+  switch (decision.code) {
+    case 'player_not_in_any_foursome':
+      return c.json(
+        { error: 'not_found', code: 'player_not_in_any_foursome', requestId },
+        404,
+      );
+    case 'foursome_has_no_scorer':
+      return c.json(
+        { error: 'unprocessable', code: 'foursome_has_no_scorer', requestId },
+        422,
+      );
+    default:
+      // 'player_not_in_your_foursome' | 'not_scorer_for_this_foursome'
+      return c.json(
+        {
+          error: 'forbidden',
+          code: decision.code,
+          currentScorerPlayerId: decision.currentScorerPlayerId,
+          currentScorerName: decision.currentScorerName ?? null,
+          requestId,
+        },
+        403,
+      );
+  }
 };

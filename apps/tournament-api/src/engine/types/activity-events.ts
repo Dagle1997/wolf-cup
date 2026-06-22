@@ -199,6 +199,23 @@ export interface GameConfigUpdatedEvent extends ActivityEventBase {
   type: 'game.config_updated';
 }
 
+/**
+ * F1 Epic 2 (Story 2.1) — a scorer recorded (set) or removed (remove) a
+ * greenie/polie/sandie claim inside the score-entry flow. The activity feed
+ * carries the cell coordinates + op; the full append-only write row lives in
+ * `hole_claim_writes` and the audit row. Append-only model: a `remove` is a
+ * later write, never a hard delete.
+ */
+export interface GameClaimRecordedEvent extends ActivityEventBase {
+  type: 'game.claim_recorded';
+  roundId: string;
+  playerId: string;
+  holeNumber: number;
+  claimType: 'greenie' | 'polie' | 'sandie';
+  op: 'set' | 'remove';
+  actorPlayerId: string;
+}
+
 // ---- Discriminated union --------------------------------------------------
 
 export type ActivityEvent =
@@ -221,7 +238,8 @@ export type ActivityEvent =
   | GalleryUploadedEvent
   | AwardTriggeredEvent
   | GameConfigSeededEvent
-  | GameConfigUpdatedEvent;
+  | GameConfigUpdatedEvent
+  | GameClaimRecordedEvent;
 
 export type ActivityType = ActivityEvent['type'];
 
@@ -246,6 +264,7 @@ export const ACTIVITY_TYPES = [
   'award.triggered',
   'game.config_seeded',
   'game.config_updated',
+  'game.claim_recorded',
 ] as const satisfies readonly ActivityType[];
 
 // ---- Zod schemas ----------------------------------------------------------
@@ -509,6 +528,21 @@ const gameConfigUpdatedSchema = z
   })
   .strict();
 
+// F1 Epic 2 (Story 2.1) — inline claim capture. Carries the cell coordinates
+// + op so the feed can render "X recorded a greenie on hole 7" without a join.
+const gameClaimRecordedSchema = z
+  .object({
+    ...baseFields,
+    type: z.literal('game.claim_recorded'),
+    roundId: nonEmptyString,
+    playerId: nonEmptyString,
+    holeNumber: holeNumberSchema,
+    claimType: z.enum(['greenie', 'polie', 'sandie']),
+    op: z.enum(['set', 'remove']),
+    actorPlayerId: nonEmptyString,
+  })
+  .strict();
+
 export const activityEventSchemas = {
   'score.committed': scoreCommittedSchema,
   'score.corrected': scoreCorrectedSchema,
@@ -530,4 +564,5 @@ export const activityEventSchemas = {
   'award.triggered': awardTriggeredSchema,
   'game.config_seeded': gameConfigSeededSchema,
   'game.config_updated': gameConfigUpdatedSchema,
+  'game.claim_recorded': gameClaimRecordedSchema,
 } as const satisfies Record<ActivityType, z.ZodSchema>;

@@ -80,6 +80,44 @@ describe('offline-queue — enqueue validation', () => {
   });
 });
 
+describe('offline-queue — claim kind (Story 2.1)', () => {
+  test("accepts kind='claim' (the two-place union+set change)", async () => {
+    await enqueueMutation(
+      baseEntry({
+        kind: 'claim',
+        url: '/api/rounds/r-1/claims',
+        body: { playerId: 'p1', holeNumber: 7, claimType: 'greenie', op: 'set', clientEventId: 'c-set' },
+        clientEventId: 'c-set',
+      }),
+    );
+    const rows = await getQueue('r-1');
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.kind).toBe('claim');
+  });
+
+  test('a set and a remove are DISTINCT queued mutations (removal is queued, not client-only)', async () => {
+    await enqueueMutation(
+      baseEntry({
+        kind: 'claim',
+        url: '/api/rounds/r-1/claims',
+        body: { playerId: 'p1', holeNumber: 7, claimType: 'greenie', op: 'set', clientEventId: 'c-set' },
+        clientEventId: 'c-set',
+      }),
+    );
+    await enqueueMutation(
+      baseEntry({
+        kind: 'claim',
+        url: '/api/rounds/r-1/claims',
+        body: { playerId: 'p1', holeNumber: 7, claimType: 'greenie', op: 'remove', clientEventId: 'c-rm' },
+        clientEventId: 'c-rm',
+      }),
+    );
+    const rows = await getQueue('r-1');
+    expect(rows.length).toBe(2);
+    expect(rows.map((r) => (r.body as { op: string }).op)).toEqual(['set', 'remove']);
+  });
+});
+
 describe('offline-queue — resolveConflict overwrite validation', () => {
   test("'overwrite' rejects when overwriteBody is undefined", async () => {
     await enqueueMutation(baseEntry({ clientEventId: 'evt-r' }));

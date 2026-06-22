@@ -1044,3 +1044,87 @@ describe('ScoreEntryRoute — T7-7 install × scorer matrix', () => {
     expect(screen.queryByTestId('score-entry-form')).toBeNull();
   });
 });
+
+// ---- F1 Epic 2 (Story 2.1) — inline claim capture UI ----------------------
+
+describe('ScoreEntryRoute — claim chips (Story 2.1)', () => {
+  test('renders greenie/polie/sandie chips INSIDE the score-entry component (AC15)', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
+    );
+    // AC15: the control is in the score-entry render tree (no separate route).
+    const form = screen.getByTestId('score-entry-form');
+    const chips = screen.getByTestId(`claim-chips-${SCORER_ID}`);
+    expect(form.contains(chips)).toBe(true);
+    // One chip per claim type, per player.
+    expect(screen.getByTestId(`claim-greenie-${SCORER_ID}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`claim-polie-${SCORER_ID}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`claim-sandie-${P1_ID}`)).toBeInTheDocument();
+  });
+
+  test('chip tap enqueues a set claim mutation; second tap enqueues a remove (AC9/AC11)', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
+    );
+    const chip = screen.getByTestId(`claim-greenie-${P1_ID}`);
+
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    const firstBody = enqueueSpy.mock.calls[0]![0].body as { op: string; claimType: string };
+    expect(firstBody.op).toBe('set');
+    expect(firstBody.claimType).toBe('greenie');
+    expect(enqueueSpy.mock.calls[0]![0].kind).toBe('claim');
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+    expect(enqueueSpy).toHaveBeenCalledTimes(2);
+    const secondBody = enqueueSpy.mock.calls[1]![0].body as { op: string };
+    expect(secondBody.op).toBe('remove'); // removal is a QUEUED mutation, not client-only
+    expect(chip.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  test('seeds active chips from the server-derived current claims', async () => {
+    const detail = buildHappyPathDetail();
+    (detail.myFoursome as Record<string, unknown>)['claims'] = [
+      { playerId: P1_ID, holeNumber: 1, claimType: 'greenie' },
+    ];
+    vi.mocked(fetch).mockResolvedValue(jsonOk(detail));
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
+    );
+    // P1's greenie on hole 1 (the current hole) renders pre-pressed.
+    expect(
+      screen.getByTestId(`claim-greenie-${P1_ID}`).getAttribute('aria-pressed'),
+    ).toBe('true');
+    // A claim NOT in the server set renders un-pressed.
+    expect(
+      screen.getByTestId(`claim-polie-${P1_ID}`).getAttribute('aria-pressed'),
+    ).toBe('false');
+  });
+
+  test('claim chips meet the >=44px tap-target floor (NFR-A1) and fit 375px (AC16 — no overflow)', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
+    );
+    const chip = screen.getByTestId(`claim-greenie-${SCORER_ID}`) as HTMLButtonElement;
+    // minHeight 44px floor is set inline (jsdom doesn't lay out, so assert the
+    // declared style rather than a computed box).
+    expect(chip.style.minHeight).toBe('44px');
+    // The chip container wraps (flex-wrap) and is capped at 100% width so the
+    // 3 chips never force horizontal overflow at 375px.
+    const container = screen.getByTestId(`claim-chips-${SCORER_ID}`);
+    expect(container.style.flexWrap).toBe('wrap');
+    expect(container.style.maxWidth).toBe('100%');
+  });
+});
