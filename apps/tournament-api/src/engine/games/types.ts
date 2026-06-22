@@ -31,13 +31,6 @@ export type ModifierVariant = {
   basis?: 'net' | 'gross';
   bonus?: 'single' | 'double';
   carryover?: boolean;
-  /**
-   * polie (Story 2.3) ONLY lever — "Polie must be Bogey or Better" Y/N. When
-   * true, a checked polie counts only if that player's GROSS ≤ par+1. Default
-   * false = "polie on anything". Off-the-low net does NOT affect this (the gate
-   * is on raw gross).
-   */
-  polieBogeyOrBetter?: boolean;
 };
 export type Modifier = { type: string; enabled: boolean; variant?: ModifierVariant };
 
@@ -76,12 +69,15 @@ export type HoleState = {
   /** playerId -> net strokes for this hole. */
   net: Record<string, number>;
   /**
-   * playerId -> GROSS strokes for this hole (Story 2.3). Optional: only the polie
-   * bogey-or-better gate reads it; the base game + greenie ignore gross entirely
-   * (so attaching it is base-money-neutral). Sourced DIRECTLY from the scorer's
-   * entered strokes by the service layer — never reconstructed from net+handicap
-   * (net may be relative/off-the-low, which is not invertible). Absent gross under
-   * an active gate voids the polie (fail-closed).
+   * playerId -> GROSS strokes for this hole (Story 2.3). Optional: a reusable
+   * per-player gross input for any SCORE-BASED modifier. (Story 2.3's polie
+   * bogey-or-better gate originally read it; Story 2.4a removed that gate, so no
+   * shipped modifier reads gross today — it is RETAINED for Story 2.5 gross/natural
+   * birdie and any future gross-vs-par rule.) The base game + greenie + polie +
+   * sandie all ignore gross, so attaching it is base-money-neutral. Sourced
+   * DIRECTLY from the scorer's entered strokes by the service layer — never
+   * reconstructed from net+handicap (net may be relative/off-the-low, which is not
+   * invertible).
    */
   gross?: Record<string, number>;
   /**

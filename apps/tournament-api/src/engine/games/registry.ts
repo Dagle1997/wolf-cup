@@ -127,10 +127,6 @@ export function validateResolvedConfig(config: GameConfig): Validation {
       if (m.variant?.carryover !== undefined) {
         return { ok: false, reason: `unsupported_net_skins_variant:carryover` };
       }
-      // polieBogeyOrBetter is a POLIE-only lever (Story 2.3) — reject on net-skins.
-      if (m.variant?.polieBogeyOrBetter !== undefined) {
-        return { ok: false, reason: `unsupported_net_skins_variant:polieBogeyOrBetter` };
-      }
     }
     // Story 2.2: greenie's ONLY lever is `carryover` (FR2). An enabled greenie
     // carrying a net-skins lever (basis/bonus) is a malformed config → fail
@@ -149,44 +145,17 @@ export function validateResolvedConfig(config: GameConfig): Validation {
       if (m.variant?.carryover !== undefined && typeof m.variant.carryover !== 'boolean') {
         return { ok: false, reason: `unsupported_greenie_variant:carryover_type` };
       }
-      // polieBogeyOrBetter is a POLIE-only lever (Story 2.3) — reject on greenie.
-      if (m.variant?.polieBogeyOrBetter !== undefined) {
-        return { ok: false, reason: `unsupported_greenie_variant:polieBogeyOrBetter` };
-      }
     }
-    // Story 2.4: sandie is a PURE COUNT modifier with NO lever (FR16 — no
-    // engine-enforced eligibility gate). An enabled sandie carrying ANY variant
-    // key (known OR unknown) is a misconfig → fail closed (stricter than
-    // greenie/polie, which allow-list one key each, because sandie has zero valid
-    // keys). Absent or empty `variant:{}` passes (the shared shape guard above
-    // already accepts an empty object).
-    if (m.type === 'sandie' && m.enabled && m.variant !== undefined) {
+    // Stories 2.4/2.4a: sandie AND polie are PURE COUNT modifiers with NO lever
+    // (FR16 — no engine-enforced eligibility gate). An enabled sandie/polie
+    // carrying ANY variant key (known OR unknown) is a misconfig → fail closed
+    // (stricter than greenie/net-skins, which allow-list their known keys, because
+    // sandie/polie have zero valid keys). Absent or empty `variant:{}` passes (the
+    // shared shape guard above already accepts an empty object).
+    if ((m.type === 'sandie' || m.type === 'polie') && m.enabled && m.variant !== undefined) {
       const keys = Object.keys(m.variant);
       if (keys.length > 0) {
-        return { ok: false, reason: `unsupported_sandie_variant:${keys[0]}` };
-      }
-    }
-    // Story 2.3: polie's ONLY lever is `polieBogeyOrBetter` (Y/N). An enabled
-    // polie carrying a net-skins/greenie lever (basis/bonus/carryover) is a
-    // malformed config → fail closed rather than silently ignore the stray key.
-    if (m.type === 'polie' && m.enabled) {
-      if (m.variant?.basis !== undefined) {
-        return { ok: false, reason: `unsupported_polie_variant:basis=${m.variant.basis}` };
-      }
-      if (m.variant?.bonus !== undefined) {
-        return { ok: false, reason: `unsupported_polie_variant:bonus=${m.variant.bonus}` };
-      }
-      if (m.variant?.carryover !== undefined) {
-        return { ok: false, reason: `unsupported_polie_variant:carryover` };
-      }
-      // Type-check polie's ONLY lever. computeFoursome relies on this guard for
-      // ANY direct caller (bypassing Zod); polieBogeyOrBetter's `?? false` would
-      // mis-interpret a non-boolean via JS truthiness. Fail closed instead.
-      if (
-        m.variant?.polieBogeyOrBetter !== undefined &&
-        typeof m.variant.polieBogeyOrBetter !== 'boolean'
-      ) {
-        return { ok: false, reason: `unsupported_polie_variant:polieBogeyOrBetter_type` };
+        return { ok: false, reason: `unsupported_${m.type}_variant:${keys[0]}` };
       }
     }
   }

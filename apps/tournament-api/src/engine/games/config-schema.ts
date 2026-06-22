@@ -29,7 +29,6 @@ const modifierSchema = z
         basis: z.enum(['net', 'gross']).optional(),
         bonus: z.enum(['single', 'double']).optional(),
         carryover: z.boolean().optional(),
-        polieBogeyOrBetter: z.boolean().optional(),
       })
       .strict()
       .optional(),

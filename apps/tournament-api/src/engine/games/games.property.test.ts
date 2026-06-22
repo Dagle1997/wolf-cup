@@ -66,14 +66,13 @@ const configArb: fc.Arbitrary<GameConfig> = fc
     greenie: fc.boolean(),
     carryover: fc.boolean(),
     polie: fc.boolean(),
-    polieGate: fc.boolean(),
     sandie: fc.boolean(),
   })
-  .map(({ dollars, netSkins, greenie, carryover, polie, polieGate, sandie }) => {
+  .map(({ dollars, netSkins, greenie, carryover, polie, sandie }) => {
     const modifiers: Modifier[] = [];
     if (netSkins) modifiers.push({ type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } });
     if (greenie) modifiers.push({ type: 'greenie', enabled: true, variant: { carryover } });
-    if (polie) modifiers.push({ type: 'polie', enabled: true, variant: { polieBogeyOrBetter: polieGate } });
+    if (polie) modifiers.push({ type: 'polie', enabled: true }); // no lever (Story 2.4a)
     if (sandie) modifiers.push({ type: 'sandie', enabled: true }); // no lever
     return {
       game: 'guyan-2v2',
@@ -184,7 +183,7 @@ describe('guyan-2v2 engine — money-correctness invariants (fast-check)', () =>
       .map((dollars) => ({
         game: 'guyan-2v2',
         pointValueSchedule: { kind: 'flat', cents: dollars * 100 } as const,
-        modifiers: [{ type: 'polie', enabled: true, variant: { polieBogeyOrBetter: false } as const }],
+        modifiers: [{ type: 'polie', enabled: true }],
         lockState: 'locked' as const,
         configVersion: 1,
       }));

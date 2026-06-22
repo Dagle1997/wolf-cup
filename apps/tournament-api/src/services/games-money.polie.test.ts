@@ -54,15 +54,14 @@ beforeEach(async () => {
   }
 });
 
-/** polie config: enabled with the bogey-or-better gate on/off, or polie disabled. */
-function polieCfg(gate: boolean | 'disabled'): GameConfig {
-  const modifiers: GameConfig['modifiers'] =
-    gate === 'disabled'
-      ? [{ type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } }]
-      : [
-          { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
-          { type: 'polie', enabled: true, variant: { polieBogeyOrBetter: gate } },
-        ];
+/** polie config (Story 2.4a — count-only, no variant): polie enabled, or disabled. */
+function polieCfg(polieEnabled: boolean): GameConfig {
+  const modifiers: GameConfig['modifiers'] = polieEnabled
+    ? [
+        { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
+        { type: 'polie', enabled: true },
+      ]
+    : [{ type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } }];
   return {
     scope: 'foursome', game: 'guyan-2v2', pointValueSchedule: { kind: 'flat', cents: 500 },
     modifiers, lockState: 'locked', configVersion: 1,
@@ -71,10 +70,11 @@ function polieCfg(gate: boolean | 'disabled'): GameConfig {
 
 /**
  * Seed one par-5 hole (SI 1). a1 makes a polie; a1's pinned CH gives a1 exactly
- * `a1Strokes` on this hole so a1 NET = par (base 0) while a1 GROSS = 5 + a1Strokes.
+ * `a1Strokes` on this hole so a1 NET = par (base 0) while a1 GROSS = 5 + a1Strokes
+ * (a1Strokes=2 ⇒ double-bogey gross — which the removed 2.3 gate would have voided).
  * Others: CH 0, gross = net = par (5). Returns the eventId.
  */
-async function seed(opts: { gate: boolean | 'disabled'; a1Strokes: 1 | 2 }) {
+async function seed(opts: { polieEnabled: boolean; a1Strokes: 1 | 2 }) {
   const now = Date.now();
   const ids = { eventId: randomUUID(), courseId: randomUUID(), courseRevId: randomUUID(), eventRoundId: randomUUID(), pairingId: randomUUID(), roundId: randomUUID() };
   const ctx = `event:${ids.eventId}`;
@@ -99,7 +99,7 @@ async function seed(opts: { gate: boolean | 'disabled'; a1Strokes: 1 | 2 }) {
   for (let i = 0; i < MEMBERS.length; i++) {
     await db.insert(pairingMembers).values({ pairingId: ids.pairingId, playerId: MEMBERS[i]!, slotNumber: i + 1, tenantId: TENANT, contextId: ctx });
   }
-  const cfg = polieCfg(opts.gate);
+  const cfg = polieCfg(opts.polieEnabled);
   await db.insert(gameConfig).values({ id: randomUUID(), level: 'event', refId: ids.eventId, configJson: JSON.stringify(cfg), seedRuleSetRevisionId: null, lockState: 'locked', configVersion: 1, createdAt: now, updatedAt: now, tenantId: TENANT, contextId: ctx });
   const perPlayer: Record<string, { hi: number; ch: number }> = {};
   for (const pid of MEMBERS) perPlayer[pid] = { hi: 0, ch: pid === 'a1' ? a1Ch : 0 };
@@ -114,10 +114,10 @@ async function seed(opts: { gate: boolean | 'disabled'; a1Strokes: 1 | 2 }) {
   return ids.eventId;
 }
 
-describe('Story 2.3 polie GROSS gate end-to-end through the chokepoint', () => {
-  test('(a) gross threaded + gate passes: bogey-gross polie COUNTS → a1 team +$5', async () => {
-    // a1Strokes=1 → gross 6 (bogey on par 5, ≤ par+1) → eligible.
-    const eventId = await seed({ gate: true, a1Strokes: 1 });
+describe('Story 2.4a polie is count-only end-to-end through the chokepoint (no gross gate)', () => {
+  test('a polie COUNTS regardless of the player\'s gross (a double-bogey-gross polie that the 2.3 gate would have VOIDED now counts) → a1 team +$5', async () => {
+    // a1Strokes=2 → a1 gross 7 (double bogey on par 5), net = par. Count-only ⇒ counts.
+    const eventId = await seed({ polieEnabled: true, a1Strokes: 2 });
     const { netByPlayer } = await computeF1PerPlayerNet(db, eventId, TENANT);
     expect(netByPlayer.get('a1') ?? 0).toBe(500);
     expect(netByPlayer.get('a2') ?? 0).toBe(500);
@@ -125,22 +125,8 @@ describe('Story 2.3 polie GROSS gate end-to-end through the chokepoint', () => {
     expect(netByPlayer.get('b2') ?? 0).toBe(-500);
   });
 
-  test('(b) gate voids: double-bogey-gross polie is VOIDED → no polie money', async () => {
-    // a1Strokes=2 → gross 7 (double bogey on par 5, > par+1) → voided.
-    const eventId = await seed({ gate: true, a1Strokes: 2 });
-    const { netByPlayer } = await computeF1PerPlayerNet(db, eventId, TENANT);
-    for (const pid of MEMBERS) expect(netByPlayer.get(pid) ?? 0).toBe(0);
-  });
-
-  test('(c) gate OFF: the same double-bogey-gross polie COUNTS (gross unread) → a1 team +$5', async () => {
-    const eventId = await seed({ gate: false, a1Strokes: 2 });
-    const { netByPlayer } = await computeF1PerPlayerNet(db, eventId, TENANT);
-    expect(netByPlayer.get('a1') ?? 0).toBe(500);
-    expect(netByPlayer.get('b1') ?? 0).toBe(-500);
-  });
-
-  test('(d) base-neutral: polie disabled (gross still threaded) → no polie money, base unchanged (all push → $0)', async () => {
-    const eventId = await seed({ gate: 'disabled', a1Strokes: 2 });
+  test('base-neutral: polie disabled (gross still threaded) → no polie money, base unchanged (all push → $0)', async () => {
+    const eventId = await seed({ polieEnabled: false, a1Strokes: 2 });
     const { netByPlayer } = await computeF1PerPlayerNet(db, eventId, TENANT);
     for (const pid of MEMBERS) expect(netByPlayer.get(pid) ?? 0).toBe(0);
   });

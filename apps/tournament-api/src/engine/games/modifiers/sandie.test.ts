@@ -113,9 +113,6 @@ describe('sandie fail-closed — no variant lever (AC10, FR44)', () => {
   it('enabled sandie with carryover → unsupported_sandie_variant:carryover', () => {
     expect(reasonFor([{ type: 'sandie', enabled: true, variant: { carryover: true } }])).toBe('unsupported_sandie_variant:carryover');
   });
-  it('enabled sandie with polieBogeyOrBetter → unsupported_sandie_variant:polieBogeyOrBetter', () => {
-    expect(reasonFor([{ type: 'sandie', enabled: true, variant: { polieBogeyOrBetter: true } }])).toBe('unsupported_sandie_variant:polieBogeyOrBetter');
-  });
   it('enabled sandie with an UNKNOWN key → unsupported_sandie_variant:<key> (truly fail-closed)', () => {
     expect(reasonFor([{ type: 'sandie', enabled: true, variant: { foo: 1 } } as unknown as Modifier])).toBe('unsupported_sandie_variant:foo');
   });

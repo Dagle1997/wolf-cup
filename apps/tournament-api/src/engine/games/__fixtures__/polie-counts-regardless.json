@@ -1,0 +1,33 @@
+{
+  "name": "Polie counts regardless of score (gate removed, Story 2.4a) — the SAME inputs as the removed 2.3 polie-bogey-or-better.json, now settled count-only. b1 made a polie while scoring DOUBLE-bogey gross: the 2.3 gate VOIDED it ($10/side); count-only it now COUNTS (-1) -> $5/side. Proves the bogey-or-better gate is gone (FR16: a checked polie always counts). All nets = par so base points are 0; gross is present but UNREAD by polie now.",
+  "_contract": "Golden HAND-CALC fixture for the F1 polie modifier after Story 2.4a stripped the bogey-or-better gross gate. Polie is now a PURE COUNT claim (identical to sandie): poliePointsA = (# teamA polie boxes) - (# teamB polie boxes), each unit a team point, ALWAYS counts when checked (no eligibility gate). gross is retained on HoleState (reusable, Story 2.5) but polie does not read it. SettlementEdge IR = post-2.1a whole-dollar 1-to-1. Integer cents; fromPlayerId PAYS toPlayerId.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "flat", "cents": 500 },
+      "modifiers": [
+        { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } },
+        { "type": "polie", "enabled": true }
+      ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 1, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 }, "gross": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 }, "claims": { "a1": { "polie": true } } },
+      { "holeNumber": 2, "par": 5, "net": { "a1": 5, "a2": 5, "b1": 5, "b2": 5 }, "gross": { "a1": 5, "a2": 6, "b1": 5, "b2": 5 }, "claims": { "a2": { "polie": true } } },
+      { "holeNumber": 3, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 }, "gross": { "a1": 4, "a2": 4, "b1": 6, "b2": 4 }, "claims": { "b1": { "polie": true } } }
+    ],
+    "sourceId": "fixture-polie-counts-regardless"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 500, "a2": 500, "b1": -500, "b2": -500 },
+    "edges": [
+      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 500, "sourceType": "f1_game", "sourceId": "fixture-polie-counts-regardless" },
+      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 500, "sourceType": "f1_game", "sourceId": "fixture-polie-counts-regardless" }
+    ],
+    "ledgerTotalCents": 1000
+  },
+  "_handCalc": "Teams A={a1,a2} B={b1,b2}, flat $5/pt, polie ON (count-only, no gate). Every net = par => base 0. POLIE (always counts when checked, gross IGNORED):\n  H1 (par4): a1 polie => +1.\n  H2 (par5): a2 polie => +1.\n  H3 (par4): b1 polie => -1 (b1 scored double-bogey gross=6, but the gate is GONE so it COUNTS).\nRound polieA = +1+1-1 = +1 => a1=a2=+500c (+$5), b1=b2=-500c. Edges b1->a1 500, b2->a2 500. total 1000c.\nCONTRAST vs Story 2.3 (gated): the 2.3 engine VOIDED H3's polie (b1 gross 6 > par+1=5) => polieA=+2 => $10/side. Removing the gate makes b1's polie count => $5/side. This is the money change the strip introduces."
+}

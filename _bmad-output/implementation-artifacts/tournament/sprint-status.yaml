@@ -641,6 +641,18 @@ development_status:
   2-2-greenie-modifier-stateful-carryover: done
   2-3-polie-modifier: done
   2-4-sandie-modifier-par-vs-any-score-variant: done
+
+  # 2-4a (inserted 2026-06-22, user-directed): STRIP polie's bogey-or-better gross
+  # gate (shipped in 2.3), making polie a PURE COUNT claim like sandie (2.4). Josh
+  # ratified the FR16 principle during 2.4: the system does NOT validate claim
+  # eligibility — the scorer just doesn't check the box if the player didn't earn
+  # it; a gross gate silently voids a human-entered claim. So polie becomes
+  # count-only (remove the polieBogeyOrBetter lever + its gate); the par/bogey-or-
+  # better rule moves to the Rules Sheet (2.7). MONEY STORY: golden (replace the
+  # gated polie goldens with count-only ones) + dual-model impl debate. Keeps the
+  # reusable gross threading (HoleState.gross + games-money) — only polie stops
+  # READING it. Engine-only.
+  2-4a-strip-polie-bogey-or-better-gate: done
   2-5-birdie-modifier-generalized-net-gross-single-double: backlog
   2-6-payout-cap-345-cap-never-exceeds: backlog
   2-7-rules-page-template-picker-save-preset: backlog
