@@ -21,12 +21,10 @@
   "expected": {
     "perPlayerNetCents": { "a1": 1500, "a2": 1500, "b1": -1500, "b2": -1500 },
     "edges": [
-      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" },
-      { "fromPlayerId": "b1", "toPlayerId": "a2", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" },
-      { "fromPlayerId": "b2", "toPlayerId": "a1", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" },
-      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 750, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" }
+      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 1500, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" },
+      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 1500, "sourceType": "f1_game", "sourceId": "fixture-guyan-nine-front" }
     ],
     "ledgerTotalCents": 3000
   },
-  "_handCalc": "All holes 1-9 => FRONT pv=500 (half 250).\n\nH1 (par4): 3/5/4/4. low A3<B4 => A. skin 3<=4 => A. TT 8=8 tie => 0. net-skins A best3=birdie(1), B4=0 => A+1. netPointsA=+3. cross += +750.\nH5 (par3): 2/4/3/3. low A2<B3 => A. skin 2<=3 => A. TT 6=6 tie => 0. net-skins A best net2 on par3=birdie(1), B3=0 => A+1. netPointsA=+3. cross += +750.\nH9 (par4): 4/4/3/5. low A4>B3 => B. skin 3<=4 => B. TT 8=8 tie => 0. net-skins A4=0, B best3=birdie(1) => B+1. netPointsA=-3. cross += -750.\n\ncross per pair = 750+750-750 = +750. 4 edges b->a 750. per-player a=+1500, b=-1500. total 3000. All priced at front pv (500)."
+  "_handCalc": "All holes 1-9 => FRONT pv=500 (half 250).\n\nH1 (par4): 3/5/4/4. low A3<B4 => A. skin 3<=4 => A. TT 8=8 tie => 0. net-skins A best3=birdie(1), B4=0 => A+1. netPointsA=+3. cross += +750.\nH5 (par3): 2/4/3/3. low A2<B3 => A. skin 2<=3 => A. TT 6=6 tie => 0. net-skins A best net2 on par3=birdie(1), B3=0 => A+1. netPointsA=+3. cross += +750.\nH9 (par4): 4/4/3/5. low A4>B3 => B. skin 3<=4 => B. TT 8=8 tie => 0. net-skins A4=0, B best3=birdie(1) => B+1. netPointsA=-3. cross += -750.\n\ncross per pair = 750+750-750 = +750. per-player a=+1500, b=-1500. EDGES (Story 2.1a 1-to-1 whole-dollar): b1->a1 1500, b2->a2 1500. total = 2*1500 = 3000 (UNCHANGED; 2*1500 == 4*750). All priced at front pv (500)."
 }

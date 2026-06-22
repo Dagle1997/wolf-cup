@@ -408,7 +408,6 @@ async function settleFoursome(
     byHole.set(cl.holeNumber, hc);
   }
 
-  let ledger;
   try {
     const netByHole = new Map<number, Record<string, number>>();
     for (const s of scoreRows) {
@@ -435,21 +434,24 @@ async function settleFoursome(
     }
 
     const foursomeInput: FoursomeInput = { teamSplit, holes };
-    ledger = computeFoursome(pin.config, foursomeInput);
+    const ledger = computeFoursome(pin.config, foursomeInput);
+    // ledgerToEdges lives INSIDE the try (Story 2.1a): its fail-closed
+    // `asymmetric_2v2_ledger` guard must surface as a per-foursome unsettleable,
+    // never an uncaught event-wide crash.
+    const sourceId = `${roundId}:${foursomeNumber}`;
+    return { kind: 'ok', edges: ledgerToEdges(ledger, teamSplit, { sourceId }) };
   } catch (err) {
     // Allocation throws (corrupt CH / bad stroke index) OR the engine fails closed
     // on an unsupported/invalid resolved config or a structural anomaly (e.g.
-    // duplicate hole, odd point value). Surface it as unsettleable for THIS
-    // foursome — never crash the event-wide compute.
+    // duplicate hole, non-whole-dollar point value, asymmetric 2v2 ledger).
+    // Surface it as unsettleable for THIS foursome — never crash the event-wide
+    // compute.
     return {
       kind: 'unsettleable',
       reason: 'engine_error',
       detail: err instanceof Error ? err.message : 'engine error',
     };
   }
-
-  const sourceId = `${roundId}:${foursomeNumber}`;
-  return { kind: 'ok', edges: ledgerToEdges(ledger, teamSplit, { sourceId }) };
 }
 
 /**

@@ -138,12 +138,14 @@ describe('seedOrUpdateEventGameConfig — first write (seed)', () => {
     expect(await db.select().from(gameConfig)).toHaveLength(0);
   });
 
-  test('fails closed on an odd-cents (invalid) point value', async () => {
+  test('fails closed on a non-whole-dollar point value (Story 2.1a: x100 required)', async () => {
     const eventId = await seedEvent();
-    const res = await run(eventId, { pointValueSchedule: { kind: 'flat', cents: 501 } });
+    // 550c = $5.50: even, but NOT a whole dollar — the Story 2.1a tightening
+    // rejects it (the old "even" rule would have allowed it).
+    const res = await run(eventId, { pointValueSchedule: { kind: 'flat', cents: 550 } });
     expect(res.ok).toBe(false);
     if (res.ok) return;
-    expect(res.reason).toContain('point_value_not_even');
+    expect(res.reason).toContain('point_value_not_whole_dollar');
     expect(await db.select().from(gameConfig)).toHaveLength(0);
   });
 

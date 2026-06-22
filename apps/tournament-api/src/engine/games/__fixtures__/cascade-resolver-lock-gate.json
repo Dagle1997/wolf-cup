@@ -76,11 +76,11 @@
       "expected": { "ok": false, "reason": "duplicate_event_level_config" }
     },
     {
-      "name": "odd (non-even) point value fails closed (2v2 split needs even cents)",
+      "name": "non-whole-dollar point value fails closed (Story 2.1a: point values must be x100 cents)",
       "rows": [
         { "level": "event", "config": { "game": "guyan-2v2", "pointValueSchedule": { "kind": "flat", "cents": 501 }, "modifiers": [], "lockState": "unlocked", "configVersion": 1 } }
       ],
-      "expected": { "ok": false, "reason": "point_value_not_even:501" }
+      "expected": { "ok": false, "reason": "point_value_not_whole_dollar:501" }
     },
     {
       "name": "duplicate modifier types within a row fail closed (before merge de-dupes)",

@@ -617,6 +617,27 @@ development_status:
   epic-2: in-progress
 
   2-1-inline-claim-capture-hole-claims: done
+
+  # 2-1a (inserted 2026-06-22, user-directed): F1 settle-up edges as WHOLE-DOLLAR
+  # 1-to-1 (winner<->loser) pairings instead of the 4-way pv/2 cross-split.
+  # Surfaced while Josh approved 2-2's golden: the existing ledger-to-edges.ts
+  # (Story 1.1) writes 4 cross-legs of pv/2, so an ODD net team-point total yields
+  # half-dollar legs ($2.50 / $7.50) in the actual pairwise settle-up a player sees.
+  # Josh wants whole-dollar 1-to-1 (b1->a1 full, b2->a2 full) = his real settle-up
+  # mental model; per-player totals + ledger total IDENTICAL. The 2v2 cross matrix
+  # is always symmetric within a team (each hole adds the same half to all 4 cells),
+  # so slot-paired 1-to-1 (teamA[i]<->teamB[i]) reconciles exactly and is always
+  # whole-dollar. Sequenced BEFORE 2-2 so the greenie golden is authored ONCE
+  # against the final representation. MONEY STORY: golden (update base goldens) +
+  # dual-model impl debate. Touches Epic-1 ledger-to-edges.ts + the approved base
+  # goldens; engine-only, no schema/route/UI.
+  2-1a-f1-settle-up-whole-dollar-one-to-one-edges: done
+
+  # 2-2 PAUSED 2026-06-22: spec written + dual-model-reviewed (3 rounds) + Josh-
+  # approved (count-based checkboxes + automatic carryover; goldens NOT yet authored;
+  # plumbing edits reverted to keep 2-1a's commit clean). Resumes after 2-1a so the
+  # greenie golden lands against whole-dollar 1-to-1 edges. On resume: spec is done
+  # + approved (skip create-story + spec-gate) -> implement directly.
   2-2-greenie-modifier-stateful-carryover: backlog
   2-3-polie-modifier: backlog
   2-4-sandie-modifier-par-vs-any-score-variant: backlog

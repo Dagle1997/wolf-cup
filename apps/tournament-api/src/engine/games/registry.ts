@@ -39,16 +39,18 @@ registerModifier('net-skins');
 export type Validation = { ok: true } | { ok: false; reason: string };
 
 /**
- * Validate a point-value schedule: every value must be a positive, EVEN
- * integer-cents amount. Even is required because a 2v2 team point splits into
- * 4 cross-team edges of `value/2` (whole-dollar point values, a multiple of
- * 100 cents, are always even). Returns a reason on rejection, else null.
+ * Validate a point-value schedule: every value must be a positive, WHOLE-DOLLAR
+ * integer-cents amount (a multiple of 100 cents). Story 2.1a: whole-dollar is
+ * required so no half-dollar can ever appear in a settle-up leg ("nobody plays
+ * $2.50 a point" — Josh 2026-06-22). ×100 subsumes the prior "even" rule, so the
+ * 2v2 cross matrix's internal `value/2` cells stay integer cents. Returns a
+ * reason on rejection, else null.
  */
 function validateSchedule(s: PointValueSchedule): string | null {
   const vals = s.kind === 'flat' ? [s.cents] : [s.frontCents, s.backCents];
   for (const v of vals) {
     if (!Number.isInteger(v) || v <= 0) return `invalid_point_value:${v}`;
-    if (v % 2 !== 0) return `point_value_not_even:${v}`;
+    if (v % 100 !== 0) return `point_value_not_whole_dollar:${v}`;
   }
   return null;
 }
