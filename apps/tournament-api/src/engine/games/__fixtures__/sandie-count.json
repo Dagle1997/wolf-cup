@@ -1,0 +1,35 @@
+{
+  "name": "Sandie pure count (no engine gate, FR16) — proves the count model: one box +1, both teammates +2, one each 0 (contested), ALL FOUR 0 (2 vs 2 nets out). A checked sandie always counts; anyone can get one. All nets = par so base points are 0 — the ledger reflects SANDIE points only.",
+  "_contract": "Golden HAND-CALC fixture for the F1 sandie modifier (Story 2.4). Sandie = an up-and-down-from-sand CLAIM the scorer checks — accepted as entered (FR16), NEVER software-validated (Josh ratified 2026-06-22: no score gate; the 'par/bogey or better' convention is a Rules-Sheet item, Story 2.7). COUNT-BASED, STATELESS: sandiePointsA = (# teamA sandies) − (# teamB sandies), range −2..+2, each unit a team point (+1 each winner-team player / −1 each opponent). A checked sandie always counts (no gross, no variant). SettlementEdge IR = post-Story-2.1a whole-dollar 1-to-1. Integer cents; fromPlayerId PAYS toPlayerId.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "flat", "cents": 500 },
+      "modifiers": [
+        { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } },
+        { "type": "sandie", "enabled": true }
+      ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 1, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 }, "claims": { "a1": { "sandie": true } } },
+      { "holeNumber": 2, "par": 5, "net": { "a1": 5, "a2": 5, "b1": 5, "b2": 5 }, "claims": { "a1": { "sandie": true }, "a2": { "sandie": true } } },
+      { "holeNumber": 3, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 }, "claims": { "b1": { "sandie": true } } },
+      { "holeNumber": 4, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 }, "claims": { "a1": { "sandie": true }, "b1": { "sandie": true } } },
+      { "holeNumber": 5, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 }, "claims": { "a1": { "sandie": true }, "a2": { "sandie": true }, "b1": { "sandie": true }, "b2": { "sandie": true } } }
+    ],
+    "sourceId": "fixture-sandie-count"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 1000, "a2": 1000, "b1": -1000, "b2": -1000 },
+    "edges": [
+      { "fromPlayerId": "b1", "toPlayerId": "a1", "cents": 1000, "sourceType": "f1_game", "sourceId": "fixture-sandie-count" },
+      { "fromPlayerId": "b2", "toPlayerId": "a2", "cents": 1000, "sourceType": "f1_game", "sourceId": "fixture-sandie-count" }
+    ],
+    "ledgerTotalCents": 2000
+  },
+  "_handCalc": "Teams A={a1,a2} B={b1,b2}, flat $5/point, net-skins ON (0 here), sandie ON (no gate). Every net = par => all base points 0. SANDIE per hole (always counts when checked):\n  H1 (par4): a1 => countA=1 countB=0 => +1.\n  H2 (par5): a1+a2 => countA=2 => +2 (a team gets 2 when both teammates have one + neither opponent does).\n  H3 (par3): b1 => countB=1 => −1.\n  H4 (par4): a1+b1 => 1 vs 1 => 0 (contested).\n  H5 (par4): a1+a2+b1+b2 => 2 vs 2 => 0 (ALL FOUR net out).\nRound sandieA = +1+2−1+0+0 = +2. Each A player +2*500 = +1000c (+$10), each B −1000c. Zero-sum. H4 + H5 both pts=0 => skipped => no edges, total unchanged.\nEDGES (1-to-1): b1->a1 1000, b2->a2 1000. ledgerTotal = 2000c.\nORDER-INDEPENDENCE: the golden test recomputes with holes reversed and asserts byte-identical (stateless)."
+}

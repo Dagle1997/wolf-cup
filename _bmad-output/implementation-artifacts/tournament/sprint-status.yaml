@@ -640,7 +640,7 @@ development_status:
   # + approved (skip create-story + spec-gate) -> implement directly.
   2-2-greenie-modifier-stateful-carryover: done
   2-3-polie-modifier: done
-  2-4-sandie-modifier-par-vs-any-score-variant: backlog
+  2-4-sandie-modifier-par-vs-any-score-variant: done
   2-5-birdie-modifier-generalized-net-gross-single-double: backlog
   2-6-payout-cap-345-cap-never-exceeds: backlog
   2-7-rules-page-template-picker-save-preset: backlog

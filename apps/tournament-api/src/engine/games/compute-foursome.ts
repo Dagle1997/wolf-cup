@@ -10,6 +10,7 @@ import type { FoursomeInput, GameConfig, Ledger } from './types.js';
 import { holeNetPointsA, pointValueCents } from './games/guyan-2v2.js';
 import { greenieFold } from './modifiers/greenie.js';
 import { polieActive, poliePoints } from './modifiers/polie.js';
+import { sandieActive, sandiePoints } from './modifiers/sandie.js';
 import { validateResolvedConfig } from './registry.js';
 
 export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledger {
@@ -58,6 +59,10 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
   // gross, so it is base-money-neutral.
   const polieOn = polieActive(config);
 
+  // Sandie (Story 2.4) — STATELESS pure-count claim points (no gate). Hoist the
+  // active check out of the loop, same as polie.
+  const sandieOn = sandieActive(config);
+
   const members = [teamA[0], teamA[1], teamB[0], teamB[1]];
   for (const hole of holes) {
     // Complete-cell gate (INTENTIONAL, matches Wolf Cup best-ball-2v2 + the
@@ -72,7 +77,8 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
     const pts =
       holeNetPointsA(hole, teamA, teamB, config) +
       (pointsByHole.get(hole.holeNumber) ?? 0) +
-      (polieOn ? poliePoints(hole, teamA, teamB, config) : 0);
+      (polieOn ? poliePoints(hole, teamA, teamB, config) : 0) +
+      (sandieOn ? sandiePoints(hole, teamA, teamB, config) : 0);
     if (pts === 0) continue;
 
     const pv = pointValueCents(config.pointValueSchedule, hole.holeNumber);

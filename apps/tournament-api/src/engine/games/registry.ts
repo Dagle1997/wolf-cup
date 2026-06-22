@@ -33,10 +33,11 @@ export function registeredModifierTypes(): string[] {
   return [...modifierRegistry].sort();
 }
 
-// Story 1.1 registers net-skins; Story 2.2 registers greenie; Story 2.3 registers polie.
+// Story 1.1 net-skins; 2.2 greenie; 2.3 polie; 2.4 sandie.
 registerModifier('net-skins');
 registerModifier('greenie');
 registerModifier('polie');
+registerModifier('sandie');
 
 export type Validation = { ok: true } | { ok: false; reason: string };
 
@@ -151,6 +152,18 @@ export function validateResolvedConfig(config: GameConfig): Validation {
       // polieBogeyOrBetter is a POLIE-only lever (Story 2.3) — reject on greenie.
       if (m.variant?.polieBogeyOrBetter !== undefined) {
         return { ok: false, reason: `unsupported_greenie_variant:polieBogeyOrBetter` };
+      }
+    }
+    // Story 2.4: sandie is a PURE COUNT modifier with NO lever (FR16 — no
+    // engine-enforced eligibility gate). An enabled sandie carrying ANY variant
+    // key (known OR unknown) is a misconfig → fail closed (stricter than
+    // greenie/polie, which allow-list one key each, because sandie has zero valid
+    // keys). Absent or empty `variant:{}` passes (the shared shape guard above
+    // already accepts an empty object).
+    if (m.type === 'sandie' && m.enabled && m.variant !== undefined) {
+      const keys = Object.keys(m.variant);
+      if (keys.length > 0) {
+        return { ok: false, reason: `unsupported_sandie_variant:${keys[0]}` };
       }
     }
     // Story 2.3: polie's ONLY lever is `polieBogeyOrBetter` (Y/N). An enabled

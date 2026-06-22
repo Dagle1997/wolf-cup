@@ -24,11 +24,12 @@ function holeArb(holeNumber: number): fc.Arbitrary<HoleState> {
       a1: net, a2: net, b1: net, b2: net,
       ga1: box, ga2: box, gb1: box, gb2: box, // greenie boxes (2.2)
       pa1: box, pa2: box, pb1: box, pb2: box, // polie boxes (2.3)
+      sa1: box, sa2: box, sb1: box, sb2: box, // sandie boxes (2.4)
       xa1: gross, xa2: gross, xb1: gross, xb2: gross, // gross (2.3 — polie gate)
     })
     .map((r): HoleState => {
       const claims: Record<string, HoleClaims> = {};
-      const set = (p: string, k: 'greenie' | 'polie') => {
+      const set = (p: string, k: 'greenie' | 'polie' | 'sandie') => {
         claims[p] = { ...(claims[p] ?? {}), [k]: true };
       };
       if (r.ga1) set('a1', 'greenie');
@@ -39,6 +40,10 @@ function holeArb(holeNumber: number): fc.Arbitrary<HoleState> {
       if (r.pa2) set('a2', 'polie');
       if (r.pb1) set('b1', 'polie');
       if (r.pb2) set('b2', 'polie');
+      if (r.sa1) set('a1', 'sandie');
+      if (r.sa2) set('a2', 'sandie');
+      if (r.sb1) set('b1', 'sandie');
+      if (r.sb2) set('b2', 'sandie');
       return {
         holeNumber,
         par: r.par,
@@ -62,12 +67,14 @@ const configArb: fc.Arbitrary<GameConfig> = fc
     carryover: fc.boolean(),
     polie: fc.boolean(),
     polieGate: fc.boolean(),
+    sandie: fc.boolean(),
   })
-  .map(({ dollars, netSkins, greenie, carryover, polie, polieGate }) => {
+  .map(({ dollars, netSkins, greenie, carryover, polie, polieGate, sandie }) => {
     const modifiers: Modifier[] = [];
     if (netSkins) modifiers.push({ type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } });
     if (greenie) modifiers.push({ type: 'greenie', enabled: true, variant: { carryover } });
     if (polie) modifiers.push({ type: 'polie', enabled: true, variant: { polieBogeyOrBetter: polieGate } });
+    if (sandie) modifiers.push({ type: 'sandie', enabled: true }); // no lever
     return {
       game: 'guyan-2v2',
       pointValueSchedule: { kind: 'flat', cents: dollars * 100 } as const,
@@ -223,6 +230,62 @@ describe('guyan-2v2 engine — money-correctness invariants (fast-check)', () =>
         expect(ledger.perPlayerCents['b2']).toBe(expectedB);
 
         // Shuffle invariance (stateless).
+        const reversed = computeFoursome(config, { ...input, holes: [...input.holes].reverse() });
+        expect(reversed.perPlayerCents).toEqual(ledger.perPlayerCents);
+        expect(reversed.cross).toEqual(ledger.cross);
+      }),
+    );
+  });
+
+  // Sandie additivity (Story 2.4). Non-tautological: LHS engine ledger, RHS
+  // re-derived from raw inputs. sandie-only + flat PV + nets=par isolates sandie.
+  it('sandie additivity (sandie-only, flat PV, nets=par): perPlayer === ±cents * Σ(#A−#B), shuffle-invariant', () => {
+    const sandieOnlyArb: fc.Arbitrary<GameConfig> = fc
+      .integer({ min: 1, max: 20 })
+      .map((dollars) => ({
+        game: 'guyan-2v2',
+        pointValueSchedule: { kind: 'flat', cents: dollars * 100 } as const,
+        modifiers: [{ type: 'sandie', enabled: true }],
+        lockState: 'locked' as const,
+        configVersion: 1,
+      }));
+
+    function sandieHoleArb(holeNumber: number): fc.Arbitrary<HoleState> {
+      const box = fc.boolean();
+      return fc
+        .record({ par: fc.constantFrom(3, 4, 5), sa1: box, sa2: box, sb1: box, sb2: box })
+        .map((r): HoleState => {
+          const claims: Record<string, HoleClaims> = {};
+          if (r.sa1) claims['a1'] = { sandie: true };
+          if (r.sa2) claims['a2'] = { sandie: true };
+          if (r.sb1) claims['b1'] = { sandie: true };
+          if (r.sb2) claims['b2'] = { sandie: true };
+          const par = r.par;
+          return { holeNumber, par, net: { a1: par, a2: par, b1: par, b2: par }, claims };
+        });
+    }
+    const sandieInputArb = fc
+      .integer({ min: 1, max: 9 })
+      .chain((count) => fc.tuple(...Array.from({ length: count }, (_, i) => sandieHoleArb(i + 1))))
+      .map((holes) => ({ teamSplit, holes }));
+
+    fc.assert(
+      fc.property(sandieOnlyArb, sandieInputArb, (config, input) => {
+        const cents = (config.pointValueSchedule as { kind: 'flat'; cents: number }).cents;
+        let sum = 0;
+        for (const h of input.holes) {
+          const a = (h.claims?.['a1']?.sandie === true ? 1 : 0) + (h.claims?.['a2']?.sandie === true ? 1 : 0);
+          const b = (h.claims?.['b1']?.sandie === true ? 1 : 0) + (h.claims?.['b2']?.sandie === true ? 1 : 0);
+          sum += a - b;
+        }
+        const ledger = computeFoursome(config, input);
+        const expectedA = cents * sum;
+        const expectedB = -expectedA || 0; // normalize −0 to +0 for Object.is
+        expect(ledger.perPlayerCents['a1']).toBe(expectedA);
+        expect(ledger.perPlayerCents['a2']).toBe(expectedA);
+        expect(ledger.perPlayerCents['b1']).toBe(expectedB);
+        expect(ledger.perPlayerCents['b2']).toBe(expectedB);
+
         const reversed = computeFoursome(config, { ...input, holes: [...input.holes].reverse() });
         expect(reversed.perPlayerCents).toEqual(ledger.perPlayerCents);
         expect(reversed.cross).toEqual(ledger.cross);
