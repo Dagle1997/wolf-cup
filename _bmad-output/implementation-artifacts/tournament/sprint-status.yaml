@@ -653,6 +653,36 @@ development_status:
   # reusable gross threading (HoleState.gross + games-money) — only polie stops
   # READING it. Engine-only.
   2-4a-strip-polie-bogey-or-better-gate: done
+  # PRIORITY (user direction 2026-06-22): Epic 3 (scoreboard) is sequenced AHEAD
+  # of the remaining Epic 2 stories below — it is listed first so the director
+  # picks 3-1 NEXT. The during-round scorecard + standings is the priority build;
+  # the F1 remainder (2-5..2-8) resumes after Epic 3. NOTE: 2-5..2-8 do not build
+  # the per-hole money the scorecard needs, so doing them first wouldn't unblock
+  # it anyway.
+  # ---------------------------------------------------------------------------
+  # Epic 3: Scoreboard rework — the Wolf-style DURING-ROUND board (expandable
+  # per-player hole-by-hole scorecard) + a sortable WEEKEND standings page.
+  # Registered 2026-06-22 (user-directed). DESIGN SPEC (read first):
+  # implementation-artifacts/tournament/scoreboard-rework-spec.md.
+  # This is a PORT of the Wolf Cup HoleBadge + scorecard grid
+  # (apps/web/src/routes/index.tsx) into tournament-web — NEVER edit apps/web
+  # or apps/api (FD-1/FD-2, READ-ONLY reference). Drops Stableford/Harvey/Wolf
+  # rows for Pete Dye; keeps Hole / Par / Score(notation + handicap + greenie/
+  # polie/sandie dots) / Net / $. Real-world fixture: Pete Dye brochure pages 3
+  # (standings) + 4 (scorecard) re-capture native once 3-4 lands.
+  # DEPENDENCY: per-hole F1 money (3-3) is the Epic-4 seam — build it or FORMALLY
+  # defer the $ row behind a flag, never fake $0. greenie/polie/sandie come from
+  # folding hole_claim_writes (Epic 2). MONEY-ADJACENT display → reviewed stories.
+  # ---------------------------------------------------------------------------
+  epic-3: backlog
+
+  3-1-holebadge-scorecard-grid-port: backlog
+  3-2-scorecard-api-gross-net-strokes-claims: backlog
+  3-3-per-hole-f1-money-or-defer: backlog
+  3-4-during-round-leaderboard-rework-expandable: backlog
+  3-5-weekend-standings-sortable-money-netpar-individual: backlog
+
+  # Epic 2 remainder — resumes AFTER Epic 3 per the priority note above.
   2-5-birdie-modifier-generalized-net-gross-single-double: backlog
   2-6-payout-cap-345-cap-never-exceeds: backlog
   2-7-rules-page-template-picker-save-preset: backlog
