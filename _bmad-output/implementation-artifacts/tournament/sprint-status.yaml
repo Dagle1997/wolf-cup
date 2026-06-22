@@ -578,7 +578,8 @@ development_status:
   # toggle + point value, settle into the pairwise settle-up (dual-read +
   # chokepoint + money mode). Tournament paths ONLY (FD-1/FD-2).
   # ---------------------------------------------------------------------------
-  epic-1: in-progress
+  epic-1: done
+  epic-1-retrospective: done
 
   # 1.1 Walking skeleton: golden fixtures + pure engine for the base Guyan 2v2
   # game (base 2v2 low-ball + net-birdie). Golden-bearing — hand-calc fixture
