@@ -135,7 +135,7 @@
   }
   .studio-badge .studio-sub {
     display: block;
-    font-size: 7px;
+    font-size: 9px;
     font-weight: 500;
     letter-spacing: 1px;
     opacity: 0.5;
@@ -329,7 +329,7 @@
 
   .cta-footer { text-align: center; margin-top: auto; padding-top: 12px; }
   .cta-footer .cf-main { font-size: 10.5px; color: #9ca3af; margin-bottom: 3px; }
-  .cta-footer .cf-fine { font-size: 9px; color: #b8bcc2; line-height: 1.5; }
+  .cta-footer .cf-fine { font-size: 10px; color: #aab0b6; line-height: 1.5; }
 
   @media print {
     body { background: white; }
@@ -397,66 +397,83 @@
 </div>
 
 <!-- ===== PAGE 2: THE HUB ===== -->
-<div class="page feature-page light">
+<div class="page feature-page dark">
   <div class="section-label">One App, Whole Weekend</div>
   <div class="section-title">Everything for the trip, in one place</div>
   <div class="section-desc">
-    Your schedule, your foursome, the live leaderboard, the money, and the trip photos — all behind one link.
+    The schedule, the live board, the money and the trip photos — all behind one link, two taps from your home screen.
   </div>
 
-  <div class="shot-wrap shot win">
-    <img src="tournament-screenshots/hub.png" alt="Event home — live hub">
+  <div class="shot-wrap shot dark">
+    <img src="tournament-screenshots/hub-crop.png" alt="Event home — the trip hub">
   </div>
 
-  <ul class="bullets">
-    <li><strong>Leaderboard</strong> — live team &amp; individual standings</li>
-    <li><strong>My Money</strong> — your running P&amp;L by game</li>
-    <li><strong>Settle Up</strong> — one clean who-pays-who at the end</li>
-    <li><strong>Photo Gallery</strong> — drop the trip pics in one spot</li>
-    <li><strong>What's Happening</strong> — a live feed of every score</li>
+  <ul class="bullets dark-bullets">
+    <li><strong>Standings</strong> — live leaderboard, teams &amp; match play</li>
+    <li><strong>Money</strong> — your P&amp;L, the board &amp; the settle-up</li>
+    <li><strong>Bets</strong> — &ldquo;The Action&rdquo; side wagers</li>
+    <li><strong>Photos &amp; a live feed</strong> — every score as it happens</li>
   </ul>
 </div>
 
-<!-- ===== PAGE 3: SCORING + LEADERBOARD ===== -->
-<div class="page feature-page light">
-  <div class="section-label">Instant Results</div>
-  <div class="section-title">Score the hole. Everybody already knows.</div>
+<!-- ===== PAGE 3: SCORE THE HOLE ===== -->
+<div class="page feature-page dark">
+  <div class="section-label">From The Cart</div>
+  <div class="section-title">Score the hole in four taps</div>
   <div class="section-desc">
-    No more rebuilding the round on 18. One person taps in the four scores after every hole — and the
-    leaderboard moves in real time.
+    One scorer per foursome taps in the four gross numbers. Net, best-ball and money compute the second you save — no rebuilding the round on 18.
   </div>
 
-  <div class="shot-wrap shot">
-    <img src="tournament-screenshots/leaderboard.png" alt="Live leaderboard">
+  <div class="shot-wrap shot dark">
+    <img src="tournament-screenshots/score-crop.png" alt="Hole-by-hole score entry">
   </div>
 
-  <ul class="bullets">
-    <li>One scorer per foursome — tap "I'll score" to take over</li>
-    <li>Gross in → net, best-ball &amp; to-par computed instantly</li>
-    <li>Anyone on the trip can follow live — no login to watch</li>
+  <ul class="bullets dark-bullets">
+    <li>Big, fast number pads — tap and it advances to the next man</li>
+    <li>Teams &amp; bonuses (greenie, polie, sandie) right on the card</li>
+    <li>Works offline — it syncs the moment you&apos;re back in range</li>
   </ul>
 </div>
 
-<!-- ===== PAGE 4: HOLE-BY-HOLE RESULTS ===== -->
+<!-- ===== PAGE 4: LIVE LEADERBOARD ===== -->
+<div class="page feature-page dark">
+  <div class="section-label">Instant Results</div>
+  <div class="section-title">The board moves the second you save</div>
+  <div class="section-desc">
+    To-par and money for the whole field, live — no login to watch.
+  </div>
+
+  <div class="shot-wrap shot dark">
+    <img src="tournament-screenshots/leaderboard-crop.png" alt="Live leaderboard">
+  </div>
+
+  <ul class="bullets dark-bullets">
+    <li>To-par &amp; dollars per man — sorted, ranked, color-coded</li>
+    <li>Handicap index &amp; course handicap right under each name</li>
+    <li>Tap any name to open their full hole-by-hole card</li>
+  </ul>
+</div>
+
+<!-- ===== PAGE 5: HOLE-BY-HOLE RESULTS ===== -->
 <div class="page feature-page dark">
   <div class="section-label">Hole By Hole</div>
   <div class="section-title">Every hole, settled as you go</div>
   <div class="section-desc">
-    Tap any player and their whole card opens — every hole color-coded, net and money right there.
+    Tap any player and their whole card opens — every hole color-coded, with net and money right there.
   </div>
 
-  <div class="shot-wrap shot win dark" style="width: 240px; height: 340px;">
-    <img src="tournament-screenshots/wolf-scoreboard.png" alt="Live leaderboard with per-player hole-by-hole scorecard">
+  <div class="shot-wrap shot dark">
+    <img src="tournament-screenshots/scorecard-crop.png" alt="Per-player hole-by-hole scorecard with net and money">
   </div>
 
   <ul class="bullets dark-bullets">
     <li>Color-coded scores — birdies, bogeys &amp; blow-ups at a glance</li>
     <li>Net &amp; money per hole — no calculator, no arguments</li>
-    <li>Tap a name to open their full front-9 / back-9 card</li>
+    <li>Greenie, polie &amp; sandie dots right on the card</li>
   </ul>
 </div>
 
-<!-- ===== PAGE 5: MONEY ===== -->
+<!-- ===== PAGE 6: MONEY ===== -->
 <div class="page feature-page dark">
   <div class="section-label">The Money</div>
   <div class="section-title">Who owes who — done.</div>
@@ -465,18 +482,18 @@
     no "I think you owe me."
   </div>
 
-  <div class="shot-wrap shot win dark">
-    <img src="tournament-screenshots/money.png" alt="Standings and head-to-head money">
+  <div class="shot-wrap shot dark">
+    <img src="tournament-screenshots/money-crop.png" alt="Standings and head-to-head money">
   </div>
 
   <ul class="bullets dark-bullets">
     <li>Standings in dollars — what each man is up or down</li>
-    <li>Whole-dollar settle-up — every loser pays one person, clean</li>
+    <li>Head-to-head grid — exactly who's up on who</li>
     <li>One end-of-trip number that nets everybody out</li>
   </ul>
 
   <div style="font-size: 11.5px; font-style: italic; color: rgba(255,255,255,0.52); text-align: center; margin-top: 16px; line-height: 1.55;">
-    Cuban's down $45 and still pressing. The app keeps the receipts — settle up like gentlemen.
+    Johnny Hotdog's down $165 and still pressing. The app keeps the receipts — settle up like gentlemen.
   </div>
 </div>
 
@@ -553,7 +570,7 @@
 <!-- ===== PAGE 8: LONG DRIVE (easter egg) ===== -->
 <div class="page feature-page light">
   <div class="section-label" style="color: var(--gold);">🌭 Side Action · Unofficial</div>
-  <div class="section-title">Long Drive of the Weekend</div>
+  <div class="section-title">Long drive of the weekend</div>
   <div class="section-desc">
     The one number the app won't track for you — long drive's still measured the old-fashioned way:
     a marker in the fairway and an honest tape.
@@ -580,29 +597,7 @@
   </div>
 </div>
 
-<!-- ===== PAGE 9: BEYOND THIS WEEKEND (general teaser) ===== -->
-<div class="page feature-page light">
-  <div class="section-label">Beyond This Weekend</div>
-  <div class="section-title">Built for any trip, not just this one</div>
-  <div class="section-desc">
-    Pete Dye is the debut, but the app runs any outing you put on the calendar — member-guests,
-    buddy trips, a one-day shootout. Set it up once; it keeps the score, the money, and the
-    standings for the whole thing.
-  </div>
-
-  <ul class="bullets">
-    <li><strong>Any multi-round event</strong> — one round or a whole weekend, across courses</li>
-    <li><strong>Team &amp; match-play standings</strong> — best-ball and points boards, live</li>
-    <li><strong>Team and 1-on-1 money</strong> — plus "The Action" player side bets, auto-settled</li>
-    <li><strong>GHIN handicaps, locked by date</strong> — fair strokes, slope-aware per tee</li>
-    <li><strong>Photos &amp; schedule</strong> — the whole trip behind one link</li>
-    <li><strong>Join by Google or a text code</strong> — no account needed to play or to watch</li>
-  </ul>
-
-  <div class="formats-foot">Same app. Next trip, you already know how it works.</div>
-</div>
-
-<!-- ===== PAGE 10: JOIN + CTA ===== -->
+<!-- ===== PAGE 9: JOIN + CTA ===== -->
 <div class="page cta-page">
   <div class="section-label" style="color: var(--green);">Getting In</div>
   <div class="section-title" style="color: var(--dark);">Two taps and you're on the roster</div>
@@ -620,7 +615,7 @@
       <div class="step-number">2</div>
       <div>
         <h4>Join the event</h4>
-        <p>Sign in with Google, or punch in the personal join code Josh texts you — no account needed.</p>
+        <p>Sign in with Google, or just punch in the personal join code Josh texts you — that path needs no account at all.</p>
       </div>
     </div>
     <div class="step-card">

@@ -35,6 +35,11 @@ async function main(): Promise<void> {
 
   const now = Date.now();
   const id = () => randomUUID();
+  // Event dates pinned to the real trip (Jun 26–27, 2026, noon ET) so the hub
+  // screenshot's date range matches the brochure copy. The round itself stays
+  // "in progress" (its roundDate is `now`), so the live-scoring CTA still shows.
+  const EVENT_START = Date.UTC(2026, 5, 26, 16, 0, 0);
+  const EVENT_END = Date.UTC(2026, 5, 27, 16, 0, 0);
 
   // ── Course (Pete Dye-ish): 18 holes, real-ish pars, blue/"Dye" tee ──
   const courseId = id();
@@ -69,7 +74,7 @@ async function main(): Promise<void> {
   const groupId = id();
   const pairingId = id();
   const roundId = id();
-  await db.insert(s.events).values({ id: eventId, name: 'Pete Dye Invitational', startDate: now, endDate: now + 86400000, timezone: 'America/New_York', organizerPlayerId: organizerId, createdAt: now, tenantId: TENANT_ID, contextId: CTX });
+  await db.insert(s.events).values({ id: eventId, name: 'Pete Dye Invitational', startDate: EVENT_START, endDate: EVENT_END, timezone: 'America/New_York', organizerPlayerId: organizerId, createdAt: now, tenantId: TENANT_ID, contextId: CTX });
   await db.insert(s.eventRounds).values({ id: eventRoundId, eventId, roundNumber: 1, roundDate: now, courseRevisionId: courseRevId, teeColor: 'Dye', holesToPlay: 18, createdAt: now, tenantId: TENANT_ID, contextId: CTX });
   await db.insert(s.groups).values({ id: groupId, eventId, name: 'Roster', createdAt: now, tenantId: TENANT_ID, contextId: CTX });
   for (const pid of playerIds) await db.insert(s.groupMembers).values({ groupId, playerId: pid, tenantId: TENANT_ID, contextId: CTX });

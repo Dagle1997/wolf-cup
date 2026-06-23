@@ -147,5 +147,15 @@ test('brochure shots: leaderboard + expanded scorecard + score-entry', async ({ 
   await hub.close();
   await hubCtx.close();
 
+  // ── 6) Money board — head-to-head "who owes whom" matrix (organizer view) ──
+  const moCtx = await darkContext(browser, fx.organizerSessionId);
+  const mo = await moCtx.newPage();
+  await mo.goto(`/events/${fx.eventId}/money`, { waitUntil: 'networkidle' }).catch(() => {});
+  await mo.waitForTimeout(1200);
+  await stripDevBadge(mo);
+  await mo.screenshot({ path: resolve(SHOTS, '6-money-board.png'), fullPage: true });
+  await mo.close();
+  await moCtx.close();
+
   expect(true).toBe(true);
 });
