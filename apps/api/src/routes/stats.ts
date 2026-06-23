@@ -693,24 +693,29 @@ app.get('/stats', async (c) => {
     // Build partnership stats: both wolf+partner team AND opponent team
     const pairMap = new Map<string, { ids: [number, number]; holes: number; wins: number; losses: number; pushes: number }>();
     const nameMapAll = new Map(allPlayers.map((p) => [p.id, p.name]));
+    // Members only — exclude sub/inactive pairs from best-partnership (matches
+    // the gated stats page and prevents 'Unknown' name resolution).
+    const eligible = new Set(allPlayers.map((p) => p.id));
 
     for (const d of allPartnerDecisions) {
       if (d.wolfPlayerId == null || d.partnerPlayerId == null) continue;
       const key1 = `${d.roundId}-${d.groupId}`;
       const groupPlayers = gpMap.get(key1) ?? [];
 
-      // Wolf team pair
-      const wolfPairKey = [d.wolfPlayerId, d.partnerPlayerId].sort((a, b) => a - b).join('-');
-      const wolfPair = pairMap.get(wolfPairKey) ?? { ids: [Math.min(d.wolfPlayerId, d.partnerPlayerId), Math.max(d.wolfPlayerId, d.partnerPlayerId)] as [number, number], holes: 0, wins: 0, losses: 0, pushes: 0 };
-      wolfPair.holes++;
-      if (d.outcome === 'win') wolfPair.wins++;
-      else if (d.outcome === 'loss') wolfPair.losses++;
-      else if (d.outcome === 'push') wolfPair.pushes++;
-      pairMap.set(wolfPairKey, wolfPair);
+      // Wolf team pair (members only)
+      if (eligible.has(d.wolfPlayerId) && eligible.has(d.partnerPlayerId)) {
+        const wolfPairKey = [d.wolfPlayerId, d.partnerPlayerId].sort((a, b) => a - b).join('-');
+        const wolfPair = pairMap.get(wolfPairKey) ?? { ids: [Math.min(d.wolfPlayerId, d.partnerPlayerId), Math.max(d.wolfPlayerId, d.partnerPlayerId)] as [number, number], holes: 0, wins: 0, losses: 0, pushes: 0 };
+        wolfPair.holes++;
+        if (d.outcome === 'win') wolfPair.wins++;
+        else if (d.outcome === 'loss') wolfPair.losses++;
+        else if (d.outcome === 'push') wolfPair.pushes++;
+        pairMap.set(wolfPairKey, wolfPair);
+      }
 
       // Opponent team pair
       const opponents = groupPlayers.filter((pid) => pid !== d.wolfPlayerId && pid !== d.partnerPlayerId);
-      if (opponents.length === 2) {
+      if (opponents.length === 2 && eligible.has(opponents[0]!) && eligible.has(opponents[1]!)) {
         const oppPairKey = opponents.sort((a, b) => a - b).join('-');
         const oppPair = pairMap.get(oppPairKey) ?? { ids: [opponents[0]!, opponents[1]!] as [number, number], holes: 0, wins: 0, losses: 0, pushes: 0 };
         oppPair.holes++;
