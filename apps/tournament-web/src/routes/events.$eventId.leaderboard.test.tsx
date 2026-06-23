@@ -122,8 +122,8 @@ describe('LeaderboardPage — expandable scorecard (Story 3-4)', () => {
     expect(screen.getByText('+$15')).toBeInTheDocument();
     expect(screen.getByText('+1')).toBeInTheDocument();
     expect(screen.getByText('-$15')).toBeInTheDocument();
-    // HCP · thru sub-line under the name.
-    expect(screen.getByText(/HCP 8\.0 · Thru 3/)).toBeInTheDocument();
+    // HI · CH · thru sub-line under the name (CH = pinned course handicap).
+    expect(screen.getByText(/HI 8\.0 · CH 8 · Thru 3/)).toBeInTheDocument();
   });
 
   it('row $ column is suppressed (—) when money is not exposed (scores-only)', async () => {

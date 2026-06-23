@@ -611,3 +611,41 @@ describe('GET /api/events/:eventId/activity — cross-event isolation', () => {
     expect(allRows).toHaveLength(20);
   });
 });
+
+describe('GET /api/events/:eventId/activity — player-name hydration', () => {
+  test('score.committed event is augmented with the player display name', async () => {
+    await db.insert(activity).values({
+      id: makeUuidLike('aaa111'),
+      eventId: EVENT_A,
+      roundId: ROUND_A,
+      type: 'score.committed',
+      actorPlayerId: ORG_A,
+      payloadJson: JSON.stringify({
+        type: 'score.committed',
+        eventId: EVENT_A,
+        roundId: ROUND_A,
+        actorPlayerId: ORG_A,
+        playerId: PARTICIPANT_A,
+        holeNumber: 1,
+        grossStrokes: 3,
+        par: 4,
+        toPar: -1,
+        isBirdieOrBetter: true,
+        scorerPlayerId: ORG_A,
+      }),
+      createdAt: Date.now(),
+      tenantId: TENANT,
+      contextId: `activity:${EVENT_A}`,
+    });
+    const { body } = await getFeed(`/api/events/${EVENT_A}/activity`, ORG_A);
+    const resp = body as {
+      rows: Array<{ event: Record<string, unknown> }>;
+    };
+    expect(resp.rows).toHaveLength(1);
+    const ev = resp.rows[0]!.event;
+    // The raw ids survive AND the resolved names are injected as siblings.
+    expect(ev['playerId']).toBe(PARTICIPANT_A);
+    expect(ev['playerName']).toBe('Participant A');
+    expect(ev['actorPlayerName']).toBe('Org');
+  });
+});

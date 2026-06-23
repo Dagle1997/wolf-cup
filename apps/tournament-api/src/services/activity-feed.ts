@@ -11,9 +11,9 @@
  * sanctioned pattern.
  */
 
-import { and, eq, sql, desc, asc, type SQL } from 'drizzle-orm';
+import { and, eq, inArray, sql, desc, asc, type SQL } from 'drizzle-orm';
 import type { db as Db } from '../db/index.js';
-import { activity } from '../db/schema/index.js';
+import { activity, players } from '../db/schema/index.js';
 import {
   encodeCursor,
   decodeCursor,
@@ -31,6 +31,63 @@ type TxOrDb = Parameters<Parameters<DbType['transaction']>[0]>[0] | DbType;
 
 const PAGE_LIMIT = 100;
 const TENANT_ID = 'guyan';
+
+/**
+ * Activity payloads store player UUIDs, not names (T8-1 schema). The feed/toast/
+ * banner headlines read these. We hydrate display names at READ time (works for
+ * ALL past events, no payload migration) by mapping each id field to a sibling
+ * `*Name` field the web headline builder prefers. Keys cover every player-id
+ * field across the event union.
+ */
+const PLAYER_ID_TO_NAME_KEY: Record<string, string> = {
+  playerId: 'playerName',
+  actorPlayerId: 'actorPlayerName',
+  scorerPlayerId: 'scorerPlayerName',
+  fromPlayerId: 'fromPlayerName',
+  toPlayerId: 'toPlayerName',
+  playerAId: 'playerAName',
+  playerBId: 'playerBName',
+};
+
+/**
+ * Mutates each row's event in place, adding `*Name` fields resolved from a
+ * single batched players lookup. Missing names are simply not added (the
+ * headline falls back to the raw id). Best-effort: a lookup failure leaves the
+ * rows un-hydrated rather than failing the whole feed read.
+ */
+async function hydratePlayerNames(
+  tx: TxOrDb,
+  rows: ActivityRow[],
+  log: Logger,
+): Promise<void> {
+  const ids = new Set<string>();
+  for (const r of rows) {
+    const ev = r.event as unknown as Record<string, unknown>;
+    for (const idKey of Object.keys(PLAYER_ID_TO_NAME_KEY)) {
+      const v = ev[idKey];
+      if (typeof v === 'string' && v.length > 0) ids.add(v);
+    }
+  }
+  if (ids.size === 0) return;
+  let nameById: Map<string, string>;
+  try {
+    const nameRows = await tx
+      .select({ id: players.id, name: players.name })
+      .from(players)
+      .where(and(inArray(players.id, [...ids]), eq(players.tenantId, TENANT_ID)));
+    nameById = new Map(nameRows.map((p) => [p.id, p.name]));
+  } catch (err) {
+    log.warn({ msg: 'activity_name_hydration_failed', err: String(err) });
+    return;
+  }
+  for (const r of rows) {
+    const ev = r.event as unknown as Record<string, unknown>;
+    for (const [idKey, nameKey] of Object.entries(PLAYER_ID_TO_NAME_KEY)) {
+      const v = ev[idKey];
+      if (typeof v === 'string' && nameById.has(v)) ev[nameKey] = nameById.get(v);
+    }
+  }
+}
 
 export type ActivityRow = {
   id: string;
@@ -210,6 +267,10 @@ export async function getActivityPage(
     nextCursorAfter = null;
     nextCursorBefore = null;
   }
+
+  // Hydrate display names into the event payloads (UUID → name) for the
+  // headline surfaces. Mutates decodedRows in place; best-effort.
+  await hydratePlayerNames(tx, decodedRows, log);
 
   return {
     rows: decodedRows,

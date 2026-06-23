@@ -6,9 +6,10 @@
  *   - Feed: full historical record with all variants + score-correction
  *     prior/new inline rendering
  *
- * Player-name hydration is deferred to v1.5 across all three surfaces;
- * for v1 the raw `playerId` strings render directly. Trip 1 organizers
- * can map UUIDs to names mentally on a small foursome.
+ * Player-name hydration: the API feed read service injects `*Name` fields
+ * (playerName, actorPlayerName, …) alongside each player-id field. The headline
+ * builders prefer those names via `nameOf`, falling back to the raw id only when
+ * a name is absent (un-hydrated row / player not found).
  */
 
 import type { ActivityRow } from '../providers/activity-feed-provider';
@@ -46,11 +47,26 @@ function safeNumber(v: unknown): number | '?' {
   return Number.isFinite(n) ? n : '?';
 }
 
+/**
+ * Prefer the hydrated display name (`*Name`, injected by the API feed read
+ * service) over the raw player UUID. Falls back to the id if a name is absent
+ * (un-hydrated row / player not found).
+ */
+function nameOf(
+  ev: ActivityRow['event'],
+  idKey: string,
+  nameKey: string,
+): string {
+  const name = ev[nameKey];
+  if (typeof name === 'string' && name.length > 0) return name;
+  return String(ev[idKey]);
+}
+
 function buildScoreCommittedHeadline(
   ev: ActivityRow['event'],
   surface: HeadlineSurface,
 ): string {
-  const playerId = String(ev['playerId']);
+  const playerId = nameOf(ev, 'playerId', 'playerName');
   const grossStrokes = safeNumber(ev['grossStrokes']);
   const holeNumber = safeNumber(ev['holeNumber']);
   const toPar = Number(ev['toPar']);
@@ -117,25 +133,25 @@ function buildAwardTriggeredHeadline(
 function buildScoreCorrectedHeadline(ev: ActivityRow['event']): string {
   // Only the feed renders score.corrected. Toast filters it out;
   // Banner doesn't include score.corrected in its eligible set.
-  const playerId = String(ev['playerId']);
+  const playerId = nameOf(ev, 'playerId', 'playerName');
   const holeNumber = safeNumber(ev['holeNumber']);
   const priorGross = safeNumber(ev['priorGross']);
   const newGross = safeNumber(ev['newGross']);
-  const actorPlayerId = String(ev['actorPlayerId']);
+  const actorPlayerId = nameOf(ev, 'actorPlayerId', 'actorPlayerName');
   return `Corrected by ${actorPlayerId}: ${playerId} hole ${holeNumber}, ${priorGross} → ${newGross}`;
 }
 
 function buildScorerTransferredHeadline(ev: ActivityRow['event']): string {
-  const fromPlayerId = String(ev['fromPlayerId']);
-  const toPlayerId = String(ev['toPlayerId']);
+  const fromPlayerId = nameOf(ev, 'fromPlayerId', 'fromPlayerName');
+  const toPlayerId = nameOf(ev, 'toPlayerId', 'toPlayerName');
   const foursomeNumber = safeNumber(ev['foursomeNumber']);
   return `Scorer transferred: ${fromPlayerId} → ${toPlayerId} (foursome ${foursomeNumber})`;
 }
 
 function buildBetCreatedHeadline(ev: ActivityRow['event']): string {
   const betType = String(ev['betType']);
-  const playerAId = String(ev['playerAId']);
-  const playerBId = String(ev['playerBId']);
+  const playerAId = nameOf(ev, 'playerAId', 'playerAName');
+  const playerBId = nameOf(ev, 'playerBId', 'playerBName');
   const stakePerHoleCents = Number(ev['stakePerHoleCents']);
   const dollars = Number.isFinite(stakePerHoleCents)
     ? (stakePerHoleCents / 100).toFixed(2)

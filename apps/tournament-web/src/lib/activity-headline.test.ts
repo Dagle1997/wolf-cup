@@ -41,6 +41,53 @@ describe('buildActivityHeadline — score.committed surfaces', () => {
   });
 });
 
+describe('buildActivityHeadline — player-name hydration', () => {
+  test('uses the hydrated playerName over the raw id when present', () => {
+    const row = makeRow('score.committed', {
+      playerId: 'b6aa6a80-807b-4883-a7f5-0947115514e7',
+      playerName: 'David Miller',
+      grossStrokes: 3,
+      holeNumber: 2,
+      par: 4,
+      toPar: -1,
+      isBirdieOrBetter: true,
+      scorerPlayerId: 'b6aa6a80-807b-4883-a7f5-0947115514e7',
+      roundId: 'r-1',
+    });
+    const headline = buildActivityHeadline(row, 'feed');
+    expect(headline).toContain('David Miller');
+    expect(headline).not.toContain('b6aa6a80');
+  });
+
+  test('falls back to the raw id when no name is hydrated', () => {
+    const row = makeRow('score.committed', {
+      playerId: 'cc210471-59e3-482f-b658-fd60284b90b4',
+      grossStrokes: 3,
+      holeNumber: 1,
+      par: 4,
+      toPar: -1,
+      isBirdieOrBetter: true,
+      scorerPlayerId: 'cc210471-59e3-482f-b658-fd60284b90b4',
+      roundId: 'r-1',
+    });
+    expect(buildActivityHeadline(row, 'feed')).toContain('cc210471');
+  });
+
+  test('scorer.transferred uses both hydrated names', () => {
+    const row = makeRow('scorer.transferred', {
+      fromPlayerId: 'id-a',
+      fromPlayerName: 'Johnny Hotdog',
+      toPlayerId: 'id-b',
+      toPlayerName: 'Shooter McGavin',
+      foursomeNumber: 1,
+      roundId: 'r-1',
+    });
+    const headline = buildActivityHeadline(row, 'feed');
+    expect(headline).toContain('Johnny Hotdog');
+    expect(headline).toContain('Shooter McGavin');
+  });
+});
+
 describe('buildActivityHeadline — toPar descriptor mapping', () => {
   const cases: Array<[number, string]> = [
     [-5, 'condor'], // < -4 floor

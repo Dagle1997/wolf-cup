@@ -464,8 +464,8 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
             <tr style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)' }}>
               <th scope="col" style={{ textAlign: 'center', width: 36 }}>#</th>
               <th scope="col" style={{ textAlign: 'left' }}>Player</th>
-              <th scope="col" style={{ textAlign: 'right', width: 64 }}>To Par</th>
-              <th scope="col" style={{ textAlign: 'right', width: 64 }}>$</th>
+              <th scope="col" style={{ textAlign: 'center', width: 64 }}>To Par</th>
+              <th scope="col" style={{ textAlign: 'center', width: 64 }}>$</th>
             </tr>
           </thead>
           <tbody>
@@ -491,8 +491,11 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
                   : row.moneyCents > 0
                     ? 'var(--color-money-pos)'
                     : 'var(--color-money-neg)';
-              // Player name + the Wolf "HCP X · Thru Y" sub-line under it.
-              const subline = `HCP ${formatHandicap(row.handicapIndex)} · ${row.throughHole === 0 ? 'not started' : `Thru ${row.throughHole}`}`;
+              // Player name + the "HI X · CH Y · Thru Z" sub-line under it. CH (the
+              // pinned course handicap) is shown when available — same as the
+              // scoring screen — and omitted on event-scope reads where it's null.
+              const chPart = row.courseHandicap != null ? ` · CH ${row.courseHandicap}` : '';
+              const subline = `HI ${formatHandicap(row.handicapIndex)}${chPart} · ${row.throughHole === 0 ? 'not started' : `Thru ${row.throughHole}`}`;
               const nameBlock = (
                 <span style={{ display: 'block' }}>
                   <span style={{ display: 'block', fontWeight: 600, lineHeight: 1.15 }}>
@@ -548,10 +551,10 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
                         nameBlock
                       )}
                     </td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: toParColor }}>
+                    <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: toParColor }}>
                       {formatNetToPar(row.netToPar)}
                     </td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: moneyColor }}>
+                    <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: moneyColor }}>
                       {formatMoneyCents(row.moneyCents)}
                     </td>
                   </tr>

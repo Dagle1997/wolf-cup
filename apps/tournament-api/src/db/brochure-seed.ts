@@ -115,13 +115,15 @@ async function main(): Promise<void> {
     db.insert(s.holeClaimWrites).values({ id: id(), roundId, playerId: pid, holeNumber: hole, claimType, op: 'set', scorerPlayerId: playerIds[0]!, clientEventId: `c-${pid}-${hole}-${claimType}`, createdAt: now, tenantId: TENANT_ID, contextId: CTX });
   await claim(playerIds[2]!, 3, 'greenie'); // David Miller greenie on the par-3 3rd
   await claim(playerIds[0]!, 7, 'greenie'); // Johnny Hotdog greenie on the par-3 7th
-  await claim(playerIds[0]!, 4, 'sandie');  // Johnny Hotdog sandie on 4
-  await claim(playerIds[2]!, 6, 'polie');   // David Miller polie on 6
+  await claim(playerIds[0]!, 4, 'sandie');  // Johnny Hotdog sandie on 4 (any par)
+  await claim(playerIds[2]!, 7, 'polie');   // David Miller polie on the par-3 7th (polie = par-3 only)
 
-  // ── Viewer session (a crew member) so the browser can read the board ──
-  const { sessionId } = await createSession(playerIds[0]!, { userAgent: 'brochure-seed', ip: '127.0.0.1' });
+  // ── Sessions: the scorer (a crew member, for score-entry) + the ORGANIZER
+  // (a non-player viewer, used for the leaderboard so no row shows "(you)"). ──
+  const { sessionId: scorerSessionId } = await createSession(playerIds[0]!, { userAgent: 'brochure-seed', ip: '127.0.0.1' });
+  const { sessionId: organizerSessionId } = await createSession(organizerId, { userAgent: 'brochure-seed', ip: '127.0.0.1' });
 
-  const handoff = { eventId, eventRoundId, roundId, viewerSessionId: sessionId, scorerSessionId: sessionId, playerIds, names: crew.map((c) => c.name) };
+  const handoff = { eventId, eventRoundId, roundId, organizerSessionId, scorerSessionId, viewerSessionId: organizerSessionId, playerIds, names: crew.map((c) => c.name) };
   const handoffPath = process.env['BROCHURE_HANDOFF'] ?? resolve(process.cwd(), 'brochure-handoff.json');
   writeFileSync(handoffPath, JSON.stringify(handoff, null, 2));
   // eslint-disable-next-line no-console -- standalone script: stdout IS the interface

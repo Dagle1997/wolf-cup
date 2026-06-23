@@ -47,6 +47,7 @@ const {
   pairings,
   pairingMembers,
   rounds,
+  roundPins,
   roundStates,
   scorerAssignments,
   holeScores,
@@ -63,6 +64,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await db.delete(holeScores);
+  await db.delete(roundPins);
   await db.delete(roundStates);
   await db.delete(scorerAssignments);
   await db.delete(pairingMembers);
@@ -91,6 +93,7 @@ interface SeedResult {
   eventId: string;
   eventRoundId: string;
   roundId: string;
+  courseRevId: string;
   ctx: string;
 }
 
@@ -244,6 +247,7 @@ async function seed(opts: SeedOpts = {}): Promise<SeedResult> {
     eventId: ids.eventId,
     eventRoundId: ids.eventRoundId,
     roundId: ids.roundId,
+    courseRevId: ids.courseRevId,
     ctx,
   };
 }
@@ -275,7 +279,7 @@ describe('GET /api/rounds/:roundId', () => {
         isScorer: boolean;
         scorerPlayerId: string;
         scorerName: string;
-        members: Array<{ playerId: string; name: string; handicapIndex: number | null }>;
+        members: Array<{ playerId: string; name: string; handicapIndex: number | null; courseHandicap: number | null }>;
         holeScores: unknown[];
       };
     };
@@ -294,6 +298,40 @@ describe('GET /api/rounds/:roundId', () => {
     // Scorer's manualHandicapIndex was set to 12; others null.
     expect(body.myFoursome.members[0]!.handicapIndex).toBe(12);
     expect(body.myFoursome.members[1]!.handicapIndex).toBeNull();
+    // No round pin in this fixture → course handicap is null (HI-only display).
+    expect(body.myFoursome.members[0]!.courseHandicap).toBeNull();
+  });
+
+  test('200: members carry the PINNED course handicap when the round is pinned', async () => {
+    const s = await seed({ state: 'in_progress' });
+    // Pin per-player handicaps: scorer ch=10, player1 ch=null (no handicap),
+    // player2 ch=18. courseHandicap must reflect the pin's `ch`, not recompute.
+    await db.insert(roundPins).values({
+      roundId: s.roundId,
+      resolvedConfigJson: '{}',
+      seedRuleSetRevisionId: null,
+      courseRevisionId: s.courseRevId,
+      tee: 'blue',
+      perPlayerHandicapsJson: JSON.stringify({
+        [s.scorerId]: { hi: 12, ch: 10 },
+        [s.player1Id]: { hi: null, ch: null },
+        [s.player2Id]: { hi: 15, ch: 18 },
+      }),
+      teamCompositionJson: null,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: s.ctx,
+    });
+    const app = buildApp(s.scorerId);
+    const res = await getRoundDetail(app, s.roundId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      myFoursome: { members: Array<{ name: string; courseHandicap: number | null }> };
+    };
+    // Slot order: Scorer (1), Player One (2), Player Two (3).
+    expect(body.myFoursome.members[0]!.courseHandicap).toBe(10);
+    expect(body.myFoursome.members[1]!.courseHandicap).toBeNull();
+    expect(body.myFoursome.members[2]!.courseHandicap).toBe(18);
   });
 
   test('200 non-scorer participant: isScorer=false but scorer info populated', async () => {

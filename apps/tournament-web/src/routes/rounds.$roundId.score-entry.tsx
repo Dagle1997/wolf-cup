@@ -4,8 +4,8 @@
  * Tournament deltas vs Wolf Cup:
  *   - Route shape: /rounds/$roundId/score-entry (round-scoped, NOT group-scoped)
  *   - REMOVED wolf-decision UI + state (T6 owns)
- *   - greenie/polie/sandie claim chips RE-ADDED for F1 (Epic 2, Story 2.1) — see
- *     ClaimChips; rendered as a full-width row under each player's score box.
+ *   - greenie/polie/sandie claims for F1 (Epic 2, Story 2.1) — compact color-coded
+ *     G/P/S toggles in a "Bonuses" card (2026-06-23 Wolf-style redesign).
  *   - REMOVED CTP per-par-3 prompt (Wolf Cup-only sub-game)
  *   - REMOVED entry-code header (session-cookie auth via T1-6a)
  *   - REMOVED autoCalculateMoney (T6 owns)
@@ -61,6 +61,9 @@ interface Member {
   playerId: string;
   name: string;
   handicapIndex: number | null;
+  // Pinned course handicap (strokes received). Optional — absent on older server
+  // builds / un-pinned rounds → the card shows HI only.
+  courseHandicap?: number | null;
 }
 
 interface HoleScore {
@@ -77,12 +80,22 @@ interface CurrentClaim {
   holeNumber: number;
   claimType: ClaimType;
 }
-const CLAIM_TYPES: readonly ClaimType[] = ['greenie', 'polie', 'sandie'];
 const CLAIM_LABELS: Record<ClaimType, string> = {
   greenie: 'Greenie',
   polie: 'Polie',
   sandie: 'Sandie',
 };
+
+/**
+ * Compact display name for the score-entry card: "First L." when a last name
+ * exists, else the single token as-is. Wolf Cup hit collisions showing only the
+ * first name (two players, same first name) — the last initial disambiguates.
+ */
+function shortPlayerName(full: string): string {
+  const parts = full.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return full.trim();
+  return `${parts[0]} ${parts[parts.length - 1]![0]!.toUpperCase()}.`;
+}
 
 interface RoundDetail {
   roundId: string;
@@ -1025,74 +1038,8 @@ function StaleQueueBanner({
   );
 }
 
-// ---- ClaimChips (F1 Epic 2, Story 2.1) ------------------------------------
-
-/**
- * Per-player greenie/polie/sandie claim chips for the CURRENT hole, rendered
- * INSIDE the score-entry component (AC15: no new route/modal/overlay). Each chip
- * is a toggle: on => enqueue a `set`, off => enqueue a `remove` (removal is also
- * a queued mutation). Progressive disclosure at 375px (AC16): the chips wrap
- * under the player's name in the left column and never widen the row — the
- * 3 chips fit a 375px row without horizontal overflow. Lock state does NOT gate
- * claim capture (AC17): a claim is scoring input, not a config tap, so these
- * chips are always interactive regardless of the foursome's lock state.
- *
- * NFR-A1 floor: chips are >=44px tall tap targets, AA-contrast tokens, one-handed.
- */
-function ClaimChips({
-  playerId,
-  playerName,
-  hole,
-  active,
-  onToggle,
-}: {
-  playerId: string;
-  playerName: string;
-  hole: number;
-  active: ReadonlySet<string>;
-  onToggle: (playerId: string, claimType: ClaimType) => void;
-}) {
-  return (
-    <div
-      data-testid={`claim-chips-${playerId}`}
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 'var(--space-1)',
-        marginTop: 6,
-        maxWidth: '100%',
-      }}
-    >
-      {CLAIM_TYPES.map((claimType) => {
-        const isActive = active.has(`${playerId}:${hole}:${claimType}`);
-        return (
-          <button
-            key={claimType}
-            type="button"
-            data-testid={`claim-${claimType}-${playerId}`}
-            aria-pressed={isActive}
-            aria-label={`${isActive ? 'Remove' : 'Add'} ${CLAIM_LABELS[claimType]} for ${playerName} on hole ${hole}`}
-            onClick={() => onToggle(playerId, claimType)}
-            style={{
-              minHeight: 44,
-              padding: '0 12px',
-              margin: 0,
-              borderRadius: 'var(--radius-md)',
-              fontSize: 'var(--font-sm)',
-              fontWeight: 600,
-              border: `1px solid ${isActive ? 'var(--color-brand-primary)' : 'var(--color-border)'}`,
-              background: isActive ? 'var(--color-brand-tint)' : 'var(--color-surface)',
-              color: isActive ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)',
-              cursor: 'pointer',
-            }}
-          >
-            {CLAIM_LABELS[claimType]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+// (ClaimChips removed 2026-06-23 — greenie/polie/sandie are now compact
+//  color-coded G/P/S toggles in the score-entry "Bonuses" card, Wolf-style.)
 
 // ---- ScoreEntryForm (the load-bearing piece) ------------------------------
 
@@ -1189,10 +1136,27 @@ function ScoreEntryForm({
     return arr.sort((a, b) => a - b);
   }, [unscoredHoles, skippedHoles]);
 
-  const currentHole = eligibleHoles.length > 0 ? eligibleHoles[0]! : null;
+  // Manual hole override (Prev/Next). null = follow the auto-advance (the first
+  // unscored, unskipped hole). When the scorer steps back to review/fix a hole,
+  // manualHole pins the view there until they navigate again. Clamped to the
+  // round on every set via goToHole.
+  const [manualHole, setManualHole] = useState<number | null>(null);
+  const autoHole = eligibleHoles.length > 0 ? eligibleHoles[0]! : null;
+  const currentHole = manualHole ?? autoHole;
+
+  const goToHole = useCallback((target: number) => {
+    const clamped = Math.max(1, Math.min(holesToPlay, target));
+    setManualHole(clamped);
+  }, [holesToPlay]);
 
   // Per-input score string; clientEventIds are generated at Save time.
   const [currentInputs, setCurrentInputs] = useState<Record<string, string>>({});
+
+  // Latest server scores, read (not subscribed) by the hole-change seed effect so
+  // navigating BACK to a scored hole pre-fills its inputs — without a poll
+  // clobbering in-progress typing (the effect deps stay [currentHole]).
+  const holeScoresRef = useRef(data.myFoursome.holeScores);
+  holeScoresRef.current = data.myFoursome.holeScores;
 
   // Refs for ref-positional indexing — load-bearing for iOS keyboard fix.
   const scoreInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -1220,9 +1184,20 @@ function ScoreEntryForm({
     };
   }, []);
 
-  // Reset inputs when currentHole changes (advance to a new hole).
+  // Seed inputs when currentHole changes. For a fresh hole this is empty; for a
+  // hole already scored (e.g. stepping back with Prev) it pre-fills the saved
+  // gross so the scorer can review/correct it. Reads holeScoresRef so a later
+  // poll can't overwrite typing (deps are [currentHole] only).
   useEffect(() => {
-    setCurrentInputs({});
+    if (currentHole === null) {
+      setCurrentInputs({});
+    } else {
+      const seeded: Record<string, string> = {};
+      for (const hs of holeScoresRef.current) {
+        if (hs.holeNumber === currentHole) seeded[hs.playerId] = String(hs.grossStrokes);
+      }
+      setCurrentInputs(seeded);
+    }
     pendingAdvanceTimers.current.forEach((t) => {
       if (t !== null && t !== undefined) clearTimeout(t);
     });
@@ -1501,6 +1476,13 @@ function ScoreEntryForm({
       <div data-testid="all-done">
         <h1>Scoring complete from your end</h1>
         <p>All holes are either scored or skipped.</p>
+        <button
+          data-testid="review-holes"
+          onClick={() => goToHole(holesToPlay)}
+          style={{ minHeight: 'var(--control-height-lg)', padding: '0 var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-primary)', fontWeight: 600, cursor: 'pointer', marginTop: 'var(--space-3)' }}
+        >
+          ‹ Review / fix a hole
+        </button>
       </div>
     );
   }
@@ -1510,8 +1492,55 @@ function ScoreEntryForm({
   const par = currentHoleInfo?.par ?? 4;
   const enteredCount = members.filter((m) => SCORE_RE.test(currentInputs[m.playerId] ?? '')).length;
 
+  // Bonus toggles available on THIS hole. A greenie (closest-to-pin) can only
+  // happen on a par 3, so the G toggle only appears when this hole's par is 3 —
+  // read live from the course's hole data (never hard-coded), so it's correct on
+  // any course and updates as you Prev/Next between holes. While course data is
+  // still loading (par defaults to 4) greenie stays hidden, the safe fail-closed
+  // default. Polie and sandie can happen on any hole, so they always show.
+  // Colors MATCH the leaderboard scorecard bonus dots (components/hole-badge.tsx):
+  // greenie = emerald-500, polie = amber-400, sandie = orange-500 — so a color
+  // means the same thing on both screens. These are bright fills, so the active
+  // letter is dark (see the toggle style) for WCAG-AA contrast.
+  const bonusButtons: Array<[ClaimType, string, string]> = [
+    ...(par === 3 ? [['greenie', 'G', '#10b981'] as [ClaimType, string, string]] : []),
+    ['polie', 'P', '#fbbf24'],
+    ['sandie', 'S', '#f97316'],
+  ];
+
+  // 2v2 team grouping. Members are slot-ordered (load-bearing), so in the Guyan
+  // 2v2 shape slots 1&2 are Team 1 and slots 3&4 are Team 2 (mirrors the engine's
+  // resolveFoursomeTeams). A full 4-player foursome IS that shape; a smaller
+  // foursome renders flat (single group, no team chrome). Color scheme (Josh):
+  // black + green — Team 1 is plain (neutral), Team 2 gets a single green accent
+  // that ties back to the green HOLE header, so the palette stays cohesive (no
+  // competing hues).
+  const teamAccent = (teamIdx: number): string | null => (teamIdx === 0 ? null : 'var(--color-brand-primary)');
+  const teams: Member[][] = members.length === 4 ? [members.slice(0, 2), members.slice(2, 4)] : [members];
+
   return (
     <div data-testid="score-entry-form">
+      {/* Nav row — a way OUT of the scoring screen (Josh: "a way back from inside
+          scoring"). Back to the event home on the left, the live leaderboard on
+          the right. Both 44px tap targets. */}
+      {data.eventId !== null && (
+        <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+          <a
+            data-testid="back-to-event-link"
+            href={`/events/${data.eventId}`}
+            style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 var(--space-2)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-sm)', fontWeight: 600, textDecoration: 'none' }}
+          >
+            ← Event
+          </a>
+          <a
+            data-testid="score-leaderboard-link"
+            href={`/events/${data.eventId}/leaderboard`}
+            style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', color: 'var(--color-brand-primary)', fontSize: 'var(--font-sm)', fontWeight: 700, textDecoration: 'none' }}
+          >
+            Leaderboard →
+          </a>
+        </nav>
+      )}
       {/* Sticky hole header — big hole number, par/SI, sync pill (no more
           "Hole 4All synced" run-together). */}
       <header
@@ -1547,62 +1576,110 @@ function ScoreEntryForm({
         </span>
       </header>
 
-      {/* Hole progress strip — orientation across the round. */}
-      <div aria-hidden="true" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: 'var(--space-2) 0', justifyContent: 'center' }}>
-        {Array.from({ length: holesToPlay }, (_, k) => k + 1).map((h) => {
-          const filled = serverFilledHoles.has(h); const skipped = skippedHoles.has(h); const cur = h === currentHole;
+      {/* One elevated card per player — name + Hcp, a RECESSED score well, and the
+          color-coded G / P / S bonus toggles all together (best for 2v2; you see
+          a player's score and their bonuses in one place). Depth comes from the
+          raised card (border + shadow) sitting over the near-black page, and the
+          sunken, inset-shadowed score input reading as a pressed-in well. Tapping
+          a number auto-advances to the next player (Wolf-style). The trailing
+          padding keeps the last card clear of the sticky Save bar. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)', paddingBottom: 112 }}>
+        {teams.map((team, teamIdx) => {
+          const accent = teamAccent(teamIdx); // null = plain (Team 1), green (Team 2)
           return (
-            <span key={h} style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: cur ? 'var(--color-brand-primary)' : filled ? 'var(--color-success)' : 'transparent',
-              border: cur ? 'none' : skipped ? '1px solid var(--color-accent)' : filled ? 'none' : '1px solid var(--color-border)',
-            }} />
-          );
-        })}
-      </div>
-
-      {/* One row per player: name + putts on the left, − [score] + stepper on the right. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
-        {members.map((member, idx) => {
-          const raw = currentInputs[member.playerId] ?? '';
-          const sc = parseInt(raw, 10);
-          const step = (delta: number) => {
-            const next = Math.min(20, Math.max(1, Number.isNaN(sc) ? par : sc + delta));
-            handleScoreChange(member, idx, String(next));
-          };
-          const scoreColor = Number.isNaN(sc)
-            ? 'var(--color-text-muted)'
-            : sc < par ? 'var(--color-success)' : sc > par ? 'var(--color-accent)' : 'var(--color-text-primary)';
-          return (
-            <div key={member.playerId} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)' }}>
-              {/* Name + Hcp on the left, − [score] + on the right. */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 'var(--font-md)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.1 }}>{member.name}</div>
-                  <div style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', marginTop: 1 }}>
-                    Hcp {member.handicapIndex != null ? member.handicapIndex.toFixed(1) : '—'}
+            <div key={teamIdx} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              {/* Team header — only when there's a real 2v2 split to separate. */}
+              {teams.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 4 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: accent ?? 'var(--color-text-muted)', flex: '0 0 auto' }} />
+                  <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                    Team {teamIdx + 1}
+                  </span>
+                </div>
+              )}
+              {team.map((member) => {
+                const idx = members.indexOf(member);
+                const raw = currentInputs[member.playerId] ?? '';
+                const sc = parseInt(raw, 10);
+                const scoreColor = Number.isNaN(sc)
+                  ? 'var(--color-text-muted)'
+                  : sc < par ? 'var(--color-success)' : sc > par ? 'var(--color-accent)' : 'var(--color-text-primary)';
+                const displayName = shortPlayerName(member.name);
+                return (
+                  <div
+                    key={member.playerId}
+                    className="card"
+                    style={{
+                      padding: 'var(--space-3)', borderRadius: 22,
+                      border: '1px solid var(--color-border)',
+                      // Team 2 gets a green left-edge stripe tying its two teammates
+                      // together; Team 1 stays plain (neutral border).
+                      ...(accent ? { borderLeft: `4px solid ${accent}` } : {}),
+                      boxShadow: 'var(--shadow-card)',
+                    }}
+                  >
+                    {/* name + Hcp on the left, the recessed score well on the right */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 'var(--font-md)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={member.name}>
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)', marginRight: 6 }}>{idx + 1}</span>{displayName}
+                        </div>
+                        <div style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', marginTop: 2 }}>
+                          HI {member.handicapIndex != null ? member.handicapIndex.toFixed(1) : '—'}
+                          {member.courseHandicap != null ? ` · CH ${member.courseHandicap}` : ''}
+                        </div>
+                      </div>
+                      <input
+                        ref={(el) => { scoreInputRefs.current[idx] = el; }}
+                        data-testid={`score-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
+                        aria-label={`Score for ${member.name}`}
+                        value={raw} onChange={(e) => handleScoreChange(member, idx, e.target.value)} onBlur={() => handleBlur(idx)}
+                        style={{
+                          width: 84, minHeight: 56, flex: '0 0 auto', textAlign: 'center',
+                          fontSize: 'var(--font-2xl)', fontWeight: 800, color: scoreColor, margin: 0, padding: '4px 0',
+                          background: 'var(--color-surface-sunken)',
+                          border: '1px solid var(--color-border)',
+                          borderRadius: 'var(--radius-lg)',
+                          boxShadow: 'inset 0 2px 4px rgb(0 0 0 / 0.45)',
+                        }}
+                      />
+                    </div>
+                    {/* Bonuses, in the same card, below a hairline divider. Circular
+                        toggles (no square corners) in the SAME colors as the
+                        leaderboard scorecard dots (emerald / amber / orange), with a
+                        dark letter on the bright active fill for contrast. */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
+                      <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                        Bonus
+                      </span>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {bonusButtons.map(([type, letter, color]) => {
+                          const on = claimState.has(`${member.playerId}:${currentHole}:${type}`);
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              data-testid={`claim-${type}-${member.playerId}`}
+                              aria-pressed={on}
+                              aria-label={`${on ? 'Remove' : 'Add'} ${CLAIM_LABELS[type]} for ${member.name} on hole ${currentHole}`}
+                              onClick={() => handleToggleClaim(member.playerId, type)}
+                              style={{
+                                width: 44, height: 44, flex: '0 0 auto', borderRadius: '50%',
+                                fontSize: 'var(--font-sm)', fontWeight: 800, padding: 0, margin: 0, cursor: 'pointer',
+                                border: `1px solid ${on ? color : 'var(--color-border)'}`,
+                                background: on ? color : 'transparent',
+                                color: on ? '#0a0a0a' : 'var(--color-text-muted)',
+                              }}
+                            >
+                              {letter}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flex: '0 0 auto' }}>
-                  <button type="button" aria-label={`Lower ${member.name}'s score`} onClick={() => step(-1)} style={{ width: 48, minHeight: 48, fontSize: 'var(--font-xl)', borderRadius: 'var(--radius-md)', margin: 0, padding: 0 }}>−</button>
-                  <input
-                    ref={(el) => { scoreInputRefs.current[idx] = el; }}
-                    data-testid={`score-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
-                    aria-label={`Score for ${member.name}`}
-                    value={raw} onChange={(e) => handleScoreChange(member, idx, e.target.value)} onBlur={() => handleBlur(idx)}
-                    style={{ width: 60, minHeight: 48, textAlign: 'center', fontSize: 'var(--font-2xl)', fontWeight: 800, color: scoreColor, margin: 0, padding: 0 }}
-                  />
-                  <button type="button" aria-label={`Raise ${member.name}'s score`} onClick={() => step(1)} style={{ width: 48, minHeight: 48, fontSize: 'var(--font-xl)', borderRadius: 'var(--radius-md)', margin: 0, padding: 0 }}>+</button>
-                </div>
-              </div>
-              {/* Greenie / Polie / Sandie — a thin full-width row UNDER the score box. */}
-              <ClaimChips
-                playerId={member.playerId}
-                playerName={member.name}
-                hole={currentHole}
-                active={claimState}
-                onToggle={handleToggleClaim}
-              />
+                );
+              })}
             </div>
           );
         })}
@@ -1615,7 +1692,7 @@ function ScoreEntryForm({
       )}
 
       {/* Sticky bottom Save bar with live progress. */}
-      <div style={{ position: 'sticky', bottom: 0, marginTop: 'var(--space-4)', paddingTop: 'var(--space-2)', paddingBottom: 'calc(var(--space-2) + env(safe-area-inset-bottom))', background: 'var(--color-surface-sunken)' }}>
+      <div data-testid="save-bar" style={{ position: 'sticky', bottom: 0, marginTop: 'var(--space-4)', paddingTop: 'var(--space-2)', paddingBottom: 'calc(var(--space-2) + env(safe-area-inset-bottom))', background: 'var(--color-surface-sunken)' }}>
         {!allValid && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
             <span>{enteredCount} of {members.length} entered</span>
@@ -1624,12 +1701,42 @@ function ScoreEntryForm({
             </button>
           </div>
         )}
-        <button
-          data-testid="save-button" disabled={!allValid || isSaving} onClick={handleSave}
-          style={{ width: '100%', minHeight: 'var(--control-height-lg)', fontSize: 'var(--font-md)', borderRadius: 'var(--radius-md)', margin: 0, boxShadow: 'var(--shadow-raised)' }}
-        >
-          {isSaving ? 'Saving…' : `Save Hole ${currentHole}`}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 'var(--space-2)' }}>
+          <button
+            data-testid="prev-hole"
+            aria-label="Previous hole"
+            disabled={currentHole <= 1}
+            onClick={() => goToHole(currentHole - 1)}
+            style={{
+              flex: '0 0 auto', minWidth: 56, minHeight: 'var(--control-height-lg)', borderRadius: 'var(--radius-md)',
+              background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
+              fontSize: 'var(--font-lg)', fontWeight: 700, margin: 0, padding: 0,
+              cursor: currentHole <= 1 ? 'default' : 'pointer', opacity: currentHole <= 1 ? 0.4 : 1,
+            }}
+          >
+            ‹
+          </button>
+          <button
+            data-testid="save-button" disabled={!allValid || isSaving} onClick={handleSave}
+            style={{ flex: 1, minHeight: 'var(--control-height-lg)', fontSize: 'var(--font-md)', borderRadius: 'var(--radius-md)', margin: 0, boxShadow: 'var(--shadow-raised)' }}
+          >
+            {isSaving ? 'Saving…' : `Save Hole ${currentHole}`}
+          </button>
+          <button
+            data-testid="next-hole"
+            aria-label="Next hole"
+            disabled={currentHole >= holesToPlay}
+            onClick={() => goToHole(currentHole + 1)}
+            style={{
+              flex: '0 0 auto', minWidth: 56, minHeight: 'var(--control-height-lg)', borderRadius: 'var(--radius-md)',
+              background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)',
+              fontSize: 'var(--font-lg)', fontWeight: 700, margin: 0, padding: 0,
+              cursor: currentHole >= holesToPlay ? 'default' : 'pointer', opacity: currentHole >= holesToPlay ? 0.4 : 1,
+            }}
+          >
+            ›
+          </button>
+        </div>
       </div>
     </div>
   );

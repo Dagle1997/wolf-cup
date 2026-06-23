@@ -30,9 +30,11 @@ import {
   pairingMembers,
   players,
   rounds,
+  roundPins,
   roundStates,
   scorerAssignments,
 } from '../db/schema/index.js';
+import { perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireScorerForRound } from '../middleware/require-scorer-for-round.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
@@ -211,10 +213,36 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
       ),
     )
     .orderBy(pairingMembers.slotNumber);
+
+  // Per-player COURSE handicap, read from the round PIN (the strokes-received
+  // number the round was locked at). Absent on un-pinned rounds (non-F1 / not yet
+  // started) → courseHandicap is null and the UI shows HI only. Parsed via the
+  // canonical schema; a corrupt pin degrades to null, never throws.
+  const pinRows = await db
+    .select({ perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson })
+    .from(roundPins)
+    .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, TENANT_ID)))
+    .limit(1);
+  let courseHandicapByPlayer: Record<string, number | null> = {};
+  const pinJson = pinRows[0]?.perPlayerHandicapsJson;
+  if (pinJson !== undefined) {
+    try {
+      const parsed = perPlayerHandicapsSchema.safeParse(JSON.parse(pinJson));
+      if (parsed.success) {
+        courseHandicapByPlayer = Object.fromEntries(
+          Object.entries(parsed.data).map(([pid, v]) => [pid, v.ch]),
+        );
+      }
+    } catch {
+      // Corrupt pin JSON → leave the map empty (HI-only display).
+    }
+  }
+
   const members = memberRows.map((m) => ({
     playerId: m.playerId,
     name: m.name,
     handicapIndex: m.handicapIndex,
+    courseHandicap: courseHandicapByPlayer[m.playerId] ?? null,
   }));
 
   // (5) Scorer assignment for my foursome (may be null pre-T5-7).

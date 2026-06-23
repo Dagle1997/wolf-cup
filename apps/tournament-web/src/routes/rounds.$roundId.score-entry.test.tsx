@@ -1049,28 +1049,40 @@ describe('ScoreEntryRoute — T7-7 install × scorer matrix', () => {
 
 describe('ScoreEntryRoute — claim chips (Story 2.1)', () => {
   test('renders greenie/polie/sandie chips INSIDE the score-entry component (AC15)', async () => {
-    vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
+    // A greenie can only happen on a par 3, so load a course where the current
+    // hole (1) is a par 3 — that makes all three G/P/S toggles eligible.
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail()),
+      course: () => jsonOkCourse(buildCourse({ 1: 3 })),
+    });
     await renderRoute();
     await waitFor(() =>
       expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
     );
+    // Wait for the par-3 course to load so the greenie (G) toggle is eligible.
+    await waitFor(() =>
+      expect(screen.getByTestId(`claim-greenie-${SCORER_ID}`)).toBeInTheDocument(),
+    );
     // AC15: the control is in the score-entry render tree (no separate route).
     const form = screen.getByTestId('score-entry-form');
-    const chips = screen.getByTestId(`claim-chips-${SCORER_ID}`);
-    expect(form.contains(chips)).toBe(true);
-    // One chip per claim type, per player.
-    expect(screen.getByTestId(`claim-greenie-${SCORER_ID}`)).toBeInTheDocument();
+    const greenieToggle = screen.getByTestId(`claim-greenie-${SCORER_ID}`);
+    expect(form.contains(greenieToggle)).toBe(true);
+    // One toggle per claim type, per player (the per-player Bonuses row).
     expect(screen.getByTestId(`claim-polie-${SCORER_ID}`)).toBeInTheDocument();
     expect(screen.getByTestId(`claim-sandie-${P1_ID}`)).toBeInTheDocument();
   });
 
   test('chip tap enqueues a set claim mutation; second tap enqueues a remove (AC9/AC11)', async () => {
-    vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
+    // Taps the greenie toggle → needs a par-3 current hole for G to render.
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail()),
+      course: () => jsonOkCourse(buildCourse({ 1: 3 })),
+    });
     await renderRoute();
     await waitFor(() =>
       expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
     );
-    const chip = screen.getByTestId(`claim-greenie-${P1_ID}`);
+    const chip = await screen.findByTestId(`claim-greenie-${P1_ID}`);
 
     await act(async () => {
       fireEvent.click(chip);
@@ -1096,35 +1108,57 @@ describe('ScoreEntryRoute — claim chips (Story 2.1)', () => {
     (detail.myFoursome as Record<string, unknown>)['claims'] = [
       { playerId: P1_ID, holeNumber: 1, claimType: 'greenie' },
     ];
-    vi.mocked(fetch).mockResolvedValue(jsonOk(detail));
+    // Current hole (1) must be a par 3 for the greenie toggle to be present.
+    mockFetchByUrl({
+      detail: () => jsonOk(detail),
+      course: () => jsonOkCourse(buildCourse({ 1: 3 })),
+    });
     await renderRoute();
     await waitFor(() =>
       expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
     );
-    // P1's greenie on hole 1 (the current hole) renders pre-pressed.
+    // P1's greenie on hole 1 (the current hole) renders pre-pressed (par 3 → G
+    // eligible; wait for the course to load first).
+    await waitFor(() =>
+      expect(screen.getByTestId(`claim-greenie-${P1_ID}`)).toBeInTheDocument(),
+    );
     expect(
       screen.getByTestId(`claim-greenie-${P1_ID}`).getAttribute('aria-pressed'),
     ).toBe('true');
-    // A claim NOT in the server set renders un-pressed.
+    // A claim NOT in the server set renders un-pressed (polie shows on any hole).
     expect(
       screen.getByTestId(`claim-polie-${P1_ID}`).getAttribute('aria-pressed'),
     ).toBe('false');
   });
 
-  test('claim chips meet the >=44px tap-target floor (NFR-A1) and fit 375px (AC16 — no overflow)', async () => {
+  test('greenie (G) is hidden unless the hole is a par 3; polie + sandie always shown', async () => {
+    // Current hole (1) is a par 4 → no greenie. polie + sandie still render.
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail()),
+      course: () => jsonOkCourse(buildCourse()), // all par 4
+    });
+    await renderRoute();
+    await waitFor(() => screen.getByTestId('scorecard-shell-strip'));
+    expect(screen.getByTestId('scorecard-shell-strip').textContent).toMatch(/Par 4/);
+    // polie + sandie are available on any hole...
+    expect(screen.getByTestId(`claim-polie-${SCORER_ID}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`claim-sandie-${SCORER_ID}`)).toBeInTheDocument();
+    // ...but a greenie can only happen on a par 3, so the G toggle is absent here.
+    expect(screen.queryByTestId(`claim-greenie-${SCORER_ID}`)).toBeNull();
+  });
+
+  test('claim toggles render as 44px G/P/S buttons (per-player Bonuses row)', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
     await renderRoute();
     await waitFor(() =>
       expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
     );
-    const chip = screen.getByTestId(`claim-greenie-${SCORER_ID}`) as HTMLButtonElement;
-    // minHeight 44px floor is set inline (jsdom doesn't lay out, so assert the
-    // declared style rather than a computed box).
-    expect(chip.style.minHeight).toBe('44px');
-    // The chip container wraps (flex-wrap) and is capped at 100% width so the
-    // 3 chips never force horizontal overflow at 375px.
-    const container = screen.getByTestId(`claim-chips-${SCORER_ID}`);
-    expect(container.style.flexWrap).toBe('wrap');
-    expect(container.style.maxWidth).toBe('100%');
+    // Use polie — it shows on any hole (greenie needs a par 3 / loaded course).
+    const chip = screen.getByTestId(`claim-polie-${SCORER_ID}`) as HTMLButtonElement;
+    // 44px circular toggle (the NFR-A1 tap-target floor) — set inline (jsdom
+    // doesn't lay out, so assert the declared style).
+    expect(chip.style.width).toBe('44px');
+    expect(chip.style.height).toBe('44px');
+    expect(chip.textContent).toBe('P');
   });
 });
