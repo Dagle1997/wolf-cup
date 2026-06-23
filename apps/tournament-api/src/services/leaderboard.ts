@@ -59,6 +59,13 @@ export type LeaderboardRow = {
   /** Total scored holes in the scope (0..18 for round, 0..N for event). */
   throughHole: number;
   /**
+   * NET-to-par through the scored holes (Story 3-4a, Wolf-style "To Par"):
+   * netThroughHole − (par of the holes the player actually scored). Negative =
+   * under par. Null when net is not computable (no handicap / fail-closed pin) or
+   * par is unavailable. Drives the colored To-Par column.
+   */
+  netToPar: number | null;
+  /**
    * 1224-style rank (ties share, next rank skips). Unscored players all
    * share rank = (scored_count + 1).
    */
@@ -282,6 +289,40 @@ export async function computeLeaderboard(
     roundCtxRows.map((r) => [r.roundId, r]),
   );
 
+  // Par-by-hole per round (Story 3-4a, for net-to-par). Joined from each round's
+  // event-round course revision. Display-only (To-Par column); par is stable
+  // across revisions, so the event-round rev is fine even for F1 rounds whose
+  // money settles off the pinned rev.
+  const parRows = await ctx.db
+    .select({
+      roundId: rounds.id,
+      holeNumber: courseHoles.holeNumber,
+      par: courseHoles.par,
+    })
+    .from(rounds)
+    .innerJoin(eventRounds, eq(eventRounds.id, rounds.eventRoundId))
+    .innerJoin(
+      courseHoles,
+      eq(courseHoles.courseRevisionId, eventRounds.courseRevisionId),
+    )
+    .where(
+      and(
+        inArray(rounds.id, roundIdsInScope),
+        eq(rounds.tenantId, tenantId),
+        eq(eventRounds.tenantId, tenantId),
+        eq(courseHoles.tenantId, tenantId),
+      ),
+    );
+  const parByRoundHole = new Map<string, Map<number, number>>();
+  for (const r of parRows) {
+    let m = parByRoundHole.get(r.roundId);
+    if (!m) {
+      m = new Map<number, number>();
+      parByRoundHole.set(r.roundId, m);
+    }
+    m.set(r.holeNumber, r.par);
+  }
+
   // 4. Fetch hole_scores for all in-scope rounds; aggregate per player +
   // per round.
   const holeRows = await ctx.db
@@ -332,6 +373,7 @@ export async function computeLeaderboard(
     skinsByPlayer,
     f1Scope,
     opts.scope === 'round',
+    parByRoundHole,
   );
 }
 
@@ -440,6 +482,7 @@ function assignRanksAndBuildRows(
   skinsByPlayer?: Map<string, number>,
   f1Scope?: F1PinScope,
   isRoundScope = false,
+  parByRoundHole?: Map<string, Map<number, number>>,
 ): LeaderboardRow[] {
   const isF1Event = f1Scope?.isF1 ?? false;
   const f1RoundPins = f1Scope?.pinsByRound;
@@ -448,6 +491,8 @@ function assignRanksAndBuildRows(
     accum: PlayerAccum;
     grossThroughHole: number | null;
     netThroughHole: number | null;
+    /** Net-to-par over scored holes (Story 3-4a); null when net/par unavailable. */
+    netToPar: number | null;
     /** Pinned course handicap for an F1 round-scope read (AC9); null otherwise. */
     courseHandicap: number | null;
     /** Pinned HI for an F1 round-scope read (AC9); null otherwise. */
@@ -455,7 +500,7 @@ function assignRanksAndBuildRows(
   }> = [];
   for (const accum of participants.values()) {
     if (accum.totalThroughHole === 0) {
-      partial.push({ accum, grossThroughHole: null, netThroughHole: null, courseHandicap: null, pinnedHandicapIndex: null });
+      partial.push({ accum, grossThroughHole: null, netThroughHole: null, netToPar: null, courseHandicap: null, pinnedHandicapIndex: null });
       continue;
     }
     let netSum = 0;
@@ -546,10 +591,44 @@ function assignRanksAndBuildRows(
         netSum += perRound.gross - allocated;
       }
     }
+    // Net-to-par (Story 3-4a): netSum − par of the player's scored holes. Par per
+    // scored hole comes from parByRoundHole (the round's course revision). Null
+    // when net isn't computable or any scored hole's par is unavailable.
+    let netToPar: number | null = null;
+    if (netComputable && parByRoundHole !== undefined) {
+      let totalPar = 0;
+      let parComputable = true;
+      for (const [roundId, holeGross] of accum.perRoundHoleGross) {
+        const parMap = parByRoundHole.get(roundId);
+        if (!parMap) {
+          parComputable = false;
+          break;
+        }
+        // Mirror the NET hole set exactly: for an F1 round, net counts only holes
+        // IN PLAY (the pin's siByHole, ≤ holesToPlay) — so par must skip a stray
+        // out-of-play hole_score too, or netToPar would be deflated by its par
+        // while net ignored its strokes. A legacy round (no pin) counts all
+        // scored holes, matching its proportional net.
+        const pin = f1RoundPins?.get(roundId);
+        for (const holeNumber of holeGross.keys()) {
+          if (pin && !pin.siByHole.has(holeNumber)) continue; // out of play → not in net
+          const par = parMap.get(holeNumber);
+          if (par === undefined) {
+            parComputable = false;
+            break;
+          }
+          totalPar += par;
+        }
+        if (!parComputable) break;
+      }
+      if (parComputable) netToPar = netSum - totalPar;
+    }
+
     partial.push({
       accum,
       grossThroughHole: accum.totalGross,
       netThroughHole: netComputable ? netSum : null,
+      netToPar,
       // Surface a single pinned CH only when the player has exactly one F1 round
       // in scope (round-scope reads); otherwise null (event-scope mixes rounds).
       courseHandicap: pinnedCH,
@@ -596,6 +675,7 @@ function assignRanksAndBuildRows(
         courseHandicap: p.courseHandicap,
         grossThroughHole: p.grossThroughHole,
         netThroughHole: p.netThroughHole,
+        netToPar: p.netToPar,
         throughHole: p.accum.totalThroughHole,
         rank: groupRank,
         tiedWith,
@@ -615,6 +695,7 @@ function assignRanksAndBuildRows(
       courseHandicap: p.courseHandicap,
       grossThroughHole: null,
       netThroughHole: null,
+      netToPar: null,
       throughHole: 0,
       rank: unscoredRank,
       tiedWith: unscoredCount,

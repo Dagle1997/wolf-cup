@@ -680,6 +680,15 @@ development_status:
   3-2-scorecard-api-gross-net-strokes-claims: done
   3-3-per-hole-f1-money-or-defer: done
   3-4-during-round-leaderboard-rework-expandable: done
+  # 3-4a (inserted 2026-06-23, user-directed): Wolf-MATCH the leaderboard row.
+  # 3-4 added the expand but kept the old tournament columns; Josh wanted the lean
+  # Wolf row (View 1 spec). API: per-row netToPar (net-to-par over scored holes,
+  # in-play-filtered to mirror F1 net) + moneyCents (per-player F1 money, scope-
+  # summed from settled edges, money-mode-gated, engine only runs when exposed,
+  # errors log+degrade never 500). Web: lean row # | Player(HCP·thru) | To Par |
+  # $ (dropped CH/Gross/Net/Skins), MULTI-open (Set), colored To-Par/$. Reviewed
+  # codex+gemini (2 Highs fixed: money-500 risk + netToPar out-of-play deflation).
+  3-4a-wolf-leaderboard-row-redesign: done
   3-5-weekend-standings-sortable-money-netpar-individual: backlog
 
   # Epic 2 remainder — resumes AFTER Epic 3 per the priority note above.

@@ -41,11 +41,15 @@ type LeaderboardRow = {
   courseHandicap?: number | null;
   grossThroughHole: number | null;
   netThroughHole: number | null;
+  /** Story 3-4a: net-to-par over scored holes (the Wolf "To Par"). Null if N/A. */
+  netToPar: number | null;
   throughHole: number;
   rank: number;
   tiedWith: number;
   /** T6-14: skins pot share across finalized rounds. Null until any finalize. */
   skinsCents: number | null;
+  /** Story 3-4a: player's F1 money for the scope in CENTS; null when not exposed. */
+  moneyCents: number | null;
 };
 
 /** F1 leaderboard money mode (Story 1.4, AC8). */
@@ -112,24 +116,24 @@ function formatHandicap(hi: number | null): string {
   return hi.toFixed(1);
 }
 
-function formatScore(value: number | null): string {
-  if (value === null) return '—';
-  return String(value);
+/** Wolf-style net-to-par: E at even, signed otherwise. Null → "—". */
+function formatNetToPar(n: number | null): string {
+  if (n === null) return '—';
+  if (n === 0) return 'E';
+  return n > 0 ? `+${n}` : String(n);
 }
 
 /**
- * T6-14: format skinsCents for display. Null → `—` (with tooltip semantics
- * via the parent <td title="…">). Integer cents → formatCents.
+ * Per-row F1 money (CENTS → whole dollars). Null → "—" (not exposed). F1 Guyan
+ * money is whole-dollar (pv=$5, pts*pv is a multiple of 100), so the /100 is
+ * exact; `trunc` only matters for a hypothetical non-whole-dollar config, which
+ * the engine doesn't produce for Guyan.
  */
-function formatSkins(cents: number | null): string {
+function formatMoneyCents(cents: number | null): string {
   if (cents === null) return '—';
-  // Use a small inline formatter to avoid cross-package import; mirrors
-  // tournament-web/lib/format-cents.ts. Positive only (skins is winnings,
-  // not signed money).
-  if (!Number.isFinite(cents)) return '—';
-  const dollars = Math.floor(cents / 100);
-  const remainder = cents % 100;
-  return `$${dollars}.${remainder.toString().padStart(2, '0')}`;
+  const dollars = Math.trunc(cents / 100);
+  if (dollars === 0) return '$0';
+  return dollars > 0 ? `+$${dollars}` : `-$${Math.abs(dollars)}`;
 }
 
 /** A medallion for the top three, plain numerals otherwise. */
@@ -288,8 +292,9 @@ import { Fragment, useState } from 'react';
 
 export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   const [scope, setScope] = useState<ScopeMode>('current');
-  // Story 3-4: single-open expandable per-player scorecard (round scope only).
-  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
+  // Story 3-4 / 3-4a: MULTI-open expandable per-player scorecards (round scope
+  // only) — matches Wolf (a card stays open until you close it).
+  const [expandedPlayerIds, setExpandedPlayerIds] = useState<Set<string>>(new Set());
 
   const query = useQuery<FetchOutcome>({
     queryKey: ['eventLeaderboard', eventId, scope],
@@ -345,23 +350,14 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
 
   const data = outcome.data;
   const allUnscored = data.rows.every((r) => r.grossThroughHole === null);
-  // Hide the Skins column entirely until a round finalizes and a share exists —
-  // an all-dashes column is noise during live play.
-  const showSkins = data.rows.some((r) => r.skinsCents !== null);
-  // F1 (Story 1.4): show the pinned Course-handicap column only when present
-  // (an F1 round-scope read). Mode signpost from the F1 metadata (AC8).
-  const showCH = data.rows.some((r) => r.courseHandicap != null);
   const f1 = data.f1;
 
-  // Story 3-4: expandable per-player scorecard.
-  // - Only in round scope (a single runtime round.id the scorecard endpoint needs).
-  // - The grid's $ row shows only in money mode AND money enabled (== exactly when
-  //   the API populates moneyNet; 3-3 exposure gate / AC5 — never wider than this).
+  // Story 3-4 / 3-4a: Wolf-style lean row. Columns: # | Player (HCP · thru) |
+  // To Par | $ (4). Expansion: round scope only (a single runtime round.id the
+  // scorecard endpoint needs); the grid's $ row shows in money mode (3-3 gate).
   const roundId = data.round?.id ?? null;
   const showMoney = f1?.mode === 'money' && f1.moneyEnabled === true;
-  // colSpan for the expanded panel row = visible columns:
-  // Rank, Player, HCP, Thru, Gross, Net (6) + CH? + Skins?.
-  const colSpan = 6 + (showCH ? 1 : 0) + (showSkins ? 1 : 0);
+  const colSpan = 4;
 
   return (
     <PageShell title="Leaderboard">
@@ -383,9 +379,9 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
               data-testid={`scope-${val}`}
               onClick={() => {
                 setScope(val);
-                // Story 3-4: clear any open scorecard so switching scope doesn't
-                // auto-reopen (and refetch) a previously-expanded row on return.
-                setExpandedPlayerId(null);
+                // Clear open scorecards so switching scope doesn't auto-reopen
+                // (and refetch) previously-expanded rows on return.
+                setExpandedPlayerIds(new Set());
               }}
               style={{
                 flex: 1,
@@ -463,17 +459,13 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
       ) : allUnscored ? (
         <EmptyState title="No scores yet." />
       ) : (
-        <ScrollableTable label="Leaderboard"><table>
+        <ScrollableTable label="Leaderboard"><table style={{ width: '100%' }}>
           <thead>
-            <tr>
-              <th scope="col">Rank</th>
-              <th scope="col">Player</th>
-              <th scope="col">HCP</th>
-              {showCH ? <th scope="col">CH</th> : null}
-              <th scope="col">Thru</th>
-              <th scope="col">Gross</th>
-              <th scope="col">Net</th>
-              {showSkins ? <th scope="col">Skins</th> : null}
+            <tr style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)' }}>
+              <th scope="col" style={{ textAlign: 'center', width: 36 }}>#</th>
+              <th scope="col" style={{ textAlign: 'left' }}>Player</th>
+              <th scope="col" style={{ textAlign: 'right', width: 64 }}>To Par</th>
+              <th scope="col" style={{ textAlign: 'right', width: 64 }}>$</th>
             </tr>
           </thead>
           <tbody>
@@ -483,14 +475,40 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
               // (defensive — don't rely solely on the API returning round=null in
               // event scope; an event-aggregated view must never open a round card).
               const expandable = roundId !== null && data.scope === 'round';
-              const isOpen = expandedPlayerId === row.playerId;
+              const isOpen = expandedPlayerIds.has(row.playerId);
               const panelId = `scorecard-panel-${row.playerId}`;
+              const toParColor =
+                row.netToPar === null
+                  ? 'var(--color-text-muted)'
+                  : row.netToPar < 0
+                    ? 'var(--color-money-pos)'
+                    : row.netToPar > 0
+                      ? 'var(--color-money-neg)'
+                      : 'var(--color-text-primary)';
+              const moneyColor =
+                row.moneyCents === null || row.moneyCents === 0
+                  ? 'var(--color-text-muted)'
+                  : row.moneyCents > 0
+                    ? 'var(--color-money-pos)'
+                    : 'var(--color-money-neg)';
+              // Player name + the Wolf "HCP X · Thru Y" sub-line under it.
+              const subline = `HCP ${formatHandicap(row.handicapIndex)} · ${row.throughHole === 0 ? 'not started' : `Thru ${row.throughHole}`}`;
+              const nameBlock = (
+                <span style={{ display: 'block' }}>
+                  <span style={{ display: 'block', fontWeight: 600, lineHeight: 1.15 }}>
+                    {row.playerName}{isViewer ? ' (you)' : ''}
+                  </span>
+                  <span style={{ display: 'block', fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', marginTop: 1 }}>
+                    {subline}
+                  </span>
+                </span>
+              );
               return (
                 <Fragment key={row.playerId}>
                   <tr
-                    style={isViewer ? { backgroundColor: 'var(--color-brand-tint)', fontWeight: 700 } : undefined}
+                    style={isViewer ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}
                   >
-                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{rankBadge(row)}</td>
+                    <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{rankBadge(row)}</td>
                     <td>
                       {expandable ? (
                         <button
@@ -498,37 +516,44 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
                           data-testid={`expand-${row.playerId}`}
                           aria-expanded={isOpen}
                           aria-controls={panelId}
-                          onClick={() => setExpandedPlayerId(isOpen ? null : row.playerId)}
+                          onClick={() =>
+                            setExpandedPlayerIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(row.playerId)) next.delete(row.playerId);
+                              else next.add(row.playerId);
+                              return next;
+                            })
+                          }
                           style={{
-                            display: 'inline-flex',
+                            display: 'flex',
                             alignItems: 'center',
-                            gap: 6,
+                            gap: 8,
+                            width: '100%',
                             minHeight: 'var(--control-height)',
                             padding: 0,
                             background: 'none',
                             border: 'none',
                             font: 'inherit',
                             color: 'inherit',
-                            fontWeight: 'inherit',
                             cursor: 'pointer',
                             textAlign: 'left',
                           }}
                         >
-                          <span aria-hidden style={{ color: 'var(--color-text-muted)', width: '0.8em', display: 'inline-block' }}>
+                          <span aria-hidden style={{ color: 'var(--color-text-muted)', width: '0.8em', flex: '0 0 auto' }}>
                             {isOpen ? '▾' : '▸'}
                           </span>
-                          {row.playerName}{isViewer ? ' (you)' : ''}
+                          {nameBlock}
                         </button>
                       ) : (
-                        <>{row.playerName}{isViewer ? ' (you)' : ''}</>
+                        nameBlock
                       )}
                     </td>
-                    <td>{formatHandicap(row.handicapIndex)}</td>
-                    {showCH ? <td>{row.courseHandicap != null ? String(row.courseHandicap) : '—'}</td> : null}
-                    <td>{row.throughHole}</td>
-                    <td>{formatScore(row.grossThroughHole)}</td>
-                    <td>{formatScore(row.netThroughHole)}</td>
-                    {showSkins ? <td>{formatSkins(row.skinsCents)}</td> : null}
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: toParColor }}>
+                      {formatNetToPar(row.netToPar)}
+                    </td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: moneyColor }}>
+                      {formatMoneyCents(row.moneyCents)}
+                    </td>
                   </tr>
                   {expandable && isOpen ? (
                     <tr>

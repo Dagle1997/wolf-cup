@@ -55,10 +55,14 @@ function leaderboard(opts: LbOpts = {}): Json {
     opts.mode === undefined
       ? undefined
       : { lockState: opts.mode === 'money' ? 'locked' : 'unlocked', mode: opts.mode, moneyEnabled: opts.moneyEnabled ?? true };
+  // Realistic: the API returns moneyCents null unless money is exposed (money
+  // mode + flag) — mirror that so the row's $ column suppression is testable.
+  const moneyExposed = opts.mode === 'money' && (opts.moneyEnabled ?? true);
+  const m = (cents: number) => (moneyExposed ? cents : null);
   return {
     rows: [
-      { playerId: 'p1', playerName: 'Steve', handicapIndex: 8, courseHandicap: 8, grossThroughHole: 13, netThroughHole: 13, throughHole: 3, rank: 1, tiedWith: 1, skinsCents: null },
-      { playerId: 'p2', playerName: 'Ronnie', handicapIndex: 10, courseHandicap: 10, grossThroughHole: 15, netThroughHole: 13, throughHole: 3, rank: 2, tiedWith: 1, skinsCents: null },
+      { playerId: 'p1', playerName: 'Steve', handicapIndex: 8, courseHandicap: 8, grossThroughHole: 13, netThroughHole: 13, netToPar: -2, throughHole: 3, rank: 1, tiedWith: 1, skinsCents: null, moneyCents: m(1500) },
+      { playerId: 'p2', playerName: 'Ronnie', handicapIndex: 10, courseHandicap: 10, grossThroughHole: 15, netThroughHole: 13, netToPar: 1, throughHole: 3, rank: 2, tiedWith: 1, skinsCents: null, moneyCents: m(-1500) },
     ],
     round: opts.round === undefined ? { id: 'round-1', eventRoundId: 'er-1', name: 'Round 1', status: 'in_progress' } : opts.round,
     scope: opts.round === null ? 'event' : 'round',
@@ -83,7 +87,7 @@ function wireFetch(lb: Json, scByPlayer: Record<string, Json | number>) {
 }
 
 describe('LeaderboardPage — expandable scorecard (Story 3-4)', () => {
-  it('expands a row to render the scorecard grid and collapses on second click (aria + single-open)', async () => {
+  it('expands rows to render the scorecard grid; MULTI-open (each stays until closed)', async () => {
     wireFetch(leaderboard({ mode: 'money' }), {
       p1: scorecard([{ hole: 1, gross: 4, net: 4, moneyNet: 500 }]),
       p2: scorecard([{ hole: 1, gross: 5, net: 5, moneyNet: -500 }]),
@@ -96,16 +100,41 @@ describe('LeaderboardPage — expandable scorecard (Story 3-4)', () => {
     await userEvent.click(toggle1);
     expect(toggle1).toHaveAttribute('aria-expanded', 'true');
     // The ScorecardGrid rendered (its Front-9 region appears).
-    await waitFor(() => expect(screen.getByLabelText('Front 9')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByLabelText('Front 9').length).toBeGreaterThan(0));
 
-    // Single-open: opening p2 collapses p1.
+    // MULTI-open (Wolf-style): opening p2 keeps p1 open.
     await userEvent.click(screen.getByTestId('expand-p2'));
     expect(screen.getByTestId('expand-p2')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('expand-p1')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('expand-p1')).toHaveAttribute('aria-expanded', 'true');
 
-    // Collapse p2.
-    await userEvent.click(screen.getByTestId('expand-p2'));
-    expect(screen.getByTestId('expand-p2')).toHaveAttribute('aria-expanded', 'false');
+    // Closing p1 leaves p2 open (independent).
+    await userEvent.click(toggle1);
+    expect(screen.getByTestId('expand-p1')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('expand-p2')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('row shows Wolf-style To-Par + $ columns (net-to-par signed/colored; money cents→$)', async () => {
+    wireFetch(leaderboard({ mode: 'money' }), {});
+    render('evt1');
+    await waitFor(() => expect(screen.getByText('Steve')).toBeInTheDocument());
+    // p1: netToPar -2 → "-2"; moneyCents 1500 → "+$15". p2: +1 → "+1"; -1500 → "-$15".
+    expect(screen.getByText('-2')).toBeInTheDocument();
+    expect(screen.getByText('+$15')).toBeInTheDocument();
+    expect(screen.getByText('+1')).toBeInTheDocument();
+    expect(screen.getByText('-$15')).toBeInTheDocument();
+    // HCP · thru sub-line under the name.
+    expect(screen.getByText(/HCP 8\.0 · Thru 3/)).toBeInTheDocument();
+  });
+
+  it('row $ column is suppressed (—) when money is not exposed (scores-only)', async () => {
+    wireFetch(leaderboard({ mode: 'scores_only' }), {});
+    render('evt1');
+    await waitFor(() => expect(screen.getByText('Steve')).toBeInTheDocument());
+    // moneyCents null on every row → no dollar figures in the $ column.
+    expect(screen.queryByText('+$15')).not.toBeInTheDocument();
+    expect(screen.queryByText('-$15')).not.toBeInTheDocument();
+    // To Par still shows (it's not money-gated).
+    expect(screen.getByText('-2')).toBeInTheDocument();
   });
 
   it('fetches the scorecard with the runtime round.id (not eventRoundId)', async () => {

@@ -342,6 +342,11 @@ describe('computeLeaderboard', () => {
     expect(rows.map((r) => r.tiedWith)).toEqual([1, 1, 1, 1]);
     // Each scored player should also have a non-null net (handicap is 10.0).
     for (const row of rows) expect(row.netThroughHole).not.toBeNull();
+    // Story 3-4a: net-to-par = net − par of played holes. This fixture is all
+    // par-4, so par-of-played = 4 × throughHole; netToPar must reconcile.
+    for (const row of rows) {
+      expect(row.netToPar).toBe((row.netThroughHole as number) - 4 * row.throughHole);
+    }
   });
 
   test('(c) event-scope across 2 rounds: aggregated gross + thru sum across rounds', async () => {

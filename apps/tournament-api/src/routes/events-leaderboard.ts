@@ -25,8 +25,56 @@ import {
   type LeaderboardOpts,
   type LeaderboardRow,
 } from '../services/leaderboard.js';
+import { computeF1EventEdges } from '../services/games-money.js';
 
 const TENANT_ID = 'guyan';
+
+/** A leaderboard row plus its scope-summed F1 money (Story 3-4a). */
+type LeaderboardRowWithMoney = LeaderboardRow & {
+  /**
+   * The player's F1 money for the scope, in INTEGER CENTS (player-signed:
+   * positive = up). Null when money isn't exposed (non-F1 / unlocked / flag off)
+   * — the row renders `—` in that case. Only ever as wide as the leaderboard
+   * money mode (same exposure gate as the `f1` metadata).
+   */
+  moneyCents: number | null;
+};
+
+/**
+ * Per-player F1 money (cents) for the scope, from the settled F1 edges. The
+ * CALLER only invokes this when money is EXPOSED (money mode + flag on), so the
+ * settlement engine never runs for a scores-only / non-F1 read. Round scope
+ * filters to edges of that round (`sourceId` = `${roundId}:${foursomeNumber}`);
+ * event scope sums all. A money-engine error is LOGGED and degrades to `null`
+ * (money not shown) — it NEVER 500s the leaderboard (scores must always render).
+ * Returns `null` (not an empty map) on error / non-F1; otherwise the per-player
+ * cents map (a player with no edges is simply absent → caller defaults to $0).
+ */
+async function computeScopeMoneyByPlayer(
+  eventId: string,
+  opts: LeaderboardOpts,
+  log: { warn: (o: Record<string, unknown>) => void },
+): Promise<Map<string, number> | null> {
+  let f1;
+  try {
+    f1 = await computeF1EventEdges(db, eventId, TENANT_ID);
+  } catch (err) {
+    log.warn({
+      msg: 'leaderboard money compute failed; rendering scores without $',
+      eventId,
+      err: String(err),
+    });
+    return null;
+  }
+  if (!f1.isF1) return null;
+  const byPlayer = new Map<string, number>();
+  for (const e of f1.edges) {
+    if (opts.scope === 'round' && !e.sourceId.startsWith(`${opts.roundId}:`)) continue;
+    byPlayer.set(e.toPlayerId, (byPlayer.get(e.toPlayerId) ?? 0) + e.cents);
+    byPlayer.set(e.fromPlayerId, (byPlayer.get(e.fromPlayerId) ?? 0) - e.cents);
+  }
+  return byPlayer;
+}
 
 /**
  * F1 leaderboard MODE (Story 1.4, AC8). Resolves whether the event is F1 (an
@@ -74,7 +122,7 @@ type RoundSummary = {
 };
 
 type LeaderboardResponse = {
-  rows: LeaderboardRow[];
+  rows: LeaderboardRowWithMoney[];
   round: RoundSummary | null;
   scope: 'round' | 'event';
   computedAt: string;
@@ -171,12 +219,26 @@ eventsLeaderboardRouter.get(
     }
 
     try {
-      const rows = await computeLeaderboard(
+      const baseRows = await computeLeaderboard(
         { db, tenantId: TENANT_ID },
         eventId,
         opts,
       );
       const f1Mode = await resolveF1Mode(eventId);
+      // Per-player F1 money for the scope (Story 3-4a) — only computed when money
+      // is actually exposed (money mode + flag), so the settlement engine never
+      // runs for a scores-only / non-F1 read. The row's moneyCents is null exactly
+      // when the F1 metadata says money isn't shown (never wider than money mode).
+      const moneyByPlayer =
+        f1Mode.isF1 && f1Mode.mode === 'money' && f1Mode.moneyEnabled
+          ? await computeScopeMoneyByPlayer(eventId, opts, log)
+          : null;
+      const rows: LeaderboardRowWithMoney[] = baseRows.map((r) => ({
+        ...r,
+        // Exposed (map non-null) → player's net, 0 if they have no edges (a pure
+        // push still reads $0 in money mode). Not exposed (null) → moneyCents null.
+        moneyCents: moneyByPlayer === null ? null : moneyByPlayer.get(r.playerId) ?? 0,
+      }));
       const response: LeaderboardResponse = {
         rows,
         round: resolvedRound,
