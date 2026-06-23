@@ -51,6 +51,8 @@ type EventDetailResponse = {
     eventRoundId: string;
     roundNumber: number;
   } | null;
+  /** True when this event is in live-money mode — gates the Money vs My Money card. */
+  moneyEnabled?: boolean;
 };
 
 type FetchOutcome =
@@ -149,17 +151,27 @@ export type EventHomePageProps = {
   isOrganizer?: boolean;
 };
 
-const ENTRY_CARDS = [
-  SCHEDULE_CARD,
-  { to: '/events/$eventId/leaderboard' as const, icon: '🏆', title: 'Leaderboard',    desc: 'See live standings' },
-  { to: '/events/$eventId/team-standings' as const, icon: '⛳', title: 'Team Standings', desc: '2-man best ball, net to par' },
-  { to: '/events/$eventId/match-play-standings' as const, icon: '⚔️', title: 'Match Play', desc: 'Foursome match points' },
-  { to: '/events/$eventId/my-money' as const,    icon: '💰', title: 'My Money',       desc: 'Your money, by game' },
-  { to: '/events/$eventId/money' as const,       icon: '🆚', title: 'Money',          desc: 'Head-to-head money matrix' },
-  { to: '/events/$eventId/bets' as const,        icon: '🎲', title: 'Bets',           desc: 'Your bets' },
-  { to: '/events/$eventId/settle-up' as const,   icon: '🤝', title: 'Settle Up',      desc: 'End-of-trip settle' },
-  { to: '/events/$eventId/gallery' as const,     icon: '📸', title: 'Photo Gallery',  desc: 'Trip photos' },
-] as const;
+// Consolidated home cards. The old screen listed nine cards — three standings
+// views (Leaderboard / Team / Match) and four money views (My Money / Money /
+// Bets / Settle Up) — all at once. They're now folded into two hubs reached by
+// one card each, with Wolf-style tabs at the top of each hub to switch views.
+// The Money vs My Money card swaps on `moneyEnabled` (live-money event vs a
+// scores-only event where only your private figures exist).
+const STANDINGS_CARD = { to: '/events/$eventId/leaderboard' as const, icon: '🏆', title: 'Standings', desc: 'Leaderboard, teams & match play' };
+const MONEY_CARD = { to: '/events/$eventId/money' as const, icon: '💰', title: 'Money', desc: 'The board, your P&L & settle-up' };
+const MY_MONEY_CARD = { to: '/events/$eventId/my-money' as const, icon: '💰', title: 'My Money', desc: 'Your private running total' };
+const BETS_CARD = { to: '/events/$eventId/bets' as const, icon: '🎲', title: 'Bets', desc: 'The Action' };
+const PHOTOS_CARD = { to: '/events/$eventId/gallery' as const, icon: '📸', title: 'Photos', desc: 'Trip photos' };
+
+function buildEntryCards(moneyEnabled: boolean) {
+  return [
+    SCHEDULE_CARD,
+    STANDINGS_CARD,
+    moneyEnabled ? MONEY_CARD : MY_MONEY_CARD,
+    BETS_CARD,
+    PHOTOS_CARD,
+  ];
+}
 
 export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: EventHomePageProps) {
   const query = useQuery<FetchOutcome>({
@@ -199,6 +211,7 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
   }
 
   const { event, rounds, liveRound } = outcome.data;
+  const cards = buildEntryCards(outcome.data.moneyEnabled ?? false);
   const now = nowMs ?? Date.now();
   const countdown = computeCountdown(rounds, now);
   const dateRange = formatDateRange(event.startDate, event.endDate, event.timezone);
@@ -255,7 +268,7 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
 
       <nav aria-label="Event sections">
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>
-          {ENTRY_CARDS.map((card) => (
+          {cards.map((card) => (
             <li key={card.to}>
               <Link
                 to={card.to}

@@ -136,5 +136,16 @@ test('brochure shots: leaderboard + expanded scorecard + score-entry', async ({ 
   await se.close();
   await scorerCtx.close();
 
+  // ── 5) Event home hub — consolidated cards (Standings / Money / Bets / …) ──
+  // Viewed as a player (the scorer) so the greeting + live-round CTA show.
+  const hubCtx = await darkContext(browser, fx.scorerSessionId);
+  const hub = await hubCtx.newPage();
+  await hub.goto(`/events/${fx.eventId}`, { waitUntil: 'networkidle' }).catch(() => {});
+  await hub.waitForTimeout(1200);
+  await stripDevBadge(hub);
+  await hub.screenshot({ path: resolve(SHOTS, '5-event-home.png'), fullPage: true });
+  await hub.close();
+  await hubCtx.close();
+
   expect(true).toBe(true);
 });

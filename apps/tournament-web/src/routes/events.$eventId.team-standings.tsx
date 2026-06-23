@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { ViewTabs } from '../components/view-tabs';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
@@ -89,6 +90,7 @@ export function TeamStandingsPage({ eventId }: { eventId: string }) {
   return (
     <PageShell title="Team standings">
       <BackLink to="/events/$eventId" params={{ eventId }} label="Event home" />
+      <ViewTabs set="standings" active="teams" eventId={eventId} />
       <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)' }}>
         2-man best ball — each team&apos;s lower net ball per hole, cumulative across all
         rounds. Sorted by net to par.

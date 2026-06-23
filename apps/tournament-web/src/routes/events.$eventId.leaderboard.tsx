@@ -28,6 +28,7 @@ import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
 import { ScrollableTable } from '../components/scrollable-table';
+import { ViewTabs } from '../components/view-tabs';
 import { ScorecardGrid } from '../components/scorecard-grid';
 import type { ScorecardHole } from '../types/scorecard';
 
@@ -362,6 +363,8 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   return (
     <PageShell title="Leaderboard">
       <BackLink to="/events/$eventId" params={{ eventId }} />
+
+      <ViewTabs set="standings" active="leaderboard" eventId={eventId} />
 
       {/* Scope: a two-option segmented control (bigger tap target than a select). */}
       <div

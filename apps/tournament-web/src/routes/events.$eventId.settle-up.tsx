@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { ViewTabs } from '../components/view-tabs';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
@@ -147,6 +148,7 @@ export function SettleUpPage({ eventId, viewerId }: SettleUpPageProps) {
   return (
     <PageShell title="Settle Up">
       <BackLink to="/events/$eventId" params={{ eventId }} />
+      <ViewTabs set="money" active="settle" eventId={eventId} />
 
       {!zeroSumOk && (
         <div

@@ -127,12 +127,14 @@ describe('EventHomePage', () => {
       expect(screen.getByRole('heading', { name: 'Pinehurst 2026' })).toBeInTheDocument();
     });
     expect(screen.getByText(/You're in, Josh\./)).toBeInTheDocument();
-    expect(screen.getByText('Leaderboard')).toBeInTheDocument();
-    expect(screen.getByText('Money')).toBeInTheDocument();
+    // Consolidated hubs: Standings (folds Leaderboard/Teams/Match) + a money card
+    // (My Money when not in live-money mode) + Bets, Schedule, Photos.
+    expect(screen.getByText('Standings')).toBeInTheDocument();
+    expect(screen.getByText('My Money')).toBeInTheDocument();
     expect(screen.getByText('Bets')).toBeInTheDocument();
-    expect(screen.getByText('Settle Up')).toBeInTheDocument();
+    expect(screen.getByText('Schedule')).toBeInTheDocument();
     // T7-4 entry card.
-    const galleryLink = screen.getByText('Photo Gallery').closest('a');
+    const galleryLink = screen.getByText('Photos').closest('a');
     expect(galleryLink).toBeInTheDocument();
     expect(galleryLink?.getAttribute('href')).toBe('/events/evt-1/gallery');
     // T8-3: ActivityFeed mounts below the entry cards. Mocked hook
@@ -160,6 +162,23 @@ describe('EventHomePage', () => {
     expect(cta).toBeInTheDocument();
     expect(cta.getAttribute('href')).toBe('/rounds/rnd-9/score-entry');
     expect(screen.getByText(/Round 2 is live/)).toBeInTheDocument();
+  });
+
+  it('shows the "Money" hub card (not "My Money") when moneyEnabled', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ ...EVENT_FIXTURE, moneyEnabled: true }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    renderWithRouter({ eventId: 'evt-1', viewerName: 'Josh Stoll', nowMs: MAY_8_NY_MIDNIGHT });
+    await waitFor(() => {
+      expect(screen.getByText('Standings')).toBeInTheDocument();
+    });
+    const moneyLink = screen.getByText('Money').closest('a');
+    expect(moneyLink?.getAttribute('href')).toBe('/events/evt-1/money');
+    // The private "My Money" card is replaced by the full Money hub.
+    expect(screen.queryByText('My Money')).not.toBeInTheDocument();
   });
 
   it('no live-round CTA when liveRound is absent', async () => {

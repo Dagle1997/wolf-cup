@@ -21,12 +21,14 @@ import { db } from '../db/index.js';
 import {
   eventRounds,
   events,
+  gameConfig,
   groupMembers,
   groups,
   players,
   rounds,
   roundStates,
 } from '../db/schema/index.js';
+import { f1MoneyEnabled } from '../lib/env.js';
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
@@ -216,6 +218,23 @@ eventsRouter.get(
         .limit(1);
       const liveRound = liveRows.length > 0 ? liveRows[0]! : null;
 
+      // moneyEnabled — does this event have an event-level F1 game config that is
+      // LOCKED (money/P&L mode) AND is money exposure turned on? Gates the home
+      // "Money" hub card (vs the private "My Money" card on a scores-only event).
+      const cfgRows = await db
+        .select({ lockState: gameConfig.lockState })
+        .from(gameConfig)
+        .where(
+          and(
+            eq(gameConfig.level, 'event'),
+            eq(gameConfig.refId, eventId),
+            eq(gameConfig.tenantId, TENANT_ID),
+          ),
+        )
+        .limit(1);
+      const moneyEnabled =
+        cfgRows.length > 0 && cfgRows[0]!.lockState !== 'unlocked' && f1MoneyEnabled();
+
       c.header('cache-control', 'no-store');
       return c.json(
         {
@@ -223,6 +242,7 @@ eventsRouter.get(
           rounds: roundRows,
           viewerName,
           liveRound,
+          moneyEnabled,
         },
         200,
       );

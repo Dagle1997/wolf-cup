@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { ViewTabs } from '../components/view-tabs';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
@@ -89,6 +90,7 @@ export function MatchPlayStandingsPage({ eventId }: { eventId: string }) {
   return (
     <PageShell title="Match play">
       <BackLink to="/events/$eventId" params={{ eventId }} label="Event home" />
+      <ViewTabs set="standings" active="match" eventId={eventId} />
       <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)' }}>
         Foursome match points — each round, the two teams in a foursome play their
         2v2 net match; win = 1, halve = ½. Sorted by points, then holes up.

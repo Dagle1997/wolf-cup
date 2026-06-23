@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { ViewTabs } from '../components/view-tabs';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
@@ -106,6 +107,7 @@ export function MyMoneyPage({ eventId }: { eventId: string }) {
   return (
     <PageShell title="My Money">
       <BackLink to="/events/$eventId" params={{ eventId }} />
+      <ViewTabs set="money" active="my-money" eventId={eventId} />
 
       {/* Hero: the one number anyone actually wants. */}
       <div className="card" data-testid="my-money-grand-total" style={{ textAlign: 'center', padding: 'var(--space-5)', marginBottom: 'var(--space-4)' }}>
