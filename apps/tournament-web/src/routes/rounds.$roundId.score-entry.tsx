@@ -4,11 +4,14 @@
  * Tournament deltas vs Wolf Cup:
  *   - Route shape: /rounds/$roundId/score-entry (round-scoped, NOT group-scoped)
  *   - REMOVED wolf-decision UI + state (T6 owns)
- *   - REMOVED greenies/polies/sandies (T6 owns)
+ *   - greenie/polie/sandie claim chips RE-ADDED for F1 (Epic 2, Story 2.1) — see
+ *     ClaimChips; rendered as a full-width row under each player's score box.
  *   - REMOVED CTP per-par-3 prompt (Wolf Cup-only sub-game)
  *   - REMOVED entry-code header (session-cookie auth via T1-6a)
  *   - REMOVED autoCalculateMoney (T6 owns)
- *   - REMOVED putts-week toggle; putts is always-optional input
+ *   - REMOVED the putts input (2026-06-23 condense — putting moves to Bets per
+ *     Josh). Save PRESERVES any existing server-side putts for a cell (never
+ *     overwrites to null); the entry UI just no longer captures new putts.
  *   - CHANGED enqueue payload to T5-3 generic-kind shape with clientEventId
  *   - CHANGED score range 1-9 (Wolf Cup limitation) → 1-20 (T5-6 Zod compat)
  *   - ADDED Skip hole sessionStorage persistence with cleared-on-server-fill
@@ -1190,7 +1193,6 @@ function ScoreEntryForm({
 
   // Per-input score string; clientEventIds are generated at Save time.
   const [currentInputs, setCurrentInputs] = useState<Record<string, string>>({});
-  const [currentPutts, setCurrentPutts] = useState<Record<string, string>>({});
 
   // Refs for ref-positional indexing — load-bearing for iOS keyboard fix.
   const scoreInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -1221,7 +1223,6 @@ function ScoreEntryForm({
   // Reset inputs when currentHole changes (advance to a new hole).
   useEffect(() => {
     setCurrentInputs({});
-    setCurrentPutts({});
     pendingAdvanceTimers.current.forEach((t) => {
       if (t !== null && t !== undefined) clearTimeout(t);
     });
@@ -1268,18 +1269,6 @@ function ScoreEntryForm({
       advanceFocus(idx);
     },
     [advanceFocus, clearPendingAdvanceTimer],
-  );
-
-  const handlePuttsChange = useCallback(
-    (member: Member, raw: string) => {
-      if (raw === '') {
-        setCurrentPutts((prev) => ({ ...prev, [member.playerId]: '' }));
-        return;
-      }
-      if (!/^([0-9]|1[0-5])$/.test(raw)) return;
-      setCurrentPutts((prev) => ({ ...prev, [member.playerId]: raw }));
-    },
-    [],
   );
 
   const handleBlur = useCallback(
@@ -1392,9 +1381,15 @@ function ScoreEntryForm({
     const enqueues: Promise<unknown>[] = members.map((member) => {
       try {
         const score = currentInputs[member.playerId];
-        const puttsRaw = currentPutts[member.playerId];
         const grossStrokes = parseInt(score!, 10);
-        const putts = puttsRaw ? parseInt(puttsRaw, 10) : null;
+        // The entry UI no longer captures putts (visual condense). PRESERVE any
+        // putts the server already has for this (player, hole) instead of
+        // overwriting them to null — a re-save of a hole must never delete
+        // existing putting data. New cells have no prior putts → null.
+        const putts =
+          data.myFoursome.holeScores.find(
+            (hs) => hs.playerId === member.playerId && hs.holeNumber === currentHole,
+          )?.putts ?? null;
         // Stable clientEventId per (hole, player) — reuse across retries
         // so retried cells dedupe on the server's UNIQUE(round_id,
         // player_id, hole_number, client_event_id) target. Fresh ID
@@ -1447,7 +1442,7 @@ function ScoreEntryForm({
     // Trigger drain immediately if online; queue's setTimeout heartbeat
     // handles offline gracefully.
     void queue.drain();
-  }, [allValid, currentHole, currentInputs, currentPutts, isSaving, markMutation, members, persistClientEventIdCache, roundId, queue]);
+  }, [allValid, currentHole, currentInputs, data.myFoursome.holeScores, isSaving, markMutation, members, persistClientEventIdCache, roundId, queue]);
 
   // Toggle a claim for (player, current hole, type). A toggle ON enqueues a
   // `set` op; a toggle OFF enqueues a `remove` op (removal is a queued mutation
@@ -1579,34 +1574,35 @@ function ScoreEntryForm({
             ? 'var(--color-text-muted)'
             : sc < par ? 'var(--color-success)' : sc > par ? 'var(--color-accent)' : 'var(--color-text-primary)';
           return (
-            <div key={member.playerId} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 'var(--font-md)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.name}</div>
-                <input
-                  data-testid={`putts-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
-                  aria-label={`Putts for ${member.name}`} placeholder="Putts"
-                  value={currentPutts[member.playerId] ?? ''} onChange={(e) => handlePuttsChange(member, e.target.value)}
-                  style={{ width: 92, minHeight: 36, marginTop: 6, marginBottom: 0, fontSize: 'var(--font-sm)', padding: '0 8px' }}
-                />
-                <ClaimChips
-                  playerId={member.playerId}
-                  playerName={member.name}
-                  hole={currentHole}
-                  active={claimState}
-                  onToggle={handleToggleClaim}
-                />
+            <div key={member.playerId} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)' }}>
+              {/* Name + Hcp on the left, − [score] + on the right. */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 'var(--font-md)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.1 }}>{member.name}</div>
+                  <div style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', marginTop: 1 }}>
+                    Hcp {member.handicapIndex != null ? member.handicapIndex.toFixed(1) : '—'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flex: '0 0 auto' }}>
+                  <button type="button" aria-label={`Lower ${member.name}'s score`} onClick={() => step(-1)} style={{ width: 48, minHeight: 48, fontSize: 'var(--font-xl)', borderRadius: 'var(--radius-md)', margin: 0, padding: 0 }}>−</button>
+                  <input
+                    ref={(el) => { scoreInputRefs.current[idx] = el; }}
+                    data-testid={`score-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
+                    aria-label={`Score for ${member.name}`}
+                    value={raw} onChange={(e) => handleScoreChange(member, idx, e.target.value)} onBlur={() => handleBlur(idx)}
+                    style={{ width: 60, minHeight: 48, textAlign: 'center', fontSize: 'var(--font-2xl)', fontWeight: 800, color: scoreColor, margin: 0, padding: 0 }}
+                  />
+                  <button type="button" aria-label={`Raise ${member.name}'s score`} onClick={() => step(1)} style={{ width: 48, minHeight: 48, fontSize: 'var(--font-xl)', borderRadius: 'var(--radius-md)', margin: 0, padding: 0 }}>+</button>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                <button type="button" aria-label={`Lower ${member.name}'s score`} onClick={() => step(-1)} style={{ width: 56, minHeight: 56, fontSize: 'var(--font-xl)', borderRadius: 'var(--radius-md)', margin: 0, padding: 0 }}>−</button>
-                <input
-                  ref={(el) => { scoreInputRefs.current[idx] = el; }}
-                  data-testid={`score-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
-                  aria-label={`Score for ${member.name}`}
-                  value={raw} onChange={(e) => handleScoreChange(member, idx, e.target.value)} onBlur={() => handleBlur(idx)}
-                  style={{ width: 64, minHeight: 56, textAlign: 'center', fontSize: 'var(--font-2xl)', fontWeight: 800, color: scoreColor, margin: 0, padding: 0 }}
-                />
-                <button type="button" aria-label={`Raise ${member.name}'s score`} onClick={() => step(1)} style={{ width: 56, minHeight: 56, fontSize: 'var(--font-xl)', borderRadius: 'var(--radius-md)', margin: 0, padding: 0 }}>+</button>
-              </div>
+              {/* Greenie / Polie / Sandie — a thin full-width row UNDER the score box. */}
+              <ClaimChips
+                playerId={member.playerId}
+                playerName={member.name}
+                hole={currentHole}
+                active={claimState}
+                onToggle={handleToggleClaim}
+              />
             </div>
           );
         })}
