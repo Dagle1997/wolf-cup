@@ -399,11 +399,12 @@ async function computeSeasonHighlights(
 
 app.get('/stats', async (c) => {
   try {
-    // Step 1: All non-guest active players, sorted by name
+    // Step 1: Active full members only (non-guest). Subs/inactive players do not
+    // get a stats page — the roster badge gates it, an incentive to join.
     const allPlayers = await db
       .select({ id: players.id, name: players.name })
       .from(players)
-      .where(and(eq(players.isActive, 1), eq(players.isGuest, 0)))
+      .where(and(eq(players.status, 'active'), eq(players.isActive, 1), eq(players.isGuest, 0)))
       .orderBy(players.name);
 
     // Step 2: Wolf decisions for official finalized rounds

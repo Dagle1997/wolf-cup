@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { eq, and, inArray, not, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { rounds, roundPlayers, players, harveyResults, seasons } from '../db/schema.js';
+import { rounds, players, harveyResults, seasons } from '../db/schema.js';
 import { calculateSeasonTotal } from '@wolf-cup/engine';
+import { isSubFromStatus } from '../lib/sub-status.js';
 
 const app = new Hono();
 
@@ -121,23 +122,16 @@ app.get('/standings', async (c) => {
       );
     }
 
-    // Step 4: round_players for sub classification
-    const roundPlayerRows = await db
-      .select({ playerId: roundPlayers.playerId, isSub: roundPlayers.isSub })
-      .from(roundPlayers)
-      .where(
-        and(
-          inArray(roundPlayers.playerId, playerIds),
-          inArray(roundPlayers.roundId, officialRoundIds),
-        ),
-      );
-
-    // Step 5: Player names
+    // Step 5: Player names + roster badge. players.status is the LIVE source of
+    // truth for sub classification (see lib/sub-status.ts): toggling a player's
+    // roster badge moves them above/below the line immediately and reversibly,
+    // with no per-round snapshot to repair.
     const playerRows = await db
-      .select({ id: players.id, name: players.name })
+      .select({ id: players.id, name: players.name, status: players.status })
       .from(players)
       .where(inArray(players.id, playerIds));
     const nameMap = new Map(playerRows.map((p) => [p.id, p.name]));
+    const statusMap = new Map(playerRows.map((p) => [p.id, p.status]));
 
     // Build round date-ordering map for sparkline data
     const roundDateOrder = new Map<number, number>();
@@ -159,12 +153,11 @@ app.get('/standings', async (c) => {
       roundTotalsByPlayer.set(pid, rows.map(r => r.stablefordPoints + r.moneyPoints));
     }
 
-    // Determine sub classification: full member if ANY round_players row has is_sub=0
+    // Determine sub classification from the live roster badge: a player is a sub
+    // iff their current roster status is not 'active'.
     const subStatusByPlayer = new Map<number, boolean>();
     for (const pid of playerIds) {
-      const entries = roundPlayerRows.filter((r) => r.playerId === pid);
-      const hasFullMemberRound = entries.some((r) => !r.isSub);
-      subStatusByPlayer.set(pid, !hasFullMemberRound);
+      subStatusByPlayer.set(pid, isSubFromStatus(statusMap.get(pid)));
     }
 
     // Step 7: Calculate season totals per player

@@ -230,11 +230,11 @@ describe('GET /standings', () => {
     expect(body.subs.some((r) => r.playerId === p1Id)).toBe(false);
   });
 
-  it('classifies player as sub when all round_players entries have is_sub=1', async () => {
-    // Add a 5th player as a sub
+  it('classifies player as sub when their roster badge is sub', async () => {
+    // Add a 5th player whose roster badge is 'sub'
     const [subPlayer] = await db
       .insert(players)
-      .values({ name: 'SubPlayer', ghinNumber: null, isActive: 1, createdAt: Date.now() })
+      .values({ name: 'SubPlayer', ghinNumber: null, status: 'sub', isActive: 1, createdAt: Date.now() })
       .returning({ id: players.id });
     const subPlayerId = subPlayer!.id;
 
@@ -486,11 +486,11 @@ describe('GET /standings', () => {
     //       subB with combined 4 (below all → rank 4)
     const [subA] = await db
       .insert(players)
-      .values({ name: 'SubA', ghinNumber: null, isActive: 1, createdAt: Date.now() })
+      .values({ name: 'SubA', ghinNumber: null, status: 'sub', isActive: 1, createdAt: Date.now() })
       .returning({ id: players.id });
     const [subB] = await db
       .insert(players)
-      .values({ name: 'SubB', ghinNumber: null, isActive: 1, createdAt: Date.now() })
+      .values({ name: 'SubB', ghinNumber: null, status: 'sub', isActive: 1, createdAt: Date.now() })
       .returning({ id: players.id });
 
     const [gA] = await db
