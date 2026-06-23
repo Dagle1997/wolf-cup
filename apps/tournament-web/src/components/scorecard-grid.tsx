@@ -25,6 +25,7 @@
  */
 import type { CSSProperties } from 'react';
 import { HoleBadge } from './hole-badge';
+import { ScrollableTable } from './scrollable-table';
 import type { ScorecardHole } from '../types/scorecard';
 
 const FRONT = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
@@ -154,10 +155,10 @@ export function ScorecardGrid({
   };
 
   return (
-    <div className="overflow-x-auto py-2 px-1">
-      <div className="min-w-max space-y-2">
-        {/* ── Front 9 ── */}
-        <table className="w-full border-collapse">
+    <div className="py-2 px-1 space-y-2">
+      {/* ── Front 9 (own scroll region so it never pushes the page wide) ── */}
+      <ScrollableTable label="Front 9">
+        <table className="w-full border-collapse min-w-max">
           <thead>
             <tr style={headerStyle}>
               <th className="pl-2 pr-1 py-1 text-[10px] font-semibold text-left w-10">Hole</th>
@@ -225,10 +226,12 @@ export function ScorecardGrid({
             )}
           </tbody>
         </table>
+      </ScrollableTable>
 
-        {/* ── Back 9 (show once any back-9 hole has been played) ── */}
-        {back9played.length > 0 && (
-          <table className="w-full border-collapse">
+      {/* ── Back 9 (show once any back-9 hole has been played) ── */}
+      {back9played.length > 0 && (
+        <ScrollableTable label="Back 9">
+          <table className="w-full border-collapse min-w-max">
             <thead>
               <tr style={headerStyle}>
                 <th className="pl-2 pr-1 py-1 text-[10px] font-semibold text-left w-10">Hole</th>
@@ -310,8 +313,8 @@ export function ScorecardGrid({
               )}
             </tbody>
           </table>
-        )}
-      </div>
+        </ScrollableTable>
+      )}
     </div>
   );
 }

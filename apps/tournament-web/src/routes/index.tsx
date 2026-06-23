@@ -270,13 +270,17 @@ function IndexPage() {
             data-testid="toggle-archived"
             onClick={() => setShowArchived((v) => !v)}
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
               background: 'none',
               border: 'none',
-              padding: 0,
+              // 44px min tap target (was a text-height-only box); horizontal
+              // padding keeps the hit area comfortable without an oversized look.
+              minHeight: 44,
+              padding: '0 4px',
               color: 'var(--color-brand-primary)',
               fontWeight: 600,
               cursor: 'pointer',
-              minHeight: 'auto',
             }}
           >
             {showArchived

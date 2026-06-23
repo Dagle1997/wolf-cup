@@ -19,9 +19,16 @@
  * Styling note: the Wolf source uses `bg-foreground/50` for the stroke dots,
  * which is a shadcn semantic alias tournament-web does NOT define (it renders
  * as a no-op under Tailwind v4). It is replaced here with the tournament token
- * `var(--color-text-muted)` via inline style. The real palette utilities
- * (bg-red-600, border-amber-500, bg-emerald-500, bg-orange-500, text-blue-600,
- * etc.) are kept as-is — they resolve under Tailwind v4.
+ * `var(--color-text-muted)` via inline style.
+ *
+ * Notation COLORS (birdie/bogey/double ring+text) use theme-adapting badge
+ * tokens (`--color-badge-red`/`-amber-text`/`-amber-border`/`-blue`, see
+ * index.css) instead of literal Tailwind utilities, so they keep WCAG-AA
+ * contrast on the near-black dark scorecard (the 2026-06-22 dark-mode bug); the
+ * light values are pixel-identical to the prior red-600/amber/blue-600 literals.
+ * The remaining fill/dot utilities (bg-red-600 eagle fill on white text,
+ * bg-emerald-500/amber-400/orange-500 bonus dots) stay literal — they read fine
+ * in both themes.
  *
  * Test hooks: a stable `data-testid="hole-badge"` plus `data-variant`
  * (eagle|birdie|par|bogey|double) and `data-greenie`/`data-polie`/`data-sandie`/
@@ -111,7 +118,8 @@ export function HoleBadge({
     return (
       <span
         {...testAttrs}
-        className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.5px] border-red-600 text-red-600 text-[9px] font-bold leading-none"
+        className="relative inline-flex items-center justify-center w-[18px] h-[18px] rounded-full border-[1.5px] text-[9px] font-bold leading-none"
+        style={{ borderColor: 'var(--color-badge-red)', color: 'var(--color-badge-red)' }}
       >
         {gross}
         {bonusDots}
@@ -124,7 +132,8 @@ export function HoleBadge({
     return (
       <span
         {...testAttrs}
-        className="relative inline-flex items-center justify-center w-[18px] h-[18px] border-[1.5px] border-amber-500 text-amber-600 text-[9px] font-medium leading-none"
+        className="relative inline-flex items-center justify-center w-[18px] h-[18px] border-[1.5px] text-[9px] font-medium leading-none"
+        style={{ borderColor: 'var(--color-badge-amber-border)', color: 'var(--color-badge-amber-text)' }}
       >
         {gross}
         {bonusDots}
@@ -137,9 +146,10 @@ export function HoleBadge({
     return (
       <span
         {...testAttrs}
-        className="relative inline-flex items-center justify-center w-[20px] h-[20px] border-[2px] border-blue-600 text-blue-600 text-[9px] font-bold leading-none"
+        className="relative inline-flex items-center justify-center w-[20px] h-[20px] border-[2px] text-[9px] font-bold leading-none"
+        style={{ borderColor: 'var(--color-badge-blue)', color: 'var(--color-badge-blue)' }}
       >
-        <span className="absolute inset-[2px] border-[1px] border-blue-600" />
+        <span className="absolute inset-[2px] border-[1px]" style={{ borderColor: 'var(--color-badge-blue)' }} />
         <span className="relative">{gross}</span>
         {bonusDots}
         {strokeDot}

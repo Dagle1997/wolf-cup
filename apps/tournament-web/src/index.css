@@ -39,6 +39,7 @@
   --color-brand-strong: #14532d;        /* pressed/active + dark headings (green-900) */
   --color-brand-tint: #f0fdf4;          /* selected-state tint (green-50) */
   --color-accent: #b45309;              /* warm sand/amber-700 — badges, press-fired, live */
+  --color-on-accent: #fff;              /* text/icon ON a --color-accent fill (white reads on amber-700) */
   --color-success: #15803d;             /* confirmation / positive */
   --color-warning-bg: #fef3c7;          /* warning-state background */
   --color-warning-text: #92400e;        /* warning-state text */
@@ -47,6 +48,15 @@
   --color-danger-border: #fca5a5;       /* destructive banner border (red-300) */
   --color-money-pos: #15803d;           /* winnings */
   --color-money-neg: #b91c1c;           /* losses */
+
+  /* HoleBadge golf-notation colors. Light values are pixel-identical to the
+     prior Tailwind literals (red-600 / amber-500 / amber-600 / blue-600) so the
+     light theme is unchanged; the .dark overrides lighten them to clear WCAG-AA
+     on the near-black scorecard surface (the 2026-06-22 dark-mode contrast bug). */
+  --color-badge-red: #dc2626;           /* red-600 — birdie ring+text (eagle fill stays literal) */
+  --color-badge-amber-border: #f59e0b;  /* amber-500 — bogey border */
+  --color-badge-amber-text: #d97706;    /* amber-600 — bogey text */
+  --color-badge-blue: #2563eb;          /* blue-600 — double-bogey+ ring+text */
 
   /* Font sizes */
   --font-xs: 0.75rem;
@@ -105,6 +115,7 @@
   --color-brand-strong: #22c55e;        /* green-500 — pressed/active */
   --color-brand-tint: #052e16;          /* green-950 selected tint */
   --color-accent: #fbbf24;              /* amber-400 */
+  --color-on-accent: #0a0a0a;           /* near-black text on the light amber-400 fill (~11:1; white was ~1.2:1) */
   --color-success: #4ade80;             /* green-400 */
   --color-warning-bg: #422006;          /* amber-950 */
   --color-warning-text: #fde68a;        /* amber-200 */
@@ -113,6 +124,12 @@
   --color-danger-border: #7f1d1d;       /* dark destructive banner border (red-900) */
   --color-money-pos: #4ade80;
   --color-money-neg: #f87171;
+  /* Lighter badge shades for AA on the #171717 scorecard surface
+     (red-400 ≈5.9:1, amber-400 ≈11:1, blue-400 ≈6.4:1). */
+  --color-badge-red: #f87171;           /* red-400 */
+  --color-badge-amber-border: #fbbf24;  /* amber-400 */
+  --color-badge-amber-text: #fbbf24;    /* amber-400 */
+  --color-badge-blue: #60a5fa;          /* blue-400 */
   --shadow-card: 0 1px 3px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.3);
   --shadow-raised: 0 4px 12px rgb(0 0 0 / 0.5);
 }

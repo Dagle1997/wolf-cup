@@ -239,7 +239,7 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
             padding: 'var(--space-3) var(--space-4)',
             marginBottom: 'var(--space-4)',
             textDecoration: 'none',
-            color: '#fff',
+            color: 'var(--color-on-accent)',
             background: 'var(--color-accent)',
             fontWeight: 700,
           }}

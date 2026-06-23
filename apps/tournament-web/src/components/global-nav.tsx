@@ -53,7 +53,13 @@ export function GlobalNav() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: `8px var(--page-padding)`,
+        // iOS standalone PWA: pad the top by the notch/status-bar inset so the
+        // sticky header isn't drawn under the hardware notch (env() is 0 on
+        // non-notch devices, so this keeps the plain 8px elsewhere).
+        paddingTop: 'calc(8px + env(safe-area-inset-top))',
+        paddingRight: 'var(--page-padding)',
+        paddingBottom: '8px',
+        paddingLeft: 'var(--page-padding)',
         background: 'var(--color-surface)',
         borderBottom: '1px solid var(--color-border-subtle)',
         fontSize: 'var(--font-sm)',

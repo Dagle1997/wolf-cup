@@ -94,7 +94,10 @@ export function TournamentBanner() {
   const flushStorm = useCallback(() => {
     setPendingBatch((batch) => {
       if (batch.length >= STORM_THRESHOLD) {
-        setStormFired(batch);
+        // Merge into any already-active storm rather than replacing it — a bare
+        // setStormFired(batch) would drop the prior storm's events from the UI
+        // without marking them dismissed, so they'd resurrect on the next load.
+        setStormFired((prev) => (prev ? [...prev, ...batch] : batch));
       } else {
         // Below threshold — flush as individual banners.
         setIndividualBanners((prev) => [...prev, ...batch]);
