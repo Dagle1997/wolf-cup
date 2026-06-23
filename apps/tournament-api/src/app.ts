@@ -17,6 +17,7 @@ import { inviteRouter } from './routes/invites.js';
 import { joinRouter, adminJoinCodesRouter } from './routes/join.js';
 import { playersRouter } from './routes/players.js';
 import { scoresRouter, eventRoundsCourseRouter } from './routes/scores.js';
+import { scorecardRouter } from './routes/scorecard.js';
 import { claimsRouter } from './routes/claims.js';
 import { eventsLeaderboardRouter } from './routes/events-leaderboard.js';
 import { scorerAssignmentsRouter } from './routes/scorer-assignments.js';
@@ -138,6 +139,12 @@ app.route('/api/events', pdfScheduleRouter);
 // POST /api/rounds/:roundId/holes/:holeNumber/scores. Single-writer
 // enforcement via require-scorer-for-round middleware (FR-B10, FR-H3).
 app.route('/api/rounds', scoresRouter);
+
+// Scorecard router (Story 3-2). Read-only per-player scorecard for the
+// during-round board (3-1 HoleBadge/grid; wired to a route in 3-4). Effective
+// URL: GET /api/rounds/:roundId/players/:playerId/scorecard. Distinct sub-path
+// from scoresRouter's /:roundId and /:roundId/holes/... — no shadowing.
+app.route('/api/rounds', scorecardRouter);
 
 // F1 Epic 2 (Story 2.1) inline claim capture. Effective URL:
 // POST /api/rounds/:roundId/claims. Single-writer enforced in-handler via the
