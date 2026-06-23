@@ -1,0 +1,38 @@
+{
+  "name": "Per-hole money (Story 3-3) — greenie carryover, SAME scenario as greenie-carryover-on.json. Proves STATEFUL attribution: the swept greenie's money lands ENTIRELY on the resolving par-3 (H5), while the two earlier deferred par-3s (H1, H3) and the skipped par-4/5 (H2, H4) emit $0 PUSH rows — not because a carry is pending, but because their own base+greenie pts are 0 here.",
+  "_contract": "Golden HAND-CALC fixture for Story 3-3 per-hole money with the stateful greenie-carryover modifier. teamPointsA per hole comes from the approved greenie-carryover-on hand-calc: pointsByHole={5:+3}, all other holes 0. The carried greenie does NOT smear across the deferred par-3s; its full +3 team points (+$15/player to team A) appear on H5. Every hole is settled (all nets = par present), so push holes emit explicit zero rows (a halved/no-money hole reads $0, distinct from an unsettled hole which emits NO row). Loss-less invariant: SUM over holes of perHole.perPlayerCents === ledger.perPlayerCents.",
+  "input": {
+    "config": {
+      "scope": "foursome",
+      "game": "guyan-2v2",
+      "pointValueSchedule": { "kind": "flat", "cents": 500 },
+      "modifiers": [
+        { "type": "net-skins", "enabled": true, "variant": { "basis": "net", "bonus": "single" } },
+        { "type": "greenie", "enabled": true, "variant": { "carryover": true } }
+      ],
+      "lockState": "locked",
+      "configVersion": 1
+    },
+    "teamSplit": { "teamA": ["a1", "a2"], "teamB": ["b1", "b2"] },
+    "holes": [
+      { "holeNumber": 1, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 } },
+      { "holeNumber": 2, "par": 4, "net": { "a1": 4, "a2": 4, "b1": 4, "b2": 4 } },
+      { "holeNumber": 3, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 } },
+      { "holeNumber": 4, "par": 5, "net": { "a1": 5, "a2": 5, "b1": 5, "b2": 5 } },
+      { "holeNumber": 5, "par": 3, "net": { "a1": 3, "a2": 3, "b1": 3, "b2": 3 }, "claims": { "a1": { "greenie": true } } }
+    ],
+    "sourceId": "fixture-perhole-greenie-carryover"
+  },
+  "expected": {
+    "perPlayerNetCents": { "a1": 1500, "a2": 1500, "b1": -1500, "b2": -1500 },
+    "ledgerTotalCents": 3000,
+    "perHole": [
+      { "holeNumber": 1, "teamPointsA": 0, "pointValueCents": 500, "teamASignedPerPlayerCents": 0, "perPlayerCents": { "a1": 0, "a2": 0, "b1": 0, "b2": 0 } },
+      { "holeNumber": 2, "teamPointsA": 0, "pointValueCents": 500, "teamASignedPerPlayerCents": 0, "perPlayerCents": { "a1": 0, "a2": 0, "b1": 0, "b2": 0 } },
+      { "holeNumber": 3, "teamPointsA": 0, "pointValueCents": 500, "teamASignedPerPlayerCents": 0, "perPlayerCents": { "a1": 0, "a2": 0, "b1": 0, "b2": 0 } },
+      { "holeNumber": 4, "teamPointsA": 0, "pointValueCents": 500, "teamASignedPerPlayerCents": 0, "perPlayerCents": { "a1": 0, "a2": 0, "b1": 0, "b2": 0 } },
+      { "holeNumber": 5, "teamPointsA": 3, "pointValueCents": 500, "teamASignedPerPlayerCents": 1500, "perPlayerCents": { "a1": 1500, "a2": 1500, "b1": -1500, "b2": -1500 } }
+    ]
+  },
+  "_handCalc": "pv=500c flat. All base points 0 on every hole (every net=par). Greenie fold: H1 par3 unclaimed->roll, H2 par4 skip, H3 par3 unclaimed->roll, H4 par5 skip, H5 par3 a1 claims => sweep +3 team points. pointsByHole={5:+3}. So pts: H1..H4 = 0 (settled push rows, all zeros), H5 = +3 => teamASignedPerPlayerCents 1500. PER-PLAYER ROUND SUM a1 = 0+0+0+0+1500 = +1500c, matches the approved round ledger. STATEFUL ATTRIBUTION PROVEN: the carried greenie money appears ONLY on H5 (resolving par-3), $0 on the deferred par-3s H1/H3 (here $0 because their base is also a push). All 5 holes settled => 5 rows incl. 4 explicit zero (push) rows."
+}

@@ -6,7 +6,7 @@
  * Order-independent: holes are sorted by holeNumber before accumulation, so the
  * result is invariant to input ordering (NFR-C6). Money is integer cents.
  */
-import type { FoursomeInput, GameConfig, Ledger } from './types.js';
+import type { FoursomeInput, GameConfig, Ledger, PerHoleMoney } from './types.js';
 import { holeNetPointsA, pointValueCents } from './games/guyan-2v2.js';
 import { greenieFold } from './modifiers/greenie.js';
 import { polieActive, poliePoints } from './modifiers/polie.js';
@@ -63,6 +63,13 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
   // active check out of the loop, same as polie.
   const sandieOn = sandieActive(config);
 
+  // Per-hole money decomposition (Story 3-3). Recorded for exactly the holes
+  // that pass the complete-cell gate below (1:1 with what moves `cross`), so the
+  // per-player sum of these rows equals `perPlayerCents` by construction. A
+  // settled push (pts===0) records an all-zero row; an unsettled hole records
+  // none. Additive: does not change `cross`/`perPlayerCents`/`totalCents`.
+  const perHole: PerHoleMoney[] = [];
+
   const members = [teamA[0], teamA[1], teamB[0], teamB[1]];
   for (const hole of holes) {
     // Complete-cell gate (INTENTIONAL, matches Wolf Cup best-ball-2v2 + the
@@ -79,9 +86,32 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
       (pointsByHole.get(hole.holeNumber) ?? 0) +
       (polieOn ? poliePoints(hole, teamA, teamB, config) : 0) +
       (sandieOn ? sandiePoints(hole, teamA, teamB, config) : 0);
-    if (pts === 0) continue;
 
     const pv = pointValueCents(config.pointValueSchedule, hole.holeNumber);
+
+    // Record this settled hole's per-player money (Story 3-3). A teamA player
+    // nets pts*pv, a teamB player -pts*pv (== 2*half, the per-player view of the
+    // 4-cell cross movement below). Captured BEFORE the pts===0 short-circuit so
+    // a push hole still emits a zero row (a halved hole reads $0, not unsettled).
+    // The odd-pv throw stays gated behind pts!==0 (below) so push holes never
+    // trip it — behavior on settled-money holes is byte-identical to before.
+    const teamASignedPerPlayerCents = pts * pv;
+    // Normalize the teamB negation so a push hole (0) yields +0, not -0 (−0
+    // breaks strict equality / toEqual and is a needless serialization quirk).
+    const teamBSigned = teamASignedPerPlayerCents === 0 ? 0 : -teamASignedPerPlayerCents;
+    const holePerPlayer: Record<string, number> = {};
+    for (const a of teamA) holePerPlayer[a] = teamASignedPerPlayerCents;
+    for (const b of teamB) holePerPlayer[b] = teamBSigned;
+    perHole.push({
+      holeNumber: hole.holeNumber,
+      teamPointsA: pts,
+      pointValueCents: pv,
+      teamASignedPerPlayerCents,
+      perPlayerCents: holePerPlayer,
+    });
+
+    if (pts === 0) continue;
+
     if (pv % 2 !== 0) {
       throw new Error(`pointValueCents must be even (whole-dollar) for the 2v2 split; got ${pv}`);
     }
@@ -107,5 +137,5 @@ export function computeFoursome(config: GameConfig, input: FoursomeInput): Ledge
     }
   }
 
-  return { cross, perPlayerCents, totalCents };
+  return { cross, perPlayerCents, totalCents, perHole };
 }

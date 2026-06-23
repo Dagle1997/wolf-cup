@@ -48,7 +48,8 @@ import type {
 import { parseGameConfig, perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
 import { resolveFoursomeTeams } from './foursome-teams.js';
 import { deriveCurrentClaims } from './claim-write.js';
-import type { HoleClaims } from '../engine/games/types.js';
+import type { HoleClaims, PerHoleMoney } from '../engine/games/types.js';
+import { f1MoneyEnabled } from '../lib/env.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -310,7 +311,7 @@ type SettleFoursomeArgs = {
 };
 
 type SettleFoursomeResult =
-  | { kind: 'ok'; edges: SettlementEdge[] }
+  | { kind: 'ok'; edges: SettlementEdge[]; perHole: PerHoleMoney[] }
   | { kind: 'unsettleable'; reason: string; detail: string };
 
 /**
@@ -459,7 +460,15 @@ async function settleFoursome(
     // `asymmetric_2v2_ledger` guard must surface as a per-foursome unsettleable,
     // never an uncaught event-wide crash.
     const sourceId = `${roundId}:${foursomeNumber}`;
-    return { kind: 'ok', edges: ledgerToEdges(ledger, teamSplit, { sourceId }) };
+    // perHole (Story 3-3): the additive per-hole money decomposition computeFoursome
+    // always populates. Carried alongside edges so the per-hole money surface
+    // settles through the EXACT same pinned path as the round-level edges (the
+    // existing caller computeF1EventEdges reads only `.edges` and ignores this).
+    return {
+      kind: 'ok',
+      edges: ledgerToEdges(ledger, teamSplit, { sourceId }),
+      perHole: ledger.perHole ?? [],
+    };
   } catch (err) {
     // Allocation throws (corrupt CH / bad stroke index) OR the engine fails closed
     // on an unsupported/invalid resolved config or a structural anomaly (e.g.
@@ -493,4 +502,141 @@ export async function computeF1PerPlayerNet(
     netByPlayer.set(e.fromPlayerId, (netByPlayer.get(e.fromPlayerId) ?? 0) - e.cents);
   }
   return { isF1: res.isF1, lockState: res.lockState, netByPlayer };
+}
+
+/**
+ * Per-hole F1 money for ONE player's foursome in ONE round (Story 3-3) — the
+ * scorecard `moneyNet` source. Settles ONLY through the pinned chokepoint
+ * (`settleFoursome` → `computeFoursome`), so the per-hole money can never diverge
+ * from the round-level F1 settlement (`computeF1EventEdges`). Values are
+ * PLAYER-SIGNED cents (positive = the player's team won that hole's money).
+ *
+ * The returned map has ONE entry per SETTLED hole (1:1 with the engine's per-hole
+ * rows), INCLUDING an explicit `0` for a settled push; it OMITS unsettled /
+ * not-yet-scored holes — so a consumer's `map.has(n)` distinguishes a settled
+ * "$0" from "not settled" (the scorecard renders the former as $0, the latter as
+ * "—"). Recompute-on-read from the PINNED inputs (AC2 money-safety invariant): a
+ * later course/rating/HI edit cannot move a pinned round's per-hole money.
+ *
+ * Returns `null` (NOT an empty map, NOT zeros) when money must not be shown:
+ *   - the event is not an F1 event;
+ *   - money is not exposed (`!f1MoneyEnabled()` OR the event is `unlocked` —
+ *     scores-only, mirroring the leaderboard/foursome-results exposure gate);
+ *   - the round is missing / not pinned;
+ *   - the player is not in any foursome of the round;
+ *   - the player's foursome is unsettleable (fail-closed: missing/corrupt pin,
+ *     missing handicap, engine throw).
+ * Tenant-scoped on every query; never throws (mirrors the chokepoint isolation).
+ */
+export async function computeF1PerHoleMoneyForPlayer(
+  txOrDb: Tx | Db,
+  args: { roundId: string; playerId: string; tenantId: string },
+): Promise<Map<number, number> | null> {
+  const { roundId, playerId, tenantId } = args;
+
+  // (1) Round → eventId + eventRoundId (tenant-scoped).
+  const roundRows = await txOrDb
+    .select({ eventId: rounds.eventId, eventRoundId: rounds.eventRoundId })
+    .from(rounds)
+    .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, tenantId)))
+    .limit(1);
+  if (roundRows.length === 0) return null;
+  const { eventId, eventRoundId } = roundRows[0]!;
+  if (eventId === null || eventRoundId === null) return null; // v1.5 standalone round
+
+  // (2) Exposure gate — mirror the leaderboard/foursome-results: an F1 event in
+  // LOCKED money mode + the env flag on. Otherwise scores-only → null.
+  const eventCfgRows = await txOrDb
+    .select({ lockState: gameConfig.lockState })
+    .from(gameConfig)
+    .where(
+      and(
+        eq(gameConfig.level, 'event'),
+        eq(gameConfig.refId, eventId),
+        eq(gameConfig.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  if (eventCfgRows.length === 0) return null; // not an F1 event
+  const lockState = eventCfgRows[0]!.lockState === 'unlocked' ? 'unlocked' : 'locked';
+  if (!f1MoneyEnabled() || lockState !== 'locked') return null;
+
+  // (3) Event round → holesToPlay (in-play filter, 9 vs 18).
+  const erRows = await txOrDb
+    .select({ holesToPlay: eventRounds.holesToPlay })
+    .from(eventRounds)
+    .where(and(eq(eventRounds.id, eventRoundId), eq(eventRounds.tenantId, tenantId)))
+    .limit(1);
+  if (erRows.length === 0) return null;
+  const holesToPlay = erRows[0]!.holesToPlay;
+
+  // (4) The pin (settlement reads ONLY the pin). Missing/corrupt → fail-closed null.
+  const pinRows = await txOrDb
+    .select({
+      resolvedConfigJson: roundPins.resolvedConfigJson,
+      perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
+      courseRevisionId: roundPins.courseRevisionId,
+      tee: roundPins.tee,
+    })
+    .from(roundPins)
+    .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, tenantId)))
+    .limit(1);
+  if (pinRows.length === 0) return null;
+  const pin = parsePin(pinRows[0]!);
+  if (!pin) return null;
+
+  // (5) Course holes from the PINNED course revision → si/par maps (in-play only).
+  const holeRows = await txOrDb
+    .select({ holeNumber: courseHoles.holeNumber, par: courseHoles.par, si: courseHoles.si })
+    .from(courseHoles)
+    .where(
+      and(
+        eq(courseHoles.courseRevisionId, pin.courseRevisionId),
+        eq(courseHoles.tenantId, tenantId),
+      ),
+    )
+    .orderBy(asc(courseHoles.holeNumber));
+  const holesInPlay = holeRows.filter((h) => h.holeNumber <= holesToPlay);
+  if (holesInPlay.length === 0) return null;
+  const siByHole = new Map(holesInPlay.map((h) => [h.holeNumber, h.si]));
+  const parByHole = new Map(holesInPlay.map((h) => [h.holeNumber, h.par]));
+
+  // (6) The player's foursome (pairing) in this event round.
+  const pairingRows = await txOrDb
+    .select({ id: pairings.id, foursomeNumber: pairings.foursomeNumber })
+    .from(pairings)
+    .innerJoin(pairingMembers, eq(pairingMembers.pairingId, pairings.id))
+    .where(
+      and(
+        eq(pairings.eventRoundId, eventRoundId),
+        eq(pairings.tenantId, tenantId),
+        eq(pairingMembers.playerId, playerId),
+        eq(pairingMembers.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  if (pairingRows.length === 0) return null; // player not in any foursome of the round
+  const { id: pairingId, foursomeNumber } = pairingRows[0]!;
+
+  // (7) Settle THIS foursome through the pinned chokepoint. settleFoursome never
+  // throws on bad foursome data (returns unsettleable); the try is belt-and-braces.
+  let result: SettleFoursomeResult;
+  try {
+    result = await settleFoursome(
+      txOrDb,
+      { roundId, pairingId, foursomeNumber, pin, siByHole, parByHole },
+      tenantId,
+    );
+  } catch {
+    return null;
+  }
+  if (result.kind !== 'ok') return null; // unsettleable foursome → fail-closed
+
+  // (8) Player-signed per-hole map: one entry per settled hole (incl. explicit 0).
+  const map = new Map<number, number>();
+  for (const h of result.perHole) {
+    const cents = h.perPlayerCents[playerId];
+    if (cents !== undefined) map.set(h.holeNumber, cents);
+  }
+  return map;
 }

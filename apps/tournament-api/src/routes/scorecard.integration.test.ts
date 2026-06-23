@@ -56,6 +56,7 @@ const {
   roundPins,
   holeScores,
   holeClaimWrites,
+  gameConfig,
 } = await import('../db/schema/index.js');
 const { scorecardRouter } = await import('./scorecard.js');
 const { requestIdMiddleware } = await import('../middleware/request-id.js');
@@ -240,6 +241,8 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  vi.unstubAllEnvs();
+  await db.delete(gameConfig);
   await db.delete(holeClaimWrites);
   await db.delete(holeScores);
   await db.delete(roundPins);
@@ -376,5 +379,187 @@ describe('GET /api/rounds/:roundId/players/:playerId/scorecard', () => {
     const r2 = await app.request(url(s.roundId, 'not-a-uuid'), { method: 'GET' });
     expect(r2.status).toBe(400);
     expect(((await r2.json()) as { code: string }).code).toBe('invalid_player_id');
+  });
+});
+
+// ── Story 3-3: per-hole F1 money on the scorecard ─────────────────────────────
+// Completes the foursome (target+viewer = team A slots 1&2, two new players =
+// team B slots 3&4), adds an event-level F1 game_config + a pin (all CH=0 so
+// net==gross) + base-flat scores. The integration course pars for holes 1-6
+// ([4,4,3,5,4,4]) match the guyan-2v2-base-flat fixture, so team A player a1
+// (= target) earns the APPROVED golden per-hole money: +5/+15/-20/+20/-25/+20.
+
+const F1_CONFIG = {
+  scope: 'foursome',
+  game: 'guyan-2v2',
+  pointValueSchedule: { kind: 'flat', cents: 500 },
+  modifiers: [{ type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } }],
+  configVersion: 1,
+};
+// base-flat per-hole net by player slot (a1=target, a2=viewer, b1, b2).
+const BASE_FLAT_NETS: Array<[number, number, number, number, number]> = [
+  // [hole, a1, a2, b1, b2]
+  [1, 3, 5, 3, 6],
+  [2, 3, 5, 4, 4],
+  [3, 3, 4, 2, 3],
+  [4, 5, 4, 6, 5],
+  [5, 3, 6, 2, 5],
+  [6, 3, 4, 5, 6],
+];
+// approved per-hole money (cents) for target (a1): holes 1-6, null elsewhere.
+const TARGET_MONEY_CENTS: Record<number, number> = { 1: 500, 2: 1500, 3: -2000, 4: 2000, 5: -2500, 6: 2000 };
+
+async function addF1(
+  s: SeedIds,
+  opts: { lockState?: 'locked' | 'unlocked'; nets?: Array<[number, number, number, number, number]> } = {},
+): Promise<void> {
+  const now = Date.now();
+  const lockState = opts.lockState ?? 'locked';
+  const nets = opts.nets ?? BASE_FLAT_NETS;
+  const b1 = randomUUID();
+  const b2 = randomUUID();
+  for (const [id, name] of [[b1, 'B1'], [b2, 'B2']] as const) {
+    await db.insert(players).values({
+      id, isOrganizer: false, createdAt: now, name, manualHandicapIndex: null,
+      tenantId: TENANT_ID, contextId: CTX,
+    });
+  }
+  // The pairing already exists (seed()); complete it with slots 3 & 4.
+  const pr = await db.select({ id: pairings.id }).from(pairings).where(eq(pairings.eventRoundId, s.eventRoundId)).limit(1);
+  const pairingId = pr[0]!.id;
+  await db.insert(pairingMembers).values([
+    { pairingId, playerId: b1, slotNumber: 3, tenantId: TENANT_ID, contextId: CTX },
+    { pairingId, playerId: b2, slotNumber: 4, tenantId: TENANT_ID, contextId: CTX },
+  ]);
+  // Event-level F1 game_config (the dual-read routing key + lock state).
+  await db.insert(gameConfig).values({
+    id: randomUUID(), level: 'event', refId: s.eventId, configJson: JSON.stringify({ ...F1_CONFIG, lockState }),
+    seedRuleSetRevisionId: null, lockState, configVersion: F1_CONFIG.configVersion,
+    createdAt: now, updatedAt: now, tenantId: TENANT_ID, contextId: CTX,
+  });
+  // Pin: CH = 0 for all four (net == gross).
+  const perPlayer: Record<string, { hi: number; ch: number }> = {
+    [s.targetId]: { hi: 0, ch: 0 }, [s.viewerId]: { hi: 0, ch: 0 }, [b1]: { hi: 0, ch: 0 }, [b2]: { hi: 0, ch: 0 },
+  };
+  await db.insert(roundPins).values({
+    roundId: s.roundId, resolvedConfigJson: JSON.stringify({ ...F1_CONFIG, lockState }),
+    seedRuleSetRevisionId: null, courseRevisionId: s.courseRevId, tee: 'blue',
+    perPlayerHandicapsJson: JSON.stringify(perPlayer), teamCompositionJson: null,
+    createdAt: now, tenantId: TENANT_ID, contextId: CTX,
+  });
+  // Scores: gross = net (CH=0). Only the supplied holes are scored; the rest unplayed.
+  const bySlot = [s.targetId, s.viewerId, b1, b2];
+  for (const [hole, ...holeNets] of nets) {
+    for (let i = 0; i < 4; i++) {
+      await db.insert(holeScores).values({
+        id: randomUUID(), roundId: s.roundId, playerId: bySlot[i]!, holeNumber: hole,
+        grossStrokes: holeNets[i]!, putts: 2, scorerPlayerId: s.viewerId, clientEventId: `m-${i}-${hole}`,
+        createdAt: now, updatedAt: now, tenantId: TENANT_ID, contextId: CTX,
+      });
+    }
+  }
+}
+
+describe('GET scorecard — per-hole F1 money (Story 3-3)', () => {
+  test('locked F1 + flag ON: moneyNet matches the approved golden on settled holes, null on unplayed', async () => {
+    vi.stubEnv('TOURNAMENT_F1_MONEY_ENABLED', 'true');
+    const s = await seed();
+    await addF1(s, { lockState: 'locked' });
+    const app = buildApp(s.viewerId);
+    const res = await app.request(url(s.roundId, s.targetId), { method: 'GET' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { holes: ScorecardHole[] };
+    for (const h of body.holes) {
+      if (h.holeNumber <= 6) {
+        expect(h.moneyNet).toBe(TARGET_MONEY_CENTS[h.holeNumber]);
+      } else {
+        expect(h.moneyNet).toBeNull(); // unplayed → unsettled → null (never $0)
+      }
+    }
+  });
+
+  test('flag OFF: moneyNet null on every hole (3-2 parity, scores-only)', async () => {
+    // no stubEnv → flag unset
+    const s = await seed();
+    await addF1(s, { lockState: 'locked' });
+    const app = buildApp(s.viewerId);
+    const res = await app.request(url(s.roundId, s.targetId), { method: 'GET' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { holes: ScorecardHole[] };
+    for (const h of body.holes) expect(h.moneyNet).toBeNull();
+  });
+
+  test('event UNLOCKED (flag on): moneyNet null on every hole (scores-only mode)', async () => {
+    vi.stubEnv('TOURNAMENT_F1_MONEY_ENABLED', 'true');
+    const s = await seed();
+    await addF1(s, { lockState: 'unlocked' });
+    const app = buildApp(s.viewerId);
+    const res = await app.request(url(s.roundId, s.targetId), { method: 'GET' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { holes: ScorecardHole[] };
+    for (const h of body.holes) expect(h.moneyNet).toBeNull();
+  });
+
+  test('settled PUSH hole preserves moneyNet 0 (NOT null/—); unplayed stays null', async () => {
+    vi.stubEnv('TOURNAMENT_F1_MONEY_ENABLED', 'true');
+    const s = await seed();
+    // Hole 1 (par 4): all four players net 4 → low tie / skin 0 / team-total tie /
+    // net-skins all-par no-blood → pts 0 → a settled PUSH (money 0, not unsettled).
+    await addF1(s, { lockState: 'locked', nets: [[1, 4, 4, 4, 4]] });
+    const app = buildApp(s.viewerId);
+    const res = await app.request(url(s.roundId, s.targetId), { method: 'GET' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { holes: ScorecardHole[] };
+    const h1 = body.holes.find((h) => h.holeNumber === 1)!;
+    expect(h1.moneyNet).toBe(0); // settled push → explicit $0, never erased to null
+    const h2 = body.holes.find((h) => h.holeNumber === 2)!;
+    expect(h2.moneyNet).toBeNull(); // unplayed → unsettled → null
+  });
+});
+
+describe('GET scorecard — pinned course revision authority (Story 3-3 divergence fix)', () => {
+  test('par/si/net come from the PINNED revision, not a post-pin event_round course edit', async () => {
+    const s = await seed();
+    const now = Date.now();
+    // Pin the round to the ORIGINAL revision (s.courseRevId; si[hole]=hole) with target ch=5.
+    await db.insert(roundPins).values({
+      roundId: s.roundId,
+      resolvedConfigJson: '{}',
+      seedRuleSetRevisionId: null,
+      courseRevisionId: s.courseRevId,
+      tee: 'blue',
+      perPlayerHandicapsJson: JSON.stringify({ [s.targetId]: { hi: 5, ch: 5 } }),
+      teamCompositionJson: null,
+      createdAt: now,
+      tenantId: TENANT_ID,
+      contextId: CTX,
+    });
+    // A DIFFERENT revision (reversed SI, par 5) that the event_round is later
+    // edited to point at — the B3 edit-round-course path AFTER the pin.
+    const courseId2 = randomUUID();
+    const rev2 = randomUUID();
+    await db.insert(courses).values({ id: courseId2, name: 'Edited', clubName: 'Edited', createdAt: now, tenantId: TENANT_ID, contextId: CTX });
+    await db.insert(courseRevisions).values({
+      id: rev2, courseId: courseId2, revisionNumber: 2, sourceUrl: null, extractionDate: null,
+      verified: false, outTotal: 36, inTotal: 36, courseTotal: 72, createdAt: now, tenantId: TENANT_ID, contextId: CTX,
+    });
+    for (let n = 1; n <= 18; n++) {
+      await db.insert(courseHoles).values({
+        id: randomUUID(), courseRevisionId: rev2, holeNumber: n,
+        par: 5, si: 19 - n, yardagePerTeeJson: '{}', tenantId: TENANT_ID, contextId: CTX,
+      });
+    }
+    await db.update(eventRounds).set({ courseRevisionId: rev2 }).where(eq(eventRounds.id, s.eventRoundId));
+
+    const app = buildApp(s.viewerId);
+    const res = await app.request(url(s.roundId, s.targetId), { method: 'GET' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { holes: ScorecardHole[] };
+    const h1 = body.holes.find((h) => h.holeNumber === 1)!;
+    // PINNED rev hole 1: par 4, si 1 → ch5 receives a stroke. The edited rev2 would
+    // give par 5 + si 18 → 0 strokes; the scorecard must IGNORE rev2 (use the pin),
+    // so net display can never diverge from the pinned money settlement.
+    expect(h1.par).toBe(4);
+    expect(h1.relativeStrokes).toBe(1);
   });
 });

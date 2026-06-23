@@ -9,8 +9,12 @@
  * never diverge from the money engine's net (both allocate from the PINNED
  * course handicap; reads never re-derive CH from a live HI).
  *
- * `moneyNet` is ALWAYS null here — per-hole F1 money is the Story 3-3 / Epic-4
- * seam. The builder never fabricates 0/$0; the 3-1 component renders null → "—".
+ * `moneyNet` (Story 3-3) is the player's per-hole F1 money in CENTS, sourced
+ * through the single F1 chokepoint (`computeF1PerHoleMoneyForPlayer`) so it can
+ * never diverge from the settled event money. It is null when money must not be
+ * shown (non-F1, not exposed / event unlocked = scores-only, unpinned, player
+ * not in a foursome, or unsettleable) and a settled `0` on a push hole; the
+ * builder never fabricates 0/$0. The 3-1 component renders null → "—", 0 → "$0".
  */
 import { and, eq } from 'drizzle-orm';
 import type { db as DbType } from '../db/index.js';
@@ -23,6 +27,7 @@ import {
 } from '../db/schema/index.js';
 import { allocateStrokesFromCourseHandicap } from '../engine/handicap-strokes.js';
 import { deriveCurrentClaims } from './claim-write.js';
+import { computeF1PerHoleMoneyForPlayer } from './games-money.js';
 
 type Db = typeof DbType;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -32,7 +37,8 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
  * `ScorecardHole` (apps/tournament-web/src/types/scorecard.ts) — NEVER a
  * cross-app import (FD-1/FD-2). The API always emits every field; the web type
  * marks several optional for the component's convenience, which accepts these
- * always-present values. `moneyNet` is always null in Story 3-2 (the 3-3 seam).
+ * always-present values. `moneyNet` (Story 3-3) is per-hole F1 money in cents, or
+ * null when money isn't exposed / the hole isn't settled.
  */
 export interface ScorecardHole {
   holeNumber: number;
@@ -78,7 +84,9 @@ export class ScorecardDataError extends Error {
  *  - No pin / null ch ⇒ strokes unknown: relativeStrokes 0 AND netScore null
  *    (NOT net=gross), gross still shown. (AC #6)
  *  - hasGreenie/hasPolie/hasSandie from deriveCurrentClaims, always booleans. (AC #7)
- *  - moneyNet always null (3-3 seam). (AC #8)
+ *  - moneyNet (Story 3-3) = per-hole F1 money cents via the chokepoint; null when
+ *    not exposed (non-F1 / unlocked / flag off / unsettleable) or hole unsettled;
+ *    a settled push hole is 0 (read via map.has, never coalesced).
  *
  * All reads are tenant-scoped. Caller (route) is responsible for auth + the
  * player-in-round check; this builder assumes the round exists (it throws
@@ -90,9 +98,9 @@ export async function buildPlayerScorecard(
 ): Promise<ScorecardHole[]> {
   const { roundId, playerId, tenantId } = args;
 
-  // Round → eventRoundId + holesToPlay (tenant-scoped).
+  // Round → eventRoundId (tenant-scoped).
   const roundRows = await dbOrTx
-    .select({ eventRoundId: rounds.eventRoundId, holesToPlay: rounds.holesToPlay })
+    .select({ eventRoundId: rounds.eventRoundId })
     .from(rounds)
     .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, tenantId)))
     .limit(1);
@@ -104,18 +112,60 @@ export async function buildPlayerScorecard(
     throw new ScorecardDataError(`round has no event_round (v1.5 standalone): ${roundId}`);
   }
 
-  // event_round → courseRevisionId.
+  // event_round → courseRevisionId + holesToPlay. holesToPlay here (the event-
+  // round config) is the SAME in-play source the F1 money path uses
+  // (games-money), so the scorecard's hole set and the money settle the same set.
   const erRows = await dbOrTx
-    .select({ courseRevisionId: eventRounds.courseRevisionId })
+    .select({ courseRevisionId: eventRounds.courseRevisionId, holesToPlay: eventRounds.holesToPlay })
     .from(eventRounds)
     .where(and(eq(eventRounds.id, round.eventRoundId), eq(eventRounds.tenantId, tenantId)))
     .limit(1);
-  const courseRevisionId = erRows[0]?.courseRevisionId;
-  if (courseRevisionId === undefined) {
+  const eventRound = erRows[0];
+  if (eventRound === undefined) {
     throw new ScorecardDataError(`event_round not found: ${round.eventRoundId}`);
   }
+  const holesToPlay = eventRound.holesToPlay;
 
-  // course_holes (par, si) for the revision, tenant-scoped.
+  // Pinned per-player handicap + course revision (may be absent → fail-closed).
+  // Story 3-3 money-safety alignment: when a pin exists we read par/si (and the
+  // CH below) from the PINNED course revision — the SAME revision the F1 money
+  // settles from (computeF1PerHoleMoneyForPlayer). This guarantees the displayed
+  // net/relativeStrokes can NEVER disagree with the per-hole money even after a
+  // post-pin course edit (the pin freezes both). Unpinned rounds fall back to the
+  // event-round's live revision (3-2 behavior; no money is shown for them anyway).
+  const pinRows = await dbOrTx
+    .select({
+      perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
+      courseRevisionId: roundPins.courseRevisionId,
+    })
+    .from(roundPins)
+    .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, tenantId)))
+    .limit(1);
+  let pinnedCh: number | null = null;
+  const pinnedCourseRevisionId = pinRows[0]?.courseRevisionId ?? null;
+  if (pinRows[0] !== undefined) {
+    try {
+      const parsed = JSON.parse(pinRows[0].perPlayerHandicapsJson) as Record<
+        string,
+        PerPlayerHandicap
+      >;
+      const entry = parsed[playerId];
+      if (entry !== undefined && typeof entry.ch === 'number' && Number.isInteger(entry.ch)) {
+        pinnedCh = entry.ch;
+      }
+    } catch {
+      // Malformed pin JSON → fail-closed (strokes unknown, net null). Never throw.
+      pinnedCh = null;
+    }
+  }
+  const hasStrokes = pinnedCh !== null;
+
+  // The course revision the scorecard's par/si come from: the PINNED revision
+  // when pinned (matches the money settlement), else the event-round's live
+  // revision (unpinned / non-F1 — 3-2 behavior).
+  const courseRevisionId = pinnedCourseRevisionId ?? eventRound.courseRevisionId;
+
+  // course_holes (par, si) for the resolved revision, tenant-scoped.
   const holeRows = await dbOrTx
     .select({ holeNumber: courseHoles.holeNumber, par: courseHoles.par, si: courseHoles.si })
     .from(courseHoles)
@@ -143,30 +193,6 @@ export async function buildPlayerScorecard(
   const grossByHole = new Map<number, number>();
   for (const s of scoreRows) grossByHole.set(s.holeNumber, s.grossStrokes);
 
-  // Pinned course handicap for this player (may be absent / null → fail-closed).
-  const pinRows = await dbOrTx
-    .select({ perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson })
-    .from(roundPins)
-    .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, tenantId)))
-    .limit(1);
-  let pinnedCh: number | null = null;
-  if (pinRows[0] !== undefined) {
-    try {
-      const parsed = JSON.parse(pinRows[0].perPlayerHandicapsJson) as Record<
-        string,
-        PerPlayerHandicap
-      >;
-      const entry = parsed[playerId];
-      if (entry !== undefined && typeof entry.ch === 'number' && Number.isInteger(entry.ch)) {
-        pinnedCh = entry.ch;
-      }
-    } catch {
-      // Malformed pin JSON → fail-closed (strokes unknown, net null). Never throw.
-      pinnedCh = null;
-    }
-  }
-  const hasStrokes = pinnedCh !== null;
-
   // Current claims for this player (reuse the canonical append-only fold).
   const claims = await deriveCurrentClaims(dbOrTx, {
     roundId,
@@ -176,10 +202,24 @@ export async function buildPlayerScorecard(
   const claimSet = new Set<string>();
   for (const cl of claims) claimSet.add(`${cl.holeNumber}|${cl.claimType}`);
 
+  // Per-hole F1 money (Story 3-3) — through the single F1 chokepoint, so the
+  // scorecard's $ can never diverge from the settled event money. Returns null
+  // (NOT zeros) when money must not be shown: non-F1 event, money not exposed
+  // (flag off OR event unlocked = scores-only), unpinned round, player not in a
+  // foursome, or an unsettleable foursome (fail-closed). When non-null, the map
+  // has one player-signed entry per SETTLED hole (incl. an explicit 0 for a
+  // push); unsettled holes are absent. Read with `.has()` below so a settled $0
+  // survives (a `?? null` / `|| null` would erase it into "—").
+  const moneyByHole = await computeF1PerHoleMoneyForPlayer(dbOrTx, {
+    roundId,
+    playerId,
+    tenantId,
+  });
+
   // Build holes 1..holesToPlay (9-hole rounds = front nine; the schema carries
   // no front/back / which-nine indicator — see events.ts holes_to_play comment).
   const holes: ScorecardHole[] = [];
-  for (let n = 1; n <= round.holesToPlay; n++) {
+  for (let n = 1; n <= holesToPlay; n++) {
     const courseHole = holeByNumber.get(n);
     if (courseHole === undefined) {
       // A missing course_holes row for an in-play hole is a data error, never a
@@ -204,8 +244,11 @@ export async function buildPlayerScorecard(
       hasGreenie: claimSet.has(`${n}|greenie`),
       hasPolie: claimSet.has(`${n}|polie`),
       hasSandie: claimSet.has(`${n}|sandie`),
-      // Story 3-3 / Epic-4 seam: per-hole F1 money. NEVER fabricate 0/$0 here.
-      moneyNet: null,
+      // Story 3-3: per-hole F1 money (player-signed cents) from the chokepoint.
+      // PRESENCE check — NEVER `?? null` / `|| null`: a settled push hole has the
+      // value 0 (falsy), and coalescing would erase its $0 into "—" (collapsing
+      // the settled-$0-vs-unsettled distinction). Absent map / absent key ⇒ null.
+      moneyNet: moneyByHole !== null && moneyByHole.has(n) ? moneyByHole.get(n)! : null,
     });
   }
   return holes;

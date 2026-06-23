@@ -96,6 +96,31 @@ export type FoursomeInput = {
 };
 
 /**
+ * One settled hole's money decomposition (Story 3-3). Emitted for exactly the
+ * holes whose `pts`/`pv` enter the cross accumulation (the same complete-cell
+ * gate), so `Ledger.perHole` rows correspond 1:1 with what moves
+ * `cross`/`perPlayerCents`. A settled PUSH hole (`teamPointsA === 0`) emits a
+ * row with all-zero money (so a halved hole reads `$0`, distinct from an
+ * unsettled hole, which emits NO row). Per-player loss-less:
+ * `Σ_holes perPlayerCents[p] === Ledger.perPlayerCents[p]`.
+ */
+export type PerHoleMoney = {
+  holeNumber: number;
+  /** teamA-signed net points this hole (positive => team A won the hole). */
+  teamPointsA: number;
+  /** this hole's point value in cents (flat, or front/back-segmented). */
+  pointValueCents: number;
+  /**
+   * ONE teamA player's signed per-hole cents (= teamPointsA * pointValueCents).
+   * NOT the team total (which is 2× this). Named explicitly so a consumer can
+   * never double-count a 2v2 team's swing.
+   */
+  teamASignedPerPlayerCents: number;
+  /** playerId -> this hole's signed cents (zero-sum across the four players). */
+  perPlayerCents: Record<string, number>;
+};
+
+/**
  * The settled foursome ledger. Money is held as a cross-team pairwise matrix
  * (the Wolf Cup money.ts shape): cross[aPlayerId][bPlayerId] = net cents the
  * A player is UP on the B player (positive => B owes A). Within-team pairs are
@@ -109,6 +134,13 @@ export type Ledger = {
   perPlayerCents: Record<string, number>;
   /** sum of |edge| cents (== sum of positive cross cells). */
   totalCents: number;
+  /**
+   * Per-hole money decomposition (Story 3-3). OPTIONAL in the type only so
+   * hand-built `Ledger` literals in unit tests (e.g. ledger-to-edges.test.ts,
+   * which never reads it) stay terse — `computeFoursome` ALWAYS populates it
+   * (one row per settled hole). Consumers that need it can read it directly.
+   */
+  perHole?: PerHoleMoney[];
 };
 
 /** SettlementEdge IR — mirrors engine/bets/types.ts; from PAYS to. */
