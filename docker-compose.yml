@@ -96,6 +96,13 @@ services:
       # _bmad-output/reviews/T1-T8-final-exit-review-codex.md). v1.5 adds
       # foursome_number to team_press_log; flip to empty/false then.
       - TOURNAMENT_PRESSES_DISABLED=${TOURNAMENT_PRESSES_DISABLED:-}
+      # F1 "Rules & Games" money exposure gate (Story 1.4 / 3-3). Empty/absent
+      # default → f1MoneyEnabled()=false: F1 events route through the chokepoint
+      # but reader surfaces (leaderboard money mode / money board / scorecard $)
+      # render "money not yet enabled" instead of dollars. Set to `true` in
+      # /opt/wolf-cup/.env to EXPOSE F1 dollars (e.g. the Pete Dye money board +
+      # the during-round scorecard $ row). Mirrors the kill-switch pattern above.
+      - TOURNAMENT_F1_MONEY_ENABLED=${TOURNAMENT_F1_MONEY_ENABLED:-}
     volumes:
       - tournament_sqlite_data:/app/data
     networks:
