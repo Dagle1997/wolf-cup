@@ -400,10 +400,11 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
         })}
       </div>
 
-      {/* F1 money-mode signpost (Story 1.4, AC8). A locked event is money/P&L
-          mode; an unlocked event is scores-only + private My Money. While F1
-          money is dark-launched (flag off), say so explicitly. */}
-      {f1 ? (
+      {/* Status note — only shown when there's something NOT obvious from the
+          board itself. When money is live, the $ totals speak for themselves, so
+          no banner. We only signpost the non-obvious states: money configured but
+          not switched on yet (so $ is hidden), or a scores-only/private event. */}
+      {f1 && !(f1.mode === 'money' && f1.moneyEnabled) ? (
         <div
           data-testid="f1-mode-signpost"
           style={{
@@ -416,20 +417,10 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
           }}
         >
           {f1.mode === 'money' ? (
-            f1.moneyEnabled ? (
-              <>
-                <strong>Playing for money</strong> — the <strong>$</strong> column is each
-                player’s running total. Tap{' '}
-                <Link to="/events/$eventId/money" params={{ eventId }}>who owes whom</Link>{' '}
-                for the head-to-head settle-up.
-              </>
-            ) : (
-              <>
-                <strong>Playing for money</strong> — money isn’t switched on for this event
-                yet, so the <strong>$</strong> column is hidden. Preview{' '}
-                <Link to="/events/$eventId/money" params={{ eventId }}>the money board</Link>.
-              </>
-            )
+            <>
+              <strong>Money not switched on yet</strong> — the <strong>$</strong> column is
+              hidden until the organizer enables it.
+            </>
           ) : (
             <>
               <strong>Scores only</strong> — money for this event stays private. See{' '}

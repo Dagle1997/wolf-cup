@@ -98,11 +98,14 @@ async function main(): Promise<void> {
   for (let i = 0; i < 4; i++) perPlayerHandicaps[playerIds[i]!] = { hi: crew[i]!.hi, ch: crew[i]!.ch };
   await db.insert(s.roundPins).values({ roundId, resolvedConfigJson: JSON.stringify(guyan), seedRuleSetRevisionId: null, courseRevisionId: courseRevId, tee: 'Dye', perPlayerHandicapsJson: JSON.stringify(perPlayerHandicaps), teamCompositionJson: null, createdAt: now, tenantId: TENANT_ID, contextId: CTX });
 
-  // ── Front-9 scores (gross), tuned for nice notation + real money swings ──
-  // rows: hole -> gross per slot [JH, Cuban, DM, Shooter]
+  // ── Front-9 scores (gross), tuned so David (Team 2) crushes it and Johnny
+  // Hotdog (Team 1) sprays it everywhere — Team 2 wins the 2v2 best-ball on 7 of
+  // 9 holes, so Johnny + Cuban LOSE money while David + Shooter win. Johnny posts
+  // the worst card by a mile (the brochure joke). rows: hole -> gross per slot
+  // [JH, Cuban, DM, Shooter].
   const SCORES: Array<[number, number, number, number, number]> = [
-    [1, 4, 5, 3, 6], [2, 5, 4, 4, 5], [3, 2, 4, 3, 4], [4, 5, 6, 4, 7],
-    [5, 4, 4, 3, 5], [6, 3, 5, 4, 6], [7, 3, 3, 2, 4], [8, 6, 5, 5, 7], [9, 4, 4, 4, 5],
+    [1, 6, 5, 4, 5], [2, 6, 5, 3, 5], [3, 5, 4, 2, 4], [4, 8, 6, 4, 6],
+    [5, 6, 5, 4, 5], [6, 5, 5, 3, 5], [7, 5, 4, 3, 3], [8, 8, 6, 4, 6], [9, 6, 5, 4, 5],
   ];
   for (const [hole, ...gs] of SCORES) {
     for (let i = 0; i < 4; i++) {
@@ -113,9 +116,11 @@ async function main(): Promise<void> {
   // ── A few greenie/polie/sandie claims (append-only log) for the dot flair ──
   const claim = (pid: string, hole: number, claimType: 'greenie' | 'polie' | 'sandie') =>
     db.insert(s.holeClaimWrites).values({ id: id(), roundId, playerId: pid, holeNumber: hole, claimType, op: 'set', scorerPlayerId: playerIds[0]!, clientEventId: `c-${pid}-${hole}-${claimType}`, createdAt: now, tenantId: TENANT_ID, contextId: CTX });
+  // Bonuses go to the players actually making shots — NOT Johnny (he's busy
+  // losing). David + Shooter (Team 2) get the flair.
   await claim(playerIds[2]!, 3, 'greenie'); // David Miller greenie on the par-3 3rd
-  await claim(playerIds[0]!, 7, 'greenie'); // Johnny Hotdog greenie on the par-3 7th
-  await claim(playerIds[0]!, 4, 'sandie');  // Johnny Hotdog sandie on 4 (any par)
+  await claim(playerIds[3]!, 7, 'greenie'); // Shooter McGavin greenie on the par-3 7th
+  await claim(playerIds[3]!, 1, 'sandie');  // Shooter McGavin sandie on 1 (any par)
   await claim(playerIds[2]!, 7, 'polie');   // David Miller polie on the par-3 7th (polie = par-3 only)
 
   // ── Sessions: the scorer (a crew member, for score-entry) + the ORGANIZER
