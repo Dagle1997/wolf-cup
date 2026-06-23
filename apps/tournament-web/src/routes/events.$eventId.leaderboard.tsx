@@ -28,6 +28,8 @@ import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
 import { ScrollableTable } from '../components/scrollable-table';
+import { ScorecardGrid } from '../components/scorecard-grid';
+import type { ScorecardHole } from '../types/scorecard';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -183,14 +185,111 @@ function StatusPill({ status }: { status: string | null }) {
   );
 }
 
+// ---- Per-player expandable scorecard (Story 3-4) --------------------------
+
+/**
+ * The scorecard API (3-2 + 3-3) hole shape. NOTE: `moneyNet` is in INTEGER
+ * CENTS (player-signed; null when money not exposed or the hole is unsettled;
+ * 0 on a settled push). The ScorecardGrid component expects WHOLE DOLLARS, so
+ * the adapter below divides by 100 (exact for whole-dollar F1 Guyan money).
+ */
+type ApiScorecardHole = {
+  holeNumber: number;
+  par: number;
+  grossScore: number | null;
+  netScore: number | null;
+  relativeStrokes: number;
+  hasGreenie: boolean;
+  hasPolie: boolean;
+  hasSandie: boolean;
+  /** INTEGER CENTS (player-signed). null = not exposed/unsettled; 0 = settled push. */
+  moneyNet: number | null;
+};
+
+/** Adapt one API hole (moneyNet CENTS) to a grid hole (moneyNet DOLLARS). */
+function toGridHole(api: ApiScorecardHole): ScorecardHole {
+  return {
+    holeNumber: api.holeNumber,
+    par: api.par,
+    grossScore: api.grossScore,
+    netScore: api.netScore,
+    // cents → whole dollars; null-preserving. F1 Guyan money is whole-dollar
+    // (pv=$5, pts*pv is a multiple of 100), so /100 is an exact integer.
+    moneyNet: api.moneyNet === null ? null : api.moneyNet / 100,
+    hasGreenie: api.hasGreenie,
+    hasPolie: api.hasPolie,
+    hasSandie: api.hasSandie,
+    relativeStrokes: api.relativeStrokes,
+  };
+}
+
+type ScorecardOutcome = { kind: 'ok'; holes: ScorecardHole[] } | { kind: 'unavailable' };
+
+/**
+ * Lazy per-player scorecard panel: fetches GET /api/rounds/:roundId/players/
+ * :playerId/scorecard ONLY while mounted (the parent mounts it only when the row
+ * is expanded), stays fresh with a 15s refetch matching the leaderboard poll, and
+ * renders the ported ScorecardGrid. Inline loading/error/unavailable — never
+ * breaks the rest of the board. `roundId` is the runtime rounds.id (round.id).
+ */
+function RowScorecard({
+  roundId,
+  playerId,
+  showMoney,
+}: {
+  roundId: string;
+  playerId: string;
+  showMoney: boolean;
+}) {
+  const q = useQuery<ScorecardOutcome>({
+    queryKey: ['scorecard', roundId, playerId],
+    queryFn: async () => {
+      const res = await fetch(`/api/rounds/${roundId}/players/${playerId}/scorecard`, {
+        credentials: 'same-origin',
+      });
+      if (res.status === 403 || res.status === 404) return { kind: 'unavailable' };
+      if (!res.ok) throw new Error(`scorecard_fetch_failed_${res.status}`);
+      const body = (await res.json()) as { holes: ApiScorecardHole[] };
+      return { kind: 'ok', holes: body.holes.map(toGridHole) };
+    },
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
+
+  if (q.isPending) {
+    return (
+      <div data-testid="scorecard-loading" style={{ padding: 'var(--space-3)', color: 'var(--color-text-muted)' }}>
+        Loading scorecard…
+      </div>
+    );
+  }
+  if (q.isError) {
+    return (
+      <div style={{ padding: 'var(--space-2)' }}>
+        <ErrorCard title="Couldn't load scorecard." error={q.error} onRetry={q.refetch} />
+      </div>
+    );
+  }
+  if (q.data.kind === 'unavailable') {
+    return (
+      <div data-testid="scorecard-unavailable" style={{ padding: 'var(--space-3)', color: 'var(--color-text-muted)' }}>
+        Scorecard unavailable.
+      </div>
+    );
+  }
+  return <ScorecardGrid holes={q.data.holes} showMoney={showMoney} />;
+}
+
 // ---- Component ------------------------------------------------------------
 
 export type LeaderboardPageProps = { eventId: string; viewerId?: string };
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 
 export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   const [scope, setScope] = useState<ScopeMode>('current');
+  // Story 3-4: single-open expandable per-player scorecard (round scope only).
+  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
 
   const query = useQuery<FetchOutcome>({
     queryKey: ['eventLeaderboard', eventId, scope],
@@ -254,6 +353,16 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   const showCH = data.rows.some((r) => r.courseHandicap != null);
   const f1 = data.f1;
 
+  // Story 3-4: expandable per-player scorecard.
+  // - Only in round scope (a single runtime round.id the scorecard endpoint needs).
+  // - The grid's $ row shows only in money mode AND money enabled (== exactly when
+  //   the API populates moneyNet; 3-3 exposure gate / AC5 — never wider than this).
+  const roundId = data.round?.id ?? null;
+  const showMoney = f1?.mode === 'money' && f1.moneyEnabled === true;
+  // colSpan for the expanded panel row = visible columns:
+  // Rank, Player, HCP, Thru, Gross, Net (6) + CH? + Skins?.
+  const colSpan = 6 + (showCH ? 1 : 0) + (showSkins ? 1 : 0);
+
   return (
     <PageShell title="Leaderboard">
       <BackLink to="/events/$eventId" params={{ eventId }} />
@@ -272,7 +381,12 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
               role="tab"
               aria-selected={active}
               data-testid={`scope-${val}`}
-              onClick={() => setScope(val)}
+              onClick={() => {
+                setScope(val);
+                // Story 3-4: clear any open scorecard so switching scope doesn't
+                // auto-reopen (and refetch) a previously-expanded row on return.
+                setExpandedPlayerId(null);
+              }}
               style={{
                 flex: 1,
                 border: 'none',
@@ -365,20 +479,69 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
           <tbody>
             {data.rows.map((row) => {
               const isViewer = viewerId === row.playerId;
+              // Round scope only: gate on BOTH a runtime round.id AND scope==='round'
+              // (defensive — don't rely solely on the API returning round=null in
+              // event scope; an event-aggregated view must never open a round card).
+              const expandable = roundId !== null && data.scope === 'round';
+              const isOpen = expandedPlayerId === row.playerId;
+              const panelId = `scorecard-panel-${row.playerId}`;
               return (
-                <tr
-                  key={row.playerId}
-                  style={isViewer ? { backgroundColor: 'var(--color-brand-tint)', fontWeight: 700 } : undefined}
-                >
-                  <td style={{ fontVariantNumeric: 'tabular-nums' }}>{rankBadge(row)}</td>
-                  <td>{row.playerName}{isViewer ? ' (you)' : ''}</td>
-                  <td>{formatHandicap(row.handicapIndex)}</td>
-                  {showCH ? <td>{row.courseHandicap != null ? String(row.courseHandicap) : '—'}</td> : null}
-                  <td>{row.throughHole}</td>
-                  <td>{formatScore(row.grossThroughHole)}</td>
-                  <td>{formatScore(row.netThroughHole)}</td>
-                  {showSkins ? <td>{formatSkins(row.skinsCents)}</td> : null}
-                </tr>
+                <Fragment key={row.playerId}>
+                  <tr
+                    style={isViewer ? { backgroundColor: 'var(--color-brand-tint)', fontWeight: 700 } : undefined}
+                  >
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{rankBadge(row)}</td>
+                    <td>
+                      {expandable ? (
+                        <button
+                          type="button"
+                          data-testid={`expand-${row.playerId}`}
+                          aria-expanded={isOpen}
+                          aria-controls={panelId}
+                          onClick={() => setExpandedPlayerId(isOpen ? null : row.playerId)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            minHeight: 'var(--control-height)',
+                            padding: 0,
+                            background: 'none',
+                            border: 'none',
+                            font: 'inherit',
+                            color: 'inherit',
+                            fontWeight: 'inherit',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <span aria-hidden style={{ color: 'var(--color-text-muted)', width: '0.8em', display: 'inline-block' }}>
+                            {isOpen ? '▾' : '▸'}
+                          </span>
+                          {row.playerName}{isViewer ? ' (you)' : ''}
+                        </button>
+                      ) : (
+                        <>{row.playerName}{isViewer ? ' (you)' : ''}</>
+                      )}
+                    </td>
+                    <td>{formatHandicap(row.handicapIndex)}</td>
+                    {showCH ? <td>{row.courseHandicap != null ? String(row.courseHandicap) : '—'}</td> : null}
+                    <td>{row.throughHole}</td>
+                    <td>{formatScore(row.grossThroughHole)}</td>
+                    <td>{formatScore(row.netThroughHole)}</td>
+                    {showSkins ? <td>{formatSkins(row.skinsCents)}</td> : null}
+                  </tr>
+                  {expandable && isOpen ? (
+                    <tr>
+                      <td colSpan={colSpan} style={{ padding: 0, background: 'var(--color-surface-sunken)' }}>
+                        {/* The disclosure region the row's aria-controls points at
+                            (a <tr> is not an appropriate aria-controls target). */}
+                        <div id={panelId} role="region" aria-label={`${row.playerName} scorecard`}>
+                          <RowScorecard roundId={roundId} playerId={row.playerId} showMoney={showMoney} />
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               );
             })}
           </tbody>

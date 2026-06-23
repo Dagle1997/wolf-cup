@@ -679,7 +679,7 @@ development_status:
   3-1-holebadge-scorecard-grid-port: done
   3-2-scorecard-api-gross-net-strokes-claims: done
   3-3-per-hole-f1-money-or-defer: done
-  3-4-during-round-leaderboard-rework-expandable: backlog
+  3-4-during-round-leaderboard-rework-expandable: done
   3-5-weekend-standings-sortable-money-netpar-individual: backlog
 
   # Epic 2 remainder — resumes AFTER Epic 3 per the priority note above.
