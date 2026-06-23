@@ -1103,6 +1103,21 @@ function ScoreEntryForm({
     return filled;
   }, [data.myFoursome.holeScores, members, holesToPlay]);
 
+  // Optimistically-saved holes: the moment a Save's local enqueues succeed we
+  // treat the hole as filled so the form advances to the next hole IMMEDIATELY,
+  // instead of waiting for the server round-trip + the next poll (the old "Save
+  // doesn't advance / feels laggy" gap). The background drain syncs; once the
+  // server confirms a hole, the prune effect below drops it from this set (it's
+  // then covered by serverFilledHoles).
+  const [optimisticFilled, setOptimisticFilled] = useState<Set<number>>(() => new Set());
+  useEffect(() => {
+    setOptimisticFilled((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((h) => !serverFilledHoles.has(h)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [serverFilledHoles]);
+
   // Clear skippedHoles entries that the server has now filled.
   useEffect(() => {
     const next = new Set<number>();
@@ -1119,14 +1134,15 @@ function ScoreEntryForm({
     // changed=false on the next pass.
   }, [serverFilledHoles, skippedHoles]);
 
-  // Compute currentHole.
+  // Compute currentHole. A hole counts as scored if the server has it OR we just
+  // optimistically saved it (so Save advances without waiting for the network).
   const unscoredHoles = useMemo(() => {
     const set = new Set<number>();
     for (let h = 1; h <= holesToPlay; h++) {
-      if (!serverFilledHoles.has(h)) set.add(h);
+      if (!serverFilledHoles.has(h) && !optimisticFilled.has(h)) set.add(h);
     }
     return set;
-  }, [serverFilledHoles, holesToPlay]);
+  }, [serverFilledHoles, optimisticFilled, holesToPlay]);
 
   const eligibleHoles = useMemo(() => {
     const arr: number[] = [];
@@ -1414,10 +1430,20 @@ function ScoreEntryForm({
     // the provider's setState short-circuits on subsequent calls.
     markMutation();
 
+    // Optimistic advance: in forward-scoring mode, mark this hole filled locally
+    // so the form jumps to the next hole NOW (sync runs in the background). When
+    // reviewing/fixing a past hole (manualHole set), stay put.
+    if (manualHole === null) {
+      setOptimisticFilled((prev) => {
+        if (prev.has(currentHole)) return prev;
+        return new Set(prev).add(currentHole);
+      });
+    }
+
     // Trigger drain immediately if online; queue's setTimeout heartbeat
     // handles offline gracefully.
     void queue.drain();
-  }, [allValid, currentHole, currentInputs, data.myFoursome.holeScores, isSaving, markMutation, members, persistClientEventIdCache, roundId, queue]);
+  }, [allValid, currentHole, currentInputs, data.myFoursome.holeScores, isSaving, manualHole, markMutation, members, persistClientEventIdCache, roundId, queue]);
 
   // Toggle a claim for (player, current hole, type). A toggle ON enqueues a
   // `set` op; a toggle OFF enqueues a `remove` op (removal is a queued mutation

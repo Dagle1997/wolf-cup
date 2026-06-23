@@ -460,6 +460,28 @@ describe('ScoreEntryRoute', () => {
     expect(clientEventIds.size).toBe(4); // all distinct
   });
 
+  test('Save advances to the next hole immediately (optimistic) — no refetch needed', async () => {
+    // The fetch mock NEVER changes (the server still reports hole 1 unscored),
+    // so any advance must come from the optimistic-fill, not a refetch.
+    vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
+    await renderRoute();
+    await waitFor(() => screen.getByTestId('current-hole'));
+    expect(screen.getByTestId('current-hole').textContent).toBe('Hole 1');
+
+    for (const idx of [0, 1, 2, 3]) {
+      fireEvent.change(screen.getByTestId(`score-input-${idx}`) as HTMLInputElement, {
+        target: { value: '4' },
+      });
+    }
+    await act(async () => {
+      (screen.getByTestId('save-button') as HTMLButtonElement).click();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('current-hole').textContent).toBe('Hole 2'),
+    );
+  });
+
   test('Skip hole: tap Skip → advances + sessionStorage updated; refetch with hole still missing → UI stays advanced', async () => {
     // First render: hole 1 unscored.
     const detail = buildHappyPathDetail();
