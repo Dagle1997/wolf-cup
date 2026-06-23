@@ -24,6 +24,10 @@ const isCI = !!process.env['CI'];
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
+  // brochure.spec.ts is a manual marketing-capture spec driven ONLY by
+  // brochure.config.ts (its own seed + money flag). Exclude it from the regular
+  // e2e run, which seeds the standard non-F1 fixture and has no brochure handoff.
+  testIgnore: '**/brochure.spec.ts',
   fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
