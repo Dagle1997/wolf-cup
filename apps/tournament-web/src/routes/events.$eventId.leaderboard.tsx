@@ -416,14 +416,23 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
           }}
         >
           {f1.mode === 'money' ? (
-            <>
-              <strong>Money mode</strong> — standings show real money. See{' '}
-              <Link to="/events/$eventId/money" params={{ eventId }}>the money board</Link>
-              {f1.moneyEnabled ? null : ' (money not yet enabled for this event).'}
-            </>
+            f1.moneyEnabled ? (
+              <>
+                <strong>Playing for money</strong> — the <strong>$</strong> column is each
+                player’s running total. Tap{' '}
+                <Link to="/events/$eventId/money" params={{ eventId }}>who owes whom</Link>{' '}
+                for the head-to-head settle-up.
+              </>
+            ) : (
+              <>
+                <strong>Playing for money</strong> — money isn’t switched on for this event
+                yet, so the <strong>$</strong> column is hidden. Preview{' '}
+                <Link to="/events/$eventId/money" params={{ eventId }}>the money board</Link>.
+              </>
+            )
           ) : (
             <>
-              <strong>Scores only</strong> — this event is unlocked; money is private. See{' '}
+              <strong>Scores only</strong> — money for this event stays private. See{' '}
               <Link to="/events/$eventId/my-money" params={{ eventId }}>your own money</Link>.
             </>
           )}
