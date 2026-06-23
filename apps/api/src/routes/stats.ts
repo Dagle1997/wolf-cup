@@ -80,6 +80,9 @@ async function computeSeasonHighlights(
   allPlayers: Array<{ id: number; name: string }>,
 ): Promise<SeasonHighlights> {
   const playerNameById = new Map(allPlayers.map((p) => [p.id, p.name]));
+  // Highlights credit full members only — subs/inactive get no recognition,
+  // matching the gated stats page. eligible == the active roster passed in.
+  const eligible = new Set(allPlayers.map((p) => p.id));
   const seasonRoundFilter = and(
     eq(rounds.seasonId, seasonId),
     eq(rounds.type, 'official'),
@@ -131,6 +134,7 @@ async function computeSeasonHighlights(
   // ---- Most birdies / polies / sandies (with ties) ----
   const birdiesByPlayer = new Map<number, number>();
   for (const r of holeRows) {
+    if (!eligible.has(r.playerId)) continue;
     const par = getCourseHole(r.holeNumber as Parameters<typeof getCourseHole>[0]).par;
     if (r.grossScore === par - 1) {
       birdiesByPlayer.set(r.playerId, (birdiesByPlayer.get(r.playerId) ?? 0) + 1);
@@ -145,13 +149,13 @@ async function computeSeasonHighlights(
     try {
       const parsed = JSON.parse(d.bonusesJson) as { greenies?: number[]; polies?: number[]; sandies?: number[] };
       for (const pid of parsed.greenies ?? []) {
-        greeniesByPlayer.set(pid, (greeniesByPlayer.get(pid) ?? 0) + 1);
+        if (eligible.has(pid)) greeniesByPlayer.set(pid, (greeniesByPlayer.get(pid) ?? 0) + 1);
       }
       for (const pid of parsed.polies ?? []) {
-        poliesByPlayer.set(pid, (poliesByPlayer.get(pid) ?? 0) + 1);
+        if (eligible.has(pid)) poliesByPlayer.set(pid, (poliesByPlayer.get(pid) ?? 0) + 1);
       }
       for (const pid of parsed.sandies ?? []) {
-        sandiesByPlayer.set(pid, (sandiesByPlayer.get(pid) ?? 0) + 1);
+        if (eligible.has(pid)) sandiesByPlayer.set(pid, (sandiesByPlayer.get(pid) ?? 0) + 1);
       }
     } catch {
       // skip malformed JSON
@@ -173,6 +177,7 @@ async function computeSeasonHighlights(
   // ---- Lowest gross / net round (complete 18-hole rounds only) ----
   const grossByRoundPlayer = new Map<string, { roundId: number; playerId: number; gross: number; tee: string | null; date: string; holeCount: number }>();
   for (const r of holeRows) {
+    if (!eligible.has(r.playerId)) continue;
     const key = `${r.roundId}-${r.playerId}`;
     const existing = grossByRoundPlayer.get(key);
     if (existing) {
@@ -287,20 +292,22 @@ async function computeSeasonHighlights(
     const opponents = roster.filter((pid) => pid !== wolfId && pid !== partnerId);
     const holeMoney = lookupHoleMoney(d.roundId, d.groupId, d.holeNumber);
 
-    // Wolf-team pair (wolf + partner, same team)
-    const wolfPair = ensurePair(wolfId, partnerId);
-    wolfPair.holes++;
-    if (d.outcome === 'win') wolfPair.wins++;
-    else if (d.outcome === 'loss') wolfPair.losses++;
-    else if (d.outcome === 'push') wolfPair.pushes++;
-    if (holeMoney) {
-      wolfPair.teamMoney +=
-        (holeMoney.perPlayer.get(wolfId)?.total ?? 0) +
-        (holeMoney.perPlayer.get(partnerId)?.total ?? 0);
+    // Wolf-team pair (wolf + partner, same team) — members only
+    if (eligible.has(wolfId) && eligible.has(partnerId)) {
+      const wolfPair = ensurePair(wolfId, partnerId);
+      wolfPair.holes++;
+      if (d.outcome === 'win') wolfPair.wins++;
+      else if (d.outcome === 'loss') wolfPair.losses++;
+      else if (d.outcome === 'push') wolfPair.pushes++;
+      if (holeMoney) {
+        wolfPair.teamMoney +=
+          (holeMoney.perPlayer.get(wolfId)?.total ?? 0) +
+          (holeMoney.perPlayer.get(partnerId)?.total ?? 0);
+      }
     }
 
     // Opponent-team pair (the leftover two players, same team vs the wolf duo)
-    if (opponents.length === 2) {
+    if (opponents.length === 2 && eligible.has(opponents[0]!) && eligible.has(opponents[1]!)) {
       const opp1 = opponents[0]!;
       const opp2 = opponents[1]!;
       const oppPair = ensurePair(opp1, opp2);
