@@ -50,6 +50,67 @@ function defaultInput(overrides: Partial<CalcSkinsInput> = {}): CalcSkinsInput {
   };
 }
 
+describe('calcSkins — even-per-skin payout (Josh-approved 2026-06-24)', () => {
+  // 3-hole gross course; ties at SI are irrelevant in gross mode.
+  const course3: CourseShape = {
+    tee: NEUTRAL_TEE,
+    holes: [
+      { holeNumber: 1, par: 4, strokeIndex: 1 },
+      { holeNumber: 2, par: 4, strokeIndex: 2 },
+      { holeNumber: 3, par: 4, strokeIndex: 3 },
+    ],
+  };
+  const base = {
+    mode: 'gross' as const,
+    participants: ['A', 'B'],
+    buyInPerParticipantCents: 1000, // 2 players → $20 pot
+    lastHoleUnclaimedResolution: 'split-among-winners' as const,
+    course: course3,
+    handicapsByPlayer: { A: 0, B: 0 },
+    payoutModel: 'even-per-skin' as const,
+  };
+
+  test('every skin is equal; integer remainder → earliest-hole winner', () => {
+    // A wins holes 1 & 2, B wins hole 3 → 3 skins, $20/3 = 666¢ each, rem 2¢.
+    // A = 2×666 + 2(rem, earliest winner = hole 1) = 1334 ; B = 666.
+    const out = calcSkins({ ...base, holeScores: buildScores({ A: [3, 3, 5], B: [4, 4, 4] }) });
+    expect(out.holeWinners.map((h) => h.winnerId)).toEqual(['A', 'A', 'B']);
+    expect(out.holeWinners.every((h) => h.skinValueCents === 666)).toBe(true);
+    expect(out.carries).toEqual([]);
+    const share = (pid: string) => out.potShares.find((p) => p.playerId === pid)?.dollarsCents;
+    expect(share('A')).toBe(1334);
+    expect(share('B')).toBe(666);
+    expect(out.potShares.reduce((s, p) => s + p.dollarsCents, 0)).toBe(2000);
+    expect(out.remainderAttribution).toEqual({ playerId: 'A', remainderCents: 2 });
+  });
+
+  test('NO carry: a tied hole between two wins does not inflate the next skin', () => {
+    // A wins hole 1, hole 2 ties (push, no carry), B wins hole 3 → 2 skins, $10 each.
+    const out = calcSkins({ ...base, holeScores: buildScores({ A: [3, 4, 5], B: [4, 4, 4] }) });
+    expect(out.holeWinners.map((h) => h.winnerId)).toEqual(['A', null, 'B']);
+    expect(out.holeWinners[1]!.skinValueCents).toBe(0); // tied hole carries nothing
+    expect(out.carries).toEqual([]);
+    const share = (pid: string) => out.potShares.find((p) => p.playerId === pid)?.dollarsCents;
+    expect(share('A')).toBe(1000);
+    expect(share('B')).toBe(1000);
+  });
+
+  test('zero skins (all holes tied) → pot refunded split equally among participants', () => {
+    const out = calcSkins({
+      ...base,
+      participants: ['A', 'B', 'C'],
+      handicapsByPlayer: { A: 0, B: 0, C: 0 },
+      holeScores: buildScores({ A: [4, 4, 4], B: [4, 4, 4], C: [4, 4, 4] }),
+    });
+    expect(out.holeWinners.every((h) => h.winnerId === null)).toBe(true);
+    // $30 pot ÷ 3 = $10 each (refund).
+    for (const pid of ['A', 'B', 'C']) {
+      expect(out.potShares.find((p) => p.playerId === pid)?.dollarsCents).toBe(1000);
+    }
+    expect(out.potShares.reduce((s, p) => s + p.dollarsCents, 0)).toBe(3000);
+  });
+});
+
 describe('calcSkins — handicap allowance %', () => {
   // One par-4 at SI 1. Neutral tee → CH = round(HI). A: HI 20 (CH 20), B: HI 0.
   //  @100%: A strokes allocate(20,1)=2 → net 6−2=4; B net 5−0=5 → A wins the skin.

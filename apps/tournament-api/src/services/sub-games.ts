@@ -257,11 +257,12 @@ export async function computeSubGame(
   }
 
   // Parse sub-game config. Defaults if config malformed.
-  let subGameCfg: { mode?: unknown; lastHoleUnclaimedResolution?: unknown } = {};
+  let subGameCfg: { mode?: unknown; lastHoleUnclaimedResolution?: unknown; payoutModel?: unknown } = {};
   try {
     subGameCfg = JSON.parse(subGame.configJson) as {
       mode?: unknown;
       lastHoleUnclaimedResolution?: unknown;
+      payoutModel?: unknown;
     };
   } catch {
     // Use defaults below.
@@ -276,6 +277,12 @@ export async function computeSubGame(
     subGameCfg.lastHoleUnclaimedResolution === 'carry-to-next-round'
       ? 'carry-to-next-round'
       : 'split-among-winners';
+  // Payout model: even-per-skin is the group's game (Josh 2026-06-24), so it is the
+  // DEFAULT here; a sub-game may opt back into the legacy per-hole+carry split. Under
+  // even-per-skin, lastHoleUnclaimedResolution is moot (the full pot is always
+  // distributed within the round).
+  const payoutModel: 'per-hole-carry' | 'even-per-skin' =
+    subGameCfg.payoutModel === 'per-hole-carry' ? 'per-hole-carry' : 'even-per-skin';
 
   // Per-player tee overrides (T10). Only consulted in net / gross_beats_net
   // modes; gross-mode skins ignores `teeByPlayer` entirely so this query
@@ -292,6 +299,7 @@ export async function computeSubGame(
     handicapsByPlayer,
     teeByPlayer,
     handicapAllowancePct,
+    payoutModel,
   };
 
   let result;
@@ -314,6 +322,7 @@ export async function computeSubGame(
     lastHoleUnclaimedResolution,
     buyInPerParticipantCents: subGame.buyInPerParticipant,
     handicapAllowancePct,
+    payoutModel,
   };
   const resultsJson = JSON.stringify(result);
   await tx.insert(subGameResults).values({
