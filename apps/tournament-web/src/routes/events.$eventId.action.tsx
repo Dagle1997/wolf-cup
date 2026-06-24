@@ -228,7 +228,7 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
   return (
     <PageShell title="The Action">
       <BackLink to="/events/$eventId" params={{ eventId }} />
-      <ViewTabs set="standings" active="action" eventId={eventId} />
+      <ViewTabs set="money" active="action" eventId={eventId} />
 
       <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)' }}>
         Post a head-to-head bet against someone else in the event. You back your side; the lower score

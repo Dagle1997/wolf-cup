@@ -45,6 +45,7 @@ type MoneyMatrixResponse = {
   totals: Record<string, number>;
   teamLedger: Ledger;
   individualLedger: Ledger;
+  actionLedger: Ledger;
   computedAt: string;
   visibilityMode: 'open' | 'participant' | 'self_only';
   /** F1 (Story 1.4): present only for F1 events. */
@@ -183,7 +184,10 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
     );
   }
 
-  const { players, totals, teamLedger, individualLedger, f1 } = outcome.data;
+  const { players, totals, teamLedger, individualLedger, actionLedger, f1 } = outcome.data;
+  // Only surface "The Action" ledger when there's actually action money to show
+  // (keeps the board clean for events with no bets).
+  const hasAction = Object.values(actionLedger?.totals ?? {}).some((v) => v !== 0);
   if (players.length === 0) {
     return (
       <PageShell title="Money">
@@ -261,11 +265,14 @@ export function MoneyPage({ eventId, viewerId }: MoneyPageProps) {
       </section>
 
       <p style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-sm)', marginBottom: 'var(--space-3)' }}>
-        Team and individual money are kept separate below; each cell is what the row player is up on the column player.
+        Team, individual{hasAction ? ', and The Action' : ''} money are kept separate below; each cell is what the row player is up on the column player.
       </p>
 
       <LedgerMatrix label="Team / Ball money" players={players} ledger={teamLedger} viewerId={viewerId} />
       <LedgerMatrix label="Individual bets" players={players} ledger={individualLedger} viewerId={viewerId} />
+      {hasAction ? (
+        <LedgerMatrix label="The Action" players={players} ledger={actionLedger} viewerId={viewerId} />
+      ) : null}
     </PageShell>
   );
 }

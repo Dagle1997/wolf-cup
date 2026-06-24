@@ -17,12 +17,14 @@ const STANDINGS_TABS = [
   { key: 'leaderboard', label: 'Leaderboard', to: '/events/$eventId/leaderboard' },
   { key: 'teams', label: 'Teams', to: '/events/$eventId/team-standings' },
   { key: 'match', label: 'Match', to: '/events/$eventId/match-play-standings' },
-  { key: 'action', label: 'Action', to: '/events/$eventId/action' },
 ] as const;
 
+// "The Action" lives in the MONEY hub (it's betting, not standings) so it sits
+// next to Money / Settle Up where its winnings land.
 const MONEY_TABS = [
   { key: 'my-money', label: 'My Money', to: '/events/$eventId/my-money' },
   { key: 'money', label: 'Money', to: '/events/$eventId/money' },
+  { key: 'action', label: 'Action', to: '/events/$eventId/action' },
   { key: 'settle', label: 'Settle Up', to: '/events/$eventId/settle-up' },
 ] as const;
 

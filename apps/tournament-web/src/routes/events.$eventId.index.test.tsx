@@ -128,10 +128,11 @@ describe('EventHomePage', () => {
     });
     expect(screen.getByText(/You're in, Josh\./)).toBeInTheDocument();
     // Consolidated hubs: Standings (folds Leaderboard/Teams/Match) + a money card
-    // (My Money when not in live-money mode) + Bets, Schedule, Photos.
+    // (My Money when not in live-money mode) + The Action, Schedule, Photos.
     expect(screen.getByText('Standings')).toBeInTheDocument();
     expect(screen.getByText('My Money')).toBeInTheDocument();
-    expect(screen.getByText('Bets')).toBeInTheDocument();
+    const actionLink = screen.getByText('The Action').closest('a');
+    expect(actionLink?.getAttribute('href')).toBe('/events/evt-1/action');
     expect(screen.getByText('Schedule')).toBeInTheDocument();
     // T7-4 entry card.
     const galleryLink = screen.getByText('Photos').closest('a');

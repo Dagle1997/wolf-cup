@@ -160,7 +160,7 @@ export type EventHomePageProps = {
 const STANDINGS_CARD = { to: '/events/$eventId/leaderboard' as const, icon: '🏆', title: 'Standings', desc: 'Leaderboard, teams & match play' };
 const MONEY_CARD = { to: '/events/$eventId/money' as const, icon: '💰', title: 'Money', desc: 'The board, your P&L & settle-up' };
 const MY_MONEY_CARD = { to: '/events/$eventId/my-money' as const, icon: '💰', title: 'My Money', desc: 'Your private running total' };
-const BETS_CARD = { to: '/events/$eventId/bets' as const, icon: '🎲', title: 'Bets', desc: 'The Action' };
+const BETS_CARD = { to: '/events/$eventId/action' as const, icon: '🎲', title: 'The Action', desc: 'Post a bet & watch the board' };
 const PHOTOS_CARD = { to: '/events/$eventId/gallery' as const, icon: '📸', title: 'Photos', desc: 'Trip photos' };
 
 function buildEntryCards(moneyEnabled: boolean) {
