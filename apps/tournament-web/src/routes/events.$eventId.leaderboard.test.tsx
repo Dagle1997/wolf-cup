@@ -232,6 +232,21 @@ describe('LeaderboardPage — expandable scorecard (Story 3-4)', () => {
     expect(screen.queryByText('+$5')).not.toBeInTheDocument();
   });
 
+  it('backlog #8: the leaderboard table uses table-layout:fixed so an expanded wide scorecard cannot widen the table', async () => {
+    wireFetch(leaderboard({ mode: 'money' }), { p1: scorecard([{ hole: 1, gross: 4, net: 4, moneyNet: 500 }]) });
+    render('evt1');
+    await waitFor(() => expect(screen.getByTestId('expand-p1')).toBeInTheDocument());
+    // The "To Par" header sits inside the leaderboard table; walk up to the table.
+    const table = screen.getByText('To Par').closest('table');
+    expect(table).not.toBeNull();
+    // Fixed layout is the lever that confines the expanded colSpan scorecard to its
+    // own nested scroll region instead of forcing the outer table (and the
+    // collapsed To-Par/$ columns) wider than the viewport.
+    expect(table).toHaveStyle({ tableLayout: 'fixed' });
+    // Sanity: it still spans the full width.
+    expect(table).toHaveStyle({ width: '100%' });
+  });
+
   it('switching scope clears an open scorecard (no auto-reopen)', async () => {
     wireFetch(leaderboard({ mode: 'money' }), { p1: scorecard([{ hole: 1, gross: 4, net: 4, moneyNet: 500 }]) });
     render('evt1');

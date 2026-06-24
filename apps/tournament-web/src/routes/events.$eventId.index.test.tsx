@@ -161,7 +161,49 @@ describe('EventHomePage', () => {
     const cta = screen.getByTestId('event-home-live-cta');
     expect(cta).toBeInTheDocument();
     expect(cta.getAttribute('href')).toBe('/rounds/rnd-9/score-entry');
-    expect(screen.getByText(/Round 2 is live/)).toBeInTheDocument();
+    // The CTA itself carries the "Round 2 is live" label. (The hero status now
+    // mirrors it too, so scope this assertion to the CTA to stay unambiguous.)
+    expect(cta).toHaveTextContent(/Round 2 is live/);
+  });
+
+  it('hero shows the live state (not a future-date countdown) when liveRound is present but the round date is in the future', async () => {
+    // Round 1 is in_progress (API returns liveRound) but its scheduled date is
+    // 3 days out — organizer started it early. The hero must NOT read
+    // "Round 1 starts in 3 days"; it must lead with the live state.
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...EVENT_FIXTURE,
+          liveRound: { roundId: 'rnd-7', eventRoundId: 'er-1', roundNumber: 1 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    renderWithRouter({ eventId: 'evt-1', nowMs: MAY_8_NY_MIDNIGHT - 3 * 86_400_000 });
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Pinehurst 2026' })).toBeInTheDocument();
+    });
+    // Hero headline leads with live, not the misleading countdown.
+    expect(screen.getByTestId('event-home-hero-status')).toHaveTextContent('Round 1 is live');
+    expect(screen.queryByText(/starts in 3 days/)).toBeNull();
+    // The live CTA is still present and unchanged.
+    const cta = screen.getByTestId('event-home-live-cta');
+    expect(cta.getAttribute('href')).toBe('/rounds/rnd-7/score-entry');
+  });
+
+  it('hero keeps the genuine pre-event countdown when there is NO liveRound', async () => {
+    // No liveRound → the real future-date countdown must still show.
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify(EVENT_FIXTURE), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    renderWithRouter({ eventId: 'evt-1', nowMs: MAY_8_NY_MIDNIGHT - 3 * 86_400_000 });
+    await waitFor(() => {
+      expect(screen.getByText(/Round 1 starts in 3 days/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/is live/)).toBeNull();
   });
 
   it('shows the "Money" hub card (not "My Money") when moneyEnabled', async () => {

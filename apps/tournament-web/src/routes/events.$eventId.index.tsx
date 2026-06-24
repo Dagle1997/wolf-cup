@@ -213,7 +213,15 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
   const { event, rounds, liveRound } = outcome.data;
   const cards = buildEntryCards(outcome.data.moneyEnabled ?? false);
   const now = nowMs ?? Date.now();
-  const countdown = computeCountdown(rounds, now);
+  // When a round is actually in progress (API returns liveRound), the hero
+  // must lead with the live state — never a "starts in N days" countdown.
+  // A round can be live while its scheduled roundDate is still in the future
+  // (organizer started it early), which would otherwise read as a confusing
+  // future-date countdown even though scoring is live. The live CTA below
+  // remains the primary action; this only fixes the hero headline.
+  const countdown = liveRound
+    ? `Round ${liveRound.roundNumber} is live`
+    : computeCountdown(rounds, now);
   const dateRange = formatDateRange(event.startDate, event.endDate, event.timezone);
   // Real name from the API takes precedence; the `viewerName` prop is a test seam.
   const greetName = outcome.data.viewerName ?? viewerName;
@@ -231,7 +239,7 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
         }}
       >
         <div style={{ fontSize: 'var(--font-sm)', opacity: 0.9 }}>{dateRange}</div>
-        <div style={{ marginTop: 4, fontSize: 'var(--font-lg)', fontWeight: 800 }}>{countdown}</div>
+        <div data-testid="event-home-hero-status" style={{ marginTop: 4, fontSize: 'var(--font-lg)', fontWeight: 800 }}>{countdown}</div>
         <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--font-sm)', opacity: 0.95 }}>
           <span aria-hidden>✓ </span>You&apos;re in, {firstName(greetName)}.
         </div>

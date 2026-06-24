@@ -476,7 +476,13 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
       ) : allUnscored ? (
         <EmptyState title="No scores yet." />
       ) : (
-        <ScrollableTable label="Leaderboard"><table style={{ width: '100%' }}>
+        // backlog #8: table-layout:fixed so an expanded row's wide hole-by-hole
+        // scorecard (a min-w-max grid in a colSpan cell) can't widen the table and
+        // push the collapsed To-Par/$ columns off the right edge. With fixed layout
+        // the colspan cell's content overflows INTO its own nested ScrollableTable
+        // scroll region instead of dictating the outer table width. Column widths
+        // come from the header row (#=36, To Par=64, $=64, Player=remaining).
+        <ScrollableTable label="Leaderboard"><table style={{ width: '100%', tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)' }}>
               <th scope="col" style={{ textAlign: 'center', width: 36 }}>#</th>
