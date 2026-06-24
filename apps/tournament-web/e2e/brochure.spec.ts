@@ -170,3 +170,62 @@ test('brochure shots: leaderboard + expanded scorecard + score-entry', async ({ 
 
   expect(true).toBe(true);
 });
+
+// Navigation audit (Josh: "without a bottom bar, higher chance of getting stuck").
+// Drives the scorer through every key transition and asserts reachability — a
+// missing link / failed click here = a dead-end.
+test('navigation: scoring ⇄ hub ⇄ leaderboard ⇄ standings ⇄ bets, no dead-ends', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const fx = JSON.parse(readFileSync(resolve(TMP, 'brochure-handoff.json'), 'utf8')) as BrochureHandoff;
+  const ev = fx.eventId;
+  const ctx = await darkContext(browser, fx.scorerSessionId);
+  const p = await ctx.newPage();
+
+  // Hub renders with the live-round CTA.
+  await p.goto(`/events/${ev}`, { waitUntil: 'networkidle' });
+  await expect(p.getByTestId('event-home-live-cta')).toBeVisible();
+
+  // Hub → score-entry (live CTA).
+  await p.getByTestId('event-home-live-cta').click();
+  await expect(p.getByTestId('score-entry-form')).toBeVisible();
+
+  // score-entry → hub (← Event). score-entry suppresses the global nav, so this
+  // link is the only way back to the hub — the dead-end risk Josh flagged.
+  await p.getByTestId('back-to-event-link').click();
+  await expect(p.getByTestId('event-home-live-cta')).toBeVisible();
+
+  // score-entry → leaderboard (the Leaderboard → link).
+  await p.getByTestId('event-home-live-cta').click();
+  await expect(p.getByTestId('score-entry-form')).toBeVisible();
+  await p.getByTestId('score-leaderboard-link').click();
+  await expect(p.getByTestId('viewtab-leaderboard')).toBeVisible();
+
+  // leaderboard → Teams tab → Match tab (the Standings hub).
+  await p.getByTestId('viewtab-teams').click();
+  await expect(p).toHaveURL(/team-standings/);
+  await p.getByTestId('viewtab-match').click();
+  await expect(p).toHaveURL(/match-play-standings/);
+
+  // standings → hub (BackLink "← Event home").
+  await p.getByRole('link', { name: /Event home/ }).click();
+  await expect(p.getByTestId('event-home-live-cta')).toBeVisible();
+
+  // hub → Bets (user side bets reachable, not stranded).
+  await p.locator(`a[href="/events/${ev}/bets"]`).click();
+  await expect(p).toHaveURL(/\/bets$/);
+
+  // Round-trip: leaderboard → back to scoring (via the hub).
+  await p.goto(`/events/${ev}/leaderboard`, { waitUntil: 'networkidle' });
+  await p.locator(`a[href="/events/${ev}"]`).first().click(); // BackLink → hub
+  await expect(p.getByTestId('event-home-live-cta')).toBeVisible();
+  await p.getByTestId('event-home-live-cta').click();
+  await expect(p.getByTestId('score-entry-form')).toBeVisible();
+
+  // Universal escape: the global "🏌️ Tournament" home link exists on the
+  // leaderboard (and every non-scorer screen).
+  await p.goto(`/events/${ev}/leaderboard`, { waitUntil: 'networkidle' });
+  await expect(p.locator('nav a[href="/"]')).toBeVisible();
+
+  await p.close();
+  await ctx.close();
+});
