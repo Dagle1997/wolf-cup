@@ -168,12 +168,13 @@ describe('privacy: a stakeholders_only bet is NOT broadcast to the event activit
 
     await post(appAs(ids.rick), ids.eventId, body(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben })); // event_wide (default)
     const afterPublic = await db.select().from(activity);
-    expect(afterPublic.length).toBeGreaterThan(0); // public bet announced
+    expect(afterPublic.length).toBeGreaterThan(0); // public bet announced on the feed
+    const countAfterPublic = afterPublic.length;
 
-    await db.delete(activity);
     await post(appAs(ids.rick), ids.eventId, body(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }, 'stakeholders_only'));
     const afterPrivate = await db.select().from(activity);
-    expect(afterPrivate).toHaveLength(0); // private bet must NOT hit the event-wide feed
+    // The private bet must add NO new event-wide feed row (count unchanged).
+    expect(afterPrivate.length).toBe(countAfterPublic);
   });
 });
 
