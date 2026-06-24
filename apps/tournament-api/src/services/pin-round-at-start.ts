@@ -31,6 +31,7 @@ import type { db as DbType } from '../db/index.js';
 import {
   courseRevisions,
   courseTees,
+  events,
   eventRounds,
   pairingMembers,
   pairings,
@@ -83,6 +84,35 @@ export async function pinRoundAtStart(
     return { ok: false, reason: `config:${resolved.reason}` };
   }
   const resolvedConfig = resolved.config;
+
+  // ── (1b) Freeze the event's handicap allowance % into the pinned config. ──
+  // The organizer sets this on the handicaps-lock screen → events.handicap_allowance_pct.
+  // It is the SOURCE OF TRUTH (overrides any value carried in the event-level
+  // game_config). Frozen here, the read path (settleFoursome) takes the % from the
+  // immutable pin — a later edit to the event can never retroactively move money.
+  // A null column leaves resolvedConfig untouched (engine treats absent as 100).
+  const evtRows = await tx
+    .select({ allowancePct: events.handicapAllowancePct })
+    .from(events)
+    .where(and(eq(events.id, eventId), eq(events.tenantId, tenantId)))
+    .limit(1);
+  const eventAllowancePct = evtRows[0]?.allowancePct ?? null;
+  // The events column is the ABSOLUTE source of truth: a valid value is frozen
+  // in; a null OR corrupt/out-of-range value CLEARS any pct that may have been
+  // carried in from the event-level game_config, so the engine default (100)
+  // applies. Validating here (integer, within the config schema's [1,200] bound)
+  // also guarantees we never freeze a value that would fail the pin's config
+  // parse on read and poison the round into a permanent corrupt_pin.
+  if (
+    eventAllowancePct !== null &&
+    Number.isInteger(eventAllowancePct) &&
+    eventAllowancePct >= 1 &&
+    eventAllowancePct <= 200
+  ) {
+    resolvedConfig.handicapAllowancePct = eventAllowancePct;
+  } else {
+    delete resolvedConfig.handicapAllowancePct;
+  }
 
   // ── (2) Course revision + tee for this event round (the default tee). ──
   const erRows = await tx

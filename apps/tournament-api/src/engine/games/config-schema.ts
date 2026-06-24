@@ -49,6 +49,11 @@ export const gameConfigSchema = z
     modifiers: z.array(modifierSchema),
     cap: z.number().int().nullable().optional(),
     lockState: z.enum(['locked', 'unlocked']).optional(),
+    // Handicap allowance % (integer, e.g. 80). Optional → a config written before
+    // the allowance feature is absent and the engine treats it as 100 (no
+    // reduction). Bounds [1,200] keep a fat-fingered value from zeroing or
+    // doubling everyone's strokes; the UI clamps to 50–150.
+    handicapAllowancePct: z.number().int().min(1).max(200).optional(),
     configVersion: z.number().int(),
   })
   .strict();

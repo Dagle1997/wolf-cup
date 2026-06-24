@@ -128,6 +128,13 @@ type LeaderboardResponse = {
   computedAt: string;
   /** F1 leaderboard money mode (Story 1.4, AC8); omitted for non-F1 events. */
   f1?: { lockState: 'locked' | 'unlocked'; mode: 'money' | 'scores_only'; moneyEnabled: boolean };
+  /**
+   * Event-level handicap-lock metadata for the participant-facing
+   * "Handicaps locked as of {date} at {pct}%" leaderboard note. `handicapsLockedAt`
+   * is the unix-ms cutoff (null when not locked); `handicapAllowancePct` is the
+   * integer % the money engine applies (null when unset → treated as 100).
+   */
+  event: { handicapsLockedAt: number | null; handicapAllowancePct: number | null };
 };
 
 export const eventsLeaderboardRouter = new Hono();
@@ -154,13 +161,23 @@ eventsLeaderboardRouter.get(
     // unknown events (it 403s instead). For trip-day clarity we return
     // 404 here when the event id doesn't resolve.
     const eventRow = await db
-      .select({ id: events.id })
+      .select({
+        id: events.id,
+        handicapLockDate: events.handicapLockDate,
+        handicapAllowancePct: events.handicapAllowancePct,
+      })
       .from(events)
       .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)))
       .limit(1);
     if (eventRow.length === 0) {
       return c.json({ error: 'not_found', code: 'event_not_found', requestId }, 404);
     }
+    // Event-level handicap-lock metadata, surfaced on every leaderboard response
+    // for the participant-facing "locked as of … at N%" note.
+    const eventMeta = {
+      handicapsLockedAt: eventRow[0]!.handicapLockDate ?? null,
+      handicapAllowancePct: eventRow[0]!.handicapAllowancePct ?? null,
+    };
 
     let opts: LeaderboardOpts;
     let resolvedRound: RoundSummary | null = null;
@@ -179,6 +196,7 @@ eventsLeaderboardRouter.get(
           round: null,
           scope: 'round',
           computedAt: new Date().toISOString(),
+          event: eventMeta,
           ...(f1Mode.isF1
             ? { f1: { lockState: f1Mode.lockState, mode: f1Mode.mode, moneyEnabled: f1Mode.moneyEnabled } }
             : {}),
@@ -244,6 +262,7 @@ eventsLeaderboardRouter.get(
         round: resolvedRound,
         scope: opts.scope,
         computedAt: new Date().toISOString(),
+        event: eventMeta,
         ...(f1Mode.isF1
           ? { f1: { lockState: f1Mode.lockState, mode: f1Mode.mode, moneyEnabled: f1Mode.moneyEnabled } }
           : {}),

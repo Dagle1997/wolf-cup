@@ -79,7 +79,7 @@ adminEventHandicapsRouter.get('/events/:eventId/handicaps', async (c) => {
     return c.json({ error: 'forbidden', code: 'not_event_organizer', requestId }, 403);
   }
 
-  const evt = (await db.select({ lockDate: events.handicapLockDate }).from(events)
+  const evt = (await db.select({ lockDate: events.handicapLockDate, allowancePct: events.handicapAllowancePct }).from(events)
     .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID))).limit(1))[0];
 
   const roster = await loadRoster(eventId);
@@ -110,6 +110,9 @@ adminEventHandicapsRouter.get('/events/:eventId/handicaps', async (c) => {
   return c.json({
     eventId,
     lockDate: evt?.lockDate ?? null,
+    // Handicap allowance % the money engine applies (null = unset → engine treats
+    // as 100). The lock screen's % input reads this; the leaderboard shows it.
+    allowancePct: evt?.allowancePct ?? null,
     ghinConfigured: ghinClient != null,
     players: roster.map((p) => {
       const locked = lockedByPlayer.get(p.playerId);
@@ -151,6 +154,19 @@ adminEventHandicapsRouter.post(
     const cutoffMs = Date.parse(`${lockDate}T00:00:00.000Z`);
     if (!Number.isFinite(cutoffMs)) {
       return c.json({ error: 'bad_request', code: 'invalid_lock_date', requestId }, 400);
+    }
+
+    // Optional handicap allowance % set on the same lock action. When provided it
+    // must be an integer in [50,150] (the organizer-facing range); we store it on
+    // the event so pin-round-at-start freezes it into each round's pin. Omitted →
+    // leave the existing value untouched (re-locking without changing the %).
+    const rawPct = (raw as { allowancePct?: unknown })?.allowancePct;
+    let allowancePct: number | undefined;
+    if (rawPct !== undefined && rawPct !== null) {
+      if (typeof rawPct !== 'number' || !Number.isInteger(rawPct) || rawPct < 50 || rawPct > 150) {
+        return c.json({ error: 'bad_request', code: 'invalid_allowance_pct', requestId }, 400);
+      }
+      allowancePct = rawPct;
     }
 
     const roster = await loadRoster(eventId);
@@ -199,7 +215,11 @@ adminEventHandicapsRouter.post(
             contextId: LIBRARY_CTX(eventId),
           });
         }
-        await tx.update(events).set({ handicapLockDate: cutoffMs })
+        await tx.update(events)
+          .set({
+            handicapLockDate: cutoffMs,
+            ...(allowancePct !== undefined ? { handicapAllowancePct: allowancePct } : {}),
+          })
           .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)));
       });
     } catch (err) {
@@ -208,9 +228,15 @@ adminEventHandicapsRouter.post(
     }
 
     log?.info({ event: 'handicaps_locked', eventId, lockDate, count: resolved.length, actorPlayerId: player.id });
+    // Return the EFFECTIVE stored allowance (the value now on the event), not just
+    // what this request sent — re-locking without an `allowancePct` preserves the
+    // prior value, so echo the persisted one rather than null.
+    const storedPct = (await db.select({ pct: events.handicapAllowancePct }).from(events)
+      .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID))).limit(1))[0]?.pct ?? null;
     return c.json({
       ok: true,
       lockDate: cutoffMs,
+      allowancePct: storedPct,
       locked: resolved.map((r) => ({ playerId: r.playerId, handicapIndex: r.value, source: r.source, asOf: r.ghinValueDate })),
       requestId,
     }, 200);

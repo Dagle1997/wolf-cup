@@ -81,6 +81,15 @@ export const events = sqliteTable('events', {
   // column records WHICH cutoff produced the snapshot + drives the "locked"
   // UI state. Plain ADD COLUMN (no FK/CHECK → no table rebuild).
   handicapLockDate: integer('handicap_lock_date'),
+  // Handicap allowance % (integer, e.g. 80) the organizer sets per event. Applied
+  // to every player's course handicap BEFORE stroke allocation — and, for the
+  // Guyan 2v2 game, before the off-the-low subtraction. NULL = not set, which the
+  // money engine treats as 100 (no reduction). The organizer sets this on the
+  // handicaps-lock screen; pin-round-at-start freezes the effective value into the
+  // round pin's resolved config so recompute-on-read can never drift. The UI
+  // clamps to 50–150; the engine's config schema bounds it to [1,200]. Plain ADD
+  // COLUMN (no FK/CHECK → no table rebuild — matches handicapLockDate above).
+  handicapAllowancePct: integer('handicap_allowance_pct'),
   ...ecosystemColumns(),
 });
 

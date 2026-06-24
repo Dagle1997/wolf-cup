@@ -35,7 +35,7 @@ import {
   roundPins,
   rounds,
 } from '../db/schema/index.js';
-import { allocateStrokesFromCourseHandicap } from '../engine/handicap-strokes.js';
+import { allocateStrokesFromCourseHandicap, applyAllowanceOffLow } from '../engine/handicap-strokes.js';
 import { computeFoursome } from '../engine/games/compute-foursome.js';
 import { ledgerToEdges } from '../engine/games/ledger-to-edges.js';
 import type {
@@ -343,22 +343,36 @@ async function settleFoursome(
   const { teamA, teamB, ordered } = teams;
   const teamSplit: TeamSplit = { teamA: [teamA[0], teamA[1]], teamB: [teamB[0], teamB[1]] };
 
-  // Every member must have a finite pinned CH (fail-closed on missing handicap,
-  // AC11). A `null` (or absent) ch means the player had NO handicap at all at
-  // pin-time — that foursome is unsettleable, NEVER silently settled as scratch.
-  // A finite 0 (legit scratch) passes and settles normally.
+  // Every member must have an INTEGER pinned CH (fail-closed on missing/corrupt
+  // handicap, AC11). A `null`/absent ch means the player had NO handicap at all at
+  // pin-time; a non-integer ch is a corrupt pin. Either way that foursome is
+  // unsettleable, NEVER silently settled. A finite integer 0 (legit scratch)
+  // passes and settles normally.
+  //
+  // The `Number.isInteger` check is load-bearing for the off-the-low step below:
+  // `applyAllowanceOffLow` rounds (`Math.round`) so it would otherwise SWALLOW a
+  // corrupt non-integer CH into an integer and settle it — defeating the
+  // corrupt-pin guard that `allocateStrokesFromCourseHandicap` (which throws on a
+  // non-integer CH) used to enforce. Reject it here, before off-low.
   const chByPlayer = new Map<string, number>();
   for (const playerId of ordered) {
     const h = pin.perPlayerHandicaps[playerId];
-    if (h === undefined || h.ch === null || !Number.isFinite(h.ch)) {
+    if (h === undefined || h.ch === null || !Number.isInteger(h.ch)) {
       return {
         kind: 'unsettleable',
         reason: 'missing_handicap',
-        detail: `missing handicap for player ${playerId}`,
+        detail: `missing or non-integer handicap for player ${playerId}`,
       };
     }
     chByPlayer.set(playerId, h.ch);
   }
+
+  // Apply the handicap allowance % (frozen in the pin's resolved config; absent
+  // → 100), THEN play OFF THE LOW of this foursome: the lowest allowed CH plays
+  // to scratch and everyone else allocates `allowedCH − foursomeLow` strokes.
+  // This is the Pete Dye Guyan 2v2 money basis — NOT each player's full CH.
+  const allowancePct = pin.config.handicapAllowancePct ?? 100;
+  const { offLow: offLowByPlayer } = applyAllowanceOffLow(chByPlayer, allowancePct);
 
   // Scores for this foursome in this round.
   const scoreRows = await txOrDb
@@ -419,9 +433,9 @@ async function settleFoursome(
     for (const s of scoreRows) {
       const si = siByHole.get(s.holeNumber);
       if (si === undefined) continue; // hole outside holes-in-play (e.g. >holesToPlay)
-      const ch = chByPlayer.get(s.playerId);
-      if (ch === undefined) continue; // not a settling member (guarded above)
-      const strokes = allocateStrokesFromCourseHandicap(ch, si);
+      const offLow = offLowByPlayer.get(s.playerId);
+      if (offLow === undefined) continue; // not a settling member (guarded above)
+      const strokes = allocateStrokesFromCourseHandicap(offLow, si);
       const net = s.grossStrokes - strokes;
       const cell = netByHole.get(s.holeNumber) ?? {};
       cell[s.playerId] = net;

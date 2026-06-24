@@ -155,6 +155,13 @@
       "when": 1782264752933,
       "tag": "0021_daffy_shiver_man",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1782314776608,
+      "tag": "0022_sharp_spot",
+      "breakpoints": true
     }
   ]
 }

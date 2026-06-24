@@ -67,12 +67,29 @@ type RoundSummary = {
   status: string | null;
 };
 
+/**
+ * Event-level handicap-lock metadata for the participant-facing
+ * "Handicaps locked as of {date} at {pct}%" header. Optional: the backend
+ * populates it; when absent the header simply isn't shown.
+ *
+ * - `handicapsLockedAt`: unix-ms cutoff (null/absent when not locked).
+ * - `handicapAllowancePct`: integer percent of full course handicap
+ *   (e.g. 80, 90, 100). Null/absent → omit the "at N%" clause (never
+ *   render "at undefined%").
+ */
+type EventHandicapMeta = {
+  handicapsLockedAt?: number | null;
+  handicapAllowancePct?: number | null;
+};
+
 type LeaderboardResponse = {
   rows: LeaderboardRow[];
   round: RoundSummary | null;
   scope: 'round' | 'event';
   computedAt: string;
   f1?: F1Mode;
+  /** Story (handicap allowance UI): event-level lock metadata, API-populated. */
+  event?: EventHandicapMeta;
 };
 
 type FetchOutcome =
@@ -135,6 +152,21 @@ function formatMoneyCents(cents: number | null): string {
   const dollars = Math.trunc(cents / 100);
   if (dollars === 0) return '$0';
   return dollars > 0 ? `+$${dollars}` : `-$${Math.abs(dollars)}`;
+}
+
+/**
+ * Participant-facing handicap-lock line for the leaderboard header. Returns null
+ * when not locked (no banner). Mirrors the lock-handicaps page: unix-ms → YYYY-MM-DD
+ * (UTC, matching how the cutoff is stored), and omits the "at N%" clause when the
+ * allowance is null/undefined — never "at undefined%".
+ */
+function handicapLockLine(meta: EventHandicapMeta | undefined): string | null {
+  const ms = meta?.handicapsLockedAt;
+  if (ms == null) return null;
+  const date = new Date(ms).toISOString().slice(0, 10);
+  const pct = meta?.handicapAllowancePct;
+  const base = `Handicaps locked as of ${date}`;
+  return pct == null ? `${base}.` : `${base} at ${pct}%.`;
 }
 
 /** A medallion for the top three, plain numerals otherwise. */
@@ -359,12 +391,27 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   const roundId = data.round?.id ?? null;
   const showMoney = f1?.mode === 'money' && f1.moneyEnabled === true;
   const colSpan = 4;
+  const lockLine = handicapLockLine(data.event);
 
   return (
     <PageShell title="Leaderboard">
       <BackLink to="/events/$eventId" params={{ eventId }} />
 
       <ViewTabs set="standings" active="leaderboard" eventId={eventId} />
+
+      {/* Participant-facing handicap-lock note (only when the event is locked). */}
+      {lockLine !== null ? (
+        <p
+          data-testid="handicap-lock-line"
+          style={{
+            margin: '0 0 var(--space-3)',
+            fontSize: 'var(--font-sm)',
+            color: 'var(--color-text-muted)',
+          }}
+        >
+          {lockLine}
+        </p>
+      ) : null}
 
       {/* Scope: a two-option segmented control (bigger tap target than a select). */}
       <div

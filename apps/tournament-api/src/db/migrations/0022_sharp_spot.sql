@@ -1,0 +1,1 @@
+ALTER TABLE `events` ADD `handicap_allowance_pct` integer;

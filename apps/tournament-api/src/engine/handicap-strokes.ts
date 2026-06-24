@@ -101,6 +101,51 @@ export function allocateStrokesFromCourseHandicap(
 }
 
 /**
+ * Apply a handicap allowance percentage, THEN play "off the low" within a group.
+ *
+ * The money rule (Pete Dye Guyan 2v2): `allowedCH = round(fullCH × pct/100)` per
+ * player, then the LOWEST allowed CH in the group plays to scratch and every
+ * other player gets `allowedCH − groupLow` strokes (allocated per hole by
+ * `allocateStrokesFromCourseHandicap`). Order matters: allowance first, low
+ * subtraction second.
+ *
+ * `pct` is an integer percent (e.g. 80; 100 = no reduction). Rounding is half-up
+ * (`Math.round`) — the USGA convention, matching `calcCourseHandicap` above.
+ *
+ * Pure. Returns each player's allowed CH, the group low, and the off-the-low
+ * handicap they allocate strokes from (always ≥ 0, since groupLow is the min).
+ * Throws on an empty group (a 0-player foursome is a caller bug, not scratch) and
+ * on a non-integer input CH (a corrupt pin): because this rounds, it would
+ * otherwise mask a non-integer CH and let `allocateStrokesFromCourseHandicap`
+ * settle it — so it enforces the same integer precondition the allocator does,
+ * keeping the corrupt-pin fail-closed guard intact for every caller.
+ *
+ * Rounding is float `Math.round` of `(ch*pct)/100`; for integer ch + pct this is
+ * exact half-up over the positive domain (every `k.5` quotient is exactly
+ * representable in IEEE-754), matching the USGA convention and the golden.
+ */
+export function applyAllowanceOffLow(
+  chByPlayer: ReadonlyMap<string, number>,
+  pct: number,
+): { allowed: Map<string, number>; groupLow: number; offLow: Map<string, number> } {
+  if (chByPlayer.size === 0) {
+    throw new Error('applyAllowanceOffLow: empty group');
+  }
+  const allowed = new Map<string, number>();
+  for (const [playerId, ch] of chByPlayer) {
+    if (!Number.isInteger(ch)) {
+      throw new TypeError(`applyAllowanceOffLow: course handicap must be an integer (got ${ch} for ${playerId})`);
+    }
+    allowed.set(playerId, Math.round((ch * pct) / 100));
+  }
+  let groupLow = Infinity;
+  for (const a of allowed.values()) if (a < groupLow) groupLow = a;
+  const offLow = new Map<string, number>();
+  for (const [playerId, a] of allowed) offLow.set(playerId, a - groupLow);
+  return { allowed, groupLow, offLow };
+}
+
+/**
  * Per-hole handicap-stroke allocation. Mirrors
  * `packages/engine/src/stableford.ts:11-16`'s math.
  *

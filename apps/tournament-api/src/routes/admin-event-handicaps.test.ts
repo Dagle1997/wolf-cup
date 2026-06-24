@@ -347,6 +347,32 @@ describe('POST /api/admin/events/:eventId/handicaps/lock', () => {
     const res = await lock(s.eventId, s.nonOrganizerSessionId, { lockDate: '2026-06-10' });
     expect(res.status).toBe(403);
   });
+
+  it('stores + returns handicapAllowancePct when provided', async () => {
+    const s = await seed({ withRoster: true });
+    ghin.getHandicapHistory.mockResolvedValue([{ revisionDate: '2026-06-01', value: 8.4, displayValue: '8.4' }]);
+    const res = await lock(s.eventId, s.organizerSessionId, { lockDate: '2026-06-10', allowancePct: 85 });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { allowancePct: number }).allowancePct).toBe(85);
+    const evt = (await db.select().from(events).where(eq(events.id, s.eventId)))[0]!;
+    expect(evt.handicapAllowancePct).toBe(85);
+  });
+
+  it('leaves handicapAllowancePct untouched when omitted (re-lock preserves it)', async () => {
+    const s = await seed({ withRoster: true });
+    ghin.getHandicapHistory.mockResolvedValue([{ revisionDate: '2026-06-01', value: 8.4, displayValue: '8.4' }]);
+    await lock(s.eventId, s.organizerSessionId, { lockDate: '2026-06-10', allowancePct: 80 });
+    await lock(s.eventId, s.organizerSessionId, { lockDate: '2026-06-11' }); // no pct → preserve
+    const evt = (await db.select().from(events).where(eq(events.id, s.eventId)))[0]!;
+    expect(evt.handicapAllowancePct).toBe(80);
+  });
+
+  it('400 on an out-of-range allowancePct', async () => {
+    const s = await seed({ withRoster: true });
+    const res = await lock(s.eventId, s.organizerSessionId, { lockDate: '2026-06-10', allowancePct: 200 });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('invalid_allowance_pct');
+  });
 });
 
 describe('POST /api/admin/events/:eventId/handicaps/unlock', () => {

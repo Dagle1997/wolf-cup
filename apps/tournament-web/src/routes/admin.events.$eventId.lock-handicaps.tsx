@@ -32,6 +32,14 @@ type HandicapPlayer = {
 type HandicapsResponse = {
   eventId: string;
   lockDate: number | null;
+  /**
+   * Integer percent of full course handicap that strokes are computed at
+   * (e.g. 80, 85, 90, 100). 100 = no reduction. Owned/persisted by the API
+   * (field name `handicapAllowancePct`); the web side reads + writes it.
+   * Null/undefined when the API hasn't set it yet → treat as the 100 default
+   * for display (omit the "at N%" clause).
+   */
+  handicapAllowancePct?: number | null;
   ghinConfigured: boolean;
   players: HandicapPlayer[];
 };
@@ -54,6 +62,26 @@ function fmtHi(hi: number | null): string {
   return hi.toFixed(1);
 }
 
+/** Sensible client guard for the typed allowance box: integer, clamped 50–150. */
+const ALLOWANCE_MIN = 50;
+const ALLOWANCE_MAX = 150;
+const ALLOWANCE_DEFAULT = 100;
+function clampAllowance(n: number): number {
+  if (!Number.isFinite(n)) return ALLOWANCE_DEFAULT;
+  return Math.min(ALLOWANCE_MAX, Math.max(ALLOWANCE_MIN, Math.round(n)));
+}
+
+/**
+ * Participant-facing lock string. "Handicaps locked as of {date} at {pct}%".
+ * When pct is null/undefined (API hasn't set it), the "at N%" clause is omitted
+ * — never renders "at undefined%". The 100 default still reads as a clean
+ * "at 100%" only when the API explicitly returns 100.
+ */
+function lockedAsOfString(lockDateIso: string, pct: number | null | undefined): string {
+  const base = `Handicaps locked as of ${lockDateIso}`;
+  return pct == null ? `${base}.` : `${base} at ${pct}%.`;
+}
+
 const cellStyle: React.CSSProperties = {
   padding: '8px 10px',
   borderBottom: '1px solid var(--color-border)',
@@ -70,6 +98,9 @@ export function LockHandicapsPage({ eventId }: { eventId: string }) {
   });
 
   const [lockDate, setLockDate] = useState<string>('');
+  // Typed (not preset) allowance box. Held as a STRING so the field can be
+  // momentarily empty / mid-edit; clamped to an integer on blur + on submit.
+  const [allowance, setAllowance] = useState<string>(String(ALLOWANCE_DEFAULT));
 
   // Default the picker to the event's existing lock date (if any), else leave
   // blank so the organizer must consciously choose a cutoff.
@@ -79,13 +110,25 @@ export function LockHandicapsPage({ eventId }: { eventId: string }) {
     }
   }, [query.data?.lockDate]);
 
+  // Seed the allowance box from the event's stored value once it loads; fall
+  // back to the 100 default when the API hasn't set it yet.
+  useEffect(() => {
+    if (query.data?.handicapAllowancePct != null) {
+      setAllowance(String(query.data.handicapAllowancePct));
+    }
+  }, [query.data?.handicapAllowancePct]);
+
   const lock = useMutation<unknown, Error, void>({
     mutationFn: async () => {
       const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}/handicaps/lock`, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ lockDate }),
+        // Send the clamped integer allowance alongside the cutoff date. The API
+        // (someone else's work) persists it as `handicapAllowancePct` on the
+        // event; if it ignores the field today this is a no-op until wired.
+        // TODO(backend): accept + persist handicapAllowancePct on /handicaps/lock.
+        body: JSON.stringify({ lockDate, handicapAllowancePct: clampAllowance(Number(allowance)) }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { code?: string };
@@ -139,6 +182,8 @@ export function LockHandicapsPage({ eventId }: { eventId: string }) {
         Freeze every player&apos;s handicap index as of a date. The locked index carries
         into every round of this event, so a streak right before or during the trip
         can&apos;t change anyone&apos;s strokes. Unlock to go back to today&apos;s live index.
+        The handicap allowance % scales everyone&apos;s strokes (100 = full handicap;
+        e.g. 80 means 80% of each player&apos;s course handicap).
       </p>
 
       {!data.ghinConfigured ? (
@@ -163,7 +208,9 @@ export function LockHandicapsPage({ eventId }: { eventId: string }) {
             background: 'var(--color-surface)',
           }}
         >
-          <strong>Handicaps are locked as of {msToIso(data.lockDate!)}.</strong>
+          <strong data-testid="lock-status-text">
+            {lockedAsOfString(msToIso(data.lockDate!), data.handicapAllowancePct ?? null)}
+          </strong>
           <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', marginTop: 4 }}>
             Re-locking with a different date overwrites the snapshot.
           </div>
@@ -182,6 +229,26 @@ export function LockHandicapsPage({ eventId }: { eventId: string }) {
             data-testid="lock-date-input"
             value={lockDate}
             onChange={(e) => setLockDate(e.target.value)}
+          />
+        </label>
+        <label style={{ fontSize: 'var(--font-sm)' }}>
+          <div style={{ marginBottom: 4 }}>Handicap allowance %</div>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={ALLOWANCE_MIN}
+            max={ALLOWANCE_MAX}
+            step={1}
+            data-testid="allowance-input"
+            value={allowance}
+            placeholder={String(ALLOWANCE_DEFAULT)}
+            onChange={(e) => setAllowance(e.target.value)}
+            onBlur={() =>
+              setAllowance(
+                allowance.trim() === '' ? String(ALLOWANCE_DEFAULT) : String(clampAllowance(Number(allowance))),
+              )
+            }
+            style={{ width: 90 }}
           />
         </label>
         <button

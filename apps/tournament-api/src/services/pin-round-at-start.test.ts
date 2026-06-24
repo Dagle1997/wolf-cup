@@ -105,6 +105,26 @@ describe('pinRoundAtStart (AC5)', () => {
     expect(hcp[ps[0]!]!.ch).toBe(25);
   });
 
+  test('freezes events.handicapAllowancePct into the pinned resolved config', async () => {
+    const { id, ps } = await seed();
+    // Organizer set an 80% allowance on the event (the handicaps-lock screen).
+    await db.update(events).set({ handicapAllowancePct: 80 })
+      .where(eq(events.id, id.eventId));
+    const res = await pinRoundAtStart(db, { roundId: id.roundId, eventRoundId: id.eventRoundId, eventId: id.eventId, tenantId: TENANT, createdAt: Date.now(), actorPlayerId: ps[0]! });
+    expect(res.ok).toBe(true);
+    const pin = (await db.select().from(roundPins).where(eq(roundPins.roundId, id.roundId)).limit(1))[0]!;
+    const cfg = JSON.parse(pin.resolvedConfigJson) as { handicapAllowancePct?: number };
+    expect(cfg.handicapAllowancePct).toBe(80);
+  });
+
+  test('a null allowance column leaves the pinned config without a pct (engine → 100)', async () => {
+    const { id, ps } = await seed(); // handicap_allowance_pct stays NULL
+    await pinRoundAtStart(db, { roundId: id.roundId, eventRoundId: id.eventRoundId, eventId: id.eventId, tenantId: TENANT, createdAt: Date.now(), actorPlayerId: ps[0]! });
+    const pin = (await db.select().from(roundPins).where(eq(roundPins.roundId, id.roundId)).limit(1))[0]!;
+    const cfg = JSON.parse(pin.resolvedConfigJson) as { handicapAllowancePct?: number };
+    expect(cfg.handicapAllowancePct).toBeUndefined();
+  });
+
   test('writes a round.pinned audit row (AC14)', async () => {
     const { id, ps } = await seed();
     await pinRoundAtStart(db, { roundId: id.roundId, eventRoundId: id.eventRoundId, eventId: id.eventId, tenantId: TENANT, createdAt: Date.now(), actorPlayerId: ps[0]! });

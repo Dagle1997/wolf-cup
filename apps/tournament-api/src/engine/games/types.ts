@@ -43,6 +43,14 @@ export type GameConfig = {
   modifiers: Modifier[];
   cap?: number | null | undefined;
   lockState?: 'locked' | 'unlocked' | undefined;
+  /**
+   * Handicap allowance percentage (e.g. 80) applied to every player's course
+   * handicap BEFORE stroke allocation (and, for Guyan 2v2, before the off-the-low
+   * subtraction). Absent / undefined = 100 (no reduction) — pins written before
+   * the allowance feature parse to 100. Frozen in the round pin's resolved config
+   * so recompute-on-read can never drift.
+   */
+  handicapAllowancePct?: number | undefined;
   configVersion: number;
 };
 
