@@ -50,6 +50,48 @@ function defaultInput(overrides: Partial<CalcSkinsInput> = {}): CalcSkinsInput {
   };
 }
 
+describe('calcSkins — handicap allowance %', () => {
+  // One par-4 at SI 1. Neutral tee → CH = round(HI). A: HI 20 (CH 20), B: HI 0.
+  //  @100%: A strokes allocate(20,1)=2 → net 6−2=4; B net 5−0=5 → A wins the skin.
+  //  @50%:  A allowed round(10)=10 → allocate(10,1)=1 → net 5; B net 5 → TIE → carry,
+  //         last-hole unclaimed splits among ALL participants (no winners).
+  const oneHole: CourseShape = {
+    tee: NEUTRAL_TEE,
+    holes: [{ holeNumber: 1, par: 4, strokeIndex: 1 }],
+  };
+  const base = {
+    holeScores: buildScores({ A: [6], B: [5] }),
+    mode: 'net' as const,
+    participants: ['A', 'B'],
+    buyInPerParticipantCents: 1000, // $20 pot
+    lastHoleUnclaimedResolution: 'split-among-winners' as const,
+    course: oneHole,
+    handicapsByPlayer: { A: 20, B: 0 },
+  };
+
+  test('100% → A wins the net skin (takes the whole pot)', () => {
+    const out = calcSkins({ ...base, handicapAllowancePct: 100 });
+    const a = out.potShares.find((p) => p.playerId === 'A');
+    expect(out.holeWinners[0]!.winnerId).toBe('A');
+    expect(a?.dollarsCents).toBe(2000);
+  });
+
+  test('50% → A loses his stroke, hole ties, pot splits evenly', () => {
+    const out = calcSkins({ ...base, handicapAllowancePct: 50 });
+    expect(out.holeWinners[0]!.winnerId).toBeNull();
+    const a = out.potShares.find((p) => p.playerId === 'A');
+    const b = out.potShares.find((p) => p.playerId === 'B');
+    expect(a?.dollarsCents).toBe(1000);
+    expect(b?.dollarsCents).toBe(1000);
+  });
+
+  test('absent allowance == 100 (back-compat)', () => {
+    const withAbsent = calcSkins({ ...base });
+    const with100 = calcSkins({ ...base, handicapAllowancePct: 100 });
+    expect(withAbsent.potShares).toEqual(with100.potShares);
+  });
+});
+
 describe('calcSkins — gross mode', () => {
   test('(a) gross single-winner-per-hole, zero carries', () => {
     // A wins every hole at gross 3; B/C/D all 4.

@@ -29,6 +29,7 @@ import {
   courseHoles,
   courseRevisions,
   courseTees,
+  events,
   eventRounds,
   holeScores,
   players,
@@ -124,6 +125,7 @@ export async function computeSubGame(
   // Course (tee + holes) via event_round.
   const erRows = await tx
     .select({
+      eventId: eventRounds.eventId,
       teeColor: eventRounds.teeColor,
       courseRevisionId: eventRounds.courseRevisionId,
       holesToPlay: eventRounds.holesToPlay,
@@ -140,6 +142,20 @@ export async function computeSubGame(
     throw new BusinessRuleError('event_round_not_found', 'event_round missing', 422);
   }
   const er = erRows[0]!;
+
+  // Handicap allowance % for this event (full CH × pct; NO off-the-low — that is
+  // the 2v2 game's basis). Source of truth = events.handicap_allowance_pct; null
+  // or out-of-range → 100 (no reduction). Skins is not pinned; the locked-handicap
+  // snapshot (applied below) is its freeze, so reading the live event column here
+  // is consistent with the rest of skins' live-but-locked inputs.
+  const evtRows = await tx
+    .select({ allowancePct: events.handicapAllowancePct })
+    .from(events)
+    .where(and(eq(events.id, er.eventId), eq(events.tenantId, tenantId)))
+    .limit(1);
+  const rawPct = evtRows[0]?.allowancePct ?? null;
+  const handicapAllowancePct =
+    rawPct !== null && Number.isInteger(rawPct) && rawPct >= 1 && rawPct <= 200 ? rawPct : 100;
 
   const teeRows = await tx
     .select({ slope: courseTees.slope, rating: courseTees.rating })
@@ -275,6 +291,7 @@ export async function computeSubGame(
     course: { tee, holes: courseHolesEngine },
     handicapsByPlayer,
     teeByPlayer,
+    handicapAllowancePct,
   };
 
   let result;
@@ -296,6 +313,7 @@ export async function computeSubGame(
     mode,
     lastHoleUnclaimedResolution,
     buyInPerParticipantCents: subGame.buyInPerParticipant,
+    handicapAllowancePct,
   };
   const resultsJson = JSON.stringify(result);
   await tx.insert(subGameResults).values({

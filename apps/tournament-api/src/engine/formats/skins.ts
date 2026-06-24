@@ -26,7 +26,8 @@
  */
 
 import {
-  getHandicapStrokes,
+  calcCourseHandicap,
+  allocateStrokesFromCourseHandicap,
   type TeeShape,
 } from '../handicap-strokes.js';
 
@@ -62,6 +63,14 @@ export type CalcSkinsInput = {
    * pass this field.
    */
   teeByPlayer?: Record<string, TeeShape>;
+  /**
+   * Handicap allowance percentage applied to each player's full course handicap
+   * before stroke allocation: strokes = allocate(round(fullCH × pct/100), si).
+   * NO off-the-low (that is the 2v2 game's basis). Absent/undefined → 100 (no
+   * reduction), so existing callers + goldens stay byte-identical. Only matters
+   * for `net` / `gross_beats_net` modes (gross-mode skins ignores handicaps).
+   */
+  handicapAllowancePct?: number;
 };
 
 export type HoleWinnerResult = {
@@ -169,7 +178,9 @@ export function calcSkins(input: CalcSkinsInput): CalcSkinsOutput {
     course,
     handicapsByPlayer,
     teeByPlayer,
+    handicapAllowancePct,
   } = input;
+  const allowancePct = handicapAllowancePct ?? 100;
 
   // Boundary validation.
   if (!MODES.has(mode)) {
@@ -214,11 +225,12 @@ export function calcSkins(input: CalcSkinsInput): CalcSkinsOutput {
     for (const pid of participants) {
       const gross = holeScores.get(`${pid}|${hole.holeNumber}`);
       if (gross === undefined || gross === null) continue;
-      const strokes = getHandicapStrokes(
-        handicapsByPlayer[pid] ?? 0,
-        hole.strokeIndex,
-        teeByPlayer?.[pid] ?? course.tee,
-      );
+      // Full course handicap → apply the allowance % (round half-up) → allocate
+      // per hole. At 100% this equals the prior getHandicapStrokes(hi, si, tee).
+      const tee = teeByPlayer?.[pid] ?? course.tee;
+      const fullCh = calcCourseHandicap({ handicapIndex: handicapsByPlayer[pid] ?? 0, ...tee });
+      const allowedCh = Math.round((fullCh * allowancePct) / 100);
+      const strokes = allocateStrokesFromCourseHandicap(allowedCh, hole.strokeIndex);
       const net = gross - strokes;
       scoredEntries.push({ playerId: pid, gross, net });
     }
