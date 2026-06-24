@@ -14,6 +14,11 @@ const groupRequestSchema = z.object({
   groupRequest: z.enum(['first', 'last']).nullable(),
 });
 
+const playWithSchema = z.object({
+  // The regular this player wants to be grouped with ("sponsor"), or null to clear.
+  playWithPlayerId: z.number().int().positive().nullable(),
+});
+
 const addSubSchema = z.object({
   name: z.string().trim().min(1),
   ghinNumber: z.string().optional(),
@@ -90,6 +95,8 @@ app.get('/attendance/:seasonWeekId', adminAuthMiddleware, async (c) => {
 
     const statusMap = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
     const requestMap = new Map(attendanceRows.map((a) => [a.playerId, a.groupRequest]));
+    const playWithMap = new Map(attendanceRows.map((a) => [a.playerId, a.playWithPlayerId]));
+    const subIdSet = new Set(weekSubs.map((s) => s.id));
 
     const seen = new Set<number>();
     const playerList = [...activeRoster, ...weekSubs]
@@ -104,6 +111,8 @@ app.get('/attendance/:seasonWeekId', adminAuthMiddleware, async (c) => {
         handicapIndex: p.handicapIndex,
         status: statusMap.get(p.id) ?? 'unset',
         groupRequest: requestMap.get(p.id) ?? null,
+        isSub: subIdSet.has(p.id),
+        playWithPlayerId: playWithMap.get(p.id) ?? null,
       }));
 
     const confirmed = playerList.filter((p) => p.status === 'in').length;
@@ -289,6 +298,97 @@ app.patch(
         .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.playerId, playerId)));
 
       return c.json({ groupRequest: parsed.data.groupRequest }, 200);
+    } catch {
+      return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// PATCH /attendance/:seasonWeekId/players/:playerId/play-with
+//
+// Set (or clear) the "play-with sponsor" for a player this week — the regular
+// they want to be grouped with. Honored as a hard keep-together link by the
+// pairing engine when both are confirmed in.
+// ---------------------------------------------------------------------------
+
+app.patch(
+  '/attendance/:seasonWeekId/players/:playerId/play-with',
+  adminAuthMiddleware,
+  async (c) => {
+    const seasonWeekId = Number(c.req.param('seasonWeekId'));
+    const playerId = Number(c.req.param('playerId'));
+    if (
+      !Number.isInteger(seasonWeekId) || seasonWeekId <= 0 ||
+      !Number.isInteger(playerId) || playerId <= 0
+    ) {
+      return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(
+        { error: 'Validation error', code: 'VALIDATION_ERROR', issues: [] },
+        400,
+      );
+    }
+
+    const parsed = playWithSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        { error: 'Validation error', code: 'VALIDATION_ERROR', issues: parsed.error.issues },
+        400,
+      );
+    }
+
+    const sponsorId = parsed.data.playWithPlayerId;
+    // A player can't sponsor themselves.
+    if (sponsorId !== null && sponsorId === playerId) {
+      return c.json(
+        {
+          error: 'Validation error',
+          code: 'VALIDATION_ERROR',
+          issues: [{ message: 'A player cannot be set to play with themselves' }],
+        },
+        400,
+      );
+    }
+
+    try {
+      const existing = await db
+        .select()
+        .from(attendance)
+        .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.playerId, playerId)))
+        .get();
+
+      if (!existing) {
+        return c.json(
+          { error: 'Player must be marked in or out first', code: 'NO_ATTENDANCE' },
+          422,
+        );
+      }
+
+      // Validate the sponsor exists (cheap guard against a stale client id).
+      if (sponsorId !== null) {
+        const sponsor = await db
+          .select({ id: players.id })
+          .from(players)
+          .where(eq(players.id, sponsorId))
+          .get();
+        if (!sponsor) {
+          return c.json({ error: 'Sponsor not found', code: 'NOT_FOUND' }, 404);
+        }
+      }
+
+      const now = Date.now();
+      await db
+        .update(attendance)
+        .set({ playWithPlayerId: sponsorId, updatedAt: now })
+        .where(and(eq(attendance.seasonWeekId, seasonWeekId), eq(attendance.playerId, playerId)));
+
+      return c.json({ playWithPlayerId: sponsorId }, 200);
     } catch {
       return c.json({ error: 'Internal error', code: 'INTERNAL_ERROR' }, 500);
     }

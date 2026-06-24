@@ -1,0 +1,1 @@
+ALTER TABLE `attendance` ADD `play_with_player_id` integer REFERENCES players(id);

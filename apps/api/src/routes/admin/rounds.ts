@@ -27,6 +27,7 @@ import {
 import { adminAuthMiddleware } from "../../middleware/admin-auth.js";
 import { suggestGroups, pairKey, type PairingMatrix } from "@wolf-cup/engine";
 import { buildGroupRequestPins } from "../../lib/group-request-pins.js";
+import { buildSubGroupingInputs } from "../../lib/sub-grouping.js";
 import { captureGeneratedPairingIfAbsent } from "../../lib/pairing-capture.js";
 import { checkRoundCompleteness } from "../../lib/round-completeness.js";
 import {
@@ -1669,12 +1670,12 @@ app.post("/rounds/from-attendance", adminAuthMiddleware, async (c) => {
         )})`,
       );
 
-    // Determine subs
-    const subRows = await db
-      .select({ playerId: subBench.playerId })
-      .from(subBench)
-      .where(eq(subBench.seasonId, week.seasonId));
-    const subIds = new Set(subRows.map((s) => s.playerId));
+    // Determine subs + per-week "play-with sponsor" links for sub-aware pairing.
+    const { subIds, links } = await buildSubGroupingInputs({
+      seasonId: week.seasonId,
+      scheduledDate: week.friday,
+      playerIds: confirmedIds,
+    });
 
     // Generate entry code
     const entryCode = week.friday.slice(0, 4);
@@ -1711,8 +1712,9 @@ app.post("/rounds/from-attendance", adminAuthMiddleware, async (c) => {
       playerIds: confirmedIds,
     });
 
-    // Run the same engine the Suggest button uses.
-    const suggestion = suggestGroups({ matrix, playerIds: confirmedIds, pins });
+    // Run the same engine the Suggest button uses — now sub-aware (spread subs
+    // softly, honor play-with links hard).
+    const suggestion = suggestGroups({ matrix, playerIds: confirmedIds, pins, subIds, links });
 
     // Build playerId → 0-based group index map from the suggestion.
     const playerToGroupIdx = new Map<number, number>();

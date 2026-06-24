@@ -6,6 +6,8 @@ import {
   pairPenalty,
   groupPenaltyCost,
   maxPlayerRepeatLoad,
+  subCollisionCount,
+  SUB_SPREAD_PENALTY,
   REPEAT_PENALTY_EXP,
   type PairingMatrix,
 } from './pairing.js';
@@ -365,5 +367,211 @@ describe('suggestGroups — determinism with injected rng (AC6)', () => {
     expect(a.groups).toEqual(b.groups);
     expect(a.totalCost).toBe(b.totalCost);
     expect(a.remainder).toEqual(b.remainder);
+  });
+
+  it('passing empty subIds + empty links is identical to passing neither', () => {
+    const m: PairingMatrix = new Map([
+      [pairKey(1, 2), 3],
+      [pairKey(3, 4), 2],
+      [pairKey(5, 6), 1],
+    ]);
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const base = suggestGroups({ matrix: m, playerIds: ids, rng: mulberry32(777) });
+    const withEmpty = suggestGroups({
+      matrix: m,
+      playerIds: ids,
+      subIds: new Set<number>(),
+      links: [],
+      rng: mulberry32(777),
+    });
+    // Byte-identical: the no-sub / no-link path must not perturb the RNG sequence.
+    expect(withEmpty.groups).toEqual(base.groups);
+    expect(withEmpty.totalCost).toBe(base.totalCost);
+    expect(withEmpty.remainder).toEqual(base.remainder);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sub-spreading (soft) — keep two subs out of the same group when feasible
+// ---------------------------------------------------------------------------
+
+describe('subCollisionCount', () => {
+  it('is 0 when every group holds at most one sub', () => {
+    expect(subCollisionCount(new Set([1, 5]), [[1, 2, 3, 4], [5, 6, 7, 8]])).toBe(0);
+  });
+
+  it('counts each sub beyond the first in a group', () => {
+    // group 1 holds subs {1,2,3} → 2 collisions; group 2 holds {5} → 0
+    expect(subCollisionCount(new Set([1, 2, 3, 5]), [[1, 2, 3, 4], [5, 6, 7, 8]])).toBe(2);
+  });
+
+  it('is 0 when there are no subs', () => {
+    expect(subCollisionCount(new Set(), [[1, 2, 3, 4]])).toBe(0);
+  });
+});
+
+describe('suggestGroups — sub-spreading (soft)', () => {
+  it('spreads 2 subs into separate groups (no history)', () => {
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const subIds = new Set([1, 2]); // both subs
+    for (let s = 1; s <= 25; s++) {
+      const result = suggestGroups({ matrix: new Map(), playerIds: ids, subIds, rng: mulberry32(s) });
+      expect(subCollisionCount(subIds, result.groups)).toBe(0);
+    }
+  });
+
+  it('keeps subs apart even against repeat-pairing pressure', () => {
+    // 1 & 2 are subs AND have heavy shared history with everyone else, so the
+    // raw optimizer would otherwise be tempted to co-group them. Spread must win.
+    const m: PairingMatrix = new Map([
+      [pairKey(1, 3), 5],
+      [pairKey(1, 4), 5],
+      [pairKey(2, 5), 5],
+      [pairKey(2, 6), 5],
+    ]);
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const subIds = new Set([1, 2]);
+    for (let s = 1; s <= 25; s++) {
+      const result = suggestGroups({ matrix: m, playerIds: ids, subIds, rng: mulberry32(s) });
+      expect(subCollisionCount(subIds, result.groups)).toBe(0);
+    }
+  });
+
+  it('still completes (minimizing collisions) when subs outnumber groups', () => {
+    // 3 subs, only 2 groups → one collision is unavoidable; engine must not fail
+    // and must keep it to the minimum (exactly 1).
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const subIds = new Set([1, 2, 3]);
+    for (let s = 1; s <= 15; s++) {
+      const result = suggestGroups({ matrix: new Map(), playerIds: ids, subIds, rng: mulberry32(s) });
+      expect(result.groups).toHaveLength(2);
+      for (const g of result.groups) expect(g).toHaveLength(4);
+      expect(subCollisionCount(subIds, result.groups)).toBe(1);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Keep-together links (hard, via contraction) — "play with sponsor"
+// ---------------------------------------------------------------------------
+
+describe('suggestGroups — keep-together links (hard)', () => {
+  const sameGroup = (groups: readonly (readonly number[])[], a: number, b: number) =>
+    groups.some((g) => g.includes(a) && g.includes(b));
+
+  it('always places a linked pair in the same group', () => {
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const links: [number, number][] = [[3, 6]]; // sub 3 plays with sponsor 6
+    for (let s = 1; s <= 25; s++) {
+      const result = suggestGroups({ matrix: new Map(), playerIds: ids, links, rng: mulberry32(s) });
+      expect(sameGroup(result.groups, 3, 6)).toBe(true);
+    }
+  });
+
+  it('honors the link even against heavy shared history (link overrides repeats)', () => {
+    // 3 & 6 have played together a ton — repeat-avoidance would split them, but
+    // the explicit "play-with" link must keep them together regardless.
+    const m: PairingMatrix = new Map([[pairKey(3, 6), 20]]);
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const links: [number, number][] = [[3, 6]];
+    for (let s = 1; s <= 25; s++) {
+      const result = suggestGroups({ matrix: m, playerIds: ids, links, rng: mulberry32(s) });
+      expect(sameGroup(result.groups, 3, 6)).toBe(true);
+    }
+  });
+
+  it('drops a link naming an absent player (present player pairs normally)', () => {
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const links: [number, number][] = [[3, 999]]; // 999 not attending
+    const result = suggestGroups({ matrix: new Map(), playerIds: ids, links, rng: mulberry32(1) });
+    expect(result.groups.flat().sort((a, b) => a - b)).toEqual(ids);
+    expect(result.groups.flat()).not.toContain(999);
+  });
+
+  it('reserves the sponsor seat so other subs spread away from that group', () => {
+    // Sub 3 is linked to sponsor 6. Sub 1 is an unlinked sub. The linked pair
+    // occupies one group; sub 1 should land in a DIFFERENT group than the sponsor.
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const subIds = new Set([1, 3]);
+    const links: [number, number][] = [[3, 6]];
+    for (let s = 1; s <= 25; s++) {
+      const result = suggestGroups({ matrix: new Map(), playerIds: ids, subIds, links, rng: mulberry32(s) });
+      expect(sameGroup(result.groups, 3, 6)).toBe(true); // link honored
+      expect(sameGroup(result.groups, 1, 3)).toBe(false); // subs spread
+    }
+  });
+
+  it('a linked pair inherits a pin set on either member', () => {
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const links: [number, number][] = [[3, 6]];
+    const pins = new Map([[6, 0]]); // sponsor pinned to group 0
+    for (let s = 1; s <= 15; s++) {
+      const result = suggestGroups({ matrix: new Map(), playerIds: ids, links, pins, rng: mulberry32(s) });
+      expect(result.groups[0]).toContain(6);
+      expect(result.groups[0]).toContain(3); // sub dragged along by the link
+    }
+  });
+
+  it('SUB_SPREAD_PENALTY is a positive integer (exact tie-break invariant)', () => {
+    expect(Number.isInteger(SUB_SPREAD_PENALTY)).toBe(true);
+    expect(SUB_SPREAD_PENALTY).toBeGreaterThan(0);
+  });
+
+  it('an oversized cluster (> groupSize) degrades to singletons — no player stranded', () => {
+    // Transitive chain 1-2-3-4-5 ⇒ one cluster of 5, which cannot fit a group of
+    // 4. It must break apart so all 8 players still land in the 2 full groups.
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const links: [number, number][] = [[1, 2], [2, 3], [3, 4], [4, 5]];
+    for (let s = 1; s <= 15; s++) {
+      const result = suggestGroups({ matrix: new Map(), playerIds: ids, links, rng: mulberry32(s) });
+      expect(result.groups).toHaveLength(2);
+      for (const g of result.groups) expect(g).toHaveLength(4);
+      expect(result.groups.flat().sort((a, b) => a - b)).toEqual(ids);
+      expect(result.remainder).toEqual([]);
+    }
+  });
+
+  it('never strands players when links are present (full groups, empty remainder)', () => {
+    // A size-2 link plus singletons must always pack into full groups — the
+    // First-Fit-Decreasing order + split-on-failure fallback guarantee no
+    // fragmentation stranding.
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const links: [number, number][] = [[7, 8]];
+    for (let s = 1; s <= 25; s++) {
+      const result = suggestGroups({ matrix: new Map(), playerIds: ids, links, rng: mulberry32(s) });
+      expect(result.groups.flat().sort((a, b) => a - b)).toEqual(ids);
+      expect(result.remainder).toEqual([]);
+      expect(result.groups.some((g) => g.includes(7) && g.includes(8))).toBe(true);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pin precedence + determinism with pins present (regression guard)
+// ---------------------------------------------------------------------------
+
+describe('suggestGroups — pin overflow precedence (pinMap order)', () => {
+  it('honors the FIRST groupSize pins to a group in pinMap order; later ones overflow', () => {
+    // 5 players all pinned to group 0; only 4 fit. The first 4 in pinMap order
+    // must be the ones seated in group 0 (legacy precedence preserved).
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const pins = new Map([[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]);
+    for (let s = 1; s <= 10; s++) {
+      const result = suggestGroups({ matrix: new Map(), playerIds: ids, pins, rng: mulberry32(s) });
+      expect(result.groups[0]).toHaveLength(4);
+      // The first four pinned (1,2,3,4) win group 0; player 5 is bumped out of it.
+      expect([...result.groups[0]!].sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+      expect(result.groups[1]).not.toContain(1);
+      expect(result.groups[1]).toContain(5);
+    }
+  });
+
+  it('is deterministic with pins + fixed seed', () => {
+    const m: PairingMatrix = new Map([[pairKey(1, 2), 3]]);
+    const ids = [1, 2, 3, 4, 5, 6, 7, 8];
+    const pins = new Map([[1, 0], [5, 1]]);
+    const a = suggestGroups({ matrix: m, playerIds: ids, pins, rng: mulberry32(99) });
+    const b = suggestGroups({ matrix: m, playerIds: ids, pins, rng: mulberry32(99) });
+    expect(a.groups).toEqual(b.groups);
   });
 });

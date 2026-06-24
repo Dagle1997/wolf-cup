@@ -615,6 +615,11 @@ export const attendance = sqliteTable(
     status: text("status").notNull(), // 'in' | 'out'
     groupRequest: text("group_request"), // null | 'first' | 'last'
     groupRequestAt: integer("group_request_at"), // epoch ms; used to break ties when overflow
+    // "Play-with sponsor": the regular this player (typically a sub) was invited
+    // by and should be grouped with. null = no preference. Per-week, like
+    // group_request. Honored as a HARD keep-together link by the pairing engine
+    // (contraction) when both are confirmed; dropped if the sponsor isn't in.
+    playWithPlayerId: integer("play_with_player_id").references(() => players.id),
     contextId: text("context_id")
       .notNull()
       .default("league:guyan-wolf-cup-friday"),

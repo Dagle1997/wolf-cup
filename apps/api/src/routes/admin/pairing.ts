@@ -3,6 +3,7 @@ import { eq, and, or, inArray } from 'drizzle-orm';
 import { db } from '../../db/index.js';
 import { pairingHistory, rounds, players } from '../../db/schema.js';
 import { buildGroupRequestPins } from '../../lib/group-request-pins.js';
+import { buildSubGroupingInputs } from '../../lib/sub-grouping.js';
 import {
   serializeGroups,
   computePairingDiff,
@@ -131,6 +132,13 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
     playerIds,
   });
 
+  // Sub-aware inputs: spread subs softly, honor play-with links hard.
+  const { subIds, links } = await buildSubGroupingInputs({
+    seasonId: round.seasonId,
+    scheduledDate: round.scheduledDate,
+    playerIds,
+  });
+
   // Fetch pairing history for these players
   let historyRows;
   try {
@@ -159,7 +167,7 @@ app.post('/rounds/:roundId/suggest-groups', adminAuthMiddleware, async (c) => {
     }
   }
 
-  const result = suggestGroups({ matrix, playerIds, pins: pinMap });
+  const result = suggestGroups({ matrix, playerIds, pins: pinMap, subIds, links });
 
   // Format response with 1-based group numbers + pair counts
   const groupsOut = result.groups.map((g, i) => {

@@ -102,6 +102,8 @@ app.get('/attendance', async (c) => {
 
     const statusMap = new Map(attendanceRows.map((a) => [a.playerId, a.status]));
     const requestMap = new Map(attendanceRows.map((a) => [a.playerId, a.groupRequest]));
+    const playWithMap = new Map(attendanceRows.map((a) => [a.playerId, a.playWithPlayerId]));
+    const subIdSet = new Set(weekSubs.map((s) => s.id));
 
     const seen = new Set<number>();
     const playerList = [...activeRoster, ...weekSubs]
@@ -116,6 +118,8 @@ app.get('/attendance', async (c) => {
         handicapIndex: p.handicapIndex,
         status: statusMap.get(p.id) ?? 'unset',
         groupRequest: requestMap.get(p.id) ?? null,
+        isSub: subIdSet.has(p.id),
+        playWithPlayerId: playWithMap.get(p.id) ?? null,
       }));
 
     const confirmed = playerList.filter((p) => p.status === 'in').length;

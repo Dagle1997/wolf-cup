@@ -33,6 +33,8 @@ type AttendancePlayer = {
   handicapIndex: number | null;
   status: 'in' | 'out' | 'unset';
   groupRequest: 'first' | 'last' | null;
+  isSub: boolean;
+  playWithPlayerId: number | null;
 };
 
 type AttendanceResponse = {
@@ -304,6 +306,11 @@ function AttendancePage() {
                 player={player}
                 weekId={activeData.week!.id}
                 isAdmin={isAdmin}
+                // Sponsors are confirmed regulars (non-subs marked "in"); a sub
+                // can be tagged to play with any of them. Excludes self.
+                sponsorOptions={activeData.players.filter(
+                  (p) => p.status === 'in' && !p.isSub && p.id !== player.id,
+                )}
               />
             ))}
           </div>
@@ -425,10 +432,12 @@ function PlayerRow({
   player,
   weekId,
   isAdmin,
+  sponsorOptions,
 }: {
   player: AttendancePlayer;
   weekId: number;
   isAdmin: boolean;
+  sponsorOptions: AttendancePlayer[];
 }) {
   const toggleMutation = useMutation({
     mutationFn: (status: 'in' | 'out' | 'unset') =>
@@ -460,6 +469,21 @@ function PlayerRow({
     },
   });
 
+  const playWithMutation = useMutation({
+    mutationFn: (playWithPlayerId: number | null) =>
+      apiFetch<{ playWithPlayerId: number | null }>(
+        `/admin/attendance/${weekId}/players/${player.id}/play-with`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ playWithPlayerId }),
+        },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['attendance-default'] });
+      void queryClient.invalidateQueries({ queryKey: ['attendance-week', weekId] });
+    },
+  });
+
   function handleToggle() {
     if (!isAdmin) return;
     // Three-state cycle: unset → in → out → unset
@@ -475,6 +499,11 @@ function PlayerRow({
         : 'border-2 border-gray-300 dark:border-gray-600';
 
   const showGroupRequest = isAdmin && player.status === 'in';
+  // "Plays with" is a sub-only tag: which regular the sub was invited by and
+  // should be grouped with. Only meaningful once the sub is confirmed in and
+  // there is at least one confirmed regular to attach them to.
+  const showPlayWith =
+    isAdmin && player.status === 'in' && player.isSub && sponsorOptions.length > 0;
 
   return (
     <div
@@ -510,6 +539,26 @@ function PlayerRow({
           <option value="">—</option>
           <option value="first">First</option>
           <option value="last">Last</option>
+        </select>
+      )}
+      {showPlayWith && (
+        <select
+          value={player.playWithPlayerId ?? ''}
+          onChange={(e) => {
+            const v = e.target.value;
+            playWithMutation.mutate(v === '' ? null : Number(v));
+          }}
+          disabled={playWithMutation.isPending}
+          className="shrink-0 max-w-[8rem] rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Plays with"
+          title="Group this sub with a player"
+        >
+          <option value="">Plays with…</option>
+          {sponsorOptions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
         </select>
       )}
       {player.handicapIndex !== null && (
