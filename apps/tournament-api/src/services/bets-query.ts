@@ -46,6 +46,8 @@ export type BetWithSides = {
   stakeCents: number;
   /** Durable lifecycle state from the row (live | void | unsettleable | finalized). */
   state: string;
+  /** Board visibility: 'event_wide' (default) | 'stakeholders_only'. */
+  visibility: string;
   netCalcVersion: number | null;
   createdByPlayerId: string;
   createdAt: number;
@@ -101,6 +103,7 @@ export async function loadBetWithSides(
     basis: row.basis,
     stakeCents: row.stakeCents,
     state: row.state,
+    visibility: row.visibility,
     netCalcVersion: row.netCalcVersion,
     createdByPlayerId: row.createdByPlayerId,
     createdAt: row.createdAt,
@@ -254,6 +257,8 @@ export type BetView = {
   stakeCents: number;
   /** Durable state, or the derived outcome when live. */
   state: BetOutcome['derivedState'];
+  /** Board visibility: 'event_wide' | 'stakeholders_only'. */
+  visibility: string;
   winnerSubjectId: string | null;
   marginNet: number;
   sides: BetViewSide[];
@@ -283,6 +288,7 @@ async function toBetView(
     holeScope: bet.holeScope,
     stakeCents: bet.stakeCents,
     state: bet.state === 'live' ? outcome.derivedState : (bet.state as BetOutcome['derivedState']),
+    visibility: bet.visibility,
     winnerSubjectId: outcome.winnerSubjectId,
     marginNet: outcome.marginNet,
     sides: bet.sides.map((s) => ({
@@ -313,6 +319,41 @@ export async function listBetsForEvent(
   for (const r of betRows) {
     const bet = await loadBetWithSides(txOrDb, r.id, tenantId);
     if (bet) out.push(await toBetView(txOrDb, bet, tenantId));
+  }
+  return out;
+}
+
+/**
+ * The PUBLIC Action board, audience-bounded for one viewer (FR — visibility):
+ *   - 'event_wide' bets      → visible to every event participant.
+ *   - 'stakeholders_only' bets → visible ONLY if the viewer is one of the two
+ *     stakeholders (the people with money in it).
+ *   - the organizer sees EVERY bet regardless (they manage the board).
+ *
+ * The filter is applied to the LOADED bet (after sides are known) so a
+ * stakeholders_only bet never even has its matchup serialized to a non-stakeholder.
+ * Ordering matches listBetsForEvent (createdAt, id) for a stable board.
+ */
+export async function listVisibleBetsForViewer(
+  txOrDb: Tx | Db,
+  eventId: string,
+  viewerPlayerId: string,
+  isOrganizer: boolean,
+  tenantId: string,
+): Promise<BetView[]> {
+  const betRows = await txOrDb
+    .select({ id: bets.id })
+    .from(bets)
+    .where(and(eq(bets.eventId, eventId), eq(bets.tenantId, tenantId)))
+    .orderBy(asc(bets.createdAt), asc(bets.id));
+  const out: BetView[] = [];
+  for (const r of betRows) {
+    const bet = await loadBetWithSides(txOrDb, r.id, tenantId);
+    if (!bet) continue;
+    const viewerIsStakeholder = bet.sides.some((s) => s.stakeholderPlayerId === viewerPlayerId);
+    const canSee = isOrganizer || bet.visibility === 'event_wide' || viewerIsStakeholder;
+    if (!canSee) continue;
+    out.push(await toBetView(txOrDb, bet, tenantId));
   }
   return out;
 }

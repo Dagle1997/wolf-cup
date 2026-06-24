@@ -88,6 +88,14 @@ export const bets = sqliteTable(
     basis: text('basis').notNull(), // open enum, Zod-validated (FR20)
     stakeCents: integer('stake_cents').notNull(),
     state: text('state').notNull().default('live'),
+    // Who may SEE this bet on the player-facing board:
+    //   'event_wide'        → every event participant (the default — a public bet).
+    //   'stakeholders_only' → only the two stakeholders (+ the organizer).
+    // The organizer always sees every bet (admin board) regardless. NO DB CHECK on
+    // purpose: this is an ALTER ADD COLUMN on a table that already carries CHECKs, and
+    // a CHECK here would force a SQLite table REBUILD (the documented gotcha). The enum
+    // is validated in Zod at the write path + isBetVisibility() on read.
+    visibility: text('visibility').notNull().default('event_wide'),
     // Leaderboard net-calc version the banked outcome was computed under.
     netCalcVersion: integer('net_calc_version'),
     resolutionJson: text('resolution_json'), // Story 1.6 organizer resolve

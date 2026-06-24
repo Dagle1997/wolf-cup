@@ -27,6 +27,7 @@ import { Route as EventsEventIdMatchPlayStandingsRouteImport } from './routes/ev
 import { Route as EventsEventIdLeaderboardRouteImport } from './routes/events.$eventId.leaderboard'
 import { Route as EventsEventIdGalleryRouteImport } from './routes/events.$eventId.gallery'
 import { Route as EventsEventIdBetsRouteImport } from './routes/events.$eventId.bets'
+import { Route as EventsEventIdActionRouteImport } from './routes/events.$eventId.action'
 import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
@@ -137,6 +138,11 @@ const EventsEventIdGalleryRoute = EventsEventIdGalleryRouteImport.update({
 const EventsEventIdBetsRoute = EventsEventIdBetsRouteImport.update({
   id: '/events/$eventId/bets',
   path: '/events/$eventId/bets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EventsEventIdActionRoute = EventsEventIdActionRouteImport.update({
+  id: '/events/$eventId/action',
+  path: '/events/$eventId/action',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminEventsNewRoute = AdminEventsNewRouteImport.update({
@@ -252,6 +258,7 @@ export interface FileRoutesByFullPath {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/events/$eventId/action': typeof EventsEventIdActionRoute
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
@@ -290,6 +297,7 @@ export interface FileRoutesByTo {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/events/$eventId/action': typeof EventsEventIdActionRoute
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
@@ -329,6 +337,7 @@ export interface FileRoutesById {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/events/$eventId/action': typeof EventsEventIdActionRoute
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/gallery': typeof EventsEventIdGalleryRoute
   '/events/$eventId/leaderboard': typeof EventsEventIdLeaderboardRoute
@@ -369,6 +378,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/events/$eventId/action'
     | '/events/$eventId/bets'
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
@@ -407,6 +417,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/events/$eventId/action'
     | '/events/$eventId/bets'
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
@@ -445,6 +456,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/events/$eventId/action'
     | '/events/$eventId/bets'
     | '/events/$eventId/gallery'
     | '/events/$eventId/leaderboard'
@@ -484,6 +496,7 @@ export interface RootRouteChildren {
   AdminCoursesNewRoute: typeof AdminCoursesNewRoute
   AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
   AdminEventsNewRoute: typeof AdminEventsNewRoute
+  EventsEventIdActionRoute: typeof EventsEventIdActionRoute
   EventsEventIdBetsRoute: typeof EventsEventIdBetsRoute
   EventsEventIdGalleryRoute: typeof EventsEventIdGalleryRoute
   EventsEventIdLeaderboardRoute: typeof EventsEventIdLeaderboardRoute
@@ -639,6 +652,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsEventIdBetsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/events/$eventId/action': {
+      id: '/events/$eventId/action'
+      path: '/events/$eventId/action'
+      fullPath: '/events/$eventId/action'
+      preLoaderRoute: typeof EventsEventIdActionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/events/new': {
       id: '/admin/events/new'
       path: '/admin/events/new'
@@ -780,6 +800,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminCoursesNewRoute: AdminCoursesNewRoute,
   AdminCoursesUploadRoute: AdminCoursesUploadRoute,
   AdminEventsNewRoute: AdminEventsNewRoute,
+  EventsEventIdActionRoute: EventsEventIdActionRoute,
   EventsEventIdBetsRoute: EventsEventIdBetsRoute,
   EventsEventIdGalleryRoute: EventsEventIdGalleryRoute,
   EventsEventIdLeaderboardRoute: EventsEventIdLeaderboardRoute,

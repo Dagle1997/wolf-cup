@@ -1,0 +1,1 @@
+ALTER TABLE `bets` ADD `visibility` text DEFAULT 'event_wide' NOT NULL;

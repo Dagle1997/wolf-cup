@@ -55,6 +55,7 @@ type BetView = {
   state: string;
   winnerSubjectId: string | null;
   marginNet: number;
+  visibility: 'event_wide' | 'stakeholders_only';
   sides: BetViewSide[];
 };
 
@@ -136,6 +137,7 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
   const [openBook, setOpenBook] = useState(false);
   const [stakeholderA, setStakeholderA] = useState('');
   const [stakeholderB, setStakeholderB] = useState('');
+  const [visibility, setVisibility] = useState<'event_wide' | 'stakeholders_only'>('event_wide');
   const [confirmVoidId, setConfirmVoidId] = useState<string | null>(null);
   // Story 1.4 edit-in-form mode: which bet is being edited + the confirm gate.
   const [editingBetId, setEditingBetId] = useState<string | null>(null);
@@ -163,6 +165,7 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
       stakeCents: Number(stakeDollars) * 100,
       sideA: { stakeholderPlayerId: stA, subjectPlayerId: subjectA },
       sideB: { stakeholderPlayerId: stB, subjectPlayerId: subjectB },
+      visibility,
     };
   };
 
@@ -213,6 +216,7 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
     setOpenBook(ob);
     setStakeholderA(a?.stakeholderPlayerId ?? '');
     setStakeholderB(bb?.stakeholderPlayerId ?? '');
+    setVisibility(b.visibility === 'stakeholders_only' ? 'stakeholders_only' : 'event_wide');
     // Bring the form into view and focus its first control so keyboard / SR users
     // know the form changed (scrollIntoView is a no-op under jsdom).
     roundSelectRef.current?.scrollIntoView?.({ block: 'center' });
@@ -442,6 +446,44 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
             />
             Open book (different backer)
           </label>
+
+          <FormField label="Who can see this bet">
+            <div
+              role="tablist"
+              aria-label="Who can see this bet"
+              style={{ display: 'flex', gap: 0, borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--color-border)' }}
+            >
+              {([['event_wide', 'Entire event'], ['stakeholders_only', 'Just stakeholders']] as const).map(
+                ([val, label]) => {
+                  const active = visibility === val;
+                  return (
+                    <button
+                      key={val}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      data-testid={`visibility-${val}`}
+                      onClick={() => setVisibility(val)}
+                      style={{
+                        flex: 1,
+                        border: 'none',
+                        borderRadius: 0,
+                        minHeight: 'var(--control-height)',
+                        padding: '0 var(--space-3)',
+                        fontWeight: 600,
+                        fontSize: 'var(--font-sm)',
+                        cursor: 'pointer',
+                        color: active ? '#fff' : 'var(--color-text-secondary)',
+                        backgroundColor: active ? 'var(--color-brand-primary)' : 'var(--color-surface)',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                },
+              )}
+            </div>
+          </FormField>
 
           {openBook ? (
             <>

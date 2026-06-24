@@ -55,6 +55,9 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 const TENANT_ID = 'guyan';
 
+/** Per-bet cap for the PLAYER self-serve path ($1,000). The organizer is uncapped. */
+const SELF_SERVE_MAX_STAKE_CENTS = 100_000;
+
 /**
  * Bases that can be CREATED per bet type (FR20 open enum, gated in code not a
  * DB CHECK). Story 1.1: h2h+net. Story 1.2: per_hole_match+net/gross. Story 1.3:
@@ -96,6 +99,10 @@ export const actionBetParamsSchema = z
     stakeCents: z.number().int().min(1),
     sideA: sideSchema,
     sideB: sideSchema,
+    // Who may SEE this bet on the player-facing board. Optional → 'event_wide'
+    // (the default — a public bet). 'stakeholders_only' hides it from everyone
+    // but the two stakeholders (+ the organizer, who always sees all).
+    visibility: z.enum(['event_wide', 'stakeholders_only']).optional(),
   })
   .strict();
 
@@ -231,7 +238,19 @@ async function validateBetParams(
  */
 export async function createActionBet(
   tx: Tx,
-  args: { eventId: string; actorPlayerId: string; input: ActionBetCreateInput; override?: boolean },
+  args: {
+    eventId: string;
+    actorPlayerId: string;
+    input: ActionBetCreateInput;
+    override?: boolean;
+    /**
+     * Player self-serve guardrail: when true, the actor MUST be one of the two
+     * stakeholders. This stops a participant from unilaterally committing only
+     * OTHER players' money — they have to have skin in the bet they post. The
+     * organizer path leaves this false (they arrange bets between others).
+     */
+    requireActorIsStakeholder?: boolean;
+  },
 ): Promise<string> {
   const { eventId, actorPlayerId, input } = args;
   const override = args.override ?? false;
@@ -242,6 +261,45 @@ export async function createActionBet(
   const subjectA = input.sideA.subjectPlayerId;
   const stakeholderB = input.sideB.stakeholderPlayerId;
   const subjectB = input.sideB.subjectPlayerId;
+
+  // Player self-serve guardrails (the organizer path leaves requireActorIsStakeholder
+  // false and may arrange any open-book bet between others):
+  if (args.requireActorIsStakeholder) {
+    // (1) The creator must have skin in the game (one of the two stakeholders).
+    if (actorPlayerId !== stakeholderA && actorPlayerId !== stakeholderB) {
+      throw new BetWriteError(
+        'creator_not_a_stakeholder',
+        'you must be one of the two stakeholders on a bet you create',
+        400,
+      );
+    }
+    // (2) No uninvolved third-party backer: every stakeholder must be either the
+    // creator (their own money) or one of the two SUBJECTS being bet on. This stops
+    // a participant from dragging a bystander's money into a bet. (True opponent
+    // ACCEPTANCE — a handshake before the bet goes live — is a future enhancement;
+    // today the model is trust-based, matching the in-person settle-up + the
+    // existing organizer open book.)
+    const subjects = new Set([subjectA, subjectB]);
+    for (const st of [stakeholderA, stakeholderB]) {
+      if (st !== actorPlayerId && !subjects.has(st)) {
+        throw new BetWriteError(
+          'third_party_stakeholder',
+          'a bet you post can only stake your own money or the players being bet on',
+          400,
+        );
+      }
+    }
+    // (3) Stake cap (fat-finger / abuse guard). Whole-dollar already enforced.
+    if (input.stakeCents > SELF_SERVE_MAX_STAKE_CENTS) {
+      throw new BetWriteError(
+        'stake_exceeds_self_serve_cap',
+        `a bet you post is capped at $${SELF_SERVE_MAX_STAKE_CENTS / 100}`,
+        400,
+      );
+    }
+  }
+
+  const visibility = input.visibility ?? 'event_wide';
 
   // Persist: bet + two sides + audit + activity, all in this tx.
   const betId = randomUUID();
@@ -257,6 +315,7 @@ export async function createActionBet(
     basis: input.basis,
     stakeCents: input.stakeCents,
     state: 'live',
+    visibility,
     createdByPlayerId: actorPlayerId,
     createdAt: now,
     tenantId: TENANT_ID,
@@ -295,6 +354,7 @@ export async function createActionBet(
       basis: input.basis,
       holeScope: input.holeScope,
       stakeCents: input.stakeCents,
+      visibility,
       sideA: { stakeholderPlayerId: stakeholderA, subjectPlayerId: subjectA },
       sideB: { stakeholderPlayerId: stakeholderB, subjectPlayerId: subjectB },
       createdByPlayerId: actorPlayerId,
@@ -302,20 +362,26 @@ export async function createActionBet(
     },
   });
 
-  await emitActivity(tx, {
-    type: 'action_bet.created',
-    eventId,
-    actorPlayerId,
-    betId,
-    betType: input.betType,
-    basis: input.basis,
-    holeScope: input.holeScope,
-    stakeCents: input.stakeCents,
-    stakeholderAId: stakeholderA,
-    subjectAId: subjectA,
-    stakeholderBId: stakeholderB,
-    subjectBId: subjectB,
-  });
+  // PRIVACY: the activity feed is an event-wide broadcast (every participant sees
+  // it). A 'stakeholders_only' bet must NOT announce its matchup there — emit the
+  // creation activity ONLY for an event_wide (public) bet. A private bet still has
+  // its full audit row above (organizer-visible), just no public feed entry.
+  if (visibility === 'event_wide') {
+    await emitActivity(tx, {
+      type: 'action_bet.created',
+      eventId,
+      actorPlayerId,
+      betId,
+      betType: input.betType,
+      basis: input.basis,
+      holeScope: input.holeScope,
+      stakeCents: input.stakeCents,
+      stakeholderAId: stakeholderA,
+      subjectAId: subjectA,
+      stakeholderBId: stakeholderB,
+      subjectBId: subjectB,
+    });
+  }
 
   return betId;
 }
@@ -356,6 +422,9 @@ export async function editActionBet(
   const subjectB = input.sideB.subjectPlayerId;
   const ctx = `event:${eventId}`;
 
+  // Only overwrite visibility when the edit explicitly carries it (back-compat:
+  // an edit that omits it leaves the stored value untouched).
+  const visibilitySet = input.visibility !== undefined ? { visibility: input.visibility } : {};
   await tx
     .update(bets)
     .set({
@@ -364,6 +433,7 @@ export async function editActionBet(
       betType: input.betType,
       basis: input.basis,
       stakeCents: input.stakeCents,
+      ...visibilitySet,
     })
     .where(and(eq(bets.id, betId), eq(bets.tenantId, TENANT_ID)));
 
@@ -389,6 +459,7 @@ export async function editActionBet(
         basis: before.basis,
         holeScope: before.holeScope,
         stakeCents: before.stakeCents,
+        visibility: before.visibility,
         sideA: sideOf('A')
           ? { stakeholderPlayerId: sideOf('A')!.stakeholderPlayerId, subjectPlayerId: sideOf('A')!.subjectPlayerId }
           : null,
@@ -402,6 +473,7 @@ export async function editActionBet(
         basis: input.basis,
         holeScope: input.holeScope,
         stakeCents: input.stakeCents,
+        visibility: input.visibility ?? before.visibility,
         sideA: { stakeholderPlayerId: stakeholderA, subjectPlayerId: subjectA },
         sideB: { stakeholderPlayerId: stakeholderB, subjectPlayerId: subjectB },
       },

@@ -25,6 +25,7 @@ import { roundLifecycleRouter } from './routes/round-lifecycle.js';
 import { scoreCorrectionsRouter } from './routes/score-corrections.js';
 import { eventRuleEditsRouter } from './routes/event-rule-edits.js';
 import { betsRouter } from './routes/bets.js';
+import { eventsActionBetsRouter } from './routes/events-action-bets.js';
 import { moneyRouter } from './routes/money.js';
 import { eventsRouter } from './routes/events.js';
 import { scheduleRouter } from './routes/schedule.js';
@@ -203,6 +204,11 @@ app.route('/api/events', eventRuleEditsRouter);
 // rounds belong to event, config shape per betType, UNIQUE on (event, A, B,
 // type) for canonical alphabetical ordering. Audit + activity emit in-tx.
 app.route('/api/events', betsRouter);
+
+// "The Action" PLAYER self-serve betting + the public board. Effective URLs:
+// POST /api/events/:eventId/action-bets   (participant posts a bet; must be a stakeholder)
+// GET  /api/events/:eventId/action-board   (public board, visibility-bounded per viewer)
+app.route('/api/events', eventsActionBetsRouter);
 
 // T6-5 head-to-head money matrix endpoint. Effective URL:
 // GET /api/events/:eventId/money

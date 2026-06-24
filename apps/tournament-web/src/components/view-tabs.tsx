@@ -17,6 +17,7 @@ const STANDINGS_TABS = [
   { key: 'leaderboard', label: 'Leaderboard', to: '/events/$eventId/leaderboard' },
   { key: 'teams', label: 'Teams', to: '/events/$eventId/team-standings' },
   { key: 'match', label: 'Match', to: '/events/$eventId/match-play-standings' },
+  { key: 'action', label: 'Action', to: '/events/$eventId/action' },
 ] as const;
 
 const MONEY_TABS = [
