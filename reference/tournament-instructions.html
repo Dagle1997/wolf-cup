@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pete Dye Invitational — How to use the app</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --green: #16a34a;
+    --green-dark: #15803d;
+    --green-deeper: #0f5c2e;
+    --gold: #f59e0b;
+    --dark: #0a0f0a;
+    --grey: #6b7280;
+  }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #e5e7eb;
+    color: #1a1a1a;
+    line-height: 1.5;
+  }
+
+  /* Phone-portrait pages — same 400×720 (~5:9) as the marketing brochure. */
+  @page { size: 400px 720px; margin: 0; }
+
+  .page {
+    width: 400px;
+    height: 720px;
+    margin: 0 auto;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+    page-break-inside: avoid;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ===== SHARED ===== */
+  .section-label {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    color: var(--green);
+  }
+  .section-title {
+    font-size: 25px;
+    font-weight: 800;
+    letter-spacing: -0.4px;
+    line-height: 1.12;
+    margin-bottom: 8px;
+    color: var(--dark);
+  }
+  .section-desc {
+    font-size: 13.5px;
+    line-height: 1.5;
+    margin-bottom: 12px;
+    color: var(--grey);
+  }
+
+  /* compact numbered steps (from the brochure CTA page) */
+  .steps { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .step-card {
+    display: flex; gap: 11px; align-items: flex-start;
+    background: white; border: 1px solid #e5e7eb; border-radius: 11px;
+    padding: 10px 12px;
+  }
+  .step-number {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; flex-shrink: 0;
+    background: var(--green); color: white; border-radius: 50%;
+    font-size: 12.5px; font-weight: 800;
+  }
+  .step-card h4 { font-size: 13.5px; font-weight: 700; color: var(--dark); margin-bottom: 2px; }
+  .step-card p { font-size: 12px; color: var(--grey); line-height: 1.4; }
+  .step-card .hl { color: var(--green-dark); font-weight: 700; }
+
+  /* a phone screenshot, top-aligned in a bounded window so the key controls
+     show without blowing the page out. */
+  .howto-shot {
+    align-self: center;
+    width: 208px;
+    height: 452px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.16);
+    border: 2px solid #d1d5db;
+    background: #f3f4f6;
+    margin-top: auto;
+  }
+  .howto-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+  /* The Action is a tall screen — show it NARROWER so the whole form fits the
+     window down through the "Who can see this bet" pill + Post bet (a wider crop
+     would clip above the pill on a fixed-height page). */
+  .howto-shot.tall { width: 170px; height: 404px; }
+
+  .feature-page { padding: 26px 26px 22px; background: white; }
+
+  /* ===== COVER (hero) ===== */
+  .hero-page {
+    background: linear-gradient(165deg, var(--dark) 0%, #0d1f0d 42%, var(--green-deeper) 100%);
+    color: white;
+    padding: 30px 28px;
+  }
+  .hero-top { display: flex; align-items: center; gap: 9px; margin-bottom: 26px; }
+  .hero-logo { font-size: 24px; }
+  .hero-brand {
+    font-size: 13px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--green); line-height: 1.15;
+  }
+  .hero-kicker { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.5); letter-spacing: 1px; margin-bottom: 10px; }
+  .hero-headline { font-size: 33px; font-weight: 900; line-height: 1.07; letter-spacing: -1px; margin-bottom: 14px; }
+  .hero-headline .accent { color: var(--green); }
+  .hero-sub { font-size: 14.5px; font-weight: 300; color: rgba(255,255,255,0.72); line-height: 1.55; margin-bottom: 20px; }
+  .hero-toc { display: flex; flex-direction: column; gap: 9px; }
+  .hero-toc-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 10px 13px; background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.09); border-radius: 10px;
+  }
+  .hero-toc-item .toc-num {
+    width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%;
+    background: var(--green); color: white; font-size: 12px; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .hero-toc-item .toc-text { font-size: 14px; font-weight: 600; }
+  .hero-bottom { margin-top: auto; text-align: center; padding-top: 14px; }
+  .hero-url { font-size: 21px; font-weight: 800; color: var(--green); letter-spacing: -0.3px; }
+  .hero-url-note { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 4px; }
+
+  /* ===== CTA / close ===== */
+  .cta-page { background: linear-gradient(170deg, #fafafa 0%, white 45%, #f0fdf4 100%); padding: 30px 28px; }
+  .cta-box {
+    text-align: center; padding: 20px; background: white;
+    border-radius: 16px; border: 2px solid var(--green); margin-top: 8px;
+  }
+  .cta-box h2 { font-size: 21px; font-weight: 900; color: var(--dark); margin-bottom: 6px; }
+  .cta-box p { font-size: 13px; color: var(--grey); margin-bottom: 10px; line-height: 1.5; }
+  .cta-url { font-size: 22px; font-weight: 800; color: var(--green); }
+  .cta-install { font-size: 11.5px; color: var(--grey); margin-top: 12px; line-height: 1.6; }
+  .cta-foot { margin-top: auto; text-align: center; font-size: 10.5px; color: #9ca3af; padding-top: 14px; }
+</style>
+</head>
+<body>
+
+<!-- ===== COVER ===== -->
+<div class="page hero-page">
+  <div class="hero-top">
+    <span class="hero-logo">⛳</span>
+    <span class="hero-brand">Pete Dye<br>Invitational</span>
+  </div>
+
+  <div class="hero-kicker">A 60-SECOND GUIDE</div>
+  <h1 class="hero-headline">How to use<br><span class="accent">the app.</span></h1>
+  <p class="hero-sub">
+    Everything you do this weekend, on your phone — join, score the hole, watch the
+    board move, and call the action. Four screens, that's it.
+  </p>
+
+  <div class="hero-toc">
+    <div class="hero-toc-item"><span class="toc-num">1</span><span class="toc-text">Join the event</span></div>
+    <div class="hero-toc-item"><span class="toc-num">2</span><span class="toc-text">Score the hole</span></div>
+    <div class="hero-toc-item"><span class="toc-num">3</span><span class="toc-text">Watch the leaderboard</span></div>
+    <div class="hero-toc-item"><span class="toc-num">4</span><span class="toc-text">Post a bet — The Action</span></div>
+  </div>
+
+  <div class="hero-bottom">
+    <div class="hero-url">tournament.dagle.cloud</div>
+    <div class="hero-url-note">Open it in your phone's browser, then "Add to Home Screen".</div>
+  </div>
+</div>
+
+<!-- ===== 1. JOIN ===== -->
+<div class="page feature-page">
+  <div class="section-label">Step 1</div>
+  <h2 class="section-title">Join the event</h2>
+  <p class="section-desc">No password, no sign-up. Tap the link Josh sends and pick your name — the app remembers you on that phone.</p>
+  <div class="steps">
+    <div class="step-card"><span class="step-number">1</span><div><h4>Open the invite link</h4><p>Tap the link in the group text (or enter your <span class="hl">join code</span> at the app).</p></div></div>
+    <div class="step-card"><span class="step-number">2</span><div><h4>Tap your name</h4><p>Find yourself in the roster and tap it — that binds you to your phone.</p></div></div>
+    <div class="step-card"><span class="step-number">3</span><div><h4>You're in</h4><p>You land on the event home. Didn't get a link? Text Josh.</p></div></div>
+  </div>
+  <div class="howto-shot"><img src="instructions-screenshots/01-invite.png" alt="Invite screen — tap your name"></div>
+</div>
+
+<!-- ===== 2. SCORE ===== -->
+<div class="page feature-page">
+  <div class="section-label">Step 2</div>
+  <h2 class="section-title">Score the hole</h2>
+  <p class="section-desc">One scorer per foursome enters everyone's gross score, hole by hole. Net, best-ball and money calculate themselves.</p>
+  <div class="steps">
+    <div class="step-card"><span class="step-number">1</span><div><h4>Tap the score</h4><p>Type a one-digit score (it jumps to the next player), or use <span class="hl">– / +</span>. Bigger numbers: tap +.</p></div></div>
+    <div class="step-card"><span class="step-number">2</span><div><h4>Bonuses (if you play them)</h4><p>Tap <span class="hl">G / P / S</span> for greenie, polie, sandie on the hole.</p></div></div>
+    <div class="step-card"><span class="step-number">3</span><div><h4>Save the hole</h4><p>Hit <span class="hl">Save Hole</span> — it syncs and moves on. Works even with no signal; it catches up later.</p></div></div>
+  </div>
+  <div class="howto-shot"><img src="instructions-screenshots/08-score-entry.png" alt="Score entry screen"></div>
+</div>
+
+<!-- ===== 3. LEADERBOARD ===== -->
+<div class="page feature-page">
+  <div class="section-label">Step 3</div>
+  <h2 class="section-title">Watch the leaderboard</h2>
+  <p class="section-desc">The board moves the second a score is saved. To-par and money, per man, live.</p>
+  <div class="steps">
+    <div class="step-card"><span class="step-number">1</span><div><h4>Open Leaderboard</h4><p>From the event home, or the tab up top. Tap a player to open their card.</p></div></div>
+    <div class="step-card"><span class="step-number">2</span><div><h4>This round or the whole trip</h4><p>Toggle <span class="hl">Current round</span> / <span class="hl">All rounds</span>. See <span class="hl">To Par</span> and <span class="hl">$</span>.</p></div></div>
+    <div class="step-card"><span class="step-number">3</span><div><h4>Jump around</h4><p>Tap <span class="hl">Score →</span> to enter, or <span class="hl">Foursome results →</span> for the hole-by-hole card.</p></div></div>
+  </div>
+  <div class="howto-shot"><img src="instructions-screenshots/09-leaderboard.png" alt="Leaderboard screen"></div>
+</div>
+
+<!-- ===== 4. THE ACTION ===== -->
+<div class="page feature-page">
+  <div class="section-label">Step 4</div>
+  <h2 class="section-title">Post a bet — The&nbsp;Action</h2>
+  <p class="section-desc">Call a head-to-head against anyone in the event — low score over your chosen holes wins, and it settles itself from the scores.</p>
+  <div class="steps">
+    <div class="step-card"><span class="step-number">1</span><div><h4>Set it up</h4><p>Open <span class="hl">Action</span>, pick the round / net or gross / holes / stake / <span class="hl">opponent</span>.</p></div></div>
+    <div class="step-card"><span class="step-number">2</span><div><h4>Choose who can see it, then post</h4><p><span class="hl">Entire event</span> (public board) or <span class="hl">Just stakeholders</span> (private). Tap <span class="hl">Post bet</span> — it goes live right away.</p></div></div>
+  </div>
+  <div class="howto-shot tall"><img src="instructions-screenshots/16-action.png" alt="The Action — the bet form with the 'Who can see this bet' pill"></div>
+</div>
+
+<!-- ===== CLOSE ===== -->
+<div class="page cta-page">
+  <div class="section-label">That's it</div>
+  <h2 class="section-title">Score it. Watch it. Settle it.</h2>
+  <p class="section-desc">No "what'd you make on 3?" after the round. No napkin math at the bar. The phone keeps the whole weekend.</p>
+
+  <div class="cta-box">
+    <h2>Get on the app</h2>
+    <p>Open it in your phone browser and add it to your home screen so it opens like an app.</p>
+    <div class="cta-url">tournament.dagle.cloud</div>
+    <div class="cta-install">iPhone: Share → <strong>Add to Home Screen</strong>.<br>Android: ⋮ menu → <strong>Install app</strong>.</div>
+  </div>
+
+  <div class="cta-foot">Pete Dye Invitational · Stollie Productions</div>
+</div>
+
+</body>
+</html>

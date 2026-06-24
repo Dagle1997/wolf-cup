@@ -63,6 +63,22 @@ test('capture UI screenshots at phone viewport', async ({ browser, playwright })
     baseURL: API_URL,
     extraHTTPHeaders: { cookie: `tournament_session=${fx.scorerSessionId}` },
   });
+  // Post a player self-serve Action bet BEFORE scoring (the placement cutoff
+  // closes betting once an in-scope hole is scored) so the Action board shot
+  // below isn't empty. The scorer is a roster member + side-A stakeholder.
+  const oppId = fx.memberIds.find((id) => id !== fx.scorerPlayerId) ?? fx.memberIds[0];
+  await scorerApi.post(`/api/events/${fx.eventId}/action-bets`, {
+    data: {
+      eventRoundId: fx.eventRoundId,
+      betType: 'h2h',
+      basis: 'net',
+      holeScope: 'full18',
+      stakeCents: 2000,
+      sideA: { stakeholderPlayerId: fx.scorerPlayerId, subjectPlayerId: fx.scorerPlayerId },
+      sideB: { stakeholderPlayerId: oppId, subjectPlayerId: oppId },
+      visibility: 'event_wide',
+    },
+  });
   for (let h = 1; h <= 3; h++) {
     for (let i = 0; i < fx.memberIds.length; i++) {
       await scorerApi.post(`/api/rounds/${roundId}/holes/${h}/scores`, {
@@ -84,6 +100,7 @@ test('capture UI screenshots at phone viewport', async ({ browser, playwright })
   await shot(scorer, `/events/${fx.eventId}/money`, '11-money');
   await shot(scorer, `/events/${fx.eventId}/settle-up`, '12-settle-up');
   await shot(scorer, `/events/${fx.eventId}/bets`, '13-bets');
+  await shot(scorer, `/events/${fx.eventId}/action`, '16-action'); // The Action board + post-a-bet
   await shot(scorer, `/events/${fx.eventId}/event-rounds/${fx.eventRoundId}/foursome-results`, '14-foursome-results');
   // Event home AGAIN, now that a round is in progress — shows the live CTA.
   await shot(scorer, `/events/${fx.eventId}`, '15-event-home-live');
