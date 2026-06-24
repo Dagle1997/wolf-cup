@@ -77,6 +77,18 @@ const PatchGroupRequestSchema = z
     message: 'at least one of name or moneyVisibilityMode required',
   });
 
+// Cell phone (optional). Loose validation: trim, cap length. Stored as
+// entered — normalization for SMS matching is the future join-code bot's
+// job. An empty string after trim becomes null (treated as "not provided").
+// Shared by the manual-add path and the dedicated phone PATCH below.
+const PhoneSchema = z
+  .string()
+  .trim()
+  .max(32)
+  .transform((v) => (v === '' ? null : v))
+  .nullable()
+  .optional();
+
 const AddMemberRequestSchema = z.discriminatedUnion('mode', [
   z.object({
     mode: z.literal('ghin'),
@@ -88,20 +100,19 @@ const AddMemberRequestSchema = z.discriminatedUnion('mode', [
     mode: z.literal('manual'),
     name: z.string().trim().min(1),
     manualHandicapIndex: z.number().finite().min(-10).max(54).optional(),
-    // Cell phone (optional). Loose validation: trim, cap length. Stored
-    // as entered — normalization for SMS matching is the future bot's job.
-    // An empty string after trim becomes null (treated as "not provided").
-    phone: z
-      .string()
-      .trim()
-      .max(32)
-      .transform((v) => (v === '' ? null : v))
-      .nullable()
-      .optional(),
+    phone: PhoneSchema,
   }),
 ]);
 
 type AddMemberRequest = z.infer<typeof AddMemberRequestSchema>;
+
+// PATCH .../members/:playerId body — phone-only update for any roster member
+// (works for GHIN-added AND manual players). `phone` required in the body
+// (may be null/empty to clear); using `.refine` would over-engineer a
+// single-field patch.
+const PatchMemberPhoneSchema = z.object({
+  phone: PhoneSchema,
+});
 
 export const adminGroupsRouter = new Hono();
 
@@ -389,6 +400,86 @@ adminGroupsRouter.post(
       },
       201,
     );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// PATCH /groups/:groupId/members/:playerId — update a member's phone
+//
+// Phone-only update for ANY roster member (GHIN-added or manual). The
+// organizer enters a cell number inline next to each name in the members
+// list; this is the future SMS join-code bot's matching key. Scoped exactly
+// like the other member mutations: requireSession → requireOrganizer, plus a
+// membership pre-flight so a player can only be patched through a group they
+// actually belong to (mirrors the DELETE's (groupId, playerId) scoping).
+// ---------------------------------------------------------------------------
+adminGroupsRouter.patch(
+  '/groups/:groupId/members/:playerId',
+  requireSession,
+  requireOrganizer,
+  bodyLimit({
+    maxSize: SAVE_BODY_LIMIT_BYTES,
+    onError: (c) => {
+      const requestId = c.get('requestId');
+      return c.json(
+        { error: 'bad_request', code: 'body_too_large', requestId },
+        400,
+      );
+    },
+  }),
+  async (c) => {
+    const requestId = c.get('requestId');
+    const groupId = c.req.param('groupId');
+    const playerId = c.req.param('playerId');
+
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json(
+        { error: 'bad_request', code: 'invalid_body', requestId, issues: [] },
+        400,
+      );
+    }
+
+    const parseResult = PatchMemberPhoneSchema.safeParse(raw);
+    if (!parseResult.success) {
+      return c.json(
+        {
+          error: 'bad_request',
+          code: 'invalid_body',
+          requestId,
+          issues: parseResult.error.issues,
+        },
+        400,
+      );
+    }
+    const phone = parseResult.data.phone ?? null;
+
+    // Membership pre-flight: the player must belong to this group. Turns a
+    // cross-group or unknown-player patch into a clean 404 instead of
+    // silently no-op-updating a players row the organizer can't see here.
+    const memberRows = await db
+      .select({ playerId: groupMembers.playerId })
+      .from(groupMembers)
+      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.playerId, playerId)));
+    if (memberRows.length === 0) {
+      return c.json({ error: 'not_found', code: 'member_not_found', requestId }, 404);
+    }
+
+    const updated = await db
+      .update(players)
+      .set({ phone })
+      .where(eq(players.id, playerId))
+      .returning({ id: players.id, phone: players.phone });
+
+    if (updated.length === 0) {
+      // players row vanished between the membership check and update (FK
+      // makes this near-impossible, but keep the contract honest).
+      return c.json({ error: 'not_found', code: 'member_not_found', requestId }, 404);
+    }
+
+    return c.json({ playerId: updated[0]!.id, phone: updated[0]!.phone });
   },
 );
 

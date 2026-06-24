@@ -544,3 +544,160 @@ describe('DELETE /api/admin/groups/:groupId/members/:playerId', () => {
     expect(body.code).toBe('member_not_found');
   });
 });
+
+describe('PATCH /api/admin/groups/:groupId/members/:playerId (phone)', () => {
+  // Seeds a player and joins them to the group. `ghin` lets us cover the
+  // GHIN-added case (phone must attach to GHIN players too, not just manual).
+  async function seedMember(
+    groupId: string,
+    eventId: string,
+    opts: { ghin?: string; phone?: string | null } = {},
+  ): Promise<string> {
+    const playerId = randomUUID();
+    await db.insert(players).values({
+      id: playerId,
+      isOrganizer: false,
+      createdAt: Date.now(),
+      name: 'Member',
+      ghin: opts.ghin ?? null,
+      phone: opts.phone ?? null,
+      tenantId: TENANT_ID,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+    await db.insert(groupMembers).values({
+      groupId,
+      playerId,
+      tenantId: TENANT_ID,
+      contextId: `event:${eventId}`,
+    });
+    return playerId;
+  }
+
+  it('happy path: sets phone on a GHIN-added member → 200 + DB updated', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId, eventId } = await seedEventAndGroup();
+    const playerId = await seedMember(groupId, eventId, { ghin: '9876543' });
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members/${playerId}`, {
+      method: 'PATCH',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '(304) 555-0123' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { playerId: string; phone: string | null };
+    expect(body.playerId).toBe(playerId);
+    expect(body.phone).toBe('(304) 555-0123');
+
+    const rows = await db.select().from(players).where(eq(players.id, playerId));
+    expect(rows[0]!.phone).toBe('(304) 555-0123');
+    // GHIN untouched.
+    expect(rows[0]!.ghin).toBe('9876543');
+  });
+
+  it('clears phone when sent empty/whitespace → 200 + null persisted', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId, eventId } = await seedEventAndGroup();
+    const playerId = await seedMember(groupId, eventId, { phone: '(304) 555-0123' });
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members/${playerId}`, {
+      method: 'PATCH',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '   ' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { phone: string | null };
+    expect(body.phone).toBeNull();
+
+    const rows = await db.select().from(players).where(eq(players.id, playerId));
+    expect(rows[0]!.phone).toBeNull();
+  });
+
+  it('trims the stored phone', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId, eventId } = await seedEventAndGroup();
+    const playerId = await seedMember(groupId, eventId);
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members/${playerId}`, {
+      method: 'PATCH',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '  304-555-0199  ' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { phone: string | null };
+    expect(body.phone).toBe('304-555-0199');
+  });
+
+  it('phone > 32 chars → 400 invalid_body', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId, eventId } = await seedEventAndGroup();
+    const playerId = await seedMember(groupId, eventId);
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members/${playerId}`, {
+      method: 'PATCH',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '1'.repeat(33) }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('invalid_body');
+  });
+
+  it('player not in this group → 404 member_not_found (no players row mutated)', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId } = await seedEventAndGroup();
+
+    // A player that exists but is NOT a member of this group.
+    const strangerId = randomUUID();
+    await db.insert(players).values({
+      id: strangerId,
+      isOrganizer: false,
+      createdAt: Date.now(),
+      name: 'Stranger',
+      phone: null,
+      tenantId: TENANT_ID,
+      contextId: 'league:guyan-wolf-cup-friday',
+    });
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members/${strangerId}`, {
+      method: 'PATCH',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '304-555-0000' }),
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('member_not_found');
+
+    // Stranger's row was not touched.
+    const rows = await db.select().from(players).where(eq(players.id, strangerId));
+    expect(rows[0]!.phone).toBeNull();
+  });
+
+  it('anonymous → 401 session_missing', async () => {
+    const { groupId, eventId } = await seedEventAndGroup();
+    const playerId = await seedMember(groupId, eventId);
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members/${playerId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '304-555-0000' }),
+    });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('session_missing');
+  });
+
+  it('non-organizer → 403 not_organizer', async () => {
+    const sessionId = await seedSession({ isOrganizer: false });
+    const { groupId, eventId } = await seedEventAndGroup();
+    const playerId = await seedMember(groupId, eventId);
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members/${playerId}`, {
+      method: 'PATCH',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ phone: '304-555-0000' }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('not_organizer');
+  });
+});

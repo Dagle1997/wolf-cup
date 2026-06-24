@@ -244,6 +244,38 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
     },
   });
 
+  // Update an existing member's cell phone (works for GHIN-added AND manual
+  // players — ties to the player's record, the future SMS bot's match key).
+  // Saved on blur from the inline input next to each name.
+  const updatePhone = useMutation({
+    mutationFn: async (payload: { playerId: string; phone: string }) => {
+      const ac = trackController();
+      try {
+        const res = await fetch(
+          `/api/admin/groups/${groupId}/members/${payload.playerId}`,
+          {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ phone: payload.phone }),
+            signal: ac.signal,
+          },
+        );
+        const body = (await res.json().catch(() => null)) as { code?: string } | null;
+        if (!res.ok) throw new Error(body?.code ?? 'unknown');
+        return body as { playerId: string; phone: string | null };
+      } finally {
+        releaseController(ac);
+      }
+    },
+    onSuccess: () => {
+      setTopLevelError(null);
+      void qc.invalidateQueries({ queryKey: ['group', groupId] });
+    },
+    onError: () => {
+      setTopLevelError('Failed to save phone.');
+    },
+  });
+
   // ---- Derived ----------------------------------------------------------
 
   const group = groupQuery.data;
@@ -350,9 +382,9 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Cell phone</th>
                 <th>GHIN</th>
                 <th>Handicap</th>
-                <th>Phone</th>
                 <th></th>
               </tr>
             </thead>
@@ -360,9 +392,17 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
               {group.members.map((m) => (
                 <tr key={m.playerId}>
                   <td>{m.name}</td>
+                  <td>
+                    <MemberPhoneInput
+                      member={m}
+                      disabled={updatePhone.isPending}
+                      onSave={(phone) =>
+                        updatePhone.mutate({ playerId: m.playerId, phone })
+                      }
+                    />
+                  </td>
                   <td>{m.ghin ?? '—'}</td>
                   <td>{m.currentHandicapIndex !== null ? m.currentHandicapIndex : '—'}</td>
-                  <td>{m.phone ?? '—'}</td>
                   <td>
                     <button
                       type="button"
@@ -569,6 +609,51 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
         ) : null}
       </section>
     </PageShell>
+  );
+}
+
+// ---- Inline per-member phone editor ---------------------------------------
+
+/**
+ * Editable cell-phone input shown next to each member's name. Holds a local
+ * draft seeded from the member's persisted phone; re-syncs whenever the
+ * persisted value changes (e.g. after a save → refetch, or a sibling edit).
+ * Saves on blur only when the trimmed draft differs from the persisted value,
+ * so tabbing past an untouched cell never fires a PATCH. Works for GHIN-added
+ * AND manual players (keyed on playerId).
+ */
+function MemberPhoneInput({
+  member,
+  disabled,
+  onSave,
+}: {
+  member: GroupMember;
+  disabled: boolean;
+  onSave: (phone: string) => void;
+}) {
+  const persisted = member.phone ?? '';
+  const [draft, setDraft] = useState(persisted);
+
+  // Re-seed the draft when the persisted value changes (refetch / external
+  // update). Guarded so it doesn't clobber an in-progress edit on every render.
+  useEffect(() => {
+    setDraft(persisted);
+  }, [persisted]);
+
+  return (
+    <input
+      type="tel"
+      inputMode="tel"
+      autoComplete="tel"
+      aria-label={`Cell phone for ${member.name}`}
+      placeholder="(304) 555-0123"
+      value={draft}
+      disabled={disabled}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft.trim() !== persisted.trim()) onSave(draft.trim());
+      }}
+    />
   );
 }
 

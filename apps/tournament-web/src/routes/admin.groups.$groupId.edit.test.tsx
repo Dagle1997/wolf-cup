@@ -76,8 +76,10 @@ describe('EditGroupPage', () => {
     // Member list shows Alice
     expect(screen.getByText('Alice Anderson')).toBeInTheDocument();
     expect(screen.getByText('1111111')).toBeInTheDocument();
-    // Phone column shows the stored cell number
-    expect(screen.getByText('(304) 555-0199')).toBeInTheDocument();
+    // Inline editable phone input next to the name, seeded with the stored value
+    const phoneInput = screen.getByLabelText(/cell phone for alice anderson/i) as HTMLInputElement;
+    expect(phoneInput).toBeInTheDocument();
+    expect(phoneInput.value).toBe('(304) 555-0199');
     // GHIN-bound player has no manualHandicapIndex → "—"
     const memberRow = screen.getByText('Alice Anderson').closest('tr');
     expect(memberRow).not.toBeNull();
@@ -85,6 +87,120 @@ describe('EditGroupPage', () => {
     // Add-player tabs
     expect(screen.getByRole('tab', { name: /ghin search/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /manual entry/i })).toBeInTheDocument();
+  });
+
+  it('inline phone edit: blur fires PATCH with phone for a GHIN-added member', async () => {
+    // GHIN-added member starts with phone: null (phone only attaches on
+    // manual-add today) → organizer fills it in inline.
+    const ghinMemberGroup = {
+      ...initialGroup,
+      members: [
+        {
+          playerId: 'p-ghin',
+          name: 'Bob Ghin',
+          ghin: '5550000',
+          manualHandicapIndex: null,
+          currentHandicapIndex: 6.2,
+          preferredTeeColor: null,
+          phone: null as string | null,
+        },
+      ],
+    };
+
+    const mockFetch = vi.mocked(fetch);
+    let groupCallCount = 0;
+    mockFetch.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const method = (init as RequestInit | undefined)?.method ?? 'GET';
+
+      if (url.includes(`/api/admin/groups/${TEST_GROUP_ID}/members/p-ghin`) && method === 'PATCH') {
+        return new Response(JSON.stringify({ playerId: 'p-ghin', phone: '304-555-7777' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes(`/api/admin/groups/${TEST_GROUP_ID}`) && method === 'GET') {
+        groupCallCount += 1;
+        const members =
+          groupCallCount === 1
+            ? ghinMemberGroup.members
+            : [{ ...ghinMemberGroup.members[0]!, phone: '304-555-7777' }];
+        return new Response(JSON.stringify({ ...ghinMemberGroup, members }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('not-mocked', { status: 500 });
+    });
+
+    renderWithQueryClient();
+
+    await waitFor(() => {
+      expect(screen.getByText('Bob Ghin')).toBeInTheDocument();
+    });
+
+    const phoneInput = screen.getByLabelText(/cell phone for bob ghin/i) as HTMLInputElement;
+    expect(phoneInput.value).toBe('');
+
+    await userEvent.type(phoneInput, '304-555-7777');
+    phoneInput.blur();
+
+    // PATCH fired with the trimmed phone payload.
+    await waitFor(() => {
+      const patchCall = mockFetch.mock.calls.find((call) => {
+        const i = call[1] as RequestInit | undefined;
+        return i?.method === 'PATCH';
+      });
+      expect(patchCall).toBeDefined();
+    });
+    const patchCall = mockFetch.mock.calls.find((call) => {
+      const i = call[1] as RequestInit | undefined;
+      return i?.method === 'PATCH';
+    })!;
+    expect(patchCall[0]).toContain(`/api/admin/groups/${TEST_GROUP_ID}/members/p-ghin`);
+    const sentBody = JSON.parse((patchCall[1] as RequestInit).body as string) as Record<
+      string,
+      unknown
+    >;
+    expect(sentBody['phone']).toBe('304-555-7777');
+
+    // Saved value reflected after invalidate → refetch.
+    await waitFor(() => {
+      const refreshed = screen.getByLabelText(/cell phone for bob ghin/i) as HTMLInputElement;
+      expect(refreshed.value).toBe('304-555-7777');
+    });
+  });
+
+  it('inline phone edit: untouched blur does NOT fire a PATCH', async () => {
+    const mockFetch = vi.mocked(fetch);
+    mockFetch.mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const method = (init as RequestInit | undefined)?.method ?? 'GET';
+      if (url.includes(`/api/admin/groups/${TEST_GROUP_ID}`) && method === 'GET') {
+        return new Response(JSON.stringify(initialGroup), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response('not-mocked', { status: 500 });
+    });
+
+    renderWithQueryClient();
+
+    await waitFor(() => {
+      expect(screen.getByText('Alice Anderson')).toBeInTheDocument();
+    });
+
+    const phoneInput = screen.getByLabelText(/cell phone for alice anderson/i) as HTMLInputElement;
+    phoneInput.focus();
+    phoneInput.blur();
+
+    // No PATCH fired (value unchanged).
+    const patchCall = mockFetch.mock.calls.find((call) => {
+      const i = call[1] as RequestInit | undefined;
+      return i?.method === 'PATCH';
+    });
+    expect(patchCall).toBeUndefined();
   });
 
   it('GHIN search flow: results render → click Add → POST → invalidate group', async () => {
