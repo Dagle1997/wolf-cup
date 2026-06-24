@@ -225,3 +225,42 @@ describe('TournamentToast — auto-dismiss', () => {
     expect(screen.queryByTestId('tournament-toast-stack')).toBeNull();
   });
 });
+
+describe('TournamentToast — backlog suppression (the "stuck feed" fix)', () => {
+  it('does NOT toast backlog rows created before the surface mounted', () => {
+    const { emit } = renderWithEmitter();
+    // The provider replays the activity backlog on page open/refresh; an event
+    // from a minute ago must not pop a toast (that was the stuck-feed bug).
+    const backlog: ActivityRow = {
+      id: 'old-1',
+      createdAt: Date.now() - 60_000,
+      event: {
+        type: 'award.triggered',
+        eventId: 'evt-test-0001',
+        awardType: 'first_birdie_of_event',
+        playerId: 'p1',
+        context: { holeNumber: 1, grossStrokes: 3, par: 4 },
+      },
+    };
+    act(() => emit([backlog]));
+    expect(screen.queryByTestId('tournament-toast-stack')).toBeNull();
+  });
+
+  it('does NOT re-toast a row after it auto-dismissed (poll re-delivery)', () => {
+    vi.useFakeTimers();
+    const { emit } = renderWithEmitter();
+    const row = makeRow('row-1', 'press.auto_fired', {
+      triggerHole: 5,
+      team: 'teamA',
+      multiplier: 2,
+      trigger: 'down_2',
+    });
+    act(() => emit([row]));
+    expect(screen.getAllByTestId('tournament-toast-entry')).toHaveLength(1);
+    act(() => vi.advanceTimersByTime(7_000));
+    expect(screen.queryByTestId('tournament-toast-entry')).toBeNull();
+    // Same row re-delivered by a later poll → must stay gone.
+    act(() => emit([row]));
+    expect(screen.queryByTestId('tournament-toast-entry')).toBeNull();
+  });
+});

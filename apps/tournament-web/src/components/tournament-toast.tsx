@@ -11,7 +11,7 @@
  * arrival. Multiple cards stack vertically; oldest at the bottom.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useActivityStream } from '../hooks/use-activity-feed';
 import type { ActivityRow } from '../providers/activity-feed-provider';
 import { buildActivityHeadline } from '../lib/activity-headline';
@@ -40,23 +40,30 @@ function isQualifyingType(row: ActivityRow): boolean {
 
 export function TournamentToast() {
   const [entries, setEntries] = useState<ToastEntry[]>([]);
+  // When this surface mounted. We only toast events that happened AFTER this —
+  // the provider replays the activity backlog on page open / refresh, and toasting
+  // a pile of old birdies (that then never clear) is the "stuck feed" bug.
+  const mountedAtRef = useRef(Date.now());
+  // Every rowId we've ever processed — a toast NEVER re-fires for the same event,
+  // even if a poll re-delivers it after it auto-dismissed.
+  const seenRef = useRef<Set<string>>(new Set());
 
   const handler = useCallback((newRows: ActivityRow[]) => {
-    const qualifying = newRows
-      .filter(isQualifyingType)
-      .map((row) => ({
+    const toAdd: ToastEntry[] = [];
+    for (const row of newRows) {
+      if (seenRef.current.has(row.id)) continue;
+      seenRef.current.add(row.id);
+      // Skip the backlog: only LIVE events (created after mount) toast.
+      if (row.createdAt < mountedAtRef.current) continue;
+      if (!isQualifyingType(row)) continue;
+      toAdd.push({
         rowId: row.id,
         headline: buildActivityHeadline(row, 'toast'),
         arrivedAt: Date.now(),
-      }));
-    if (qualifying.length === 0) return;
-    setEntries((prev) => {
-      // Dedupe by rowId — defensive against any edge case where the
-      // same row arrives twice (cursor refetch race, etc.).
-      const seen = new Set(prev.map((e) => e.rowId));
-      const fresh = qualifying.filter((e) => !seen.has(e.rowId));
-      return [...prev, ...fresh];
-    });
+      });
+    }
+    if (toAdd.length === 0) return;
+    setEntries((prev) => [...prev, ...toAdd]);
   }, []);
 
   useActivityStream(handler);
