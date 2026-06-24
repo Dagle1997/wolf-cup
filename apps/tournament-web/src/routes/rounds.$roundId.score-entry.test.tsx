@@ -315,7 +315,7 @@ describe('ScoreEntryRoute', () => {
     );
   });
 
-  test('auto-advance: digit 5 advances immediately; 1 waits 1500ms; 2-digit 12 advances after second digit', async () => {
+  test('auto-advance: every single digit advances immediately; + stepper climbs past 9 without advancing', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
     await renderRoute();
     await waitFor(() => screen.getByTestId('score-input-0'));
@@ -325,58 +325,63 @@ describe('ScoreEntryRoute', () => {
     const input2 = screen.getByTestId('score-input-2') as HTMLInputElement;
     const input3 = screen.getByTestId('score-input-3') as HTMLInputElement;
 
-    // Switch to fake timers AFTER the GET has resolved + the form rendered.
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-
-    // Case A: digit '5' on input 0 → input 1 focused immediately.
+    // '5' on input 0 → input 1 focused immediately.
     input0.focus();
-    await act(async () => {
-      fireEvent.change(input0, { target: { value: '5' } });
-    });
+    await act(async () => { fireEvent.change(input0, { target: { value: '5' } }); });
     expect(document.activeElement).toBe(input1);
 
-    // Case B: digit '1' on input 1 → wait. After 1500ms, advance to input 2.
+    // '1' ALSO advances immediately now — no debounce, every digit advances.
     input1.focus();
-    await act(async () => {
-      fireEvent.change(input1, { target: { value: '1' } });
-    });
-    expect(document.activeElement).toBe(input1);
-    await act(async () => {
-      vi.advanceTimersByTime(1600);
-    });
+    await act(async () => { fireEvent.change(input1, { target: { value: '1' } }); });
     expect(document.activeElement).toBe(input2);
 
-    // Case C: typing '1' then '12' on input 2 → advances after second digit.
+    // Scores > 9 come from the + stepper, NOT typing. Type 9 (advances to the
+    // last input), then climb input 2 past 9 via + — focus must NOT move.
     input2.focus();
-    await act(async () => {
-      fireEvent.change(input2, { target: { value: '1' } });
-    });
-    await act(async () => {
-      fireEvent.change(input2, { target: { value: '12' } });
-    });
+    await act(async () => { fireEvent.change(input2, { target: { value: '9' } }); });
+    expect(input2.value).toBe('9');
     expect(document.activeElement).toBe(input3);
-    vi.useRealTimers();
+    const plus2 = screen.getByTestId('score-plus-2') as HTMLButtonElement;
+    await act(async () => { plus2.click(); plus2.click(); plus2.click(); });
+    expect(input2.value).toBe('12');
+    expect(document.activeElement).toBe(input3); // + does not advance
   });
 
-  test('score input rejects invalid values: 30, 01, 0, non-digit do not update state', async () => {
+  test('score input: single-keystroke only — 0 and non-digits rejected; a digit replaces', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
     await renderRoute();
     await waitFor(() => screen.getByTestId('score-input-0'));
 
     const input0 = screen.getByTestId('score-input-0') as HTMLInputElement;
 
-    // '30' rejected → input value stays empty.
-    fireEvent.change(input0, { target: { value: '30' } });
-    expect(input0.value).toBe('');
-
+    // '0' rejected → stays empty.
     fireEvent.change(input0, { target: { value: '0' } });
     expect(input0.value).toBe('');
-
-    fireEvent.change(input0, { target: { value: '01' } });
-    expect(input0.value).toBe('');
-
+    // non-digit rejected.
     fireEvent.change(input0, { target: { value: 'a' } });
     expect(input0.value).toBe('');
+    // a valid digit sets it.
+    fireEvent.change(input0, { target: { value: '7' } });
+    expect(input0.value).toBe('7');
+  });
+
+  test('steppers: − floors at 1, + caps at 20, − on empty is a no-op', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
+    await renderRoute();
+    await waitFor(() => screen.getByTestId('score-input-0'));
+    const input0 = screen.getByTestId('score-input-0') as HTMLInputElement;
+    const plus0 = screen.getByTestId('score-plus-0') as HTMLButtonElement;
+    const minus0 = screen.getByTestId('score-minus-0') as HTMLButtonElement;
+
+    // − on empty: no-op (stays empty).
+    await act(async () => { minus0.click(); });
+    expect(input0.value).toBe('');
+    // + from empty → 1, then keep clicking; caps at 20.
+    await act(async () => { for (let i = 0; i < 25; i++) plus0.click(); });
+    expect(input0.value).toBe('20');
+    // − floors at 1.
+    await act(async () => { for (let i = 0; i < 30; i++) minus0.click(); });
+    expect(input0.value).toBe('1');
   });
 
   test('Save button disabled when fewer than 4 cells filled with valid 1-20', async () => {

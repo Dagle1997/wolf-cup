@@ -283,7 +283,6 @@ async function fetchOrCacheRoundCourse(
 // ---- Score input validation + auto-advance state machine ------------------
 
 const SCORE_RE = /^([1-9]|1[0-9]|20)$/;
-const ADVANCE_DEBOUNCE_MS = 1500;
 
 // ---- Skip-hole sessionStorage persistence ---------------------------------
 
@@ -1230,36 +1229,47 @@ function ScoreEntryForm({
 
   const handleScoreChange = useCallback(
     (member: Member, idx: number, raw: string) => {
-      // Empty (backspace) — accept; clear advance timer.
+      // Empty (backspace) — accept.
       if (raw === '') {
         setCurrentInputs((prev) => ({ ...prev, [member.playerId]: '' }));
         clearPendingAdvanceTimer(idx);
         return;
       }
-      // Validate. Reject (don't update state — controlled-input revert).
-      // Cancel any pending advance timer FIRST so an invalid keystroke
-      // mid-debounce doesn't fire stale focus advance after the user
-      // explicitly tried (and failed) to alter the value.
-      if (!SCORE_RE.test(raw)) {
+      // SINGLE-DIGIT typing only (Josh): the just-typed character must be 1-9.
+      // We take the LAST char so typing onto an existing value (incl. a 10-20
+      // set via the + stepper) replaces it with that one digit. Scores above 9
+      // are NOT typed — you type 9 then tap + to climb. '0' / non-digits reject.
+      const lastChar = raw[raw.length - 1] ?? '';
+      if (!/[1-9]/.test(lastChar)) {
         clearPendingAdvanceTimer(idx);
         return;
       }
-      setCurrentInputs((prev) => ({ ...prev, [member.playerId]: raw }));
+      setCurrentInputs((prev) => ({ ...prev, [member.playerId]: lastChar }));
       clearPendingAdvanceTimer(idx);
-      // Auto-advance decision per Risk Acceptance §4.
-      if (raw === '1' || raw === '2') {
-        // Could be the start of '10'-'19' or '20'. Wait.
-        const t = setTimeout(() => {
-          pendingAdvanceTimers.current[idx] = null;
-          advanceFocus(idx);
-        }, ADVANCE_DEBOUNCE_MS);
-        pendingAdvanceTimers.current[idx] = t;
-        return;
-      }
-      // 3-9 (single-digit unambiguous), 10-19, 20 → advance immediately.
+      // Always advance to the next player right after one digit (Josh: "I always
+      // want the tab to advance after you type one number"). No debounce.
       advanceFocus(idx);
     },
     [advanceFocus, clearPendingAdvanceTimer],
+  );
+
+  // − / + steppers (Josh): adjust a player's score in place, 1..20, WITHOUT
+  // advancing — the only way to reach 10-20 (you can't type two digits). + from
+  // empty starts at 1; − on empty is a no-op.
+  const handleStep = useCallback(
+    (member: Member, idx: number, delta: 1 | -1) => {
+      clearPendingAdvanceTimer(idx);
+      setCurrentInputs((prev) => {
+        const cur = parseInt(prev[member.playerId] ?? '', 10);
+        if (Number.isNaN(cur)) {
+          if (delta < 0) return prev; // nothing to decrement
+          return { ...prev, [member.playerId]: '1' };
+        }
+        const next = Math.max(1, Math.min(20, cur + delta));
+        return { ...prev, [member.playerId]: String(next) };
+      });
+    },
+    [clearPendingAdvanceTimer],
   );
 
   const handleBlur = useCallback(
@@ -1655,20 +1665,52 @@ function ScoreEntryForm({
                           {member.courseHandicap != null ? ` · CH ${member.courseHandicap}` : ''}
                         </div>
                       </div>
-                      <input
-                        ref={(el) => { scoreInputRefs.current[idx] = el; }}
-                        data-testid={`score-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
-                        aria-label={`Score for ${member.name}`}
-                        value={raw} onChange={(e) => handleScoreChange(member, idx, e.target.value)} onBlur={() => handleBlur(idx)}
-                        style={{
-                          width: 84, minHeight: 56, flex: '0 0 auto', textAlign: 'center',
-                          fontSize: 'var(--font-2xl)', fontWeight: 800, color: scoreColor, margin: 0, padding: '4px 0',
-                          background: 'var(--color-surface-sunken)',
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 'var(--radius-lg)',
-                          boxShadow: 'inset 0 2px 4px rgb(0 0 0 / 0.45)',
-                        }}
-                      />
+                      {/* − [score] + : type a single digit (auto-advances); use the
+                          steppers to fix a value or climb past 9 (no advance). */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: '0 0 auto' }}>
+                        <button
+                          type="button"
+                          data-testid={`score-minus-${idx}`}
+                          aria-label={`Decrease score for ${member.name}`}
+                          onClick={() => handleStep(member, idx, -1)}
+                          style={{
+                            width: 44, height: 56, flex: '0 0 auto', borderRadius: 'var(--radius-md)',
+                            background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                            color: 'var(--color-text-secondary)', fontSize: 'var(--font-xl)', fontWeight: 800,
+                            lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer',
+                          }}
+                        >
+                          −
+                        </button>
+                        <input
+                          ref={(el) => { scoreInputRefs.current[idx] = el; }}
+                          data-testid={`score-input-${idx}`} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={2}
+                          aria-label={`Score for ${member.name}`}
+                          value={raw} onChange={(e) => handleScoreChange(member, idx, e.target.value)} onBlur={() => handleBlur(idx)}
+                          style={{
+                            width: 64, minHeight: 56, flex: '0 0 auto', textAlign: 'center',
+                            fontSize: 'var(--font-2xl)', fontWeight: 800, color: scoreColor, margin: 0, padding: '4px 0',
+                            background: 'var(--color-surface-sunken)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 'var(--radius-lg)',
+                            boxShadow: 'inset 0 2px 4px rgb(0 0 0 / 0.45)',
+                          }}
+                        />
+                        <button
+                          type="button"
+                          data-testid={`score-plus-${idx}`}
+                          aria-label={`Increase score for ${member.name}`}
+                          onClick={() => handleStep(member, idx, 1)}
+                          style={{
+                            width: 44, height: 56, flex: '0 0 auto', borderRadius: 'var(--radius-md)',
+                            background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                            color: 'var(--color-text-secondary)', fontSize: 'var(--font-xl)', fontWeight: 800,
+                            lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer',
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
                     </div>
                     {/* Bonuses, in the same card, below a hairline divider. Circular
                         toggles (no square corners) in the SAME colors as the
