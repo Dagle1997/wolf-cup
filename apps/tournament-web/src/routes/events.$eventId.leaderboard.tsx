@@ -439,16 +439,30 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
           <>
             <strong style={{ fontSize: 'var(--font-md)' }}>{data.round.name}</strong>
             <StatusPill status={data.round.status} />
-            {data.round.eventRoundId !== null ? (
-              <Link
-                data-testid="foursome-results-link"
-                to="/events/$eventId/event-rounds/$eventRoundId/foursome-results"
-                params={{ eventId, eventRoundId: data.round.eventRoundId }}
-                style={{ marginLeft: 'auto', fontSize: 'var(--font-sm)' }}
-              >
-                Foursome results →
-              </Link>
-            ) : null}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              {/* One-tap back to scoring when the round is live (the return half
+                  of the scoring ⇄ leaderboard round trip Josh asked for). */}
+              {data.round.status === 'in_progress' ? (
+                <Link
+                  data-testid="leaderboard-score-link"
+                  to="/rounds/$roundId/score-entry"
+                  params={{ roundId: data.round.id }}
+                  style={{ fontSize: 'var(--font-sm)', fontWeight: 800, color: 'var(--color-brand-primary)' }}
+                >
+                  Score →
+                </Link>
+              ) : null}
+              {data.round.eventRoundId !== null ? (
+                <Link
+                  data-testid="foursome-results-link"
+                  to="/events/$eventId/event-rounds/$eventRoundId/foursome-results"
+                  params={{ eventId, eventRoundId: data.round.eventRoundId }}
+                  style={{ fontSize: 'var(--font-sm)' }}
+                >
+                  Foursome results →
+                </Link>
+              ) : null}
+            </div>
           </>
         ) : data.scope === 'event' ? (
           <span style={{ color: 'var(--color-text-muted)' }}>All rounds aggregated.</span>

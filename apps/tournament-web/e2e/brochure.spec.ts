@@ -214,12 +214,13 @@ test('navigation: scoring ⇄ hub ⇄ leaderboard ⇄ standings ⇄ bets, no dea
   await p.locator(`a[href="/events/${ev}/bets"]`).click();
   await expect(p).toHaveURL(/\/bets$/);
 
-  // Round-trip: leaderboard → back to scoring (via the hub).
+  // Round-trip: leaderboard → scoring is ONE tap (the Score → link on a live round).
   await p.goto(`/events/${ev}/leaderboard`, { waitUntil: 'networkidle' });
-  await p.locator(`a[href="/events/${ev}"]`).first().click(); // BackLink → hub
-  await expect(p.getByTestId('event-home-live-cta')).toBeVisible();
-  await p.getByTestId('event-home-live-cta').click();
+  await p.getByTestId('leaderboard-score-link').click();
   await expect(p.getByTestId('score-entry-form')).toBeVisible();
+  // ...and scoring → leaderboard is one tap back (the Leaderboard → link).
+  await p.getByTestId('score-leaderboard-link').click();
+  await expect(p.getByTestId('viewtab-leaderboard')).toBeVisible();
 
   // Universal escape: the global "🏌️ Tournament" home link exists on the
   // leaderboard (and every non-scorer screen).
