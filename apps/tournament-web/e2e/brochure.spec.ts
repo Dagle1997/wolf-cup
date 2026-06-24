@@ -157,5 +157,16 @@ test('brochure shots: leaderboard + expanded scorecard + score-entry', async ({ 
   await mo.close();
   await moCtx.close();
 
+  // ── 7) Landing — anonymous (what most people see until they get a code) ──
+  const anonCtx = await browser.newContext({ viewport: PHONE, colorScheme: 'dark' });
+  await anonCtx.addInitScript(FORCE_DARK);
+  const lp = await anonCtx.newPage();
+  await lp.goto('/', { waitUntil: 'networkidle' }).catch(() => {});
+  await lp.waitForTimeout(800);
+  await stripDevBadge(lp);
+  await lp.screenshot({ path: resolve(SHOTS, '7-landing.png'), fullPage: true });
+  await lp.close();
+  await anonCtx.close();
+
   expect(true).toBe(true);
 });

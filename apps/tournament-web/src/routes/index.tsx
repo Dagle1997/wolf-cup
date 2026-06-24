@@ -88,44 +88,65 @@ function IndexPage() {
   // a full-page redirect on page load).
   if (session.player === null) {
     return (
-      <div style={{ padding: 24, textAlign: 'center' }}>
-        <h1>Tournament</h1>
-        <p style={{ color: 'var(--color-text-muted)', margin: '12px 0 16px' }}>
-          Got a join code from your organizer? Enter it — no account needed.
+      <div
+        style={{
+          minHeight: 'calc(100dvh - 52px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          padding: '40px 24px',
+          background: 'linear-gradient(165deg, #0a0f0a 0%, #0d1f0d 45%, #0f5c2e 100%)',
+          color: '#fff',
+        }}
+      >
+        <div style={{ fontSize: 56, lineHeight: 1, marginBottom: 6 }} aria-hidden>⛳</div>
+        <h1 style={{ fontSize: 30, fontWeight: 900, letterSpacing: '-0.6px', lineHeight: 1.08, margin: 0 }}>
+          The whole weekend.<br />
+          <span style={{ color: 'var(--color-brand-primary)' }}>Live on your phone.</span>
+        </h1>
+        <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: 15, lineHeight: 1.5, margin: '14px 0 26px', maxWidth: 320 }}>
+          Live scoring, standings, and head-to-head money — right from the cart.
         </p>
+
+        {/* Has a code → join. */}
         <Link
           to="/join"
           style={{
-            display: 'inline-block',
-            padding: '12px 20px',
+            display: 'block',
+            width: '100%',
+            maxWidth: 320,
+            padding: '14px 20px',
             background: 'var(--color-brand-primary)',
             color: '#fff',
-            borderRadius: 6,
+            borderRadius: 12,
             textDecoration: 'none',
-            fontWeight: 700,
+            fontWeight: 800,
+            fontSize: 16,
           }}
           data-testid="home-join-cta"
         >
-          Join with a code
+          Enter your join code
         </Link>
-        <p style={{ color: 'var(--color-text-muted)', margin: '24px 0 8px', fontSize: '0.9em' }}>
-          Organizer?
+
+        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 12 }}>
+          No code yet? Your organizer will send you one.
         </p>
+
         <a
           href="/api/auth/google"
           style={{
             display: 'inline-block',
-            padding: '10px 18px',
-            background: 'var(--color-surface)',
-            color: 'var(--color-text-primary)',
-            border: '1px solid var(--color-border)',
-            borderRadius: 6,
-            textDecoration: 'none',
+            marginTop: 26,
+            color: 'rgba(255,255,255,0.6)',
+            textDecoration: 'underline',
             fontWeight: 600,
+            fontSize: 14,
           }}
           data-testid="home-sso-cta"
         >
-          Sign in with Google
+          Organizer? Sign in with Google
         </a>
       </div>
     );
@@ -180,7 +201,7 @@ function IndexPage() {
         ) : (
           <EmptyState
             title="You aren't in any events yet."
-            body="Your organizer will share an invite link when the event is set up."
+            body="Your organizer will send you a join code when the event is set up."
           />
         )}
       </div>
