@@ -361,12 +361,18 @@ async function computeF1FoursomeResults(
   const pinRows = await txOrDb
     .select({
       perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
+      resolvedConfigJson: roundPins.resolvedConfigJson,
       courseRevisionId: roundPins.courseRevisionId,
     })
     .from(roundPins)
     .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, tenantId)))
     .limit(1);
   const chByPlayer = new Map<string, number>();
+  // Handicap allowance % frozen in the pin (absent → 100). Best-ball net is the
+  // FULL course handicap × allowance % (NO off-the-low — that is the 2v2 game's
+  // basis only). The per-player net displayed on the scorecard uses this same
+  // allowed-CH basis so the scorecard and the best-ball standings agree.
+  let allowancePct = 100;
   if (pinRows.length > 0) {
     let rawHcp: unknown;
     try {
@@ -379,6 +385,14 @@ async function computeF1FoursomeResults(
       }
     } catch {
       // corrupt pin → no net display; money stays unsettleable/zeroed.
+    }
+    try {
+      const cfg = JSON.parse(pinRows[0]!.resolvedConfigJson) as { handicapAllowancePct?: unknown };
+      if (typeof cfg.handicapAllowancePct === 'number' && Number.isInteger(cfg.handicapAllowancePct)) {
+        allowancePct = cfg.handicapAllowancePct;
+      }
+    } catch {
+      // corrupt config → fall back to 100 (the engine default).
     }
   }
   const pinnedCourseRevId = pinRows[0]?.courseRevisionId ?? er.courseRevisionId;
@@ -443,8 +457,11 @@ async function computeF1FoursomeResults(
         const gross = grossByCell.get(`${pid}|${h.holeNumber}`) ?? null;
         const si = siByHole.get(h.holeNumber);
         const ch = chByPlayer.get(pid);
-        // Net from the PINNED CH only (never a live HI). Null when gross/SI/CH
-        // missing — an absent pinned CH (fail-closed handicap) shows no net.
+        // Net from the PINNED CH only (never a live HI), at the pinned allowance %:
+        // strokes = allocate(round(ch × pct/100), si). NO off-the-low here — that is
+        // the 2v2 game's basis; best-ball / the scorecard use full-CH × allowance.
+        // Null when gross/SI/CH missing — an absent pinned CH (fail-closed handicap)
+        // shows no net.
         //
         // Fail-closed isolation (AC11): a corrupt-but-schema-valid pin (non-integer
         // CH, out-of-range stroke index) makes `allocateStrokesFromCourseHandicap`
@@ -453,21 +470,39 @@ async function computeF1FoursomeResults(
         // other players, and every other foursome still render. Mirrors the
         // settlement path's per-foursome try/catch (games-money.ts).
         let net: number | null = null;
-        if (gross !== null && si !== undefined && ch !== undefined) {
+        // `Number.isInteger(ch)` is load-bearing: the allowance step rounds, so a
+        // corrupt non-integer pinned CH would otherwise be masked into an integer
+        // and render a net instead of failing closed (net null) — same guard the
+        // 2v2 settlement path enforces.
+        if (gross !== null && si !== undefined && ch !== undefined && Number.isInteger(ch)) {
           try {
-            net = gross - allocateStrokesFromCourseHandicap(ch, si);
+            const allowedCh = Math.round((ch * allowancePct) / 100);
+            net = gross - allocateStrokesFromCourseHandicap(allowedCh, si);
           } catch {
-            net = null; // corrupt pinned CH / stroke index → no net display
+            net = null; // corrupt stroke index → no net display
           }
         }
         return { playerId: pid, gross, net };
       });
+
+      // Best-ball team net (the standings input Josh asked for): the LOWER net of
+      // each 2-man team this hole. Gated on ALL FOUR members having a net (mirrors
+      // the legacy compute2v2BestBall complete-cell gate so F1 + non-F1 standings
+      // count the same holes); otherwise both stay null and the hole is skipped.
+      const netByPid = new Map(playerHoles.map((p) => [p.playerId, p.net]));
+      const aNets = teamAIds.map((id) => netByPid.get(id) ?? null);
+      const bNets = teamBIds.map((id) => netByPid.get(id) ?? null);
+      const allScored = [...aNets, ...bNets].every((n): n is number => n !== null);
+      const teamABestNet = allScored ? Math.min(...(aNets as number[])) : null;
+      const teamBBestNet = allScored ? Math.min(...(bNets as number[])) : null;
+
       return {
         holeNumber: h.holeNumber,
         par: parByHole.get(h.holeNumber) ?? 0,
-        // Per-hole F1 team net/winner/money breakdown is Epic 4 — not surfaced here.
-        teamABestNet: null,
-        teamBBestNet: null,
+        teamABestNet,
+        teamBBestNet,
+        // Per-hole F1 team WINNER + MONEY breakdown is Epic 4 — money fields stay
+        // zeroed here (best-ball standings are a net-total race, not per-hole $).
         winner: null,
         moneyTeamACents: 0,
         players: playerHoles,

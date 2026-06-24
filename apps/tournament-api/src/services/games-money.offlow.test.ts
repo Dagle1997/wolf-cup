@@ -52,6 +52,8 @@ const {
   roundPins,
 } = await import('../db/schema/index.js');
 const { computeF1EventEdges, computeF1PerPlayerNet } = await import('./games-money.js');
+const { computeFoursomeResults } = await import('./money-detail.js');
+const { computeTeamStandings } = await import('./team-standings.js');
 
 const TENANT = 'guyan';
 
@@ -267,6 +269,52 @@ describe('settleFoursome stays fail-closed on a corrupt non-integer pinned CH', 
     expect(res.edges).toEqual([]);
     expect(res.unsettleable).toHaveLength(1);
     expect(res.unsettleable[0]!.reason).toBe('missing_handicap');
+  });
+});
+
+describe('best-ball standings for an F1 event (full CH × allowance %, no off-low)', () => {
+  // One par-4 at SI 1, all four scored. Full CH: a1=4 a2=20 b1=11 b2=27.
+  //  @100%: allocate(·,1) = a1:1 a2:2 b1:1 b2:2 → nets a1=4 a2=7 b1=5 b2=7
+  //         teamA best = min(4,7)=4 ; teamB best = min(5,7)=5  → teamA's ball wins.
+  //  @50%:  allowed = 2,10,6,14 → allocate(·,1) all 1 → nets a1=4 a2=8 b1=5 b2=8
+  //         a2's net moves 7→8 (the allowance reached his strokes); bests unchanged.
+  const scenario = {
+    chByPlayer: { a1: 4, a2: 20, b1: 11, b2: 27 },
+    grossByHole: { 18: { a1: 5, a2: 9, b1: 6, b2: 9 } },
+    parByHole: { 18: 4 },
+    siByHole: { 18: 1 },
+  };
+
+  test('F1 foursome-results now surfaces team best-nets = min of teammates allowed-CH nets', async () => {
+    const ids = await seed({ ...scenario, allowancePct: 100 });
+    const fr = await computeFoursomeResults(db, ids.eventRoundId, TENANT);
+    expect(fr).not.toBeNull();
+    const hole = fr!.foursomes[0]!.perHole.find((h) => h.holeNumber === 18)!;
+    // The bug this fixes: these were hard-null for F1 events.
+    expect(hole.teamABestNet).toBe(4);
+    expect(hole.teamBBestNet).toBe(5);
+    const netOf = (pid: string) => hole.players.find((p) => p.playerId === pid)!.net;
+    expect(netOf('a1')).toBe(4);
+    expect(netOf('a2')).toBe(7);
+    expect(netOf('b1')).toBe(5);
+  });
+
+  test('computeTeamStandings ranks teams by cumulative net-to-par (lowest wins)', async () => {
+    const ids = await seed({ ...scenario, allowancePct: 100 });
+    const standings = await computeTeamStandings(db, ids.eventId, TENANT);
+    expect(standings.teams).toHaveLength(2);
+    // teamA best ball 4 (toPar 0) beats teamB best ball 5 (toPar +1) on the lone hole.
+    expect(standings.teams[0]!.toPar).toBe(0);
+    expect(standings.teams[0]!.netTotal).toBe(4);
+    expect(standings.teams[1]!.toPar).toBe(1);
+    expect(standings.teams[1]!.netTotal).toBe(5);
+  });
+
+  test('allowance % reaches the best-ball net (a2 net 7 @100% → 8 @50%)', async () => {
+    const at50 = await seed({ ...scenario, allowancePct: 50 });
+    const fr = await computeFoursomeResults(db, at50.eventRoundId, TENANT);
+    const hole = fr!.foursomes[0]!.perHole.find((h) => h.holeNumber === 18)!;
+    expect(hole.players.find((p) => p.playerId === 'a2')!.net).toBe(8);
   });
 });
 
