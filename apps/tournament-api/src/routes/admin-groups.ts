@@ -88,6 +88,16 @@ const AddMemberRequestSchema = z.discriminatedUnion('mode', [
     mode: z.literal('manual'),
     name: z.string().trim().min(1),
     manualHandicapIndex: z.number().finite().min(-10).max(54).optional(),
+    // Cell phone (optional). Loose validation: trim, cap length. Stored
+    // as entered — normalization for SMS matching is the future bot's job.
+    // An empty string after trim becomes null (treated as "not provided").
+    phone: z
+      .string()
+      .trim()
+      .max(32)
+      .transform((v) => (v === '' ? null : v))
+      .nullable()
+      .optional(),
   }),
 ]);
 
@@ -117,6 +127,7 @@ adminGroupsRouter.get('/groups/:groupId', requireSession, requireOrganizer, asyn
       ghin: players.ghin,
       manualHandicapIndex: players.manualHandicapIndex,
       preferredTeeColor: players.preferredTeeColor,
+      phone: players.phone,
     })
     .from(groupMembers)
     .innerJoin(players, eq(groupMembers.playerId, players.id))
@@ -310,7 +321,11 @@ adminGroupsRouter.post(
         playerId = resolved.id;
         playerRow = resolved;
       } else {
-        const inserted = await insertManualPlayer(body.name, body.manualHandicapIndex ?? null);
+        const inserted = await insertManualPlayer(
+          body.name,
+          body.manualHandicapIndex ?? null,
+          body.phone ?? null,
+        );
         playerId = inserted.id;
         playerRow = inserted;
       }
@@ -368,6 +383,7 @@ adminGroupsRouter.post(
           ghin: playerRow.ghin,
           manualHandicapIndex: playerRow.manualHandicapIndex,
           preferredTeeColor: playerRow.preferredTeeColor,
+          phone: playerRow.phone,
         },
         groupMember: { groupId, playerId },
       },
@@ -445,6 +461,7 @@ async function resolveOrInsertGhinPlayer(
         ghin: ghinStr,
         manualHandicapIndex: null,
         preferredTeeColor: null,
+        phone: null,
         tenantId: TENANT_ID,
         contextId: PLAYER_CONTEXT_ID,
       });
@@ -465,6 +482,7 @@ async function resolveOrInsertGhinPlayer(
 async function insertManualPlayer(
   name: string,
   manualHandicapIndex: number | null,
+  phone: string | null,
 ): Promise<typeof players.$inferSelect> {
   const newPlayerId = randomUUID();
   const now = Date.now();
@@ -476,6 +494,7 @@ async function insertManualPlayer(
     ghin: null,
     manualHandicapIndex,
     preferredTeeColor: null,
+    phone,
     tenantId: TENANT_ID,
     contextId: PLAYER_CONTEXT_ID,
   });

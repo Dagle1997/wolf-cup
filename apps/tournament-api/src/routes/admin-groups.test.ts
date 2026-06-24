@@ -374,6 +374,72 @@ describe('POST /api/admin/groups/:groupId/members', () => {
     expect(body.player.manualHandicapIndex).toBe(12.4);
   });
 
+  it('add manual with phone → 201; phone persisted on players row + echoed in response', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId } = await seedEventAndGroup();
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members`, {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        mode: 'manual',
+        name: 'Phone Phil',
+        phone: '(304) 555-0123',
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { player: { id: string; phone: string | null } };
+    expect(body.player.phone).toBe('(304) 555-0123');
+
+    const playerRows = await db.select().from(players).where(eq(players.id, body.player.id));
+    expect(playerRows[0]!.phone).toBe('(304) 555-0123');
+  });
+
+  it('add manual without phone → 201; players.phone is null', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId } = await seedEventAndGroup();
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members`, {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'manual', name: 'No Phone Ned' }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { player: { id: string; phone: string | null } };
+    expect(body.player.phone).toBeNull();
+
+    const playerRows = await db.select().from(players).where(eq(players.id, body.player.id));
+    expect(playerRows[0]!.phone).toBeNull();
+  });
+
+  it('add manual: phone gets trimmed; empty-after-trim stored as null', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId } = await seedEventAndGroup();
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members`, {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'manual', name: 'Trim Tim', phone: '   ' }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { player: { id: string; phone: string | null } };
+    expect(body.player.phone).toBeNull();
+  });
+
+  it('add manual: phone > 32 chars → 400 invalid_body', async () => {
+    const sessionId = await seedSession({ isOrganizer: true });
+    const { groupId } = await seedEventAndGroup();
+
+    const res = await testApp.request(`/api/admin/groups/${groupId}/members`, {
+      method: 'POST',
+      headers: { cookie: cookie(sessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'manual', name: 'Long Lou', phone: '1'.repeat(33) }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('invalid_body');
+  });
+
   it('duplicate add (same GHIN, same group) → 409 player_already_in_group', async () => {
     const sessionId = await seedSession({ isOrganizer: true });
     const { groupId } = await seedEventAndGroup();

@@ -38,7 +38,9 @@ const initialGroup = {
       name: 'Alice Anderson',
       ghin: '1111111',
       manualHandicapIndex: null,
+      currentHandicapIndex: null,
       preferredTeeColor: null,
+      phone: '(304) 555-0199',
     },
   ],
 };
@@ -74,6 +76,8 @@ describe('EditGroupPage', () => {
     // Member list shows Alice
     expect(screen.getByText('Alice Anderson')).toBeInTheDocument();
     expect(screen.getByText('1111111')).toBeInTheDocument();
+    // Phone column shows the stored cell number
+    expect(screen.getByText('(304) 555-0199')).toBeInTheDocument();
     // GHIN-bound player has no manualHandicapIndex → "—"
     const memberRow = screen.getByText('Alice Anderson').closest('tr');
     expect(memberRow).not.toBeNull();
@@ -168,7 +172,7 @@ describe('EditGroupPage', () => {
     });
   });
 
-  it('manual entry flow: name + handicap → Add → POST → invalidate group', async () => {
+  it('manual entry flow: name + handicap + phone → Add → POST → invalidate group', async () => {
     const mockFetch = vi.mocked(fetch);
     let groupCallCount = 0;
     mockFetch.mockImplementation(async (input, init) => {
@@ -187,6 +191,7 @@ describe('EditGroupPage', () => {
               ghin: null,
               manualHandicapIndex: 12.5,
               preferredTeeColor: null,
+              phone: '(304) 555-0150',
             },
             groupMember: { groupId: TEST_GROUP_ID, playerId: 'p-3' },
           }),
@@ -205,7 +210,9 @@ describe('EditGroupPage', () => {
                   name: 'Manual Mike',
                   ghin: null,
                   manualHandicapIndex: 12.5,
+                  currentHandicapIndex: 12.5,
                   preferredTeeColor: null,
+                  phone: '(304) 555-0150',
                 },
               ];
         return new Response(JSON.stringify({ ...initialGroup, members }), {
@@ -228,6 +235,7 @@ describe('EditGroupPage', () => {
     // Fill + submit.
     await userEvent.type(screen.getByLabelText(/player name/i), 'Manual Mike');
     await userEvent.type(screen.getByLabelText(/handicap.*optional/i), '12.5');
+    await userEvent.type(screen.getByLabelText(/cell phone.*optional/i), '(304) 555-0150');
     await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
 
     // Verify Manual Mike appears (post-invalidate refetch).
@@ -248,6 +256,7 @@ describe('EditGroupPage', () => {
     expect(sentBody['mode']).toBe('manual');
     expect(sentBody['name']).toBe('Manual Mike');
     expect(sentBody['manualHandicapIndex']).toBe(12.5);
+    expect(sentBody['phone']).toBe('(304) 555-0150');
   });
 
   it('remove member: click Remove → DELETE → invalidate group → row gone', async () => {

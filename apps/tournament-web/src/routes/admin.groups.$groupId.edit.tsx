@@ -46,6 +46,7 @@ type GroupMember = {
   manualHandicapIndex: number | null;
   currentHandicapIndex: number | null; // live GHIN HI (or manual) resolved server-side
   preferredTeeColor: string | null;
+  phone: string | null;
 };
 
 type GroupResponse = {
@@ -77,6 +78,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
   const [ghinSearchTriggered, setGhinSearchTriggered] = useState(false);
   const [manualName, setManualName] = useState('');
   const [manualHandicap, setManualHandicap] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
   const [topLevelError, setTopLevelError] = useState<string | null>(null);
 
   // AbortController stack — every mutation registers its controller here
@@ -175,7 +177,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
     mutationFn: async (
       payload:
         | { mode: 'ghin'; ghin: number; firstName: string; lastName: string }
-        | { mode: 'manual'; name: string; manualHandicapIndex?: number },
+        | { mode: 'manual'; name: string; manualHandicapIndex?: number; phone?: string },
     ) => {
       const ac = trackController();
       try {
@@ -204,6 +206,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
       } else {
         setManualName('');
         setManualHandicap('');
+        setManualPhone('');
       }
       void qc.invalidateQueries({ queryKey: ['group', groupId] });
     },
@@ -349,6 +352,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
                 <th>Name</th>
                 <th>GHIN</th>
                 <th>Handicap</th>
+                <th>Phone</th>
                 <th></th>
               </tr>
             </thead>
@@ -358,6 +362,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
                   <td>{m.name}</td>
                   <td>{m.ghin ?? '—'}</td>
                   <td>{m.currentHandicapIndex !== null ? m.currentHandicapIndex : '—'}</td>
+                  <td>{m.phone ?? '—'}</td>
                   <td>
                     <button
                       type="button"
@@ -530,18 +535,30 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
               value={manualHandicap}
               onChange={(e) => setManualHandicap(e.target.value)}
             />
+            <label htmlFor="manual-phone">Cell phone (optional)</label>
+            <input
+              id="manual-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="(304) 555-0123"
+              value={manualPhone}
+              onChange={(e) => setManualPhone(e.target.value)}
+            />
             <button
               type="button"
               onClick={() => {
                 const trimmed = manualName.trim();
                 if (!trimmed) return;
                 const handicap = manualHandicap.trim() === '' ? undefined : Number(manualHandicap);
+                const phone = manualPhone.trim();
                 addMember.mutate({
                   mode: 'manual',
                   name: trimmed,
                   ...(handicap !== undefined && Number.isFinite(handicap)
                     ? { manualHandicapIndex: handicap }
                     : {}),
+                  ...(phone !== '' ? { phone } : {}),
                 });
               }}
               disabled={manualName.trim().length === 0 || addMember.isPending}

@@ -46,6 +46,10 @@ export const players = sqliteTable(
     ghin: text('ghin'),
     manualHandicapIndex: real('manual_handicap_index'),
     preferredTeeColor: text('preferred_tee_color'),
+    // Cell phone number (nullable). Stored as entered by the organizer
+    // (digits, spaces, +, -, parens). Normalization for SMS matching is the
+    // future join-code bot's job, not a write-time concern here.
+    phone: text('phone'),
     ...ecosystemColumns(),
   },
   (t) => ({
