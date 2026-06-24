@@ -1,8 +1,9 @@
 # Tournament — Session Handoff (2026-06-23 evening)
 
-Context can be cleared after this. Everything below is committed **locally on
-`master`, unpushed (11 ahead of origin), NOT deployed.** Pushing + `./deploy.sh`
-is a Josh action. Trip: **Pete Dye Invitational, Jun 26–27** (~3 days out).
+Context can be cleared after this. Everything below is committed, **PUSHED to
+`origin/master` (CI green), and DEPLOYED to prod** (`tournament.dagle.cloud`
+health ok) on 2026-06-23 eve. Trip: **Pete Dye Invitational, Jun 26–27** (~3 days
+out). The pending money work below is NOT yet built — it's the next session's job.
 
 ---
 
