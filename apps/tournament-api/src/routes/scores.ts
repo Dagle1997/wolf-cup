@@ -222,6 +222,7 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
     .select({
       perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
       resolvedConfigJson: roundPins.resolvedConfigJson,
+      foursomeConfigsJson: roundPins.foursomeConfigsJson,
     })
     .from(roundPins)
     .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, TENANT_ID)))
@@ -241,20 +242,29 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
     }
   }
 
-  // Which claim-modifiers (greenie/polie/sandie) does THIS round's pinned config
-  // actually settle? The score-entry hides a claim button for any modifier that
-  // is OFF (Josh 2026-06-25 — "if they are off they don't show up on the score
-  // entry screen"). Derived from the pin's RESOLVED config, so the buttons shown
-  // match exactly what pays — gating is display-only; the engine settles from the
-  // same pin regardless. `null` = no parseable pinned config (un-pinned / non-F1
-  // round) → the client falls back to showing all three (today's behavior, no
-  // regression). An EMPTY array = pinned config with every claim-modifier OFF.
+  // Which claim-modifiers (greenie/polie/sandie) does the VIEWER'S FOURSOME settle?
+  // The score-entry hides a claim button for any modifier that is OFF (Josh
+  // 2026-06-25 — "if they are off they don't show up on the score entry screen").
+  // Epic 6: a foursome with its own pinned rules (foursome_configs_json) gates off
+  // ITS config; everyone else off the round default. Gating is display-only; the
+  // engine settles each foursome from the same pin regardless. `null` = no
+  // parseable pinned config (un-pinned / non-F1) → client shows all three (no
+  // regression). EMPTY array = every claim-modifier OFF for this foursome.
   const CLAIM_MODIFIER_TYPES = ['greenie', 'polie', 'sandie'] as const;
   let enabledClaimTypes: Array<'greenie' | 'polie' | 'sandie'> | null = null;
-  const configJson = pinRows[0]?.resolvedConfigJson;
-  if (configJson !== undefined) {
+  const resolvedJson = pinRows[0]?.resolvedConfigJson;
+  if (resolvedJson !== undefined) {
     try {
-      const parsed = parseGameConfig(JSON.parse(configJson));
+      // Effective config for THIS viewer's foursome: its override (Epic 6), else
+      // the round default.
+      let effectiveConfigRaw: unknown = JSON.parse(resolvedJson);
+      const foursomeJson = pinRows[0]?.foursomeConfigsJson;
+      if (foursomeJson != null) {
+        const map = JSON.parse(foursomeJson) as Record<string, unknown>;
+        const override = map?.[String(myFoursomeNumber)];
+        if (override !== undefined) effectiveConfigRaw = override;
+      }
+      const parsed = parseGameConfig(effectiveConfigRaw);
       if (parsed.ok) {
         const onTypes = new Set(
           parsed.config.modifiers.filter((m) => m.enabled).map((m) => m.type),

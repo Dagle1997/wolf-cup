@@ -259,6 +259,21 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           </Link>
         </li>
 
+        {/* 3b. Per-foursome Guyan rules (Epic 6) — needs pairings first */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/foursome-rules"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-foursome-rules"
+          >
+            <strong>Foursome rules</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Give a foursome its own Guyan rules/stake when it plays differently.
+            </div>
+          </Link>
+        </li>
+
         {/* 4. Rounds & courses */}
         <li>
           <Link

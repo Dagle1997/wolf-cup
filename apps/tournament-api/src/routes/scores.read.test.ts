@@ -397,6 +397,48 @@ describe('GET /api/rounds/:roundId', () => {
     expect(body.myFoursome.enabledClaimTypes).toEqual(['greenie', 'sandie']);
   });
 
+  test('enabledClaimTypes: the VIEWER\'s foursome override wins over the round default (Epic 6)', async () => {
+    const s = await seed({ state: 'in_progress' });
+    const roundCfg = {
+      game: 'guyan-2v2',
+      pointValueSchedule: { kind: 'flat', cents: 500 },
+      modifiers: [
+        { type: 'greenie', enabled: true, variant: { carryover: true } },
+        { type: 'polie', enabled: true },
+        { type: 'sandie', enabled: true },
+      ],
+      lockState: 'locked',
+      configVersion: 1,
+    };
+    // Foursome 1 (the scorer's foursome) plays ONLY polie — greenie + sandie OFF.
+    const foursome1Cfg = {
+      ...roundCfg,
+      modifiers: [
+        { type: 'greenie', enabled: false, variant: { carryover: true } },
+        { type: 'polie', enabled: true },
+        { type: 'sandie', enabled: false },
+      ],
+    };
+    await db.insert(roundPins).values({
+      roundId: s.roundId,
+      resolvedConfigJson: JSON.stringify(roundCfg),
+      foursomeConfigsJson: JSON.stringify({ 1: foursome1Cfg }),
+      seedRuleSetRevisionId: null,
+      courseRevisionId: s.courseRevId,
+      tee: 'blue',
+      perPlayerHandicapsJson: JSON.stringify({ [s.scorerId]: { hi: 12, ch: 10 } }),
+      teamCompositionJson: null,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: s.ctx,
+    });
+    const app = buildApp(s.scorerId);
+    const res = await getRoundDetail(app, s.roundId);
+    const body = (await res.json()) as { myFoursome: { enabledClaimTypes: string[] } };
+    // The scorer is in foursome 1 → its override (polie only), NOT the round default.
+    expect(body.myFoursome.enabledClaimTypes).toEqual(['polie']);
+  });
+
   test('200 non-scorer participant: isScorer=false but scorer info populated', async () => {
     const s = await seed({ state: 'not_started' });
     const app = buildApp(s.player1Id);
