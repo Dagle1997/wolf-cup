@@ -61,11 +61,17 @@ export async function pinRound(txOrDb: Tx | Db, input: PinRoundInput): Promise<P
   if (input.foursomeConfigs && Object.keys(input.foursomeConfigs).length > 0) {
     const canonical: Record<string, GameConfig> = {};
     for (const [foursomeNumber, cfg] of Object.entries(input.foursomeConfigs)) {
+      // Keys must be positive-integer foursome numbers — reject a bad key at WRITE
+      // time rather than letting it poison the whole pin on read (codex review).
+      const n = Number(foursomeNumber);
+      if (!Number.isInteger(n) || n < 1) {
+        throw new Error(`pinRound: invalid foursome key '${foursomeNumber}'`);
+      }
       const p = parseGameConfig(cfg);
       if (!p.ok) {
         throw new Error(`pinRound: invalid foursome ${foursomeNumber} config (${p.reason})`);
       }
-      canonical[foursomeNumber] = p.config;
+      canonical[String(n)] = p.config;
     }
     foursomeConfigsJson = JSON.stringify(canonical);
   }

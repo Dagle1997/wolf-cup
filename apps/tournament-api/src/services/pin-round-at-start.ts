@@ -36,6 +36,7 @@ import {
   pairingMembers,
   pairings,
   players,
+  rounds,
 } from '../db/schema/index.js';
 import { calcCourseHandicap } from './handicap.js';
 import { buildTeeByPlayer } from './per-player-tee.js';
@@ -74,12 +75,37 @@ export async function pinRoundAtStart(
 ): Promise<PinRoundAtStartResult> {
   const { roundId, eventRoundId, eventId, tenantId, createdAt } = input;
 
+  // Fail closed: the caller supplies BOTH roundId + eventRoundId; verify the
+  // round actually belongs to that event_round (and that event_round to the
+  // event) BEFORE freezing course/tee/pairings into an immutable money pin. A
+  // mismatch would otherwise pin the wrong course inputs (codex review). The
+  // round is the source of truth for its event_round.
+  const roundCheck = await tx
+    .select({ eventRoundId: rounds.eventRoundId, eventId: rounds.eventId })
+    .from(rounds)
+    .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, tenantId)))
+    .limit(1);
+  if (roundCheck.length === 0) return { ok: false, reason: 'round_not_found' };
+  if (roundCheck[0]!.eventRoundId !== eventRoundId || roundCheck[0]!.eventId !== eventId) {
+    return { ok: false, reason: 'round_event_round_mismatch' };
+  }
+
   // ── (1) Resolve the EVENT-level config to freeze into the pin. ──
   // Resolve at event scope (the round/foursome rows don't exist for Epic 1;
   // resolveEventGameConfig validates the event-level row + returns the resolved
   // config). A non-F1 event surfaces no_event_level_config → caller shouldn't
   // have called us, but we treat it as a no-op-skip rather than an error.
-  const resolved = await resolveEventGameConfig(tx, { eventId, tenantId });
+  // Resolve the ROUND default (event + any round-level override), with the lock
+  // gate bypassed so it is the true money default the pin freezes. (No round-level
+  // writer exists today, so for a locked event this equals the event config — but
+  // resolving WITH roundId keeps the baseline + the per-foursome comparison below
+  // consistent if a round-level row is ever added.)
+  const resolved = await resolveEventGameConfig(tx, {
+    eventId,
+    tenantId,
+    roundId,
+    applyOverridesWhenLocked: true,
+  });
   if (!resolved.ok) {
     return { ok: false, reason: `config:${resolved.reason}` };
   }

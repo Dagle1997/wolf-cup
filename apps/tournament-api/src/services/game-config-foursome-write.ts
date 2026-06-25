@@ -21,7 +21,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { db as DbType } from '../db/index.js';
-import { gameConfig, pairings, type GameConfigRow } from '../db/schema/index.js';
+import { gameConfig, pairings, eventRounds, type GameConfigRow } from '../db/schema/index.js';
 import type { GameConfig, Modifier, PointValueSchedule } from '../engine/games/types.js';
 import {
   parseGameConfig,
@@ -52,19 +52,26 @@ export type FoursomeConfigResult =
   | { ok: true; row: GameConfigRow; seeded: boolean; config: GameConfig }
   | { ok: false; reason: string };
 
-/** Resolve a foursome's PAIRING id (its stable foursome-config ref) within a round. */
+/**
+ * Resolve a foursome's PAIRING id (its stable foursome-config ref) within a round.
+ * Joins event_rounds so the eventRound MUST belong to `eventId` — the service
+ * enforces cross-event safety itself, not only the calling route (codex review).
+ */
 async function findPairingId(
   tx: Tx,
-  input: { eventRoundId: string; foursomeNumber: number; tenantId: string },
+  input: { eventId: string; eventRoundId: string; foursomeNumber: number; tenantId: string },
 ): Promise<string | null> {
   const rows = await tx
     .select({ id: pairings.id })
     .from(pairings)
+    .innerJoin(eventRounds, eq(eventRounds.id, pairings.eventRoundId))
     .where(
       and(
         eq(pairings.eventRoundId, input.eventRoundId),
         eq(pairings.foursomeNumber, input.foursomeNumber),
         eq(pairings.tenantId, input.tenantId),
+        eq(eventRounds.eventId, input.eventId),
+        eq(eventRounds.tenantId, input.tenantId),
       ),
     )
     .limit(1);

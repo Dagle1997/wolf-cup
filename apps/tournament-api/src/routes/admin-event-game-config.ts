@@ -86,12 +86,15 @@ const putBodySchema = z
   })
   .strict();
 
-// Foursome-level override (Epic 6): the full modifier set is required (the pills'
-// state); the stake is optional (omitted → inherit the event's).
+// Foursome-level override (Epic 6): BOTH the full modifier set AND the stake are
+// required. A foursome override captures its COMPLETE rules (the UI shows + sends
+// the stake), so there is no silent "inherit the event stake" snapshot that could
+// later drift from a changed event stake (Gemini review). To revert a foursome to
+// the event default, DELETE the override (don't half-specify it).
 const foursomePutBodySchema = z
   .object({
     modifiers: z.array(modifierSchema),
-    pointValueSchedule: pointValueScheduleSchema.optional(),
+    pointValueSchedule: pointValueScheduleSchema,
   })
   .strict();
 

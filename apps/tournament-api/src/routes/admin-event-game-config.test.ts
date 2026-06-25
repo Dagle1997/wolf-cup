@@ -199,7 +199,7 @@ describe('foursome game-config routes (Epic 6)', () => {
     await seedPairing(erId, 1);
     const res = await testApp.request(foursomeUrl(s.eventId, erId, 1), {
       method: 'PUT', headers: { 'content-type': 'application/json', cookie: cookie(s.organizerSessionId) },
-      body: JSON.stringify({ modifiers: [{ type: 'sandie', enabled: false }] }),
+      body: JSON.stringify({ modifiers: [{ type: 'sandie', enabled: false }], pointValueSchedule: { kind: 'flat', cents: 500 } }),
     });
     expect(res.status).toBe(404);
     expect(((await res.json()) as { code: string }).code).toBe('no_event_config');
@@ -211,7 +211,7 @@ describe('foursome game-config routes (Epic 6)', () => {
     await seedPairing(erId, 1);
     const res = await testApp.request(foursomeUrl(s.eventId, erId, 1), {
       method: 'PUT', headers: { 'content-type': 'application/json', cookie: cookie(s.otherOrganizerSessionId) },
-      body: JSON.stringify({ modifiers: [] }),
+      body: JSON.stringify({ modifiers: [], pointValueSchedule: { kind: 'flat', cents: 500 } }),
     });
     expect(res.status).toBe(403);
   });
@@ -223,7 +223,7 @@ describe('foursome game-config routes (Epic 6)', () => {
     // no pairing seeded → foursome 1 not found
     const res = await testApp.request(foursomeUrl(s.eventId, erId, 1), {
       method: 'PUT', headers: { 'content-type': 'application/json', cookie: cookie(s.organizerSessionId) },
-      body: JSON.stringify({ modifiers: [{ type: 'sandie', enabled: false }] }),
+      body: JSON.stringify({ modifiers: [{ type: 'sandie', enabled: false }], pointValueSchedule: { kind: 'flat', cents: 500 } }),
     });
     expect(res.status).toBe(404);
     expect(((await res.json()) as { code: string }).code).toBe('foursome_not_found');

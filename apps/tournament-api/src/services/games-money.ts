@@ -150,7 +150,10 @@ function parsePin(row: {
     if (typeof rawMap !== 'object' || rawMap === null || Array.isArray(rawMap)) return null;
     for (const [key, value] of Object.entries(rawMap)) {
       const n = Number(key);
-      if (!Number.isInteger(n)) return null;
+      if (!Number.isInteger(n) || n < 1) return null;
+      // Two distinct keys that normalize to the same foursome number (e.g. "1"
+      // and "01") would silently last-wins → fail the pin closed instead.
+      if (Object.prototype.hasOwnProperty.call(foursomeConfigs, n)) return null;
       const parsed = parseGameConfig(value);
       if (!parsed.ok) return null;
       foursomeConfigs[n] = parsed.config;
