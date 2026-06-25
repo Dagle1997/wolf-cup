@@ -173,6 +173,11 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
     },
   });
 
+  // Refs so that after a successful add we drop focus back onto the active tab's
+  // name box — add several people in a row without reaching for the mouse.
+  const manualNameRef = useRef<HTMLInputElement>(null);
+  const ghinFirstRef = useRef<HTMLInputElement>(null);
+
   const addMember = useMutation({
     mutationFn: async (
       payload:
@@ -203,10 +208,14 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
         setGhinSearchTerm('');
         setGhinFirstName('');
         setGhinSearchTriggered(false);
+        // Refocus the GHIN first-name box for the next search (post-render).
+        setTimeout(() => ghinFirstRef.current?.focus(), 0);
       } else {
         setManualName('');
         setManualHandicap('');
         setManualPhone('');
+        // Refocus the name box so you can type the next player immediately.
+        setTimeout(() => manualNameRef.current?.focus(), 0);
       }
       void qc.invalidateQueries({ queryKey: ['group', groupId] });
     },
@@ -448,6 +457,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
                 <label htmlFor="ghin-first-input">First name (optional)</label>
                 <input
                   id="ghin-first-input"
+                  ref={ghinFirstRef}
                   type="text"
                   value={ghinFirstName}
                   onChange={(e) => {
@@ -563,6 +573,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
             <label htmlFor="manual-name">Player name</label>
             <input
               id="manual-name"
+              ref={manualNameRef}
               type="text"
               value={manualName}
               onChange={(e) => setManualName(e.target.value)}
