@@ -33,7 +33,11 @@ import {
   roundPins,
 } from '../db/schema/index.js';
 import { allocateNetThroughHole, calcCourseHandicap } from './handicap.js';
-import { getHandicapStrokes, allocateStrokesFromCourseHandicap } from '../engine/handicap-strokes.js';
+import {
+  getHandicapStrokes,
+  allocateStrokesFromCourseHandicap,
+  applyAllowanceOffLow,
+} from '../engine/handicap-strokes.js';
 import { aggregateSkinsForEvent } from './sub-games.js';
 import { loadLockedHandicapsByEvent } from './event-handicap-overrides.js';
 import { perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
@@ -718,8 +722,13 @@ function assignRanksAndBuildRows(
  * than silently re-settling already-banked money (architecture key-deliverable,
  * independent of Epic 5's finalize snapshot). Bump ONLY when the per-hole net
  * math changes in a way that could move a settled outcome.
+ *
+ * v2 (2026-06-25): a NET per-hole match now settles OFF THE DIFFERENCE
+ * (offLowNetForMatch) instead of full-handicap-each, which can move a match
+ * outcome — so the stamp bumps. Nothing has banked yet (bets recompute on read),
+ * so no live bet carries v1; the bump arms the guard for if/when banking lands.
  */
-export const NET_CALC_VERSION = 1;
+export const NET_CALC_VERSION = 2;
 
 export type NetForSegmentTrust =
   | 'ok'
@@ -855,4 +864,172 @@ export async function netForSegment(
   }
   const total = perHole.reduce((sum, p) => sum + (p.net as number), 0);
   return { perHole, total, trust: 'ok' };
+}
+
+export type OffLowMatchNetResult = {
+  /** subjectId → per-hole net (off the pair's low), aligned to sorted holeNumbers. */
+  netPerHoleBySubject: Record<string, Array<number | null>>;
+  trustBySubject: Record<string, NetForSegmentTrust>;
+};
+
+/**
+ * Off-the-difference net per hole for a HEADS-UP match (the "$5 a hole" game).
+ *
+ * The match convention Josh's group plays: the LOW course handicap in the pair
+ * plays to scratch and the higher player gets only the SPREAD, allocated on the
+ * hardest holes — NOT each player's full handicap (Josh 2026-06-25: "He's a 10,
+ * I'm a 16, he gives me 6; Ronnie gets none."). Contrast netForSegment, which
+ * nets every player off their OWN full handicap (correct for skins / the field,
+ * wrong for a 1-v-1 match).
+ *
+ * Same net basis as netForSegment (effective/locked HI → course handicap off the
+ * ROUND's tee), but the per-hole stroke allocation runs off the pair's low via
+ * applyAllowanceOffLow at 100% (full difference, no allowance reduction). A
+ * subject missing an HI, or any incomplete hole, yields a `null` net for that
+ * subject → settlePerHoleMatch keeps the bet provisional (never settles on a
+ * partial/handicap-less pair). gross-basis matches never call this.
+ */
+export async function offLowNetForMatch(
+  ctx: LeaderboardCtx,
+  args: { roundId: string; subjectIds: string[]; holeNumbers: number[] },
+): Promise<OffLowMatchNetResult> {
+  const tenantId = ctx.tenantId;
+  // Preserve the caller's hole order — the H2hInput contract aligns each subject's
+  // net array 1:1 with bet.scopedHoles, and all lookups below are by hole number.
+  const holeNumbers = [...args.holeNumbers];
+  const subjectIds = [...new Set(args.subjectIds)];
+  const allNull = (): Record<string, Array<number | null>> =>
+    Object.fromEntries(subjectIds.map((id) => [id, holeNumbers.map(() => null)]));
+
+  // No subjects → nothing to grade (applyAllowanceOffLow throws on an empty group).
+  // A real per_hole_match always has two; guard so a malformed bet fails closed.
+  if (subjectIds.length === 0) {
+    return { netPerHoleBySubject: {}, trustBySubject: {} };
+  }
+
+  // 1. Round context (tee slope/rating/par + course revision + event) — same
+  // joins/tee selection as netForSegment, so the match nets off the same tee.
+  const ctxRows = await ctx.db
+    .select({
+      eventId: eventRounds.eventId,
+      courseRevisionId: eventRounds.courseRevisionId,
+      slope: courseTees.slope,
+      rating: courseTees.rating,
+      coursePar: courseRevisions.courseTotal,
+    })
+    .from(rounds)
+    .innerJoin(eventRounds, eq(eventRounds.id, rounds.eventRoundId))
+    .innerJoin(courseRevisions, eq(courseRevisions.id, eventRounds.courseRevisionId))
+    .innerJoin(
+      courseTees,
+      and(
+        eq(courseTees.courseRevisionId, eventRounds.courseRevisionId),
+        eq(courseTees.teeColor, eventRounds.teeColor),
+      ),
+    )
+    .where(
+      and(
+        eq(rounds.id, args.roundId),
+        eq(rounds.tenantId, tenantId),
+        eq(eventRounds.tenantId, tenantId),
+        eq(courseRevisions.tenantId, tenantId),
+        eq(courseTees.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  const rc = ctxRows[0];
+  if (!rc) {
+    return {
+      netPerHoleBySubject: allNull(),
+      trustBySubject: Object.fromEntries(subjectIds.map((id) => [id, 'no_course_data' as const])),
+    };
+  }
+  const tee = { slope: rc.slope, ratingTimes10: rc.rating, coursePar: rc.coursePar };
+
+  // 2. Effective HI per subject (manual, overridden by the event's locked snapshot).
+  const locked = await loadLockedHandicapsByEvent(ctx.db, rc.eventId, tenantId);
+  const trustBySubject: Record<string, NetForSegmentTrust> = {};
+  const chBySubject = new Map<string, number>();
+  for (const id of subjectIds) {
+    const playerRow = await ctx.db
+      .select({ hi: players.manualHandicapIndex })
+      .from(players)
+      .where(and(eq(players.id, id), eq(players.tenantId, tenantId)))
+      .limit(1);
+    let hi: number | null = playerRow[0]?.hi ?? null;
+    const lockedHi = locked.get(id);
+    if (lockedHi !== undefined) hi = lockedHi;
+    if (hi === null) {
+      trustBySubject[id] = 'no_handicap';
+      continue;
+    }
+    // calcCourseHandicap throws on a non-finite HI / bad tee. Treat a throw as
+    // "no usable handicap" (→ ungradeable pair → provisional) rather than 500ing
+    // the settlement read.
+    try {
+      chBySubject.set(id, calcCourseHandicap({ handicapIndex: hi, ...tee }));
+    } catch {
+      trustBySubject[id] = 'no_handicap';
+    }
+  }
+
+  // A handicapped match needs EVERY subject's CH to size the spread. If any is
+  // missing, the pair is ungradeable → all-null (provisional), each subject keeps
+  // its own trust (no_handicap for the missing one).
+  if (chBySubject.size !== subjectIds.length) {
+    for (const id of subjectIds) trustBySubject[id] ??= 'ok';
+    return { netPerHoleBySubject: allNull(), trustBySubject };
+  }
+
+  // 3. Off the pair's low: low plays scratch, others get the spread (pct=100 → full
+  // difference). offLowBase is the handicap each allocates strokes FROM.
+  const { offLow } = applyAllowanceOffLow(chBySubject, 100);
+
+  // 4. SI per hole + gross per subject/hole.
+  const holeRows = await ctx.db
+    .select({ holeNumber: courseHoles.holeNumber, si: courseHoles.si })
+    .from(courseHoles)
+    .where(
+      and(
+        eq(courseHoles.courseRevisionId, rc.courseRevisionId),
+        inArray(courseHoles.holeNumber, holeNumbers),
+        eq(courseHoles.tenantId, tenantId),
+      ),
+    );
+  const siByHole = new Map(holeRows.map((r) => [r.holeNumber, r.si]));
+
+  const netPerHoleBySubject: Record<string, Array<number | null>> = {};
+  for (const id of subjectIds) {
+    const scoreRows = await ctx.db
+      .select({ holeNumber: holeScores.holeNumber, grossStrokes: holeScores.grossStrokes })
+      .from(holeScores)
+      .where(
+        and(
+          eq(holeScores.roundId, args.roundId),
+          eq(holeScores.playerId, id),
+          inArray(holeScores.holeNumber, holeNumbers),
+          eq(holeScores.tenantId, tenantId),
+        ),
+      );
+    const grossByHole = new Map(scoreRows.map((r) => [r.holeNumber, r.grossStrokes]));
+    const offLowBase = offLow.get(id)!;
+    const perHole = holeNumbers.map((h) => {
+      const gross = grossByHole.get(h);
+      const si = siByHole.get(h);
+      if (gross === undefined || gross === null || si === undefined || si === null) return null;
+      // allocateStrokesFromCourseHandicap THROWS on a non-integer / out-of-range
+      // SI (corrupt course data). Fail closed to a null hole (→ provisional),
+      // never a 500 on the settlement read — mirrors the per-foursome blast-radius
+      // guard on the F1 side.
+      try {
+        return gross - allocateStrokesFromCourseHandicap(offLowBase, si);
+      } catch {
+        return null;
+      }
+    });
+    netPerHoleBySubject[id] = perHole;
+    trustBySubject[id] = perHole.some((v) => v === null) ? 'incomplete' : 'ok';
+  }
+
+  return { netPerHoleBySubject, trustBySubject };
 }

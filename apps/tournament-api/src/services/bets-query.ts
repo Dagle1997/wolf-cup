@@ -25,6 +25,7 @@ import type { db as DbType } from '../db/index.js';
 import { bets, betSides, eventRounds, players, rounds } from '../db/schema/index.js';
 import {
   netForSegment,
+  offLowNetForMatch,
   NET_CALC_VERSION,
   type LeaderboardCtx,
   type NetForSegmentTrust,
@@ -170,15 +171,32 @@ export async function settleActionBet(
   // limitation; every event player has an HI in practice. Putts never reaches
   // here — the dispatch rejects it as unsupported.)
   const useGross = bet.basis === 'gross';
-  const netPerHoleBySubject: Record<string, Array<number | null>> = {};
-  const trustBySubject: Record<string, NetForSegmentTrust> = {};
   const subjectIds = [...new Set(bet.sides.map((s) => s.subjectPlayerId))];
-  for (const subjectId of subjectIds) {
-    const seg = await netForSegment(ctx, { roundId, playerId: subjectId, holeNumbers: scopedHoles });
-    trustBySubject[subjectId] = seg.trust;
-    // Align to scopedHoles ascending (netForSegment returns hole-ascending).
-    const valueByHole = new Map(seg.perHole.map((p) => [p.holeNumber, useGross ? p.gross : p.net]));
-    netPerHoleBySubject[subjectId] = scopedHoles.map((h) => valueByHole.get(h) ?? null);
+  let netPerHoleBySubject: Record<string, Array<number | null>> = {};
+  let trustBySubject: Record<string, NetForSegmentTrust> = {};
+
+  if (bet.betType === 'per_hole_match' && bet.basis === 'net') {
+    // A NET per-hole match (the "$5 a hole" game) is graded OFF THE DIFFERENCE,
+    // not off each player's full handicap: the low man plays scratch and the
+    // higher gets only the spread on the hardest holes (Josh 2026-06-25). Skins
+    // and h2h-net keep full-handicap-each net (netForSegment) — only the match
+    // changes basis. gross matches never reach here (handled below).
+    const offLow = await offLowNetForMatch(ctx, { roundId, subjectIds, holeNumbers: scopedHoles });
+    netPerHoleBySubject = offLow.netPerHoleBySubject;
+    trustBySubject = offLow.trustBySubject;
+  } else {
+    // netForSegment is the single canonical source (P2); it returns BOTH net and
+    // gross per hole. A 'gross' bet compares gross strokes, otherwise full net.
+    // (netForSegment fails closed without an HI even for gross — a known
+    // limitation; every event player has an HI in practice. Putts never reaches
+    // here — the dispatch rejects it as unsupported.)
+    for (const subjectId of subjectIds) {
+      const seg = await netForSegment(ctx, { roundId, playerId: subjectId, holeNumbers: scopedHoles });
+      trustBySubject[subjectId] = seg.trust;
+      // Align to scopedHoles ascending (netForSegment returns hole-ascending).
+      const valueByHole = new Map(seg.perHole.map((p) => [p.holeNumber, useGross ? p.gross : p.net]));
+      netPerHoleBySubject[subjectId] = scopedHoles.map((h) => valueByHole.get(h) ?? null);
+    }
   }
 
   const betDef: BetDef = {

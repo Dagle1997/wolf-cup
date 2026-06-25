@@ -46,7 +46,8 @@ const {
   roundStates,
   holeScores,
 } = await import('../db/schema/index.js');
-const { computeLeaderboard, netForSegment } = await import('./leaderboard.js');
+const { computeLeaderboard, netForSegment, offLowNetForMatch } = await import('./leaderboard.js');
+const { calcCourseHandicap } = await import('../engine/handicap-strokes.js');
 
 const TENANT_ID = 'guyan';
 const CTX_BASE = 'league:guyan-wolf-cup-friday';
@@ -606,5 +607,120 @@ describe('netForSegment — the betting engine net contract (P2/D3)', () => {
     expect(seg.trust).toBe('incomplete');
     expect(seg.total).toBeNull();
     expect(seg.perHole.filter((p) => p.net !== null)).toHaveLength(9);
+  });
+});
+
+describe('offLowNetForMatch — $5/hole match nets OFF THE DIFFERENCE (Josh 2026-06-25)', () => {
+  const ALL_18 = Array.from({ length: 18 }, (_, i) => i + 1);
+  // Blue tee in the seed: slope 130, rating 72.3, par 72. courseHoles SI = hole number.
+  const TEE = { slope: 130, ratingTimes10: 723, coursePar: 72 };
+
+  test('low course-handicap plays scratch; the higher gets only the SPREAD on the hardest holes', async () => {
+    // HIs chosen so the two course handicaps clearly differ.
+    const seed = await seedEvent({
+      participantCount: 2,
+      handicapIndexes: [16.0, 4.0],
+      rounds: [{ teeColor: 'blue' }],
+    });
+    const [roundId] = seed.roundIds as [string];
+    const high = seed.playerIds[0]!; // HI 16 → higher CH
+    const low = seed.playerIds[1]!;  // HI 4  → lower CH
+    const scorerId = seed.playerIds[0]!;
+    // Flat gross 5 everywhere keeps the arithmetic hand-checkable.
+    for (const pid of seed.playerIds) {
+      for (let h = 1; h <= 18; h++) await postHoleScore(roundId, pid, scorerId, h, 5);
+    }
+
+    const chHigh = calcCourseHandicap({ handicapIndex: 16.0, ...TEE });
+    const chLow = calcCourseHandicap({ handicapIndex: 4.0, ...TEE });
+    const spread = chHigh - chLow; // strokes the high player gets in the MATCH
+    expect(spread).toBeGreaterThan(0);
+    expect(spread).toBeLessThanOrEqual(18); // keeps stroke-per-hole in {0,1} for this assertion
+
+    const res = await offLowNetForMatch({ db, tenantId: TENANT_ID }, {
+      roundId,
+      subjectIds: [high, low],
+      holeNumbers: ALL_18,
+    });
+
+    // Low man plays scratch in the match: net === gross (5) on every hole.
+    expect(res.netPerHoleBySubject[low]).toEqual(ALL_18.map(() => 5));
+    expect(res.trustBySubject[low]).toBe('ok');
+
+    // High man receives EXACTLY the spread (not his full handicap): one stroke on
+    // the `spread` hardest holes (SI 1..spread === holes 1..spread here), none after.
+    const highNet = res.netPerHoleBySubject[high]!;
+    let strokesGiven = 0;
+    for (let i = 0; i < 18; i++) {
+      const expectedStroke = i + 1 <= spread ? 1 : 0; // SI === hole number in this seed
+      expect(highNet[i]).toBe(5 - expectedStroke);
+      strokesGiven += expectedStroke;
+    }
+    // The crux: total strokes in the match === the DIFFERENCE, not the high CH.
+    expect(strokesGiven).toBe(spread);
+    expect(strokesGiven).toBeLessThan(chHigh); // off-the-difference < full-handicap
+  });
+
+  test('a subject with no handicap → that subject is null, match stays provisional', async () => {
+    const seed = await seedEvent({
+      participantCount: 2,
+      handicapIndexes: [10.0, null],
+      rounds: [{ teeColor: 'blue' }],
+    });
+    const [roundId] = seed.roundIds as [string];
+    const withHcp = seed.playerIds[0]!;
+    const noHcp = seed.playerIds[1]!;
+    for (const pid of seed.playerIds) {
+      for (let h = 1; h <= 18; h++) await postHoleScore(roundId, pid, withHcp, h, 4);
+    }
+
+    const res = await offLowNetForMatch({ db, tenantId: TENANT_ID }, {
+      roundId,
+      subjectIds: [withHcp, noHcp],
+      holeNumbers: ALL_18,
+    });
+    expect(res.trustBySubject[noHcp]).toBe('no_handicap');
+    // Ungradeable pair → BOTH subjects null (settlePerHoleMatch returns provisional).
+    expect(res.netPerHoleBySubject[noHcp]!.every((v) => v === null)).toBe(true);
+    expect(res.netPerHoleBySubject[withHcp]!.every((v) => v === null)).toBe(true);
+  });
+
+  test('empty subject set fails closed (no throw) — malformed bet stays provisional', async () => {
+    const seed = await seedEvent({
+      participantCount: 1,
+      handicapIndexes: [10.0],
+      rounds: [{ teeColor: 'blue' }],
+    });
+    const [roundId] = seed.roundIds as [string];
+    const res = await offLowNetForMatch({ db, tenantId: TENANT_ID }, {
+      roundId,
+      subjectIds: [],
+      holeNumbers: ALL_18,
+    });
+    expect(res.netPerHoleBySubject).toEqual({});
+    expect(res.trustBySubject).toEqual({});
+  });
+
+  test('equal handicaps → both scratch (the match plays as gross)', async () => {
+    const seed = await seedEvent({
+      participantCount: 2,
+      handicapIndexes: [12.0, 12.0],
+      rounds: [{ teeColor: 'blue' }],
+    });
+    const [roundId] = seed.roundIds as [string];
+    const a = seed.playerIds[0]!;
+    const b = seed.playerIds[1]!;
+    for (let h = 1; h <= 18; h++) {
+      await postHoleScore(roundId, a, a, h, 4);
+      await postHoleScore(roundId, b, a, h, 5);
+    }
+    const res = await offLowNetForMatch({ db, tenantId: TENANT_ID }, {
+      roundId,
+      subjectIds: [a, b],
+      holeNumbers: ALL_18,
+    });
+    // No strokes given either way → net === gross for both.
+    expect(res.netPerHoleBySubject[a]).toEqual(ALL_18.map(() => 4));
+    expect(res.netPerHoleBySubject[b]).toEqual(ALL_18.map(() => 5));
   });
 });
