@@ -32,6 +32,7 @@ const {
   courseHoles,
   subGames,
   subGameParticipants,
+  subGameResults,
   sessions,
   rounds,
 } = await import('../db/schema/index.js');
@@ -53,6 +54,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await db.delete(subGameResults);
   await db.delete(subGameParticipants);
   await db.delete(subGames);
   await db.delete(sessions);
@@ -419,6 +421,32 @@ describe('POST /api/admin/event-rounds/:eventRoundId/sub-games', () => {
     });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { code: string }).code).toBe('duplicate_sub_game_type');
+  });
+
+  it('Epic: editing sub-games AFTER a pot is computed is rejected (sub_games_results_exist) — protects computed money', async () => {
+    const s = await seed({ playerCount: 2 });
+    // Create a skins pot.
+    await testApp.request(`/api/admin/event-rounds/${s.eventRoundId}/sub-games`, {
+      method: 'POST', headers: { cookie: organizerCookie(s.organizerSessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ subGames: [{ type: 'skins', mode: 'net', buyInPerParticipant: 2500, participantPlayerIds: [s.playerIds[0]!] }] }),
+    });
+    const sg = (await db.select().from(subGames))[0]!;
+    // Simulate a computed result.
+    await db.insert(subGameResults).values({
+      id: randomUUID(), subGameId: sg.id, computedAt: Date.now(), configSnapshotJson: '{}',
+      resultsJson: '{}', totalPotCents: 2500, createdByPlayerId: s.playerIds[0]!,
+      tenantId: 'guyan', contextId: `event:${s.eventId}`,
+    });
+
+    // Re-saving the config now must be rejected (would orphan the result).
+    const res = await testApp.request(`/api/admin/event-rounds/${s.eventRoundId}/sub-games`, {
+      method: 'POST', headers: { cookie: organizerCookie(s.organizerSessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({ subGames: [{ type: 'skins', mode: 'gross', buyInPerParticipant: 2500, participantPlayerIds: [] }] }),
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code: string }).code).toBe('sub_games_results_exist');
+    // The computed result is untouched.
+    expect(await db.select().from(subGameResults)).toHaveLength(1);
   });
 
   it('upsert REPLACES (not accumulates): re-save with different participants drops old', async () => {

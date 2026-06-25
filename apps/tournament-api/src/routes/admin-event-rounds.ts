@@ -59,6 +59,7 @@ import {
   players,
   subGames,
   subGameParticipants,
+  subGameResults,
   pairings,
   pairingMembers,
   rounds,
@@ -92,7 +93,9 @@ const PostSubGamesRequestSchema = z.object({
       type: z.enum(ALL_SUB_GAME_TYPES),
       /** Skins only: which scoring mode this pot uses. Defaults to 'gross'. */
       mode: z.enum(SKINS_MODES).optional(),
-      buyInPerParticipant: z.number().int().nonnegative(),
+      // Cap the buy-in at $100k/player — a sane upper bound that keeps pot math
+      // (buyIn × participants) well within safe-integer range even fat-fingered.
+      buyInPerParticipant: z.number().int().nonnegative().max(10_000_000),
       participantPlayerIds: z.array(z.string().min(1)),
     }),
   ),
@@ -288,6 +291,30 @@ adminEventRoundsRouter.post(
     }
     const er = erRows[0]!;
 
+    // Step 2b — RESULTS LOCK (money-safety): the config upsert is DELETE-then-
+    // INSERT, so re-saving after a skins pot has been COMPUTED would orphan its
+    // sub_game_results (computed money) and drop it from the leaderboard. Once any
+    // pot for this round has a result, the config is frozen — reject the edit
+    // (codex/gemini review). Pre-compute editing is unaffected.
+    const computed = await db
+      .select({ id: subGameResults.id })
+      .from(subGameResults)
+      .innerJoin(subGames, eq(subGames.id, subGameResults.subGameId))
+      .where(
+        and(
+          eq(subGames.eventRoundId, eventRoundId),
+          eq(subGames.tenantId, TENANT_ID),
+          eq(subGameResults.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (computed.length > 0) {
+      return c.json(
+        { error: 'conflict', code: 'sub_games_results_exist', requestId },
+        409,
+      );
+    }
+
     // Step 3 — sub_game_type_not_enabled (v1 rejects non-skins).
     for (const entry of body.subGames) {
       if (!V1_ENABLED_SUB_GAME_TYPES.has(entry.type as 'skins')) {
@@ -405,6 +432,25 @@ adminEventRoundsRouter.post(
 
     try {
       await db.transaction(async (tx) => {
+        // RESULTS LOCK, re-checked INSIDE the tx so a result computed between the
+        // pre-flight check (step 2b) and the DELETE cannot be orphaned (codex
+        // review — close the TOCTOU). Throws a sentinel mapped to 409 below.
+        const computedInTx = await tx
+          .select({ id: subGameResults.id })
+          .from(subGameResults)
+          .innerJoin(subGames, eq(subGames.id, subGameResults.subGameId))
+          .where(
+            and(
+              eq(subGames.eventRoundId, eventRoundId),
+              eq(subGames.tenantId, TENANT_ID),
+              eq(subGameResults.tenantId, TENANT_ID),
+            ),
+          )
+          .limit(1);
+        if (computedInTx.length > 0) {
+          throw new Error('SUB_GAMES_RESULTS_EXIST');
+        }
+
         await tx
           .delete(subGames)
           .where(
@@ -446,6 +492,14 @@ adminEventRoundsRouter.post(
       });
     } catch (err) {
       const e = err as { message?: unknown; cause?: unknown } | null;
+      // The in-tx results-lock sentinel → 409 (not a 500): a pot was computed
+      // concurrently, so the edit is refused to protect the computed money.
+      if (e?.message === 'SUB_GAMES_RESULTS_EXIST') {
+        return c.json(
+          { error: 'conflict', code: 'sub_games_results_exist', requestId },
+          409,
+        );
+      }
       log.error({
         event: 'sub_game_upsert_failed',
         eventRoundId,
