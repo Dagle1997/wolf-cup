@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -145,6 +146,89 @@ function put(eventId: string, sid: string, body: unknown) {
     body: JSON.stringify(body),
   });
 }
+
+// ── Epic 6: per-foursome config routes ───────────────────────────────────
+async function eventRoundIdFor(eventId: string): Promise<string> {
+  const rows = await db.select({ id: eventRounds.id }).from(eventRounds).where(eq(eventRounds.eventId, eventId)).limit(1);
+  return rows[0]!.id;
+}
+async function seedPairing(eventRoundId: string, foursomeNumber: number): Promise<void> {
+  await db.insert(pairings).values({ id: randomUUID(), eventRoundId, foursomeNumber, createdAt: Date.now(), tenantId: TENANT_ID, contextId: CTX });
+}
+function foursomeUrl(eventId: string, erId: string, n: number) {
+  return `/api/admin/events/${eventId}/rounds/${erId}/foursomes/${n}/game-config`;
+}
+
+describe('foursome game-config routes (Epic 6)', () => {
+  it('PUT creates a foursome override (sandie off) inheriting the event base; GET returns it; DELETE clears it', async () => {
+    const s = await seed();
+    await put(s.eventId, s.organizerSessionId, { pointValueSchedule: { kind: 'flat', cents: 500 } }); // event base
+    const erId = await eventRoundIdFor(s.eventId);
+    await seedPairing(erId, 1);
+
+    // PUT the foursome's pills: net-skins on, sandie OFF, $10 stake.
+    const putRes = await testApp.request(foursomeUrl(s.eventId, erId, 1), {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie: cookie(s.organizerSessionId) },
+      body: JSON.stringify({
+        modifiers: [
+          { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
+          { type: 'sandie', enabled: false },
+        ],
+        pointValueSchedule: { kind: 'flat', cents: 1000 },
+      }),
+    });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await testApp.request(foursomeUrl(s.eventId, erId, 1), { headers: { cookie: cookie(s.organizerSessionId) } });
+    expect(getRes.status).toBe(200);
+    const body = (await getRes.json()) as { foursomeConfig: { configJson: string } | null; eventConfig: unknown };
+    expect(body.foursomeConfig).not.toBeNull();
+    const cfg = JSON.parse(body.foursomeConfig!.configJson) as { pointValueSchedule: { cents: number }; modifiers: Array<{ type: string; enabled: boolean }> };
+    expect(cfg.pointValueSchedule.cents).toBe(1000);
+    expect(cfg.modifiers.find((m) => m.type === 'sandie')!.enabled).toBe(false);
+
+    const delRes = await testApp.request(foursomeUrl(s.eventId, erId, 1), { method: 'DELETE', headers: { cookie: cookie(s.organizerSessionId) } });
+    expect(delRes.status).toBe(200);
+    const afterDel = await testApp.request(foursomeUrl(s.eventId, erId, 1), { headers: { cookie: cookie(s.organizerSessionId) } });
+    expect(((await afterDel.json()) as { foursomeConfig: unknown }).foursomeConfig).toBeNull();
+  });
+
+  it('404 when the event has no event-level config (cannot override a non-F1 event)', async () => {
+    const s = await seed();
+    const erId = await eventRoundIdFor(s.eventId);
+    await seedPairing(erId, 1);
+    const res = await testApp.request(foursomeUrl(s.eventId, erId, 1), {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie: cookie(s.organizerSessionId) },
+      body: JSON.stringify({ modifiers: [{ type: 'sandie', enabled: false }] }),
+    });
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { code: string }).code).toBe('no_event_config');
+  });
+
+  it('403 for an organizer of another event', async () => {
+    const s = await seed();
+    const erId = await eventRoundIdFor(s.eventId);
+    await seedPairing(erId, 1);
+    const res = await testApp.request(foursomeUrl(s.eventId, erId, 1), {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie: cookie(s.otherOrganizerSessionId) },
+      body: JSON.stringify({ modifiers: [] }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('404 when the foursome number does not exist in the round', async () => {
+    const s = await seed();
+    await put(s.eventId, s.organizerSessionId, { pointValueSchedule: { kind: 'flat', cents: 500 } });
+    const erId = await eventRoundIdFor(s.eventId);
+    // no pairing seeded → foursome 1 not found
+    const res = await testApp.request(foursomeUrl(s.eventId, erId, 1), {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie: cookie(s.organizerSessionId) },
+      body: JSON.stringify({ modifiers: [{ type: 'sandie', enabled: false }] }),
+    });
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { code: string }).code).toBe('foursome_not_found');
+  });
+});
 
 describe('GET /api/admin/events/:eventId/game-config', () => {
   it('returns null when unseeded; the row once seeded', async () => {

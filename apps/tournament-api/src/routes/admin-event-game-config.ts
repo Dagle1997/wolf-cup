@@ -19,12 +19,16 @@ import { z } from 'zod';
 import { requireOrganizer } from '../middleware/require-organizer.js';
 import { requireSession } from '../middleware/require-session.js';
 import { db } from '../db/index.js';
-import { gameConfig } from '../db/schema/index.js';
+import { gameConfig, eventRounds, pairings } from '../db/schema/index.js';
 import { isEventOrganizerByEventId } from '../services/index.js';
 import { seedOrUpdateEventGameConfig } from '../services/game-config-write.js';
+import {
+  seedOrUpdateFoursomeGameConfig,
+  deleteFoursomeGameConfig,
+} from '../services/game-config-foursome-write.js';
 import { resolveEventGameConfig } from '../services/resolve-game-config.js';
 import { modifierSchema } from '../engine/games/config-schema.js';
-import type { Modifier } from '../engine/games/types.js';
+import type { Modifier, PointValueSchedule } from '../engine/games/types.js';
 
 export const adminEventGameConfigRouter = new Hono();
 const TENANT_ID = 'guyan';
@@ -33,6 +37,34 @@ const BODY_LIMIT = 8 * 1024;
 
 adminEventGameConfigRouter.use('/events/:eventId/game-config', requireSession, requireOrganizer);
 adminEventGameConfigRouter.use('/events/:eventId/resolved-config', requireSession, requireOrganizer);
+adminEventGameConfigRouter.use(
+  '/events/:eventId/rounds/:eventRoundId/foursomes/:foursomeNumber/game-config',
+  requireSession,
+  requireOrganizer,
+);
+
+/** Verify the eventRound belongs to this event (no cross-event writes) + parse the foursome number. */
+async function resolveFoursomeTarget(
+  eventId: string,
+  eventRoundIdRaw: string,
+  foursomeRaw: string,
+): Promise<{ ok: true; eventRoundId: string; foursomeNumber: number } | { ok: false; code: string }> {
+  const n = Number(foursomeRaw);
+  if (!Number.isInteger(n) || n < 1) return { ok: false, code: 'invalid_foursome_number' };
+  const erRows = await db
+    .select({ id: eventRounds.id })
+    .from(eventRounds)
+    .where(
+      and(
+        eq(eventRounds.id, eventRoundIdRaw),
+        eq(eventRounds.eventId, eventId),
+        eq(eventRounds.tenantId, TENANT_ID),
+      ),
+    )
+    .limit(1);
+  if (erRows.length === 0) return { ok: false, code: 'event_round_not_in_event' };
+  return { ok: true, eventRoundId: eventRoundIdRaw, foursomeNumber: n };
+}
 
 const pointValueScheduleSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('flat'), cents: z.number().int() }).strict(),
@@ -51,6 +83,15 @@ const putBodySchema = z
     // Rule pills (net-skins / greenie / polie / sandie on-off + variants). Full set
     // when present; omitted → preserved by the write service.
     modifiers: z.array(modifierSchema).optional(),
+  })
+  .strict();
+
+// Foursome-level override (Epic 6): the full modifier set is required (the pills'
+// state); the stake is optional (omitted → inherit the event's).
+const foursomePutBodySchema = z
+  .object({
+    modifiers: z.array(modifierSchema),
+    pointValueSchedule: pointValueScheduleSchema.optional(),
   })
   .strict();
 
@@ -141,6 +182,137 @@ adminEventGameConfigRouter.put(
       actorPlayerId: player.id,
     });
     return c.json({ config: result.row, requestId }, 200);
+  },
+);
+
+// GET — a foursome's own override (null if none) + the event config it inherits
+// from, for the group-setup pills to prepopulate.
+adminEventGameConfigRouter.get(
+  '/events/:eventId/rounds/:eventRoundId/foursomes/:foursomeNumber/game-config',
+  async (c) => {
+    const requestId = c.get('requestId');
+    const eventId = c.req.param('eventId');
+    const player = c.get('player')!;
+    if (!(await isEventOrganizerByEventId(db, eventId, player.id, TENANT_ID))) {
+      return c.json({ error: 'forbidden', code: 'not_event_organizer', requestId }, 403);
+    }
+    const target = await resolveFoursomeTarget(eventId, c.req.param('eventRoundId'), c.req.param('foursomeNumber'));
+    if (!target.ok) return c.json({ error: 'not_found', code: target.code, requestId }, 404);
+
+    const pairingRows = await db
+      .select({ id: pairings.id })
+      .from(pairings)
+      .where(
+        and(
+          eq(pairings.eventRoundId, target.eventRoundId),
+          eq(pairings.foursomeNumber, target.foursomeNumber),
+          eq(pairings.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    const pairingId = pairingRows[0]?.id ?? null;
+    const foursomeRow = pairingId
+      ? (
+          await db
+            .select()
+            .from(gameConfig)
+            .where(and(eq(gameConfig.level, 'foursome'), eq(gameConfig.refId, pairingId), eq(gameConfig.tenantId, TENANT_ID)))
+            .limit(1)
+        )[0] ?? null
+      : null;
+    const eventRow =
+      (
+        await db
+          .select()
+          .from(gameConfig)
+          .where(and(eq(gameConfig.level, 'event'), eq(gameConfig.refId, eventId), eq(gameConfig.tenantId, TENANT_ID)))
+          .limit(1)
+      )[0] ?? null;
+
+    return c.json({ foursomeConfig: foursomeRow, eventConfig: eventRow, requestId }, 200);
+  },
+);
+
+// PUT — set/replace a foursome's own Guyan rules (the group-setup pills).
+adminEventGameConfigRouter.put(
+  '/events/:eventId/rounds/:eventRoundId/foursomes/:foursomeNumber/game-config',
+  bodyLimit({
+    maxSize: BODY_LIMIT,
+    onError: (c) => c.json({ error: 'bad_request', code: 'body_too_large', requestId: c.get('requestId') }, 400),
+  }),
+  async (c) => {
+    const requestId = c.get('requestId');
+    const log = c.get('logger');
+    const eventId = c.req.param('eventId');
+    const player = c.get('player')!;
+    if (!(await isEventOrganizerByEventId(db, eventId, player.id, TENANT_ID))) {
+      return c.json({ error: 'forbidden', code: 'not_event_organizer', requestId }, 403);
+    }
+    const target = await resolveFoursomeTarget(eventId, c.req.param('eventRoundId'), c.req.param('foursomeNumber'));
+    if (!target.ok) return c.json({ error: 'not_found', code: target.code, requestId }, 404);
+
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'bad_request', code: 'invalid_body', requestId }, 400);
+    }
+    const parsed = foursomePutBodySchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: 'bad_request', code: 'invalid_body', reason: parsed.error.issues[0]?.message, requestId }, 400);
+    }
+
+    let result: Awaited<ReturnType<typeof seedOrUpdateFoursomeGameConfig>>;
+    try {
+      result = await db.transaction((tx) =>
+        seedOrUpdateFoursomeGameConfig(tx, {
+          eventId,
+          tenantId: TENANT_ID,
+          contextId: CONTEXT(eventId),
+          eventRoundId: target.eventRoundId,
+          foursomeNumber: target.foursomeNumber,
+          actorPlayerId: player.id,
+          modifiers: parsed.data.modifiers as Modifier[],
+          pointValueSchedule: parsed.data.pointValueSchedule as PointValueSchedule | undefined,
+          now: Date.now(),
+        }),
+      );
+    } catch (err) {
+      log?.error({ msg: 'foursome game-config write failed', requestId, eventId, err: String(err) });
+      return c.json({ error: 'internal', code: 'write_failed', requestId }, 500);
+    }
+    if (!result.ok) {
+      const status = result.reason === 'foursome_not_found' || result.reason === 'no_event_config' ? 404 : 400;
+      return c.json({ error: status === 404 ? 'not_found' : 'bad_request', code: result.reason, requestId }, status);
+    }
+    return c.json({ config: result.row, requestId }, 200);
+  },
+);
+
+// DELETE — clear a foursome's override (revert to the event default).
+adminEventGameConfigRouter.delete(
+  '/events/:eventId/rounds/:eventRoundId/foursomes/:foursomeNumber/game-config',
+  async (c) => {
+    const requestId = c.get('requestId');
+    const eventId = c.req.param('eventId');
+    const player = c.get('player')!;
+    if (!(await isEventOrganizerByEventId(db, eventId, player.id, TENANT_ID))) {
+      return c.json({ error: 'forbidden', code: 'not_event_organizer', requestId }, 403);
+    }
+    const target = await resolveFoursomeTarget(eventId, c.req.param('eventRoundId'), c.req.param('foursomeNumber'));
+    if (!target.ok) return c.json({ error: 'not_found', code: target.code, requestId }, 404);
+
+    const result = await db.transaction((tx) =>
+      deleteFoursomeGameConfig(tx, {
+        eventId,
+        tenantId: TENANT_ID,
+        eventRoundId: target.eventRoundId,
+        foursomeNumber: target.foursomeNumber,
+        actorPlayerId: player.id,
+      }),
+    );
+    if (!result.ok) return c.json({ error: 'not_found', code: result.reason, requestId }, 404);
+    return c.json({ deleted: result.deleted, requestId }, 200);
   },
 );
 

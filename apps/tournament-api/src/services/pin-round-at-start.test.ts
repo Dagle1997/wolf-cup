@@ -93,6 +93,46 @@ describe('pinRoundAtStart (AC5)', () => {
     expect(cfg.game).toBe('guyan-2v2');
   });
 
+  test('Epic 6: a foursome-level override is resolved + frozen into foursome_configs_json (even when locked)', async () => {
+    const { id, ps, now } = await seed(); // event: locked, net-skins on, $5
+    const ctx = `event:${id.eventId}`;
+    // A foursome-level row for this round's foursome 1: SANDIE on + $10 stake.
+    const foursomeCfg = {
+      game: 'guyan-2v2',
+      pointValueSchedule: { kind: 'flat', cents: 1000 },
+      modifiers: [
+        { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
+        { type: 'sandie', enabled: true },
+      ],
+      lockState: 'locked',
+      configVersion: 1,
+    };
+    await db.insert(gameConfig).values({
+      id: randomUUID(), level: 'foursome', refId: id.pairingId, configJson: JSON.stringify(foursomeCfg),
+      seedRuleSetRevisionId: null, lockState: 'locked', configVersion: 1, createdAt: now, updatedAt: now, tenantId: TENANT, contextId: ctx,
+    });
+
+    const res = await pinRoundAtStart(db, { roundId: id.roundId, eventRoundId: id.eventRoundId, eventId: id.eventId, tenantId: TENANT, createdAt: now, actorPlayerId: ps[0]! });
+    expect(res.ok).toBe(true);
+
+    const pin = (await db.select().from(roundPins).where(eq(roundPins.roundId, id.roundId)).limit(1))[0]!;
+    // The round default stays the EVENT config ($5); the foursome map carries the override ($10 + sandie).
+    expect((JSON.parse(pin.resolvedConfigJson) as { pointValueSchedule: { cents: number } }).pointValueSchedule.cents).toBe(500);
+    expect(pin.foursomeConfigsJson).not.toBeNull();
+    const map = JSON.parse(pin.foursomeConfigsJson!) as Record<string, { pointValueSchedule: { cents: number }; modifiers: Array<{ type: string; enabled: boolean }> }>;
+    expect(map['1']).toBeDefined();
+    expect(map['1']!.pointValueSchedule.cents).toBe(1000);
+    expect(map['1']!.modifiers.find((m) => m.type === 'sandie')!.enabled).toBe(true);
+  });
+
+  test('Epic 6: no foursome overrides → foursome_configs_json is NULL (backward compatible)', async () => {
+    const { id, ps, now } = await seed();
+    const res = await pinRoundAtStart(db, { roundId: id.roundId, eventRoundId: id.eventRoundId, eventId: id.eventId, tenantId: TENANT, createdAt: now, actorPlayerId: ps[0]! });
+    expect(res.ok).toBe(true);
+    const pin = (await db.select().from(roundPins).where(eq(roundPins.roundId, id.roundId)).limit(1))[0]!;
+    expect(pin.foursomeConfigsJson).toBeNull();
+  });
+
   test('uses the H1 LOCKED snapshot HI (not the live manual) when locked', async () => {
     const { id, ps } = await seed({ lockHandicaps: { } });
     // Lock p1 to a different HI than its manual (10 → 25).
