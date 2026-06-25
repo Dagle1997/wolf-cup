@@ -276,25 +276,44 @@ export class GhinDirectClient {
       { headers: { Authorization: `Bearer ${token}`, 'User-Agent': UA } },
     );
     if (!res.ok) throw new Error('GHIN_UNAVAILABLE');
-    const data = (await res.json()) as {
-      handicap_revisions?: Array<{ revision_date?: string; value?: unknown; display_value?: unknown }>;
-    };
-    return (data.handicap_revisions ?? [])
-      .filter((r) => typeof r.revision_date === 'string')
-      .map((r) => {
-        const display = r.display_value != null ? String(r.display_value) : null;
-        let value: number | null = null;
-        if (typeof r.value === 'number') value = r.value;
-        else if (typeof r.value === 'string' && r.value.trim() !== '') value = Number(r.value);
-        // Plus handicap: "+1.3" display means a negative numeric index.
-        if ((value == null || Number.isNaN(value)) && display) {
-          const n = Number(display.replace('+', '-'));
-          value = Number.isNaN(n) ? null : n;
-        }
-        if (value != null && Number.isNaN(value)) value = null;
-        return { revisionDate: r.revision_date as string, value, displayValue: display };
-      });
+    const data = (await res.json()) as { handicap_revisions?: Array<Record<string, unknown>> };
+    return parseHandicapRevisions(data.handicap_revisions ?? []);
   }
+}
+
+/**
+ * Map GHIN's raw `handicap_revisions` rows to `{ revisionDate, value, displayValue }`.
+ *
+ * GHIN returns these PascalCase (`RevDate` / `Value` / `Display`, e.g.
+ * `"RevDate":"2026-06-20T00:00:00","Value":"16.3"`). The old snake_case keys
+ * (`revision_date` / `value` / `display_value`) are accepted as a fallback so a
+ * future API shape-shift can't silently zero out the lock again. A row with no
+ * usable date is dropped. `value` is the signed index (plus handicaps negative:
+ * GHIN `Display` "+1.3" → -1.3). Pure + exported so it's unit-tested without a
+ * network call — a parse bug here zeroed every locked handicap (Pete Dye, 2026-06-25).
+ */
+export function parseHandicapRevisions(
+  rows: Array<Record<string, unknown>>,
+): Array<{ revisionDate: string; value: number | null; displayValue: string | null }> {
+  const out: Array<{ revisionDate: string; value: number | null; displayValue: string | null }> = [];
+  for (const r of rows) {
+    const rawDate = r['RevDate'] ?? r['revision_date'];
+    if (typeof rawDate !== 'string' || rawDate.trim() === '') continue;
+    const rawDisplay = r['Display'] ?? r['display_value'];
+    const display = rawDisplay != null ? String(rawDisplay) : null;
+    const rawValue = r['Value'] ?? r['value'];
+    let value: number | null = null;
+    if (typeof rawValue === 'number') value = rawValue;
+    else if (typeof rawValue === 'string' && rawValue.trim() !== '') value = Number(rawValue);
+    // Plus handicap: a "+1.3" display means a negative numeric index.
+    if ((value == null || Number.isNaN(value)) && display) {
+      const n = Number(display.replace('+', '-'));
+      value = Number.isNaN(n) ? null : n;
+    }
+    if (value != null && Number.isNaN(value)) value = null;
+    out.push({ revisionDate: rawDate, value, displayValue: display });
+  }
+  return out;
 }
 
 export const ghinClient =
