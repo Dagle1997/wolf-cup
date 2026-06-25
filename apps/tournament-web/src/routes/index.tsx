@@ -75,8 +75,15 @@ function IndexPage() {
   // Auto-redirect only when the user's single event is active (no extra tap).
   // A lone cancelled/past event must NOT silently redirect — show the list so
   // the toggle (and the Cancelled badge → admin → restore) stays reachable.
+  //
+  // EXCEPTION: if the user arrived here on purpose via "← All events" (the event
+  // screen links to `/?list=1`), DO NOT bounce them straight back into the only
+  // event — that made the back link a no-op flash-reload (Josh 2026-06-25). The
+  // flag is read once from the URL so a normal app launch still auto-enters.
+  const explicitList =
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('list');
   const autoRedirectId =
-    events.length === 1 && !isArchived(events[0]!) ? events[0]!.id : null;
+    !explicitList && events.length === 1 && !isArchived(events[0]!) ? events[0]!.id : null;
   useEffect(() => {
     if (session.player !== null && autoRedirectId !== null) {
       void navigate({ to: '/events/$eventId', params: { eventId: autoRedirectId } });

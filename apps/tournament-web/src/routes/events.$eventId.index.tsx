@@ -24,7 +24,6 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { ActivityFeed } from '../components/activity-feed';
 import { PageShell } from '../components/page-shell';
-import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 
@@ -229,9 +228,23 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
 
   return (
     <PageShell title={event.name}>
-      {/* Back to the events list — the event screen was otherwise a dead-end on
-          a standalone PWA (no global home button). */}
-      <BackLink to="/" label="All events" />
+      {/* Back to the events list. A PLAIN full-reload anchor (not a client Link):
+          (1) it can't silently no-op if the PWA holds mismatched cached chunks,
+          and (2) `?list=1` tells the landing NOT to auto-bounce back into a lone
+          active event (which made a client Link a flash-reload). Josh 2026-06-25. */}
+      <a
+        href="/?list=1"
+        data-testid="event-home-all-events"
+        style={{
+          color: 'var(--color-text-muted)',
+          fontSize: 'var(--font-sm)',
+          textDecoration: 'none',
+          display: 'inline-block',
+          marginBottom: 8,
+        }}
+      >
+        ← All events
+      </a>
       {/* Hero: date range + the one line that says "what's next". */}
       <div
         className="card"
