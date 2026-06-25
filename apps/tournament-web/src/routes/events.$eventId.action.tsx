@@ -82,10 +82,15 @@ const holeScopeLabel = (s: string): string =>
 
 const fmtUsd = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
 
+// Whole-dollar display for the "Your take" P&L (no trailing cents).
+const fmtWholeDollar = (cents: number): string => `$${Math.round(cents / 100)}`;
+const fmtSignedWholeDollar = (cents: number): string =>
+  cents > 0 ? `+$${Math.round(cents / 100)}` : cents < 0 ? `−$${Math.round(Math.abs(cents) / 100)}` : '$0';
+
 const errorMessageFor = (code: string): string => {
   switch (code) {
     case 'betting_closed_scores_exist':
-      return 'Scoring has started on those holes — betting is closed for this segment.';
+      return 'Scoring has started — too late to cancel.';
     case 'creator_not_a_stakeholder':
       return 'You can only post a bet that you back.';
     case 'players_not_in_event':
@@ -94,6 +99,12 @@ const errorMessageFor = (code: string): string => {
       return 'Pick an opponent other than yourself.';
     case 'non_whole_dollar_stake':
       return 'Stakes must be whole dollars (no cents).';
+    case 'stake_exceeds_self_serve_cap':
+      return 'Stakes are capped at $1,000.';
+    case 'not_a_stakeholder':
+      return "You can't cancel this bet.";
+    case 'cannot_cancel_terminal':
+      return 'This bet is already settled or cancelled.';
     default:
       return '';
   }
@@ -155,18 +166,28 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
   const [stakeDollars, setStakeDollars] = useState('20');
   // "You back" — the subject for the viewer's side. Defaults to the viewer.
   const [subjectA, setSubjectA] = useState('');
-  // The opponent — both the subject AND the stakeholder of side B (they back
-  // themselves), keeping it a clean me-vs-them bet.
+  // The opponent — the subject of side B. By default the opponent ALSO backs
+  // their own side (a clean me-vs-them bet); open-book lets someone else cover.
   const [opponentId, setOpponentId] = useState('');
+  // Open book: when on, a third party covers the opponent's side.
+  const [openBook, setOpenBook] = useState(false);
+  const [sideBBacker, setSideBBacker] = useState('');
   const [visibility, setVisibility] = useState<'event_wide' | 'stakeholders_only'>('event_wide');
+  // Cleared on the next post attempt; shown after a successful post.
+  const [posted, setPosted] = useState(false);
 
   // "You back" defaults to the viewer themselves once we know who that is.
   const effectiveSubjectA = subjectA || viewerId;
+  // Side B's stakeholder = the chosen backer in open-book mode, else the
+  // opponent backs themselves.
+  const effectiveSideBBacker = openBook ? sideBBacker : opponentId;
 
   const resetForm = () => {
     setSubjectA('');
     setOpponentId('');
     setStakeDollars('20');
+    setOpenBook(false);
+    setSideBBacker('');
   };
 
   const buildBody = () => ({
@@ -176,7 +197,7 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
     holeScope,
     stakeCents: Number(stakeDollars) * 100,
     sideA: { stakeholderPlayerId: viewerId, subjectPlayerId: effectiveSubjectA },
-    sideB: { stakeholderPlayerId: opponentId, subjectPlayerId: opponentId },
+    sideB: { stakeholderPlayerId: effectiveSideBBacker, subjectPlayerId: opponentId },
     visibility,
   });
 
@@ -197,8 +218,37 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['action-board', eventId] });
       resetForm();
+      setPosted(true);
     },
   });
+
+  // Cancel one of the viewer's OWN live bets.
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const cancelBet = useMutation<unknown, Error, string>({
+    mutationFn: async (betId: string) => {
+      const res = await fetch(
+        `/api/events/${encodeURIComponent(eventId)}/action-bets/${encodeURIComponent(betId)}/cancel`,
+        { method: 'POST', credentials: 'same-origin' },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { code?: string };
+        throw new Error(body.code ?? `http_${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setConfirmCancelId(null);
+      qc.invalidateQueries({ queryKey: ['action-board', eventId] });
+    },
+  });
+  const armCancel = (betId: string) => {
+    cancelBet.reset();
+    setConfirmCancelId(betId);
+  };
+  const dismissCancel = () => {
+    cancelBet.reset();
+    setConfirmCancelId(null);
+  };
 
   // ---- Loading / error gates (options drive the form) ----
   if (options.isPending || board.isPending) {
@@ -220,10 +270,27 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
 
   // Whole-dollar stakes only (no cents) — keeps the stakeCents conversion exact.
   const stakeValid = /^\d+$/.test(stakeDollars.trim()) && Number(stakeDollars) >= 1;
-  const formValid = eventRoundId !== '' && opponentId !== '' && opponentId !== viewerId && stakeValid;
+  // Open-book backer must be picked (and ≠ the opponent's subject, who'd just
+  // be backing themselves anyway) when open book is on.
+  const backerValid = !openBook || (sideBBacker !== '' && sideBBacker !== effectiveSubjectA);
+  const formValid =
+    eventRoundId !== '' &&
+    opponentId !== '' &&
+    opponentId !== effectiveSubjectA &&
+    stakeValid &&
+    backerValid;
 
   const createError = create.isError ? create.error.message : null;
   const youName = nameById.get(viewerId) ?? 'You';
+
+  // Live placement summary (uses the chosen names + stake + holes).
+  const subjectAName = nameById.get(effectiveSubjectA) ?? (effectiveSubjectA === viewerId ? youName : '—');
+  const opponentName = opponentId !== '' ? nameById.get(opponentId) ?? '—' : null;
+  const backerName =
+    openBook && sideBBacker !== '' ? nameById.get(sideBBacker) ?? '—' : null;
+
+  // Cancelled (void) bets shouldn't clutter the board.
+  const visibleBets = (board.data?.bets ?? []).filter((b) => b.state !== 'void');
 
   return (
     <PageShell title="The Action">
@@ -360,6 +427,46 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
             </select>
           </FormField>
 
+          {/* ---- Open book: someone else can cover the opponent's side ---- */}
+          <div style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
+            <label
+              className="form-field"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 'var(--space-2)' }}
+            >
+              <input
+                type="checkbox"
+                data-testid="open-book-toggle"
+                checked={openBook}
+                onChange={(e) => {
+                  setOpenBook(e.target.checked);
+                  if (!e.target.checked) setSideBBacker('');
+                }}
+              />
+              <span className="form-field__label" style={{ margin: 0 }}>
+                Someone else covers {opponentName ?? 'the opponent'}&rsquo;s side?
+              </span>
+            </label>
+
+            {openBook ? (
+              <FormField label="Backer (covers the opponent)">
+                <select
+                  data-testid="side-b-backer-select"
+                  value={sideBBacker}
+                  onChange={(e) => setSideBBacker(e.target.value)}
+                >
+                  <option value="">Select…</option>
+                  {roster
+                    .filter((p) => p.playerId !== effectiveSubjectA)
+                    .map((p) => (
+                      <option key={p.playerId} value={p.playerId}>
+                        {p.playerId === viewerId ? `${p.name ?? '—'} (You)` : p.name ?? '—'}
+                      </option>
+                    ))}
+                </select>
+              </FormField>
+            ) : null}
+          </div>
+
           <FormField label="Who can see this bet">
             <div
               role="tablist"
@@ -398,10 +505,40 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
             </div>
           </FormField>
 
+          {/* ---- Plain-English placement summary (updates live) ---- */}
+          <p
+            data-testid="placement-summary"
+            style={{
+              flexBasis: '100%',
+              margin: 0,
+              color: 'var(--color-text-muted)',
+              fontSize: 'var(--font-sm)',
+            }}
+          >
+            {opponentName && stakeValid ? (
+              <>
+                You&rsquo;re betting {fmtWholeDollar(Number(stakeDollars) * 100)} ({basis}) that{' '}
+                <strong>{subjectAName}</strong> beats <strong>{opponentName}</strong> over{' '}
+                {holeScopeLabel(holeScope)}.
+                {backerName ? (
+                  <>
+                    {' '}
+                    — <strong>{backerName}</strong> covers {opponentName}&rsquo;s side.
+                  </>
+                ) : null}
+              </>
+            ) : (
+              'Pick an opponent and a stake to set up your bet.'
+            )}
+          </p>
+
           <Button
             data-testid="post-bet-btn"
             disabled={!formValid || create.isPending}
-            onClick={() => create.mutate()}
+            onClick={() => {
+              setPosted(false);
+              create.mutate();
+            }}
           >
             {create.isPending ? 'Posting…' : 'Post bet'}
           </Button>
@@ -410,15 +547,28 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
             <p role="alert" style={{ flexBasis: '100%', margin: 0, color: 'var(--color-danger)' }}>
               {errorMessageFor(createError) || `Couldn't post the bet (${createError}).`}
             </p>
+          ) : posted ? (
+            <p
+              role="status"
+              data-testid="post-success"
+              style={{ flexBasis: '100%', margin: 0, color: 'var(--color-money-pos)', fontWeight: 600 }}
+            >
+              ✓ Bet posted — it&rsquo;s on the board below.
+            </p>
           ) : null}
         </Card>
       )}
 
       {/* ---- The board ---- */}
       <h2 style={{ fontSize: 'var(--font-md)', marginTop: 'var(--space-5)' }}>The board</h2>
+      {cancelBet.isError ? (
+        <p role="alert" style={{ color: 'var(--color-danger)', marginTop: 'var(--space-3)' }}>
+          {errorMessageFor(cancelBet.error.message) || `Couldn't cancel the bet (${cancelBet.error.message}).`}
+        </p>
+      ) : null}
       {board.isError ? (
         <ErrorCard title="Couldn't load the board." error={board.error} onRetry={board.refetch} />
-      ) : (board.data?.bets.length ?? 0) === 0 ? (
+      ) : visibleBets.length === 0 ? (
         <EmptyState icon="🎲" title="No bets yet" body="No bets yet — post one above." />
       ) : (
         <ScrollableTable label="The Action board">
@@ -427,12 +577,14 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
               <tr>
                 <th>Matchup</th>
                 <th>Stake</th>
+                <th>Your take</th>
                 <th>Status</th>
                 <th>Who can see</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {board.data!.bets.map((b) => {
+              {visibleBets.map((b) => {
                 const a = b.sides.find((s) => s.side === 'A');
                 const bb = b.sides.find((s) => s.side === 'B');
                 const matchup = `${a?.subjectName ?? '—'} vs ${bb?.subjectName ?? '—'}`;
@@ -442,6 +594,41 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                       nameById.get(b.winnerSubjectId) ??
                       null
                     : null;
+
+                // The viewer's signed P&L on this bet (h2h = winner takes stake).
+                const mySide = b.sides.find((s) => s.stakeholderPlayerId === viewerId);
+                const isStakeholder = mySide != null;
+                let take: { text: string; color: string } = {
+                  text: '—',
+                  color: 'var(--color-text-muted)',
+                };
+                if (isStakeholder) {
+                  if (b.state === 'push') {
+                    take = { text: '$0', color: 'var(--color-text-muted)' };
+                  } else if (b.state === 'settled' || b.state === 'finalized') {
+                    if (b.winnerSubjectId == null) {
+                      take = { text: '$0', color: 'var(--color-text-muted)' };
+                    } else if (mySide.subjectPlayerId === b.winnerSubjectId) {
+                      take = {
+                        text: fmtSignedWholeDollar(b.stakeCents),
+                        color: 'var(--color-money-pos)',
+                      };
+                    } else {
+                      take = {
+                        text: fmtSignedWholeDollar(-b.stakeCents),
+                        color: 'var(--color-money-neg)',
+                      };
+                    }
+                  } else if (b.state === 'live' || b.state === 'provisional') {
+                    take = { text: 'pending', color: 'var(--color-text-muted)' };
+                  } else {
+                    // unsettleable / anything else: nothing definitive to show.
+                    take = { text: '—', color: 'var(--color-text-muted)' };
+                  }
+                }
+
+                const canCancel = isStakeholder && b.state === 'live';
+
                 return (
                   <tr key={b.betId} data-testid={`action-row-${b.betId}`}>
                     <td>
@@ -451,6 +638,12 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                       </div>
                     </td>
                     <td>{fmtUsd(b.stakeCents)}</td>
+                    <td
+                      data-testid={`action-take-${b.betId}`}
+                      style={{ color: take.color, fontWeight: take.text === '—' || take.text === 'pending' ? 400 : 600 }}
+                    >
+                      {take.text}
+                    </td>
                     <td data-testid={`action-state-${b.betId}`}>
                       {STATE_LABEL[b.state] ?? b.state}
                       {b.state === 'settled' && winnerName ? (
@@ -475,6 +668,35 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                       >
                         {b.visibility === 'event_wide' ? 'Public' : 'Private'}
                       </span>
+                    </td>
+                    <td>
+                      {!canCancel ? (
+                        <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                      ) : confirmCancelId === b.betId ? (
+                        <span className="actions-row">
+                          <Button
+                            variant="danger"
+                            data-testid={`confirm-cancel-${b.betId}`}
+                            aria-label={`Confirm cancel of bet: ${matchup}`}
+                            disabled={cancelBet.isPending}
+                            onClick={() => cancelBet.mutate(b.betId)}
+                          >
+                            {cancelBet.isPending ? 'Cancelling…' : 'Confirm'}
+                          </Button>
+                          <Button variant="secondary" data-testid={`dismiss-cancel-${b.betId}`} onClick={dismissCancel}>
+                            Keep
+                          </Button>
+                        </span>
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          data-testid={`cancel-${b.betId}`}
+                          aria-label={`Cancel bet: ${matchup}`}
+                          onClick={() => armCancel(b.betId)}
+                        >
+                          Cancel
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 );

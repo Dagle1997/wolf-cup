@@ -73,8 +73,8 @@ const CREATABLE_BASES_BY_TYPE: Record<string, readonly string[]> = {
 
 export class BetWriteError extends Error {
   readonly code: string;
-  readonly status: 400 | 404 | 409 | 422;
-  constructor(code: string, message: string, status: 400 | 404 | 409 | 422) {
+  readonly status: 400 | 403 | 404 | 409 | 422;
+  constructor(code: string, message: string, status: 400 | 403 | 404 | 409 | 422) {
     super(message);
     this.name = 'BetWriteError';
     this.code = code;
@@ -265,7 +265,12 @@ export async function createActionBet(
   // Player self-serve guardrails (the organizer path leaves requireActorIsStakeholder
   // false and may arrange any open-book bet between others):
   if (args.requireActorIsStakeholder) {
-    // (1) The creator must have skin in the game (one of the two stakeholders).
+    // (1) The creator must have skin in the game (one of the two stakeholders) —
+    // you can't post a bet you have no money in. Beyond that the open book is
+    // OPEN (Josh 2026-06-25): a player MAY back any subject and name any roster
+    // member as the other side's backer. The model is trust-based for the trip —
+    // a bet goes live immediately; a wrongly-set bet is cancelled (cancelOwnActionBet)
+    // or corrected by the organizer, and everything settles in person.
     if (actorPlayerId !== stakeholderA && actorPlayerId !== stakeholderB) {
       throw new BetWriteError(
         'creator_not_a_stakeholder',
@@ -273,23 +278,7 @@ export async function createActionBet(
         400,
       );
     }
-    // (2) No uninvolved third-party backer: every stakeholder must be either the
-    // creator (their own money) or one of the two SUBJECTS being bet on. This stops
-    // a participant from dragging a bystander's money into a bet. (True opponent
-    // ACCEPTANCE — a handshake before the bet goes live — is a future enhancement;
-    // today the model is trust-based, matching the in-person settle-up + the
-    // existing organizer open book.)
-    const subjects = new Set([subjectA, subjectB]);
-    for (const st of [stakeholderA, stakeholderB]) {
-      if (st !== actorPlayerId && !subjects.has(st)) {
-        throw new BetWriteError(
-          'third_party_stakeholder',
-          'a bet you post can only stake your own money or the players being bet on',
-          400,
-        );
-      }
-    }
-    // (3) Stake cap (fat-finger / abuse guard). Whole-dollar already enforced.
+    // (2) Stake cap (fat-finger / abuse guard). Whole-dollar already enforced.
     if (input.stakeCents > SELF_SERVE_MAX_STAKE_CENTS) {
       throw new BetWriteError(
         'stake_exceeds_self_serve_cap',
@@ -480,12 +469,16 @@ export async function editActionBet(
     },
   });
 
-  await emitActivity(tx, {
-    type: 'action_bet.edited',
-    eventId,
-    actorPlayerId,
-    betId,
-  });
+  // Privacy: only announce an edit on the event-wide feed when the bet is (or
+  // becomes) public; a stakeholders_only bet's edit stays off the feed.
+  if ((input.visibility ?? before.visibility) === 'event_wide') {
+    await emitActivity(tx, {
+      type: 'action_bet.edited',
+      eventId,
+      actorPlayerId,
+      betId,
+    });
+  }
 }
 
 /**
@@ -513,7 +506,7 @@ export async function voidActionBet(
   await tx
     .update(bets)
     .set({ state: 'void', voidedAt: now, voidedByPlayerId: actorPlayerId })
-    .where(and(eq(bets.id, betId), eq(bets.tenantId, TENANT_ID)));
+    .where(and(eq(bets.id, betId), eq(bets.tenantId, TENANT_ID), eq(bets.state, 'live')));
 
   await writeAudit(tx, {
     eventType: AUDIT_EVENT_TYPES.ACTION_BET_VOIDED,
@@ -532,10 +525,116 @@ export async function voidActionBet(
     },
   });
 
-  await emitActivity(tx, {
-    type: 'action_bet.voided',
-    eventId,
+  // Privacy: a private bet's void stays off the event-wide feed (consistent with
+  // the create + player-cancel rule). The audit row above is kept regardless.
+  if (before.visibility === 'event_wide') {
+    await emitActivity(tx, {
+      type: 'action_bet.voided',
+      eventId,
+      actorPlayerId,
+      betId,
+    });
+  }
+}
+
+/**
+ * PLAYER self-serve cancel of their OWN action bet (Josh 2026-06-25). A
+ * stakeholder on the bet may pull it while it is still 'live' AND before any
+ * in-scope hole has been scored — once scoring has started the bet is in play
+ * and can't be welched (same placement cutoff as creation, FR49). Mechanically
+ * a void (state='void' → settleActionBet emits no edges), so it drops out of
+ * settle-up with its audit preserved. The organizer's voidActionBet is the
+ * unconditional admin counterpart; this is the participant-scoped, gated path.
+ */
+export async function cancelOwnActionBet(
+  tx: Tx,
+  args: { eventId: string; actorPlayerId: string; betId: string },
+): Promise<void> {
+  const { eventId, actorPlayerId, betId } = args;
+
+  const bet = await loadBetWithSides(tx, betId, TENANT_ID);
+  if (!bet || bet.eventId !== eventId) {
+    throw new BetWriteError('bet_not_found', 'bet not found in this event', 404);
+  }
+  if (bet.state !== 'live') {
+    throw new BetWriteError('cannot_cancel_terminal', `a ${bet.state} bet cannot be cancelled`, 409);
+  }
+  // Only a STAKEHOLDER on the bet may cancel it (you have money in it).
+  if (!bet.sides.some((s) => s.stakeholderPlayerId === actorPlayerId)) {
+    throw new BetWriteError('not_a_stakeholder', 'only a stakeholder on the bet can cancel it', 403);
+  }
+
+  // Placement cutoff: once an in-scope hole is scored, the bet is live-in-play —
+  // no pulling it then. Mirrors validateBetParams' FR49 gate.
+  const erRows = await tx
+    .select({ holesToPlay: eventRounds.holesToPlay })
+    .from(eventRounds)
+    .where(and(eq(eventRounds.id, bet.eventRoundId), eq(eventRounds.tenantId, TENANT_ID)))
+    .limit(1);
+  // Fail closed: without the event round we can't determine the in-play cutoff,
+  // so don't allow the cancel (rather than defaulting holesToPlay + maybe pulling
+  // an in-play bet).
+  if (erRows.length === 0) {
+    throw new BetWriteError('bet_not_found', 'bet event round not found', 404);
+  }
+  const holesToPlay = erRows[0]!.holesToPlay;
+  const scopedHoles = scopedHolesForScope(bet.holeScope, holesToPlay);
+  const subjectIds = [...new Set(bet.sides.map((s) => s.subjectPlayerId))];
+  const runtimeRoundRows = await tx
+    .select({ id: rounds.id })
+    .from(rounds)
+    .where(and(eq(rounds.eventRoundId, bet.eventRoundId), eq(rounds.tenantId, TENANT_ID)));
+  if (runtimeRoundRows.length > 0 && scopedHoles.length > 0 && subjectIds.length > 0) {
+    const existing = await tx
+      .select({ holeNumber: holeScores.holeNumber })
+      .from(holeScores)
+      .where(
+        and(
+          inArray(holeScores.roundId, runtimeRoundRows.map((r) => r.id)),
+          inArray(holeScores.playerId, subjectIds),
+          inArray(holeScores.holeNumber, scopedHoles),
+          eq(holeScores.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (existing.length > 0) {
+      throw new BetWriteError(
+        'betting_closed_scores_exist',
+        'scoring has started on this bet — it can no longer be cancelled',
+        422,
+      );
+    }
+  }
+
+  const now = Date.now();
+  // `eq(state,'live')` makes the void atomic vs a concurrent cancel/void — only a
+  // still-live bet flips (no double-void, no racing a terminal transition).
+  await tx
+    .update(bets)
+    .set({ state: 'void', voidedAt: now, voidedByPlayerId: actorPlayerId })
+    .where(and(eq(bets.id, betId), eq(bets.tenantId, TENANT_ID), eq(bets.state, 'live')));
+
+  await writeAudit(tx, {
+    eventType: AUDIT_EVENT_TYPES.ACTION_BET_VOIDED,
+    entityType: AUDIT_ENTITY_TYPES.BET,
+    entityId: betId,
     actorPlayerId,
-    betId,
+    payload: {
+      eventId,
+      betId,
+      previousState: bet.state,
+      cancelledBy: 'stakeholder',
+      sides: bet.sides.map((s) => ({
+        side: s.side,
+        stakeholderPlayerId: s.stakeholderPlayerId,
+        subjectPlayerId: s.subjectPlayerId,
+      })),
+    },
   });
+
+  // Privacy: keep a private bet's cancel off the event-wide feed (consistent with
+  // the create-privacy rule). A public bet's cancel may be announced.
+  if (bet.visibility === 'event_wide') {
+    await emitActivity(tx, { type: 'action_bet.voided', eventId, actorPlayerId, betId });
+  }
 }

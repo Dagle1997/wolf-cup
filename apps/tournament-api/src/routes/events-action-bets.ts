@@ -28,7 +28,7 @@ import { eventRounds, groupMembers, groups, players } from '../db/schema/index.j
 import { requireSession } from '../middleware/require-session.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
 import { isEventOrganizerByEventId } from '../services/index.js';
-import { actionBetCreateSchema, createActionBet, BetWriteError } from '../services/bets-write.js';
+import { actionBetCreateSchema, createActionBet, cancelOwnActionBet, BetWriteError } from '../services/bets-write.js';
 import { listVisibleBetsForViewer } from '../services/bets-query.js';
 
 export const eventsActionBetsRouter = new Hono();
@@ -39,6 +39,8 @@ function errorLabelFor(status: number): string {
   switch (status) {
     case 400:
       return 'bad_request';
+    case 403:
+      return 'forbidden';
     case 404:
       return 'not_found';
     case 409:
@@ -169,5 +171,29 @@ eventsActionBetsRouter.post(
     }
 
     return c.json({ ok: true, betId, requestId }, 200);
+  },
+);
+
+// POST — a stakeholder cancels their OWN live bet (before scoring starts on it).
+eventsActionBetsRouter.post(
+  '/:eventId/action-bets/:betId/cancel',
+  requireSession,
+  requireEventParticipant,
+  async (c) => {
+    const requestId = c.get('requestId') ?? randomUUID();
+    const log = c.get('logger');
+    const eventId = c.req.param('eventId')!;
+    const betId = c.req.param('betId')!;
+    const player = c.get('player')!;
+    try {
+      await db.transaction((tx) => cancelOwnActionBet(tx, { eventId, actorPlayerId: player.id, betId }));
+    } catch (err) {
+      if (err instanceof BetWriteError) {
+        return c.json({ error: errorLabelFor(err.status), code: err.code, requestId }, err.status);
+      }
+      log?.error({ msg: 'POST action-bets cancel threw', requestId, eventId, betId, err: String(err) });
+      return c.json({ error: 'internal', code: 'bet_cancel_failed', requestId }, 500);
+    }
+    return c.json({ ok: true, requestId }, 200);
   },
 );

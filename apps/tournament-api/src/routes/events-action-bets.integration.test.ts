@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -144,13 +145,13 @@ describe('player self-serve action bet creation', () => {
     expect(res.status).toBe(403);
   });
 
-  test('cannot drag an UNINVOLVED third party in as a backer (third_party_stakeholder)', async () => {
+  test('open book: a stakeholder MAY name any roster member as the other backer (Josh 2026-06-25)', async () => {
     const ids = await seed();
-    // Rick (creator/stakeholder A) tries to put Kyle's money on side B for a bet
-    // between Rick and Ben — Kyle is neither the creator nor a subject.
+    // Rick (stakeholder A) sets up Rick vs Ben but has Kyle cover side B. Allowed
+    // now (trust-based open book); only the creator-is-a-stakeholder + cap remain.
     const res = await post(appAs(ids.rick), ids.eventId, body(ids, { st: ids.rick, su: ids.rick }, { st: ids.kyle, su: ids.ben }));
-    expect(res.status).toBe(400);
-    expect(((await res.json()) as { code: string }).code).toBe('third_party_stakeholder');
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
   });
 
   test('self-serve stake is capped ($1,000) — stake_exceeds_self_serve_cap', async () => {
@@ -159,6 +160,46 @@ describe('player self-serve action bet creation', () => {
     const res = await post(appAs(ids.rick), ids.eventId, b);
     expect(res.status).toBe(400);
     expect(((await res.json()) as { code: string }).code).toBe('stake_exceeds_self_serve_cap');
+  });
+});
+
+describe('a stakeholder can cancel their OWN live bet', () => {
+  async function cancel(app: Hono, eventId: string, betId: string) {
+    return app.request(`/api/events/${eventId}/action-bets/${betId}/cancel`, { method: 'POST' });
+  }
+  async function postGetBetId(app: Hono, ids: SeedIds): Promise<string> {
+    const res = await post(app, ids.eventId, body(ids, { st: ids.rick, su: ids.rick }, { st: ids.ben, su: ids.ben }));
+    return ((await res.json()) as { betId: string }).betId;
+  }
+
+  test('the creating stakeholder cancels → 200, bet is voided', async () => {
+    const ids = await seed();
+    const betId = await postGetBetId(appAs(ids.rick), ids);
+    const res = await cancel(appAs(ids.rick), ids.eventId, betId);
+    expect(res.status).toBe(200);
+    const row = (await db.select().from(bets).where(eq(bets.id, betId)))[0]!;
+    expect(row.state).toBe('void');
+  });
+
+  test('a non-stakeholder cannot cancel it (403 not_a_stakeholder)', async () => {
+    const ids = await seed();
+    const betId = await postGetBetId(appAs(ids.rick), ids); // Rick vs Ben
+    const res = await cancel(appAs(ids.kyle), ids.eventId, betId); // Kyle isn't in it
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('not_a_stakeholder');
+  });
+
+  test('cannot cancel once an in-scope hole is scored (betting_closed_scores_exist)', async () => {
+    const ids = await seed();
+    const betId = await postGetBetId(appAs(ids.rick), ids); // full18 → hole 1 is in scope
+    await db.insert(holeScores).values({
+      id: randomUUID(), roundId: ids.roundId, playerId: ids.rick, holeNumber: 1, grossStrokes: 4, putts: 2,
+      scorerPlayerId: ids.rick, clientEventId: 'sc-1', createdAt: Date.now(), updatedAt: Date.now(),
+      tenantId: TENANT_ID, contextId: `event:${ids.eventId}`,
+    });
+    const res = await cancel(appAs(ids.rick), ids.eventId, betId);
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('betting_closed_scores_exist');
   });
 });
 
