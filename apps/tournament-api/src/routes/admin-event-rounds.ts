@@ -81,15 +81,27 @@ const V1_ENABLED_SUB_GAME_TYPES = new Set(['skins'] as const);
 const ALL_SUB_GAME_TYPES = ['skins', 'ctp', 'sandies', 'putting_contest'] as const;
 type SubGameType = (typeof ALL_SUB_GAME_TYPES)[number];
 
+// Skins modes (the engine's three): net / gross / Canadian (= gross-OR-net wins,
+// engine `gross_beats_net`). Each enabled mode is its OWN sub_game row = its own
+// $ pot (Josh 2026-06-25), so the dup guard keys on type+mode for skins.
+const SKINS_MODES = ['net', 'gross', 'gross_beats_net'] as const;
+
 const PostSubGamesRequestSchema = z.object({
   subGames: z.array(
     z.object({
       type: z.enum(ALL_SUB_GAME_TYPES),
+      /** Skins only: which scoring mode this pot uses. Defaults to 'gross'. */
+      mode: z.enum(SKINS_MODES).optional(),
       buyInPerParticipant: z.number().int().nonnegative(),
       participantPlayerIds: z.array(z.string().min(1)),
     }),
   ),
 });
+
+/** Resolve a skins entry's mode (default 'gross'); non-skins types have no mode. */
+function resolveSkinsMode(entry: { type: string; mode?: (typeof SKINS_MODES)[number] | undefined }): (typeof SKINS_MODES)[number] | null {
+  return entry.type === 'skins' ? (entry.mode ?? 'gross') : null;
+}
 
 export const adminEventRoundsRouter = new Hono();
 
@@ -169,6 +181,7 @@ adminEventRoundsRouter.get('/event-rounds/:eventRoundId/sub-games', async (c) =>
 
   const subGameOut: Array<{
     type: SubGameType;
+    mode: (typeof SKINS_MODES)[number] | null;
     buyInPerParticipant: number;
     participantPlayerIds: string[];
   }> = [];
@@ -183,8 +196,21 @@ adminEventRoundsRouter.get('/event-rounds/:eventRoundId/sub-games', async (c) =>
         ),
       )
       .orderBy(asc(subGameParticipants.playerId));
+    // Skins carries its mode in config_json; other types have no mode.
+    let mode: (typeof SKINS_MODES)[number] | null = null;
+    if (sg.type === 'skins') {
+      try {
+        const cfg = JSON.parse(sg.configJson) as { mode?: unknown };
+        mode = SKINS_MODES.includes(cfg.mode as (typeof SKINS_MODES)[number])
+          ? (cfg.mode as (typeof SKINS_MODES)[number])
+          : 'gross';
+      } catch {
+        mode = 'gross';
+      }
+    }
     subGameOut.push({
       type: sg.type as SubGameType,
+      mode,
       buyInPerParticipant: sg.buyInPerParticipant,
       participantPlayerIds: participantRows.map((r) => r.playerId),
     });
@@ -277,21 +303,25 @@ adminEventRoundsRouter.post(
       }
     }
 
-    // Step 4 — duplicate_sub_game_type.
-    const seenTypes = new Set<string>();
+    // Step 4 — duplicate_sub_game_type. Skins is keyed by type+MODE (each mode is
+    // its own pot, so Net + Gross + Canadian skins coexist); other types by type.
+    const seenKeys = new Set<string>();
     for (const entry of body.subGames) {
-      if (seenTypes.has(entry.type)) {
+      const mode = resolveSkinsMode(entry);
+      const key = mode === null ? entry.type : `${entry.type}:${mode}`;
+      if (seenKeys.has(key)) {
         return c.json(
           {
             error: 'bad_request',
             code: 'duplicate_sub_game_type',
             requestId,
             type: entry.type,
+            ...(mode !== null ? { mode } : {}),
           },
           400,
         );
       }
-      seenTypes.add(entry.type);
+      seenKeys.add(key);
     }
 
     // Step 5 — duplicate_participant within an entry.
@@ -386,11 +416,15 @@ adminEventRoundsRouter.post(
 
         for (const entry of body.subGames) {
           const sgId = randomUUID();
+          // Skins stores its mode; payoutModel defaults to even-per-skin in
+          // computeSubGame (Josh's game), so it need not be persisted here.
+          const mode = resolveSkinsMode(entry);
+          const configJson = mode === null ? '{}' : JSON.stringify({ mode });
           await tx.insert(subGames).values({
             id: sgId,
             eventRoundId,
             type: entry.type,
-            configJson: '{}',
+            configJson,
             buyInPerParticipant: entry.buyInPerParticipant,
             createdAt: now,
             tenantId: TENANT_ID,

@@ -376,6 +376,51 @@ describe('POST /api/admin/event-rounds/:eventRoundId/sub-games', () => {
     expect(partRows).toHaveLength(2);
   });
 
+  it('Epic: three skins pots (net/gross/canadian) coexist as 3 rows with modes in config_json', async () => {
+    const s = await seed({ playerCount: 3 });
+    const res = await testApp.request(`/api/admin/event-rounds/${s.eventRoundId}/sub-games`, {
+      method: 'POST',
+      headers: { cookie: organizerCookie(s.organizerSessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        subGames: [
+          { type: 'skins', mode: 'net', buyInPerParticipant: 2500, participantPlayerIds: [s.playerIds[0]!, s.playerIds[1]!] },
+          { type: 'skins', mode: 'gross', buyInPerParticipant: 2500, participantPlayerIds: [s.playerIds[0]!] },
+          { type: 'skins', mode: 'gross_beats_net', buyInPerParticipant: 2500, participantPlayerIds: [s.playerIds[1]!] },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const sgRows = await db.select().from(subGames);
+    expect(sgRows).toHaveLength(3);
+    const modes = sgRows.map((r) => (JSON.parse(r.configJson) as { mode?: string }).mode).sort();
+    expect(modes).toEqual(['gross', 'gross_beats_net', 'net']);
+    // All carry the $25 buy-in.
+    expect(sgRows.every((r) => r.buyInPerParticipant === 2500)).toBe(true);
+
+    // GET returns each mode.
+    const getRes = await testApp.request(`/api/admin/event-rounds/${s.eventRoundId}/sub-games`, {
+      headers: { cookie: organizerCookie(s.organizerSessionId) },
+    });
+    const body = (await getRes.json()) as { subGames: Array<{ type: string; mode: string | null }> };
+    expect(body.subGames.filter((g) => g.type === 'skins').map((g) => g.mode).sort()).toEqual(['gross', 'gross_beats_net', 'net']);
+  });
+
+  it('Epic: two skins pots with the SAME mode → duplicate_sub_game_type', async () => {
+    const s = await seed({ playerCount: 2 });
+    const res = await testApp.request(`/api/admin/event-rounds/${s.eventRoundId}/sub-games`, {
+      method: 'POST',
+      headers: { cookie: organizerCookie(s.organizerSessionId), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        subGames: [
+          { type: 'skins', mode: 'net', buyInPerParticipant: 2500, participantPlayerIds: [] },
+          { type: 'skins', mode: 'net', buyInPerParticipant: 1000, participantPlayerIds: [] },
+        ],
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('duplicate_sub_game_type');
+  });
+
   it('upsert REPLACES (not accumulates): re-save with different participants drops old', async () => {
     const s = await seed({ playerCount: 4 });
     // First save: players 0+1

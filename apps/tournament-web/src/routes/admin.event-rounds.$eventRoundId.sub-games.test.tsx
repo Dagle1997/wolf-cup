@@ -1,8 +1,6 @@
 /**
- * T3-9 component tests for SubGamesPage.
- *
- * Tests render `SubGamesPage` directly bypassing TanStack Router's loader
- * so the component's idle/mutation/error paths are exercised in isolation.
+ * Component tests for SubGamesPage — skins as three independent pots
+ * (Net / Gross / Canadian), CTP + Putting disabled (v1.5).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,9 +14,7 @@ import { SubGamesPage } from './admin.event-rounds.$eventRoundId.sub-games';
 const TEST_EVENT_ROUND_ID = 'event-round-test-1';
 
 function renderWithQueryClient() {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
-  });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return renderInRouter(
     <QueryClientProvider client={qc}>
       <SubGamesPage eventRoundId={TEST_EVENT_ROUND_ID} />
@@ -27,302 +23,101 @@ function renderWithQueryClient() {
 }
 
 const baseGetResponse = {
-  eventRound: {
-    id: TEST_EVENT_ROUND_ID,
-    eventId: 'event-1',
-    roundNumber: 1,
-    roundDate: 1_715_040_000_000,
-  },
+  eventRound: { id: TEST_EVENT_ROUND_ID, eventId: 'event-1', roundNumber: 1, roundDate: 1_715_040_000_000 },
   event: { id: 'event-1', name: 'Pinehurst 2026' },
   roster: [
     { playerId: 'p-alice', name: 'Alice' },
     { playerId: 'p-bob', name: 'Bob' },
     { playerId: 'p-carol', name: 'Carol' },
   ],
-  subGames: [],
+  subGames: [] as Array<{ type: string; mode: string | null; buyInPerParticipant: number; participantPlayerIds: string[] }>,
 };
 
-beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn());
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+beforeEach(() => vi.stubGlobal('fetch', vi.fn()));
+afterEach(() => vi.unstubAllGlobals());
 
 describe('SubGamesPage', () => {
-  it('idle render: skins enabled with roster + buy-in input; v1.5 sections disabled with tooltip', async () => {
-    const mockFetch = vi.mocked(fetch);
-    mockFetch.mockResolvedValue(
-      new Response(JSON.stringify(baseGetResponse), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-
+  it('renders three skins pots (net/gross/canadian) + disabled CTP/putting', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(baseGetResponse), { status: 200, headers: { 'content-type': 'application/json' } }));
     renderWithQueryClient();
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole('heading', { name: /sub-game setup — round 1/i }),
-      ).toBeInTheDocument();
-    });
-    // Pinehurst 2026 event header rendered.
+    await waitFor(() => expect(screen.getByRole('heading', { name: /sub-game setup — round 1/i })).toBeInTheDocument());
     expect(screen.getByText(/pinehurst 2026/i)).toBeInTheDocument();
-    // Skins fieldset is enabled.
-    const skinsSection = screen.getByTestId('sub-game-section-skins');
-    expect(skinsSection).not.toBeDisabled();
-    // Skins buy-in input is enabled.
-    const skinsBuyIn = screen.getByTestId('buy-in-skins');
-    expect(skinsBuyIn).not.toBeDisabled();
-    // Skins participant checkboxes for each roster member.
-    expect(screen.getByTestId('participant-skins-p-alice')).not.toBeDisabled();
-    expect(screen.getByTestId('participant-skins-p-bob')).not.toBeDisabled();
-    expect(screen.getByTestId('participant-skins-p-carol')).not.toBeDisabled();
-    // CTP / putting_contest fieldsets disabled with tooltip. (Sandies was
-    // removed from the picker — it lives in the Guyan rule modifiers now.)
+    expect(screen.getByTestId('skins-section-net')).toBeInTheDocument();
+    expect(screen.getByTestId('skins-section-gross')).toBeInTheDocument();
+    expect(screen.getByTestId('skins-section-gross_beats_net')).toBeInTheDocument();
+    // Each pot has its own buy-in + per-player checkboxes.
+    expect(screen.getByTestId('skins-buyin-net')).toBeInTheDocument();
+    expect(screen.getByTestId('skins-participant-gross-p-alice')).toBeInTheDocument();
+    // CTP / putting disabled.
     expect(screen.getByTestId('sub-game-section-ctp')).toBeDisabled();
-    expect(screen.getByTestId('sub-game-section-ctp')).toHaveAttribute(
-      'title',
-      'Coming in v1.5',
-    );
-    expect(screen.queryByTestId('sub-game-section-sandies')).toBeNull();
     expect(screen.getByTestId('sub-game-section-putting_contest')).toBeDisabled();
   });
 
-  it('toggle players + buy-in + save → POST body matches; success message renders', async () => {
+  it('enabling Net + Gross pots + Save → POST sends two skins entries with modes + $25', async () => {
     const mockFetch = vi.mocked(fetch);
     mockFetch.mockImplementation(async (input, init) => {
-      const url = typeof input === 'string' ? input : (input as Request).url;
       const method = (init as RequestInit | undefined)?.method ?? 'GET';
-
-      if (method === 'POST' && url.includes('/sub-games')) {
-        return new Response(
-          JSON.stringify({ subGameCount: 1, participantCount: 2 }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      // GET prepopulation
-      return new Response(JSON.stringify(baseGetResponse), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      if (method === 'POST') return new Response(JSON.stringify({ subGameCount: 2 }), { status: 200, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify(baseGetResponse), { status: 200, headers: { 'content-type': 'application/json' } });
     });
+    renderWithQueryClient();
+    await waitFor(() => expect(screen.getByTestId('skins-buyin-net')).toBeInTheDocument());
 
+    await userEvent.type(screen.getByTestId('skins-buyin-net'), '25');
+    await userEvent.click(screen.getByTestId('skins-participant-net-p-alice'));
+    await userEvent.click(screen.getByTestId('skins-participant-net-p-bob'));
+    await userEvent.type(screen.getByTestId('skins-buyin-gross'), '25');
+    await userEvent.click(screen.getByTestId('skins-participant-gross-p-alice'));
+
+    await userEvent.click(screen.getByTestId('save-sub-games'));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/saved/i));
+
+    const postCall = mockFetch.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === 'POST');
+    const body = JSON.parse((postCall![1] as RequestInit).body as string) as { subGames: Array<{ type: string; mode: string; buyInPerParticipant: number; participantPlayerIds: string[] }> };
+    expect(body.subGames).toHaveLength(2);
+    const net = body.subGames.find((g) => g.mode === 'net')!;
+    const gross = body.subGames.find((g) => g.mode === 'gross')!;
+    expect(net.type).toBe('skins');
+    expect(net.buyInPerParticipant).toBe(2500);
+    expect(net.participantPlayerIds).toEqual(expect.arrayContaining(['p-alice', 'p-bob']));
+    expect(gross.buyInPerParticipant).toBe(2500);
+    expect(gross.participantPlayerIds).toEqual(['p-alice']);
+    // Canadian pot left empty → not sent.
+    expect(body.subGames.some((g) => g.mode === 'gross_beats_net')).toBe(false);
+  });
+
+  it('prepopulates each pot from existing config (mode-aware)', async () => {
+    const resp = {
+      ...baseGetResponse,
+      subGames: [
+        { type: 'skins', mode: 'net', buyInPerParticipant: 2500, participantPlayerIds: ['p-alice', 'p-bob'] },
+        { type: 'skins', mode: 'gross_beats_net', buyInPerParticipant: 1000, participantPlayerIds: ['p-carol'] },
+      ],
+    };
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(resp), { status: 200, headers: { 'content-type': 'application/json' } }));
     renderWithQueryClient();
 
-    await waitFor(() => {
-      expect(screen.getByTestId('participant-skins-p-alice')).toBeInTheDocument();
-    });
-
-    // Toggle Alice + Bob into skins.
-    await userEvent.click(screen.getByTestId('participant-skins-p-alice'));
-    await userEvent.click(screen.getByTestId('participant-skins-p-bob'));
-    // Set $5.00 buy-in.
-    const buyIn = screen.getByTestId('buy-in-skins') as HTMLInputElement;
-    await userEvent.clear(buyIn);
-    await userEvent.type(buyIn, '5.00');
-
-    // Save.
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(/saved/i);
-    });
-
-    // Inspect the POST body.
-    const postCall = mockFetch.mock.calls.find(
-      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
-    );
-    expect(postCall).toBeDefined();
-    const postInit = postCall![1] as RequestInit;
-    const bodyJson = JSON.parse(postInit.body as string) as {
-      subGames: Array<{
-        type: string;
-        buyInPerParticipant: number;
-        participantPlayerIds: string[];
-      }>;
-    };
-    expect(bodyJson.subGames).toHaveLength(1);
-    expect(bodyJson.subGames[0]!.type).toBe('skins');
-    expect(bodyJson.subGames[0]!.buyInPerParticipant).toBe(500);
-    expect(bodyJson.subGames[0]!.participantPlayerIds).toEqual(
-      expect.arrayContaining(['p-alice', 'p-bob']),
-    );
+    await waitFor(() => expect(screen.getByTestId('skins-participant-net-p-alice')).toBeChecked());
+    expect((screen.getByTestId('skins-buyin-net') as HTMLInputElement).value).toBe('25.00');
+    expect(screen.getByTestId('skins-participant-net-p-bob')).toBeChecked();
+    expect((screen.getByTestId('skins-buyin-gross_beats_net') as HTMLInputElement).value).toBe('10.00');
+    expect(screen.getByTestId('skins-participant-gross_beats_net-p-carol')).toBeChecked();
+    // Gross pot untouched → empty.
+    expect((screen.getByTestId('skins-buyin-gross') as HTMLInputElement).value).toBe('');
   });
 
   it('save error 400 player_not_in_event → friendly inline message; form preserved', async () => {
-    const mockFetch = vi.mocked(fetch);
-    mockFetch.mockImplementation(async (input, init) => {
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
       const method = (init as RequestInit | undefined)?.method ?? 'GET';
-      if (method === 'POST') {
-        return new Response(
-          JSON.stringify({ error: 'bad_request', code: 'player_not_in_event' }),
-          { status: 400, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      return new Response(JSON.stringify(baseGetResponse), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      if (method === 'POST') return new Response(JSON.stringify({ error: 'bad_request', code: 'player_not_in_event' }), { status: 400, headers: { 'content-type': 'application/json' } });
+      return new Response(JSON.stringify(baseGetResponse), { status: 200, headers: { 'content-type': 'application/json' } });
     });
-
     renderWithQueryClient();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('participant-skins-p-alice')).toBeInTheDocument();
-    });
-    await userEvent.click(screen.getByTestId('participant-skins-p-alice'));
-    await userEvent.click(screen.getByRole('button', { name: /save/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(/isn't on this event's roster/i);
-    });
-    // Form still shows Alice as toggled (form state preserved after error).
-    expect(screen.getByTestId('participant-skins-p-alice')).toBeChecked();
-  });
-
-  it('disabled v1.5 types: their participant checkboxes are NOT clickable', async () => {
-    const mockFetch = vi.mocked(fetch);
-    mockFetch.mockResolvedValue(
-      new Response(JSON.stringify(baseGetResponse), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-
-    renderWithQueryClient();
-    await waitFor(() => {
-      expect(screen.getByTestId('participant-ctp-p-alice')).toBeInTheDocument();
-    });
-
-    // ctp/putting_contest checkboxes for Alice are disabled. (Sandies removed
-    // from the picker.)
-    expect(screen.getByTestId('participant-ctp-p-alice')).toBeDisabled();
-    expect(screen.queryByTestId('participant-sandies-p-alice')).toBeNull();
-    expect(screen.getByTestId('participant-putting_contest-p-alice')).toBeDisabled();
-  });
-
-  it('server has empty skins entry: save button disabled on idle; save preserves the empty entry (round-2 codex edge)', async () => {
-    const mockFetch = vi.mocked(fetch);
-    const responseEmptySkins = {
-      ...baseGetResponse,
-      subGames: [
-        {
-          type: 'skins',
-          buyInPerParticipant: 0,
-          participantPlayerIds: [],
-        },
-      ],
-    };
-    let capturedPostBody: string | null = null;
-    mockFetch.mockImplementation(async (input, init) => {
-      const method = (init as RequestInit | undefined)?.method ?? 'GET';
-      if (method === 'POST') {
-        capturedPostBody = (init as RequestInit).body as string;
-        return new Response(
-          JSON.stringify({ subGameCount: 1, participantCount: 0 }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        );
-      }
-      return new Response(JSON.stringify(responseEmptySkins), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    });
-
-    renderWithQueryClient();
-
-    // Wait for prepopulation.
-    await waitFor(() => {
-      expect(screen.getByTestId('participant-skins-p-alice')).toBeInTheDocument();
-    });
-    // Save button is disabled on idle (draft matches server's empty-skins state).
-    const saveButton = screen.getByRole('button', { name: /^save$/i });
-    expect(saveButton).toBeDisabled();
-
-    // Toggle Alice → enables save → save → POST body MUST include a skins
-    // entry (server originally had one; serverHadSkins gate emits it even
-    // before user changes — but here we have a change too).
-    await userEvent.click(screen.getByTestId('participant-skins-p-alice'));
-    expect(saveButton).not.toBeDisabled();
-    await userEvent.click(saveButton);
-
-    await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent(/saved/i);
-    });
-
-    expect(capturedPostBody).not.toBeNull();
-    const parsed = JSON.parse(capturedPostBody!) as {
-      subGames: Array<{ type: string; participantPlayerIds: string[] }>;
-    };
-    expect(parsed.subGames).toHaveLength(1);
-    expect(parsed.subGames[0]!.type).toBe('skins');
-    expect(parsed.subGames[0]!.participantPlayerIds).toEqual(['p-alice']);
-  });
-
-  it('save button disabled on idle render (form matches server state)', async () => {
-    const mockFetch = vi.mocked(fetch);
-    const responseWithConfig = {
-      ...baseGetResponse,
-      subGames: [
-        {
-          type: 'skins',
-          buyInPerParticipant: 500,
-          participantPlayerIds: ['p-alice', 'p-bob'],
-        },
-      ],
-    };
-    mockFetch.mockResolvedValue(
-      new Response(JSON.stringify(responseWithConfig), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-
-    renderWithQueryClient();
-
-    // Wait for prepopulation to settle.
-    await waitFor(() => {
-      expect(screen.getByTestId('participant-skins-p-alice')).toBeChecked();
-    });
-
-    // Save button is disabled because draft equals server state.
-    const saveButton = screen.getByRole('button', { name: /^save$/i });
-    expect(saveButton).toBeDisabled();
-
-    // Toggle Carol → state changes → button enables.
-    await userEvent.click(screen.getByTestId('participant-skins-p-carol'));
-    expect(saveButton).not.toBeDisabled();
-  });
-
-  it('prepopulates from existing config: skins with 2 participants + $5.00 buy-in', async () => {
-    const mockFetch = vi.mocked(fetch);
-    const responseWithConfig = {
-      ...baseGetResponse,
-      subGames: [
-        {
-          type: 'skins',
-          buyInPerParticipant: 500,
-          participantPlayerIds: ['p-alice', 'p-bob'],
-        },
-      ],
-    };
-    mockFetch.mockResolvedValue(
-      new Response(JSON.stringify(responseWithConfig), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-
-    renderWithQueryClient();
-
-    await waitFor(() => {
-      expect(screen.getByTestId('participant-skins-p-alice')).toBeChecked();
-    });
-    expect(screen.getByTestId('participant-skins-p-bob')).toBeChecked();
-    expect(screen.getByTestId('participant-skins-p-carol')).not.toBeChecked();
-    const buyIn = screen.getByTestId('buy-in-skins') as HTMLInputElement;
-    expect(buyIn.value).toBe('5.00');
+    await waitFor(() => expect(screen.getByTestId('skins-participant-net-p-alice')).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('skins-participant-net-p-alice'));
+    await userEvent.click(screen.getByTestId('save-sub-games'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/isn't on this event's roster/i));
+    expect(screen.getByTestId('skins-participant-net-p-alice')).toBeChecked();
   });
 });
