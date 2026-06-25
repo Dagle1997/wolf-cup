@@ -57,3 +57,57 @@ describe('cascade resolver + lock gate', () => {
     });
   }
 });
+
+describe('applyOverridesWhenLocked — the pin-path lock bypass (Epic 6)', () => {
+  const eventRow: LeveledConfigRow = {
+    level: 'event',
+    config: {
+      game: 'guyan-2v2',
+      pointValueSchedule: { kind: 'flat', cents: 500 },
+      modifiers: [{ type: 'sandie', enabled: true }],
+      lockState: 'locked',
+      configVersion: 1,
+    },
+  };
+  const foursomeRow: LeveledConfigRow = {
+    level: 'foursome',
+    config: {
+      game: 'guyan-2v2',
+      pointValueSchedule: { kind: 'flat', cents: 1000 }, // override the stake
+      modifiers: [{ type: 'sandie', enabled: false }], // turn sandie OFF for this foursome
+      lockState: 'locked',
+      configVersion: 1,
+    },
+  };
+
+  it('DEFAULT (locked): foursome override is IGNORED — event config wins', () => {
+    const res = resolveConfig([eventRow, foursomeRow]);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(flatCents(res.config.pointValueSchedule)).toBe(500); // event stake
+    expect(res.config.modifiers.find((m) => m.type === 'sandie')!.enabled).toBe(true);
+    expect(res.config.lockState).toBe('locked');
+  });
+
+  it('applyOverridesWhenLocked: foursome override APPLIES, but lockState stays the event value', () => {
+    const res = resolveConfig([eventRow, foursomeRow], { applyOverridesWhenLocked: true });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(flatCents(res.config.pointValueSchedule)).toBe(1000); // foursome stake applied
+    expect(res.config.modifiers.find((m) => m.type === 'sandie')!.enabled).toBe(false); // sandie off
+    expect(res.config.lockState).toBe('locked'); // money exposure gate UNCHANGED
+  });
+
+  it('an UNLOCKED event applies overrides with or without the flag (no behavior change)', () => {
+    const unlockedEvent: LeveledConfigRow = {
+      ...eventRow,
+      config: { ...eventRow.config, lockState: 'unlocked' },
+    };
+    const a = resolveConfig([unlockedEvent, foursomeRow]);
+    const b = resolveConfig([unlockedEvent, foursomeRow], { applyOverridesWhenLocked: true });
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(flatCents(a.config.pointValueSchedule)).toBe(1000);
+    expect(flatCents(b.config.pointValueSchedule)).toBe(1000);
+  });
+});

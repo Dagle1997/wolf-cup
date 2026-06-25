@@ -45,7 +45,24 @@ function mergeModifiers(base: readonly Modifier[], override: readonly Modifier[]
   return [...byType.values()].sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : 0));
 }
 
-export function resolveConfig(rows: readonly LeveledConfigRow[]): ResolveResult {
+/**
+ * Options for resolveConfig.
+ *
+ * `applyOverridesWhenLocked` — when true, the cascade merge applies even if the
+ * event is `locked`, while the RESOLVED lockState still reflects the event's real
+ * value. This exists for the ROUND-PIN path (Epic 6 per-foursome money): the
+ * money-safety lock is the immutable pin frozen at round start, NOT the cascade
+ * gate, so per-foursome rules must merge INTO the pinned config even for a locked
+ * (money-on) event. The default (omitted/false) preserves the original behavior:
+ * a locked event ignores all lower-level overrides (organizer preview / runtime
+ * reads). Money exposure stays gated by lockState elsewhere — unchanged.
+ */
+export type ResolveConfigOpts = { applyOverridesWhenLocked?: boolean };
+
+export function resolveConfig(
+  rows: readonly LeveledConfigRow[],
+  opts?: ResolveConfigOpts,
+): ResolveResult {
   // Fail closed on duplicate rows at ANY level — otherwise resolution would be
   // order-dependent (the DB enforces UNIQUE(tenant, level, ref_id), but the
   // engine must not silently pick one). Exactly one applicable row per level.
@@ -87,7 +104,9 @@ export function resolveConfig(rows: readonly LeveledConfigRow[]): ResolveResult 
     scope: ec.scope,
   };
 
-  if (!locked) {
+  // The cascade merge applies when the event is unlocked OR when the caller is
+  // resolving FOR THE PIN (applyOverridesWhenLocked) — see ResolveConfigOpts.
+  if (!locked || opts?.applyOverridesWhenLocked === true) {
     const moreSpecific = [...rows]
       .filter((r) => r.level !== 'event')
       .sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);

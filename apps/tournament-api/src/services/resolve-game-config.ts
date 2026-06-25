@@ -32,6 +32,13 @@ export type ResolveGameConfigInput = {
   tenantId: string;
   roundId?: string | undefined;
   foursomeNumber?: number | undefined;
+  /**
+   * Resolve FOR THE PIN: apply foursome/round overrides even for a locked
+   * (money-on) event. The pin is the money-safety lock, so per-foursome rules
+   * must merge into the pinned config. Default false = runtime/organizer reads
+   * keep the lock gate. See resolver.ts ResolveConfigOpts.
+   */
+  applyOverridesWhenLocked?: boolean | undefined;
 };
 
 export type ResolveGameConfigResult =
@@ -129,7 +136,10 @@ export async function resolveEventGameConfig(
     }
   }
 
-  const resolved = resolveConfig(leveled);
+  const resolved = resolveConfig(
+    leveled,
+    input.applyOverridesWhenLocked ? { applyOverridesWhenLocked: true } : undefined,
+  );
   if (!resolved.ok) {
     return { ok: false, kind: 'unsettleable', reason: resolved.reason };
   }

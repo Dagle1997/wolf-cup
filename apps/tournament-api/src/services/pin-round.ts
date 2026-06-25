@@ -30,8 +30,16 @@ export type { PerPlayerHandicaps };
 
 export type PinRoundInput = {
   roundId: string;
-  /** The fully-RESOLVED config the round settles under. */
+  /** The fully-RESOLVED config the round settles under (the round-level default). */
   resolvedConfig: GameConfig;
+  /**
+   * Per-foursome config overrides (Epic 6 per-foursome money), keyed by foursome
+   * number. Present ONLY for foursomes whose rules differ from the round default;
+   * every other foursome settles from `resolvedConfig`. Each is validated +
+   * canonicalized like the round config. Omitted/empty → no overrides pinned
+   * (NULL column), fully backward compatible.
+   */
+  foursomeConfigs?: Record<number, GameConfig>;
   /** { [playerId]: { hi, ch } } pinned at round-start (AC6). */
   perPlayerHandicaps: PerPlayerHandicaps;
   courseRevisionId: string;
@@ -46,6 +54,21 @@ export async function pinRound(txOrDb: Tx | Db, input: PinRoundInput): Promise<P
   // Fail closed: never pin an unsupported/invalid resolved config.
   const parsed = parseGameConfig(input.resolvedConfig);
   if (!parsed.ok) throw new Error(`pinRound: invalid resolved config (${parsed.reason})`);
+
+  // Fail closed: every per-foursome override must itself be a valid engine config.
+  // Canonicalize (store the parsed form, never the raw input) for byte-stability.
+  let foursomeConfigsJson: string | null = null;
+  if (input.foursomeConfigs && Object.keys(input.foursomeConfigs).length > 0) {
+    const canonical: Record<string, GameConfig> = {};
+    for (const [foursomeNumber, cfg] of Object.entries(input.foursomeConfigs)) {
+      const p = parseGameConfig(cfg);
+      if (!p.ok) {
+        throw new Error(`pinRound: invalid foursome ${foursomeNumber} config (${p.reason})`);
+      }
+      canonical[foursomeNumber] = p.config;
+    }
+    foursomeConfigsJson = JSON.stringify(canonical);
+  }
 
   // Fail closed: per-player handicap snapshot must be finite numbers.
   const hcp = perPlayerHandicapsSchema.safeParse(input.perPlayerHandicaps);
@@ -75,6 +98,7 @@ export async function pinRound(txOrDb: Tx | Db, input: PinRoundInput): Promise<P
     courseRevisionId: input.courseRevisionId,
     tee: input.tee,
     perPlayerHandicapsJson: JSON.stringify(hcp.data),
+    foursomeConfigsJson,
     teamCompositionJson: null,
     createdAt: input.createdAt,
     tenantId: round.tenantId,

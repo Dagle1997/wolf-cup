@@ -1,0 +1,1 @@
+ALTER TABLE `round_pin` ADD `foursome_configs_json` text;

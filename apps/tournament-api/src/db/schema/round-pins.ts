@@ -38,6 +38,16 @@ export const roundPins = sqliteTable(
     tee: text('tee').notNull(),
     /** Per-player HI+CH snapshot: { [playerId]: { hi, ch } } (AC6, Zod-validated). */
     perPlayerHandicapsJson: text('per_player_handicaps_json').notNull(),
+    /**
+     * Per-foursome resolved-config overrides frozen at round start (Epic 6
+     * per-foursome money): JSON `{ [foursomeNumber]: GameConfig }`. Present ONLY
+     * for foursomes whose resolved rules differ from the event default; every
+     * other foursome settles from `resolved_config_json` above. NULL on rounds
+     * pinned before this feature (and on events with no per-foursome overrides)
+     * → all foursomes use the round-level config (backward compatible, money-
+     * neutral). The pin is the money-safety lock, so these are immutable.
+     */
+    foursomeConfigsJson: text('foursome_configs_json'),
     /** Global-team-composition seam (AC8): { teamKey, playerIds }[]; NULL until Epic 3. */
     teamCompositionJson: text('team_composition_json'),
     createdAt: integer('created_at').notNull(),

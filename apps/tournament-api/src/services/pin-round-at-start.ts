@@ -103,16 +103,21 @@ export async function pinRoundAtStart(
   // applies. Validating here (integer, within the config schema's [1,200] bound)
   // also guarantees we never freeze a value that would fail the pin's config
   // parse on read and poison the round into a permanent corrupt_pin.
-  if (
+  const validAllowancePct =
     eventAllowancePct !== null &&
     Number.isInteger(eventAllowancePct) &&
     eventAllowancePct >= 1 &&
     eventAllowancePct <= 200
-  ) {
-    resolvedConfig.handicapAllowancePct = eventAllowancePct;
-  } else {
-    delete resolvedConfig.handicapAllowancePct;
-  }
+      ? eventAllowancePct
+      : null;
+  // The allowance % is EVENT-level (one value for the whole event), applied
+  // identically to the round config AND every per-foursome config below, so a
+  // foursome's rule overrides never silently change the stroke allowance.
+  const freezeAllowance = (cfg: typeof resolvedConfig): void => {
+    if (validAllowancePct !== null) cfg.handicapAllowancePct = validAllowancePct;
+    else delete cfg.handicapAllowancePct;
+  };
+  freezeAllowance(resolvedConfig);
 
   // ── (2) Course revision + tee for this event round (the default tee). ──
   const erRows = await tx
@@ -149,7 +154,7 @@ export async function pinRoundAtStart(
 
   // ── (3) Roster of this round's foursomes + effective HI per player. ──
   const pairingRows = await tx
-    .select({ id: pairings.id })
+    .select({ id: pairings.id, foursomeNumber: pairings.foursomeNumber })
     .from(pairings)
     .where(and(eq(pairings.eventRoundId, eventRoundId), eq(pairings.tenantId, tenantId)));
   if (pairingRows.length === 0) return { ok: false, reason: 'no_pairings' };
@@ -202,10 +207,42 @@ export async function pinRoundAtStart(
     perPlayerHandicaps[playerId] = { hi, ch };
   }
 
+  // ── (4b) Per-foursome config overrides (Epic 6 per-foursome money). ──
+  // Resolve EACH foursome's config through the cascade with the lock gate
+  // BYPASSED (applyOverridesWhenLocked) — the money-safety lock is THIS pin, not
+  // the cascade gate, so a locked (money-on) event still freezes each foursome's
+  // own rules. Only foursomes whose resolved config DIFFERS from the round-level
+  // `resolvedConfig` are pinned in the map (a foursome with no override resolves
+  // to the same config and settles from `resolvedConfig`). The same allowance %
+  // is frozen into each. A foursome whose override can't resolve fails the pin
+  // (fail closed) rather than silently settling that foursome on the default.
+  const foursomeConfigs: Record<number, typeof resolvedConfig> = {};
+  const roundConfigKey = JSON.stringify(resolvedConfig);
+  for (const pairing of pairingRows) {
+    const fr = await resolveEventGameConfig(tx, {
+      eventId,
+      tenantId,
+      roundId,
+      foursomeNumber: pairing.foursomeNumber,
+      applyOverridesWhenLocked: true,
+    });
+    if (!fr.ok) {
+      // hierarchy/corrupt → don't pin a foursome on an unresolved money config.
+      return { ok: false, reason: `foursome_config:${pairing.foursomeNumber}:${fr.reason}` };
+    }
+    const fcfg = fr.config;
+    freezeAllowance(fcfg);
+    // Only a genuine override (differs from the round default) is pinned.
+    if (JSON.stringify(fcfg) !== roundConfigKey) {
+      foursomeConfigs[pairing.foursomeNumber] = fcfg;
+    }
+  }
+
   // ── (5) Write the immutable pin (atomic + idempotent under UNIQUE). ──
   const res = await pinRound(tx, {
     roundId,
     resolvedConfig,
+    foursomeConfigs,
     perPlayerHandicaps,
     courseRevisionId,
     tee: teeColor,

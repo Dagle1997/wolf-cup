@@ -100,7 +100,14 @@ export async function isF1Event(
 
 /** Parsed shape of a round_pin row's JSON columns. */
 type ParsedPin = {
+  /** The round-level (default) resolved config. */
   config: GameConfig;
+  /**
+   * Per-foursome config overrides (Epic 6), keyed by foursome number. A foursome
+   * present here settles from ITS config; every other foursome uses `config`.
+   * Empty when the round was pinned with no overrides (NULL column).
+   */
+  foursomeConfigs: Record<number, GameConfig>;
   /** { hi, ch } per player; `ch: null` = absent handicap (fail-closed on read). */
   perPlayerHandicaps: Record<string, { hi: number | null; ch: number | null }>;
   courseRevisionId: string;
@@ -110,6 +117,7 @@ type ParsedPin = {
 /** Parse a round_pin row's JSON fail-closed (corrupt → null). */
 function parsePin(row: {
   resolvedConfigJson: string;
+  foursomeConfigsJson: string | null;
   perPlayerHandicapsJson: string;
   courseRevisionId: string;
   tee: string;
@@ -126,8 +134,32 @@ function parsePin(row: {
   if (!cfg.ok) return null;
   const hcp = perPlayerHandicapsSchema.safeParse(rawHcp);
   if (!hcp.success) return null;
+
+  // Per-foursome overrides (NULL = none). Corrupt JSON OR any invalid entry →
+  // the WHOLE pin is corrupt (every foursome fail-closed) — consistent with the
+  // resolved_config corruption path. Entries are validated at WRITE time, so a
+  // bad value here is a should-never-happen data anomaly, never a wrong settle.
+  const foursomeConfigs: Record<number, GameConfig> = {};
+  if (row.foursomeConfigsJson !== null) {
+    let rawMap: unknown;
+    try {
+      rawMap = JSON.parse(row.foursomeConfigsJson);
+    } catch {
+      return null;
+    }
+    if (typeof rawMap !== 'object' || rawMap === null || Array.isArray(rawMap)) return null;
+    for (const [key, value] of Object.entries(rawMap)) {
+      const n = Number(key);
+      if (!Number.isInteger(n)) return null;
+      const parsed = parseGameConfig(value);
+      if (!parsed.ok) return null;
+      foursomeConfigs[n] = parsed.config;
+    }
+  }
+
   return {
     config: cfg.config,
+    foursomeConfigs,
     perPlayerHandicaps: hcp.data,
     courseRevisionId: row.courseRevisionId,
     tee: row.tee,
@@ -191,6 +223,7 @@ export async function computeF1EventEdges(
     const pinRows = await txOrDb
       .select({
         resolvedConfigJson: roundPins.resolvedConfigJson,
+        foursomeConfigsJson: roundPins.foursomeConfigsJson,
         perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
         courseRevisionId: roundPins.courseRevisionId,
         tee: roundPins.tee,
@@ -267,6 +300,10 @@ export async function computeF1EventEdges(
       // on one bad foursome.
       let result: SettleFoursomeResult;
       try {
+        // Per-foursome money (Epic 6): this foursome settles from ITS pinned
+        // config when one was frozen, else the round-level default. The pin is
+        // the money-safety lock, so this choice is immutable post-start.
+        const foursomeConfig = pin.foursomeConfigs[pairing.foursomeNumber] ?? pin.config;
         result = await settleFoursome(
           txOrDb,
           {
@@ -274,6 +311,7 @@ export async function computeF1EventEdges(
             pairingId: pairing.id,
             foursomeNumber: pairing.foursomeNumber,
             pin,
+            config: foursomeConfig,
             siByHole,
             parByHole,
           },
@@ -306,6 +344,8 @@ type SettleFoursomeArgs = {
   pairingId: string;
   foursomeNumber: number;
   pin: ParsedPin;
+  /** The config THIS foursome settles under (its override, or the round default). */
+  config: GameConfig;
   siByHole: Map<number, number>;
   parByHole: Map<number, number>;
 };
@@ -323,7 +363,7 @@ async function settleFoursome(
   args: SettleFoursomeArgs,
   tenantId: string,
 ): Promise<SettleFoursomeResult> {
-  const { roundId, pairingId, foursomeNumber, pin, siByHole, parByHole } = args;
+  const { roundId, pairingId, foursomeNumber, pin, config, siByHole, parByHole } = args;
 
   // Team split from the organizer's slot order (slots 1&2 vs 3&4), never alpha.
   const memberRows = await txOrDb
@@ -371,7 +411,7 @@ async function settleFoursome(
   // → 100), THEN play OFF THE LOW of this foursome: the lowest allowed CH plays
   // to scratch and everyone else allocates `allowedCH − foursomeLow` strokes.
   // This is the Pete Dye Guyan 2v2 money basis — NOT each player's full CH.
-  const allowancePct = pin.config.handicapAllowancePct ?? 100;
+  const allowancePct = config.handicapAllowancePct ?? 100;
   const { offLow: offLowByPlayer } = applyAllowanceOffLow(chByPlayer, allowancePct);
 
   // Scores for this foursome in this round.
@@ -469,7 +509,7 @@ async function settleFoursome(
     }
 
     const foursomeInput: FoursomeInput = { teamSplit, holes };
-    const ledger = computeFoursome(pin.config, foursomeInput);
+    const ledger = computeFoursome(config, foursomeInput);
     // ledgerToEdges lives INSIDE the try (Story 2.1a): its fail-closed
     // `asymmetric_2v2_ledger` guard must surface as a per-foursome unsettleable,
     // never an uncaught event-wide crash.
@@ -588,6 +628,7 @@ export async function computeF1PerHoleMoneyForPlayer(
   const pinRows = await txOrDb
     .select({
       resolvedConfigJson: roundPins.resolvedConfigJson,
+      foursomeConfigsJson: roundPins.foursomeConfigsJson,
       perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
       courseRevisionId: roundPins.courseRevisionId,
       tee: roundPins.tee,
@@ -631,6 +672,9 @@ export async function computeF1PerHoleMoneyForPlayer(
     .limit(1);
   if (pairingRows.length === 0) return null; // player not in any foursome of the round
   const { id: pairingId, foursomeNumber } = pairingRows[0]!;
+  // Per-foursome money (Epic 6): settle from this foursome's pinned config when
+  // one was frozen, else the round default — identical pick to computeF1EventEdges.
+  const foursomeConfig = pin.foursomeConfigs[foursomeNumber] ?? pin.config;
 
   // (7) Settle THIS foursome through the pinned chokepoint. settleFoursome never
   // throws on bad foursome data (returns unsettleable); the try is belt-and-braces.
@@ -638,7 +682,7 @@ export async function computeF1PerHoleMoneyForPlayer(
   try {
     result = await settleFoursome(
       txOrDb,
-      { roundId, pairingId, foursomeNumber, pin, siByHole, parByHole },
+      { roundId, pairingId, foursomeNumber, pin, config: foursomeConfig, siByHole, parByHole },
       tenantId,
     );
   } catch {

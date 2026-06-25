@@ -169,6 +169,13 @@
       "when": 1782321072809,
       "tag": "0023_aspiring_lightspeed",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1782411097413,
+      "tag": "0024_confused_rocket_racer",
+      "breakpoints": true
     }
   ]
 }
