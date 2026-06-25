@@ -334,6 +334,69 @@ describe('GET /api/rounds/:roundId', () => {
     expect(body.myFoursome.members[2]!.courseHandicap).toBe(18);
   });
 
+  test('enabledClaimTypes: null when the round is un-pinned (non-F1 / not started)', async () => {
+    const s = await seed({ state: 'in_progress' });
+    const app = buildApp(s.scorerId);
+    const res = await getRoundDetail(app, s.roundId);
+    const body = (await res.json()) as { myFoursome: { enabledClaimTypes: unknown } };
+    // No pin → client falls back to showing all three claim buttons (no regression).
+    expect(body.myFoursome.enabledClaimTypes).toBeNull();
+  });
+
+  test('enabledClaimTypes: null when the pinned config is unparseable', async () => {
+    const s = await seed({ state: 'in_progress' });
+    await db.insert(roundPins).values({
+      roundId: s.roundId,
+      resolvedConfigJson: '{}', // not a valid GameConfig → parse fails → null
+      seedRuleSetRevisionId: null,
+      courseRevisionId: s.courseRevId,
+      tee: 'blue',
+      perPlayerHandicapsJson: JSON.stringify({ [s.scorerId]: { hi: 12, ch: 10 } }),
+      teamCompositionJson: null,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: s.ctx,
+    });
+    const app = buildApp(s.scorerId);
+    const res = await getRoundDetail(app, s.roundId);
+    const body = (await res.json()) as { myFoursome: { enabledClaimTypes: unknown } };
+    expect(body.myFoursome.enabledClaimTypes).toBeNull();
+  });
+
+  test('enabledClaimTypes: reflects ONLY the enabled claim-modifiers from the pinned config', async () => {
+    const s = await seed({ state: 'in_progress' });
+    // greenie + sandie ON, polie OFF; net-skins is ON but is NOT a claim-type, so
+    // it must not appear in enabledClaimTypes.
+    await db.insert(roundPins).values({
+      roundId: s.roundId,
+      resolvedConfigJson: JSON.stringify({
+        game: 'guyan-2v2',
+        pointValueSchedule: { kind: 'flat', cents: 500 },
+        modifiers: [
+          { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
+          { type: 'greenie', enabled: true, variant: { carryover: true } },
+          { type: 'polie', enabled: false },
+          { type: 'sandie', enabled: true },
+        ],
+        lockState: 'locked',
+        configVersion: 1,
+      }),
+      seedRuleSetRevisionId: null,
+      courseRevisionId: s.courseRevId,
+      tee: 'blue',
+      perPlayerHandicapsJson: JSON.stringify({ [s.scorerId]: { hi: 12, ch: 10 } }),
+      teamCompositionJson: null,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: s.ctx,
+    });
+    const app = buildApp(s.scorerId);
+    const res = await getRoundDetail(app, s.roundId);
+    const body = (await res.json()) as { myFoursome: { enabledClaimTypes: string[] } };
+    // Stable order greenie→polie→sandie; polie excluded (off), net-skins excluded (not a claim).
+    expect(body.myFoursome.enabledClaimTypes).toEqual(['greenie', 'sandie']);
+  });
+
   test('200 non-scorer participant: isScorer=false but scorer info populated', async () => {
     const s = await seed({ state: 'not_started' });
     const app = buildApp(s.player1Id);

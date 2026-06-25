@@ -51,6 +51,7 @@ interface MockRoundDetail {
       grossStrokes: number;
       putts: number | null;
     }>;
+    enabledClaimTypes?: Array<'greenie' | 'polie' | 'sandie'> | null;
   };
 }
 
@@ -1172,6 +1173,52 @@ describe('ScoreEntryRoute — claim chips (Story 2.1)', () => {
     expect(screen.getByTestId(`claim-sandie-${SCORER_ID}`)).toBeInTheDocument();
     // ...but a greenie can only happen on a par 3, so the G toggle is absent here.
     expect(screen.queryByTestId(`claim-greenie-${SCORER_ID}`)).toBeNull();
+  });
+
+  test('a disabled claim-modifier hides its button (enabledClaimTypes gate)', async () => {
+    // Pinned config has ONLY polie on (greenie + sandie OFF). Current hole is a
+    // par 3 so greenie WOULD be eligible by par — but it's gated off by config.
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail({ enabledClaimTypes: ['polie'] })),
+      course: () => jsonOkCourse(buildCourse({ 1: 3 })),
+    });
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
+    );
+    // Polie shows (enabled); greenie + sandie are hidden (disabled in config).
+    expect(screen.getByTestId(`claim-polie-${SCORER_ID}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`claim-greenie-${SCORER_ID}`)).toBeNull();
+    expect(screen.queryByTestId(`claim-sandie-${SCORER_ID}`)).toBeNull();
+  });
+
+  test('all claim-modifiers OFF hides the entire Bonus row', async () => {
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail({ enabledClaimTypes: [] })),
+      course: () => jsonOkCourse(buildCourse({ 1: 3 })),
+    });
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId('score-entry-form')).toBeInTheDocument(),
+    );
+    // No claim buttons at all, and the "Bonus" label is not orphaned on screen.
+    expect(screen.queryByTestId(`claim-polie-${SCORER_ID}`)).toBeNull();
+    expect(screen.queryByTestId(`claim-sandie-${SCORER_ID}`)).toBeNull();
+    expect(screen.queryByText('Bonus')).toBeNull();
+  });
+
+  test('null enabledClaimTypes (un-pinned / older server) shows all eligible buttons', async () => {
+    mockFetchByUrl({
+      detail: () => jsonOk(buildHappyPathDetail({ enabledClaimTypes: null })),
+      course: () => jsonOkCourse(buildCourse({ 1: 3 })),
+    });
+    await renderRoute();
+    await waitFor(() =>
+      expect(screen.getByTestId(`claim-greenie-${SCORER_ID}`)).toBeInTheDocument(),
+    );
+    // No gating → greenie (par-3 eligible) + polie + sandie all present.
+    expect(screen.getByTestId(`claim-polie-${SCORER_ID}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`claim-sandie-${SCORER_ID}`)).toBeInTheDocument();
   });
 
   test('claim toggles render as 44px G/P/S buttons (per-player Bonuses row)', async () => {

@@ -34,7 +34,7 @@ import {
   roundStates,
   scorerAssignments,
 } from '../db/schema/index.js';
-import { perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
+import { perPlayerHandicapsSchema, parseGameConfig } from '../engine/games/config-schema.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireScorerForRound } from '../middleware/require-scorer-for-round.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
@@ -219,7 +219,10 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
   // started) → courseHandicap is null and the UI shows HI only. Parsed via the
   // canonical schema; a corrupt pin degrades to null, never throws.
   const pinRows = await db
-    .select({ perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson })
+    .select({
+      perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson,
+      resolvedConfigJson: roundPins.resolvedConfigJson,
+    })
     .from(roundPins)
     .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, TENANT_ID)))
     .limit(1);
@@ -235,6 +238,49 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
       }
     } catch {
       // Corrupt pin JSON → leave the map empty (HI-only display).
+    }
+  }
+
+  // Which claim-modifiers (greenie/polie/sandie) does THIS round's pinned config
+  // actually settle? The score-entry hides a claim button for any modifier that
+  // is OFF (Josh 2026-06-25 — "if they are off they don't show up on the score
+  // entry screen"). Derived from the pin's RESOLVED config, so the buttons shown
+  // match exactly what pays — gating is display-only; the engine settles from the
+  // same pin regardless. `null` = no parseable pinned config (un-pinned / non-F1
+  // round) → the client falls back to showing all three (today's behavior, no
+  // regression). An EMPTY array = pinned config with every claim-modifier OFF.
+  const CLAIM_MODIFIER_TYPES = ['greenie', 'polie', 'sandie'] as const;
+  let enabledClaimTypes: Array<'greenie' | 'polie' | 'sandie'> | null = null;
+  const configJson = pinRows[0]?.resolvedConfigJson;
+  if (configJson !== undefined) {
+    try {
+      const parsed = parseGameConfig(JSON.parse(configJson));
+      if (parsed.ok) {
+        const onTypes = new Set(
+          parsed.config.modifiers.filter((m) => m.enabled).map((m) => m.type),
+        );
+        enabledClaimTypes = CLAIM_MODIFIER_TYPES.filter((t) => onTypes.has(t));
+      } else {
+        // A PINNED config that exists but won't parse is a real anomaly (the pin
+        // was validated at write time). It fails OPEN (all buttons), so it can't
+        // break scoring — but log it so a misconfigured/corrupt pin is diagnosable
+        // during a live money event rather than silently reintroducing every claim
+        // button (codex review 2026-06-25).
+        (c.get('logger') ?? moduleLogger).warn({
+          msg: 'round-detail: pinned config did not parse; claim buttons fail open',
+          requestId,
+          roundId,
+          reason: parsed.reason,
+        });
+      }
+    } catch (err) {
+      // Corrupt JSON in the pin → leave null (client shows all three) + log.
+      (c.get('logger') ?? moduleLogger).warn({
+        msg: 'round-detail: pinned config JSON is corrupt; claim buttons fail open',
+        requestId,
+        roundId,
+        err: String(err),
+      });
     }
   }
 
@@ -316,6 +362,7 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
         members,
         holeScores: myHoleScores,
         claims: myClaims,
+        enabledClaimTypes,
       },
     },
     200,

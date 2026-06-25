@@ -110,6 +110,11 @@ interface RoundDetail {
     members: Member[]; // sorted by slot_number ASC (load-bearing)
     holeScores: HoleScore[];
     claims?: CurrentClaim[]; // Story 2.1; absent on older server builds
+    // Which claim-modifiers the round's pinned config settles (greenie/polie/sandie
+    // that are ON). A claim button is hidden for any type NOT in this list. `null`
+    // or absent (un-pinned / non-F1 round, or an older server build) → show all
+    // three (no regression). Empty array → all three OFF, no claim buttons.
+    enabledClaimTypes?: ClaimType[] | null;
   };
 }
 
@@ -1538,11 +1543,21 @@ function ScoreEntryForm({
   // greenie = emerald-500, polie = amber-400, sandie = orange-500 — so a color
   // means the same thing on both screens. These are bright fills, so the active
   // letter is dark (see the toggle style) for WCAG-AA contrast.
+  //
+  // A claim button is HIDDEN when its modifier is OFF in the round's pinned config
+  // (Josh 2026-06-25 — disabled bonuses don't appear on score entry). The server
+  // sends the ON set in `enabledClaimTypes`; `null`/absent (un-pinned, non-F1, or
+  // an older server build) means "show all three" — today's behavior, no regression.
+  const enabledClaimTypes = data.myFoursome.enabledClaimTypes;
+  const isClaimEnabled = (t: ClaimType): boolean =>
+    enabledClaimTypes == null || enabledClaimTypes.includes(t);
   const bonusButtons: Array<[ClaimType, string, string]> = [
     ...(par === 3 ? [['greenie', 'G', '#10b981'] as [ClaimType, string, string]] : []),
     ['polie', 'P', '#fbbf24'],
     ['sandie', 'S', '#f97316'],
-  ];
+  ].filter((b) => isClaimEnabled((b as [ClaimType, string, string])[0])) as Array<
+    [ClaimType, string, string]
+  >;
 
   // 2v2 team grouping. Members are slot-ordered (load-bearing), so in the Guyan
   // 2v2 shape slots 1&2 are Team 1 and slots 3&4 are Team 2 (mirrors the engine's
@@ -1715,7 +1730,10 @@ function ScoreEntryForm({
                     {/* Bonuses, in the same card, below a hairline divider. Circular
                         toggles (no square corners) in the SAME colors as the
                         leaderboard scorecard dots (emerald / amber / orange), with a
-                        dark letter on the bright active fill for contrast. */}
+                        dark letter on the bright active fill for contrast. The whole
+                        row is hidden when every claim-modifier is OFF in the pinned
+                        config (bonusButtons empty) — no orphaned "Bonus" label. */}
+                    {bonusButtons.length > 0 && (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
                       <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
                         Bonus
@@ -1745,6 +1763,7 @@ function ScoreEntryForm({
                         })}
                       </div>
                     </div>
+                    )}
                   </div>
                 );
               })}
