@@ -25,6 +25,10 @@ import { ErrorCard } from '../components/error-card';
 // ---- Types ----------------------------------------------------------------
 
 const FOURSOME_SIZE = 4;
+// Generous upper bound on foursomes/round — well above any real golf event
+// (24 = 96 players), so a saved event is never special-cased or trapped, and an
+// accidental − can always be undone with +.
+const MAX_FOURSOMES = 24;
 const EMPTY = '__EMPTY__';
 
 type RosterEntry = { playerId: string; name: string };
@@ -114,9 +118,18 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
   const data = query.data;
   useEffect(() => {
     if (!data) return;
+    // Size to the HIGHEST persisted foursome across rounds (default 2) so EVERY
+    // saved foursome hydrates — never truncated to a default, which would show
+    // saved foursomes as empty and let a save DELETE real pairings (codex/gemini
+    // review). User count changes resize this grid in place (adjustCount) below.
+    const count = data.rounds.reduce(
+      (m, r) => r.pairings.reduce((mm, p) => Math.max(mm, p.foursomeNumber), m),
+      2,
+    );
+    setFoursomesPerRound(count);
     const next: GridRound[] = data.rounds.map((r) => {
       const foursomes: Cell[][] = [];
-      for (let f = 0; f < foursomesPerRound; f++) {
+      for (let f = 0; f < count; f++) {
         const persisted = r.pairings.find((p) => p.foursomeNumber === f + 1);
         const slots: Cell[] = new Array(FOURSOME_SIZE)
           .fill(null)
@@ -146,7 +159,44 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
       };
     });
     setGrid(next);
-  }, [data, foursomesPerRound]);
+    // Depends ONLY on `data`: count changes are handled imperatively by
+    // `adjustCount` (resize-in-place, preserving unsaved edits). Re-running this
+    // server-rebuild effect on a count change would wipe in-progress assignments
+    // and leave Save dead at "one group" (Josh 2026-06-25).
+  }, [data]);
+
+  /** One empty foursome (4 unfilled slots). */
+  function emptySlots(): Cell[] {
+    return new Array(FOURSOME_SIZE).fill(null).map(() => ({ playerId: EMPTY, teeColor: null }));
+  }
+
+  // Mirror the latest count in a ref so `adjustCount` reads the current value even
+  // on rapid taps (no stale closure) WITHOUT a nested state update inside an
+  // updater (codex/gemini review). Re-synced to the rendered value every render.
+  const countRef = useRef(foursomesPerRound);
+  countRef.current = foursomesPerRound;
+
+  /**
+   * Change the foursome count by `delta`, RESIZING the existing grid in place:
+   * keep filled foursomes, append empties when growing, trim extras when
+   * shrinking. Never re-pulls from the server, so unsaved assignments survive and
+   * Save stays enabled at one group. Clamped to [1, MAX_FOURSOMES] — high enough
+   * that a saved event is never trimmed and a − is always undoable with +.
+   */
+  function adjustCount(delta: number): void {
+    const prev = countRef.current;
+    const clamped = Math.max(1, Math.min(MAX_FOURSOMES, prev + delta));
+    if (clamped === prev) return;
+    countRef.current = clamped;
+    setFoursomesPerRound(clamped);
+    setGrid((g) =>
+      g.map((round) => {
+        const foursomes = round.foursomes.slice(0, clamped);
+        while (foursomes.length < clamped) foursomes.push(emptySlots());
+        return { ...round, foursomes };
+      }),
+    );
+  }
 
   // ---- Save mutation -----------------------------------------------------
 
@@ -360,6 +410,11 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
 
   const isDirty = useMemo<boolean>(() => {
     if (!data) return false;
+    // Pre-hydration: `data` arrived but the init effect hasn't built `grid` yet.
+    // Treat as NOT dirty so Save can't fire an empty (destructive) payload in the
+    // one-render window before hydration (codex review). After hydration grid has
+    // one row per round, so this never masks a real change.
+    if (grid.length === 0) return false;
     if (grid.length !== data.rounds.length) return true;
     for (let rIdx = 0; rIdx < grid.length; rIdx++) {
       const r = grid[rIdx]!;
@@ -394,6 +449,12 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
         const draftLocked = r.locked;
         const persistedLocked = persisted?.locked ?? false;
         if (draftLocked !== persistedLocked) return true;
+      }
+      // Reducing the count DROPS any populated persisted foursome beyond the new
+      // count on the next save — a save-worthy change the per-foursome loop above
+      // (bounded by foursomesPerRound) can't see on its own.
+      if (dataRound.pairings.some((p) => p.foursomeNumber > foursomesPerRound && p.members.length > 0)) {
+        return true;
       }
     }
     return false;
@@ -493,7 +554,7 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
               aria-label="Fewer foursomes"
               data-testid="foursomes-minus"
               disabled={foursomesPerRound <= 1}
-              onClick={() => setFoursomesPerRound((n) => Math.max(1, n - 1))}
+              onClick={() => adjustCount(-1)}
               style={{ minWidth: 44, minHeight: 44, fontSize: 'var(--font-xl)', fontWeight: 800, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: 'pointer' }}
             >
               −
@@ -505,8 +566,8 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
               type="button"
               aria-label="More foursomes"
               data-testid="foursomes-plus"
-              disabled={foursomesPerRound >= 8}
-              onClick={() => setFoursomesPerRound((n) => Math.min(8, n + 1))}
+              disabled={foursomesPerRound >= MAX_FOURSOMES}
+              onClick={() => adjustCount(1)}
               style={{ minWidth: 44, minHeight: 44, fontSize: 'var(--font-xl)', fontWeight: 800, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: 'pointer' }}
             >
               +

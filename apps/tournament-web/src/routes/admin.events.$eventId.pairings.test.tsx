@@ -257,4 +257,57 @@ describe('PairingsPage', () => {
     // Cells are now disabled.
     expect(screen.getByTestId('select-0-0-0')).toBeDisabled();
   });
+
+  it('loads ALL persisted foursomes (>2) without truncation and is NOT dirty on load', async () => {
+    const resp = {
+      ...baseGetResponse,
+      rounds: [
+        {
+          eventRoundId: 'er-1',
+          roundNumber: 1,
+          roundDate: 1_715_040_000_000,
+          pairings: [
+            { foursomeNumber: 1, locked: false, members: [{ playerId: 'p-alice', slotNumber: 1, teeColor: null }] },
+            { foursomeNumber: 2, locked: false, members: [{ playerId: 'p-bob', slotNumber: 1, teeColor: null }] },
+            { foursomeNumber: 3, locked: false, members: [{ playerId: 'p-carol', slotNumber: 1, teeColor: null }] },
+          ],
+        },
+        { eventRoundId: 'er-2', roundNumber: 2, roundDate: 1_715_126_400_000, pairings: [] },
+      ],
+    };
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify(resp), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    renderPage();
+    // Count sized to the highest persisted foursome (3), not truncated to 2.
+    await waitFor(() => expect(screen.getByTestId('foursomes-per-round')).toHaveTextContent('3'));
+    expect(screen.getByTestId('cell-0-2-0')).toBeInTheDocument();
+    expect((screen.getByTestId('select-0-2-0') as HTMLSelectElement).value).toBe('p-carol');
+    // No edits yet → NOT dirty → Save disabled (so an accidental save can't delete it).
+    expect(screen.getByTestId('save-button')).toBeDisabled();
+  });
+
+  it('reducing to ONE group keeps filled players and leaves Save enabled (Josh 2026-06-25)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify(baseGetResponse), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByTestId('select-0-0-0')).toBeInTheDocument());
+
+    // Fill foursome 1 of round 1 with a player, then verify Save is enabled.
+    await userEvent.selectOptions(screen.getByTestId('select-0-0-0'), 'p-alice');
+    expect((screen.getByTestId('select-0-0-0') as HTMLSelectElement).value).toBe('p-alice');
+    expect(screen.getByTestId('save-button')).not.toBeDisabled();
+
+    // Default is 2 foursomes; take it down to ONE group.
+    await userEvent.click(screen.getByTestId('foursomes-minus'));
+    expect(screen.getByTestId('foursomes-per-round')).toHaveTextContent('1');
+
+    // The filled player SURVIVES the resize (not wiped by a server rebuild)...
+    expect((screen.getByTestId('select-0-0-0') as HTMLSelectElement).value).toBe('p-alice');
+    // ...the second foursome is trimmed away...
+    expect(screen.queryByTestId('cell-0-1-0')).toBeNull();
+    // ...and Save is still enabled (the whole point — it was dead before).
+    expect(screen.getByTestId('save-button')).not.toBeDisabled();
+  });
 });
