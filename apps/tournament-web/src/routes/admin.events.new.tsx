@@ -23,7 +23,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
-import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Loader (mirror T2-3b/T2-5) -------------------------------------------
 
@@ -465,109 +464,96 @@ export function NewEventWizard() {
       {form.step === 2 ? (
         <section>
           <h2>Rounds</h2>
-          <ScrollableTable label="Event rounds"><table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Course</th>
-                <th>Tee</th>
-                <th>Holes</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {form.rounds.map((round, idx) => (
-                <tr key={idx}>
-                  <td>
-                    <input
-                      aria-label={`Round ${idx + 1} date`}
-                      type="date"
-                      value={round.round_date}
-                      min={form.start_date}
-                      max={form.end_date}
-                      onChange={(e) => setRoundField(idx, 'round_date', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      aria-label={`Round ${idx + 1} course`}
-                      value={round.course_revision_id}
-                      onChange={(e) =>
-                        setRoundField(idx, 'course_revision_id', e.target.value)
-                      }
-                    >
-                      <option value="">— pick a course —</option>
-                      {(coursesResponse?.courses ?? [])
-                        // A course with no revision (latestRevision: null) has
-                        // no tees/ratings → not selectable for event creation.
-                        .filter((c) => c.latestRevision !== null)
-                        .map((c) => (
-                          <option key={c.latestRevision!.id} value={c.latestRevision!.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                    </select>
-                  </td>
-                  <td>
-                    {(() => {
-                      // Tees for the course chosen in THIS round (default/card
-                      // tee for the round; per-player tee is set on the roster /
-                      // pairings). Dropdown when we know the course's tees;
-                      // falls back to free-text if the course list lacks them.
-                      const chosen = (coursesResponse?.courses ?? []).find(
-                        (c) => c.latestRevision?.id === round.course_revision_id,
-                      );
-                      const tees = chosen?.latestRevision?.tees ?? [];
-                      if (tees.length > 0) {
-                        return (
-                          <select
-                            aria-label={`Round ${idx + 1} tee color`}
-                            value={round.tee_color}
-                            onChange={(e) => setRoundField(idx, 'tee_color', e.target.value)}
-                          >
-                            <option value="">— pick a tee —</option>
-                            {tees.map((t) => (
-                              <option key={t.color} value={t.color}>{t.color}</option>
-                            ))}
-                          </select>
-                        );
-                      }
-                      return (
-                        <input
-                          aria-label={`Round ${idx + 1} tee color`}
-                          type="text"
-                          placeholder={round.course_revision_id ? 'tee' : 'pick course first'}
-                          value={round.tee_color}
-                          onChange={(e) => setRoundField(idx, 'tee_color', e.target.value)}
-                        />
-                      );
-                    })()}
-                  </td>
-                  <td>
-                    <select
-                      aria-label={`Round ${idx + 1} holes to play`}
-                      value={round.holes_to_play}
-                      onChange={(e) =>
-                        setRoundField(idx, 'holes_to_play', e.target.value as '9' | '18')
-                      }
-                    >
-                      <option value="18">18</option>
-                      <option value="9">9</option>
-                    </select>
-                  </td>
-                  <td>
+          {/* One stacked card per round (was a 5-column table — unusable on a
+              phone). Each field is full-width with its label above. Josh 2026-06-25. */}
+          <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+            {form.rounds.map((round, idx) => {
+              const chosen = (coursesResponse?.courses ?? []).find(
+                (c) => c.latestRevision?.id === round.course_revision_id,
+              );
+              const tees = chosen?.latestRevision?.tees ?? [];
+              const fieldStyle = { width: '100%', minHeight: 44, boxSizing: 'border-box' as const };
+              const labelStyle = { display: 'block', fontSize: 'var(--font-sm)', fontWeight: 600, margin: 'var(--space-2) 0 4px' };
+              return (
+                <div key={idx} className="card" style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <strong>Round {idx + 1}</strong>
                     <button
                       type="button"
                       onClick={() => removeRound(idx)}
                       disabled={form.rounds.length <= 1}
+                      style={{ minHeight: 36 }}
                     >
                       Remove
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table></ScrollableTable>
+                  </div>
+
+                  <label style={labelStyle}>Date</label>
+                  <input
+                    aria-label={`Round ${idx + 1} date`}
+                    type="date"
+                    value={round.round_date}
+                    min={form.start_date}
+                    max={form.end_date}
+                    onChange={(e) => setRoundField(idx, 'round_date', e.target.value)}
+                    style={fieldStyle}
+                  />
+
+                  <label style={labelStyle}>Course</label>
+                  <select
+                    aria-label={`Round ${idx + 1} course`}
+                    value={round.course_revision_id}
+                    onChange={(e) => setRoundField(idx, 'course_revision_id', e.target.value)}
+                    style={fieldStyle}
+                  >
+                    <option value="">— pick a course —</option>
+                    {(coursesResponse?.courses ?? [])
+                      .filter((c) => c.latestRevision !== null)
+                      .map((c) => (
+                        <option key={c.latestRevision!.id} value={c.latestRevision!.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+
+                  <label style={labelStyle}>Tee</label>
+                  {tees.length > 0 ? (
+                    <select
+                      aria-label={`Round ${idx + 1} tee color`}
+                      value={round.tee_color}
+                      onChange={(e) => setRoundField(idx, 'tee_color', e.target.value)}
+                      style={fieldStyle}
+                    >
+                      <option value="">— pick a tee —</option>
+                      {tees.map((t) => (
+                        <option key={t.color} value={t.color}>{t.color}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      aria-label={`Round ${idx + 1} tee color`}
+                      type="text"
+                      placeholder={round.course_revision_id ? 'tee' : 'pick course first'}
+                      value={round.tee_color}
+                      onChange={(e) => setRoundField(idx, 'tee_color', e.target.value)}
+                      style={fieldStyle}
+                    />
+                  )}
+
+                  <label style={labelStyle}>Holes</label>
+                  <select
+                    aria-label={`Round ${idx + 1} holes to play`}
+                    value={round.holes_to_play}
+                    onChange={(e) => setRoundField(idx, 'holes_to_play', e.target.value as '9' | '18')}
+                    style={fieldStyle}
+                  >
+                    <option value="18">18</option>
+                    <option value="9">9</option>
+                  </select>
+                </div>
+              );
+            })}
+          </div>
           <button type="button" onClick={addRound} style={{ minHeight: 'var(--control-height)', marginTop: 'var(--space-2)' }}>
             + Add round
           </button>

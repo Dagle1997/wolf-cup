@@ -482,23 +482,37 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
 
       {/* Controls: count on its own row; Save is the only primary action. */}
       <div className="card" style={{ padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-3)' }}>
-        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', fontWeight: 600 }}>
-          Foursomes per round
-          <input
-            type="number"
-            min="1"
-            max="8"
-            value={foursomesPerRound}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10);
-              if (Number.isFinite(n) && n >= 1 && n <= 8) {
-                setFoursomesPerRound(n);
-              }
-            }}
-            data-testid="foursomes-per-round"
-            style={{ width: 72, textAlign: 'center' }}
-          />
-        </label>
+        {/* Tap-friendly stepper, not a bare number input — the number input was
+            near-impossible to decrease on iPhone (clearing it hit the validation
+            guard and snapped back, so it felt "stuck at 2"). Josh 2026-06-25. */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', fontWeight: 600 }}>
+          <span>Foursomes per round</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <button
+              type="button"
+              aria-label="Fewer foursomes"
+              data-testid="foursomes-minus"
+              disabled={foursomesPerRound <= 1}
+              onClick={() => setFoursomesPerRound((n) => Math.max(1, n - 1))}
+              style={{ minWidth: 44, minHeight: 44, fontSize: 'var(--font-xl)', fontWeight: 800, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: 'pointer' }}
+            >
+              −
+            </button>
+            <span data-testid="foursomes-per-round" style={{ minWidth: 28, textAlign: 'center', fontSize: 'var(--font-lg)', fontWeight: 800 }}>
+              {foursomesPerRound}
+            </span>
+            <button
+              type="button"
+              aria-label="More foursomes"
+              data-testid="foursomes-plus"
+              disabled={foursomesPerRound >= 8}
+              onClick={() => setFoursomesPerRound((n) => Math.min(8, n + 1))}
+              style={{ minWidth: 44, minHeight: 44, fontSize: 'var(--font-xl)', fontWeight: 800, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', cursor: 'pointer' }}
+            >
+              +
+            </button>
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
           <button
             type="button"
