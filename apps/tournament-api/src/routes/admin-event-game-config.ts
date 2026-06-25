@@ -276,7 +276,7 @@ adminEventGameConfigRouter.put(
           foursomeNumber: target.foursomeNumber,
           actorPlayerId: player.id,
           modifiers: parsed.data.modifiers as Modifier[],
-          pointValueSchedule: parsed.data.pointValueSchedule as PointValueSchedule | undefined,
+          pointValueSchedule: parsed.data.pointValueSchedule as PointValueSchedule,
           now: Date.now(),
         }),
       );

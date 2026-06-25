@@ -43,8 +43,13 @@ export type FoursomeConfigInput = {
   actorPlayerId: string;
   /** The foursome's FULL modifier set (the rule pills' on/off state). */
   modifiers: Modifier[];
-  /** Optional per-foursome stake override; omitted → inherit the event's stake. */
-  pointValueSchedule?: PointValueSchedule | undefined;
+  /**
+   * The foursome's stake. REQUIRED — a foursome override captures its complete
+   * rules, so there is no implicit "inherit the event stake" snapshot that could
+   * later drift from a changed event stake (codex/gemini review). Revert a
+   * foursome to the event default via deleteFoursomeGameConfig, not by omitting.
+   */
+  pointValueSchedule: PointValueSchedule;
   now: number;
 };
 
@@ -123,7 +128,7 @@ export async function seedOrUpdateFoursomeGameConfig(
   const candidate: GameConfig = {
     ...eventConfig,
     modifiers: input.modifiers,
-    pointValueSchedule: input.pointValueSchedule ?? eventConfig.pointValueSchedule,
+    pointValueSchedule: input.pointValueSchedule,
   };
 
   const parsed = parseGameConfig(candidate);

@@ -146,12 +146,17 @@ export async function pinRoundAtStart(
   freezeAllowance(resolvedConfig);
 
   // ── (2) Course revision + tee for this event round (the default tee). ──
+  // Also re-verify the event_round itself belongs to `eventId` (defense in depth
+  // vs an inconsistent DB): the config is resolved/frozen from `eventId` while the
+  // course/tee/pairings come from `eventRoundId`, so they MUST be the same event
+  // or the pin would mix event A's rules with event B's course (codex review).
   const erRows = await tx
-    .select({ courseRevisionId: eventRounds.courseRevisionId, teeColor: eventRounds.teeColor })
+    .select({ courseRevisionId: eventRounds.courseRevisionId, teeColor: eventRounds.teeColor, eventId: eventRounds.eventId })
     .from(eventRounds)
     .where(and(eq(eventRounds.id, eventRoundId), eq(eventRounds.tenantId, tenantId)))
     .limit(1);
   if (erRows.length === 0) return { ok: false, reason: 'event_round_not_found' };
+  if (erRows[0]!.eventId !== eventId) return { ok: false, reason: 'event_round_event_mismatch' };
   const { courseRevisionId, teeColor } = erRows[0]!;
 
   const teeRows = await tx
