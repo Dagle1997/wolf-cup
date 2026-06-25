@@ -138,9 +138,19 @@ export async function settleActionBet(
     netCalcVersionMismatch: false,
   };
 
-  // Durable terminal states short-circuit (no recompute; no edges in 1.1).
+  // The net-calc-version drift flag must be visible EVEN for terminal states:
+  // a finalized/banked bet that settled under an older NET_CALC_VERSION is
+  // precisely the case the guard exists to surface for organizer review (the
+  // v2 bump moved net per_hole_match math). A null stored version (every v1
+  // bet — nothing banks yet) is never a mismatch.
+  const netCalcVersionMismatch =
+    bet.netCalcVersion !== null && bet.netCalcVersion !== NET_CALC_VERSION;
+
+  // Durable terminal states short-circuit (no recompute; no edges in 1.1) — but
+  // still carry the version-drift flag so a banked outcome under stale math is
+  // flagged rather than silently trusted.
   if (bet.state === 'void' || bet.state === 'finalized' || bet.state === 'unsettleable') {
-    return { ...empty, derivedState: bet.state };
+    return { ...empty, derivedState: bet.state, netCalcVersionMismatch };
   }
 
   // Resolve the round's holesToPlay (for scope) + the scoring round id.
@@ -223,8 +233,7 @@ export async function settleActionBet(
     edges: outcome.edges,
     trustBySubject,
     netCalcVersion: NET_CALC_VERSION,
-    netCalcVersionMismatch:
-      bet.netCalcVersion !== null && bet.netCalcVersion !== NET_CALC_VERSION,
+    netCalcVersionMismatch,
   };
 }
 

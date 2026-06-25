@@ -867,7 +867,7 @@ export async function netForSegment(
 }
 
 export type OffLowMatchNetResult = {
-  /** subjectId → per-hole net (off the pair's low), aligned to sorted holeNumbers. */
+  /** subjectId → per-hole net (off the pair's low), aligned 1:1 with the caller's holeNumbers. */
   netPerHoleBySubject: Record<string, Array<number | null>>;
   trustBySubject: Record<string, NetForSegmentTrust>;
 };
