@@ -124,7 +124,12 @@ export async function seedOrUpdateEventGameConfig(
     input.modifiers ?? priorConfig?.modifiers ?? baseConfig.modifiers;
 
   const candidate: GameConfig = {
-    ...baseConfig,
+    // Build an UPDATE from the prior config (preserve every stored field — cap,
+    // handicapAllowancePct, scope, etc.) and only overlay the explicit deltas; a
+    // FIRST write has no prior, so start from the preset base. (Rebuilding from
+    // base on every write would silently drop any prior optional field and could
+    // change settlement on a stake/lock-only PUT — codex review 2026-06-25.)
+    ...(priorConfig ?? baseConfig),
     pointValueSchedule,
     lockState,
     modifiers,
