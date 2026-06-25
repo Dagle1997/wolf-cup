@@ -21,7 +21,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { db as DbType } from '../db/index.js';
 import { gameConfig, type GameConfigRow } from '../db/schema/index.js';
-import type { GameConfig, PointValueSchedule } from '../engine/games/types.js';
+import type { GameConfig, Modifier, PointValueSchedule } from '../engine/games/types.js';
 import {
   parseGameConfig,
   deriveConfigColumns,
@@ -43,6 +43,12 @@ export type SeedOrUpdateInput = {
   pointValueSchedule?: PointValueSchedule | undefined;
   /** Optional lock delta. Defaults to 'locked' on the first seed if omitted. */
   lockState?: 'locked' | 'unlocked' | undefined;
+  /**
+   * Optional FULL modifier set (the rule pills: net-skins / greenie / polie / sandie
+   * on-off + variants). When provided it REPLACES the modifier list; when omitted the
+   * prior row's modifiers (or the preset's) are preserved. Validated via parseGameConfig.
+   */
+  modifiers?: Modifier[] | undefined;
   now: number;
 };
 
@@ -112,10 +118,16 @@ export async function seedOrUpdateEventGameConfig(
   const lockState: 'locked' | 'unlocked' =
     input.lockState ?? priorConfig?.lockState ?? baseConfig.lockState ?? 'locked';
 
+  // Rule pills: an explicit modifier set REPLACES the list; otherwise preserve the
+  // prior row's (or the preset's all-on default). parseGameConfig below validates it.
+  const modifiers: Modifier[] =
+    input.modifiers ?? priorConfig?.modifiers ?? baseConfig.modifiers;
+
   const candidate: GameConfig = {
     ...baseConfig,
     pointValueSchedule,
     lockState,
+    modifiers,
     // configVersion is preserved from the prior row if present (engine-version
     // bumps are not a stake/lock edit); otherwise the preset's.
     configVersion: priorConfig?.configVersion ?? baseConfig.configVersion,

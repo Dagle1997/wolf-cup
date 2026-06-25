@@ -15,7 +15,7 @@ const pointValueScheduleSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('front-back'), frontCents: z.number().int(), backCents: z.number().int() }).strict(),
 ]);
 
-const modifierSchema = z
+export const modifierSchema = z
   .object({
     type: z.string(),
     enabled: z.boolean(),

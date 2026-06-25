@@ -23,6 +23,8 @@ import { gameConfig } from '../db/schema/index.js';
 import { isEventOrganizerByEventId } from '../services/index.js';
 import { seedOrUpdateEventGameConfig } from '../services/game-config-write.js';
 import { resolveEventGameConfig } from '../services/resolve-game-config.js';
+import { modifierSchema } from '../engine/games/config-schema.js';
+import type { Modifier } from '../engine/games/types.js';
 
 export const adminEventGameConfigRouter = new Hono();
 const TENANT_ID = 'guyan';
@@ -46,6 +48,9 @@ const putBodySchema = z
   .object({
     pointValueSchedule: pointValueScheduleSchema.optional(),
     lockState: z.enum(['locked', 'unlocked']).optional(),
+    // Rule pills (net-skins / greenie / polie / sandie on-off + variants). Full set
+    // when present; omitted → preserved by the write service.
+    modifiers: z.array(modifierSchema).optional(),
   })
   .strict();
 
@@ -112,6 +117,10 @@ adminEventGameConfigRouter.put(
           contextId: CONTEXT(eventId),
           actorPlayerId: player.id,
           pointValueSchedule: parsed.data.pointValueSchedule,
+          // Zod-inferred modifier type widens `variant` to include explicit
+          // undefined; the write service re-validates via parseGameConfig, so the
+          // cast to the engine Modifier[] here is safe.
+          modifiers: parsed.data.modifiers as Modifier[] | undefined,
           lockState: parsed.data.lockState,
           now,
         }),

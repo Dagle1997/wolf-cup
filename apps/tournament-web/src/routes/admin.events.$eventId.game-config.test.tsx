@@ -62,6 +62,87 @@ describe('GameConfigPage', () => {
     });
   });
 
+  it('renders the four rule toggles ON by default (unseeded) + a rules summary; PUT sends full modifiers', async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ config: null }) }); // GET
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ config: { id: 'x', lockState: 'locked', configVersion: 1, configJson: '{}' } }) }); // PUT
+    render('evt1');
+
+    await waitFor(() => expect(screen.getByTestId('rule-toggle-net-skins')).toBeInTheDocument());
+    // All four default ON.
+    for (const t of ['net-skins', 'greenie', 'polie', 'sandie']) {
+      expect(screen.getByTestId(`rule-toggle-${t}`)).toHaveAttribute('aria-checked', 'true');
+    }
+    // Summary lists all four.
+    expect(screen.getByTestId('rules-summary')).toHaveTextContent(
+      'Net Skins · Greenies · Polies · Sandies',
+    );
+
+    await userEvent.click(screen.getByTestId('save-game-config'));
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'PUT');
+      expect(putCall).toBeTruthy();
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      expect(body.modifiers).toHaveLength(4);
+      const byType = Object.fromEntries(body.modifiers.map((m: { type: string }) => [m.type, m]));
+      expect(byType['net-skins']).toEqual({ type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } });
+      expect(byType['greenie']).toEqual({ type: 'greenie', enabled: true, variant: { carryover: true } });
+      expect(byType['polie']).toEqual({ type: 'polie', enabled: true });
+      expect(byType['sandie']).toEqual({ type: 'sandie', enabled: true });
+    });
+  });
+
+  it('toggling Sandies OFF drops it from the summary + sends enabled:false (variant preserved for others)', async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ config: null }) }); // GET
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ config: { id: 'x', lockState: 'locked', configVersion: 1, configJson: '{}' } }) }); // PUT
+    render('evt1');
+
+    await waitFor(() => expect(screen.getByTestId('rule-toggle-sandie')).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('rule-toggle-sandie'));
+    expect(screen.getByTestId('rule-toggle-sandie')).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByTestId('rules-summary')).toHaveTextContent('Net Skins · Greenies · Polies');
+    expect(screen.getByTestId('rules-summary')).not.toHaveTextContent('Sandies');
+
+    await userEvent.click(screen.getByTestId('save-game-config'));
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'PUT');
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      const byType = Object.fromEntries(body.modifiers.map((m: { type: string }) => [m.type, m]));
+      expect(byType['sandie']).toEqual({ type: 'sandie', enabled: false });
+      expect(byType['net-skins'].enabled).toBe(true);
+    });
+  });
+
+  it('hydrates rule toggles from a saved config (greenie disabled) and preserves its variant on save', async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    const configJson = JSON.stringify({
+      game: 'guyan',
+      pointValueSchedule: { kind: 'flat', cents: 500 },
+      modifiers: [
+        { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
+        { type: 'greenie', enabled: false, variant: { carryover: false } },
+        { type: 'polie', enabled: true },
+        { type: 'sandie', enabled: true },
+      ],
+    });
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ config: { id: 'x', lockState: 'locked', configVersion: 2, configJson } }) }); // GET
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ config: { id: 'x', lockState: 'locked', configVersion: 3, configJson: '{}' } }) }); // PUT
+    render('evt1');
+
+    await waitFor(() => expect(screen.getByTestId('rule-toggle-greenie')).toHaveAttribute('aria-checked', 'false'));
+    expect(screen.getByTestId('rules-summary')).not.toHaveTextContent('Greenies');
+
+    await userEvent.click(screen.getByTestId('save-game-config'));
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'PUT');
+      const body = JSON.parse((putCall![1] as RequestInit).body as string);
+      const byType = Object.fromEntries(body.modifiers.map((m: { type: string }) => [m.type, m]));
+      // The saved carryover:false variant is preserved (not reset to default true).
+      expect(byType['greenie']).toEqual({ type: 'greenie', enabled: false, variant: { carryover: false } });
+    });
+  });
+
   it('shows the front/back inputs when that mode is chosen and PUTs the split', async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ config: null }) }); // GET

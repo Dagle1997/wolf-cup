@@ -48,7 +48,18 @@ export const standardGuyanRevisionId = (tenantId: string): string =>
 export const STANDARD_GUYAN_BASE_CONFIG: GameConfig = {
   game: 'guyan-2v2',
   pointValueSchedule: { kind: 'flat', cents: 500 },
-  modifiers: [{ type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } }],
+  // Standard Guyan = Net Skins + Greenies + Polies + Sandies (Josh 2026-06-25), all
+  // ON by default. Greenie/polie/sandie are pure player-CLAIM count modifiers — with
+  // no claims they contribute 0, so enabling them is money-neutral until a player taps
+  // G/P/S. The organizer can flip any of them OFF on the game-config screen (rule pills),
+  // which also hides its claim button on score entry. net-skins basis stays 'net'
+  // (gross-basis for the birdie/eagle bonus is a future engine add).
+  modifiers: [
+    { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
+    { type: 'greenie', enabled: true, variant: { carryover: true } },
+    { type: 'polie', enabled: true },
+    { type: 'sandie', enabled: true },
+  ],
   lockState: 'locked',
   configVersion: 1,
 };

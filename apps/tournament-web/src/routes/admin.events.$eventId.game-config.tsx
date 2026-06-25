@@ -20,15 +20,51 @@ import { ErrorCard } from '../components/error-card';
 import { Card } from '../components/card';
 import { Button } from '../components/button';
 import { FormField } from '../components/form-field';
+import { RulesSummary } from '../components/rules-summary';
 
 type PointValueSchedule =
   | { kind: 'flat'; cents: number }
   | { kind: 'front-back'; frontCents: number; backCents: number };
 
+// F1 rule modifiers (Epic 2). The engine ships four; each carries an optional
+// `variant` we must preserve on save (net-skins basis/bonus, greenie carryover).
+type ModifierVariant = {
+  basis?: 'net' | 'gross';
+  bonus?: 'single' | 'double';
+  carryover?: boolean;
+};
+type ModifierType = 'net-skins' | 'greenie' | 'polie' | 'sandie';
+type Modifier = {
+  type: ModifierType;
+  enabled: boolean;
+  variant?: ModifierVariant;
+};
+
+// The four modifiers in display order. Standard Guyan now ships all four ON, so
+// a type absent from the saved config defaults ON (see hydration below).
+const RULE_TYPES: ReadonlyArray<{ type: ModifierType; label: string }> = [
+  { type: 'net-skins', label: 'Net Skins' },
+  { type: 'greenie', label: 'Greenies' },
+  { type: 'polie', label: 'Polies' },
+  { type: 'sandie', label: 'Sandies' },
+];
+
+/** Default variant for a modifier type (used when seeding a fresh config). */
+function defaultVariant(type: ModifierType): ModifierVariant | undefined {
+  // Net Skins is net-basis, single-bonus today. (Gross basis = future; the
+  // engine only supports net, so we never expose a net/gross control here.)
+  if (type === 'net-skins') return { basis: 'net', bonus: 'single' };
+  // Greenie defaults to carryover ON.
+  if (type === 'greenie') return { carryover: true };
+  // polie / sandie have no variant.
+  return undefined;
+}
+
 type GameConfigJson = {
   game: string;
   pointValueSchedule: PointValueSchedule;
   lockState?: 'locked' | 'unlocked';
+  modifiers?: Modifier[];
 };
 
 type GameConfigRow = {
@@ -67,6 +103,24 @@ export function GameConfigPage({ eventId }: { eventId: string }) {
   const [backDollars, setBackDollars] = useState(10);
   const [lockState, setLockState] = useState<'locked' | 'unlocked'>('locked');
 
+  // Rule modifiers. enabled[type] = whether that rule is ON; variants[type] =
+  // the modifier's existing variant (preserved across save). Standard Guyan
+  // ships all four ON, so an unseeded config / absent type defaults ON.
+  const [ruleEnabled, setRuleEnabled] = useState<Record<ModifierType, boolean>>({
+    'net-skins': true,
+    greenie: true,
+    polie: true,
+    sandie: true,
+  });
+  const [ruleVariants, setRuleVariants] = useState<Record<ModifierType, ModifierVariant | undefined>>(
+    {
+      'net-skins': defaultVariant('net-skins'),
+      greenie: defaultVariant('greenie'),
+      polie: undefined,
+      sandie: undefined,
+    },
+  );
+
   // Hydrate the controls from the saved config once loaded.
   useEffect(() => {
     const row = query.data?.config;
@@ -83,6 +137,31 @@ export function GameConfigPage({ eventId }: { eventId: string }) {
         setFrontDollars(Math.round(sched.frontCents / 100));
         setBackDollars(Math.round(sched.backCents / 100));
       }
+      // Hydrate rule toggles + variants. A type absent from the config defaults
+      // ON (Standard Guyan now ships all four). Variants are preserved so save
+      // round-trips net-skins {basis,bonus} and greenie {carryover} untouched.
+      const byType = new Map((cfg.modifiers ?? []).map((m) => [m.type, m] as const));
+      const nextEnabled: Record<ModifierType, boolean> = {
+        'net-skins': true,
+        greenie: true,
+        polie: true,
+        sandie: true,
+      };
+      const nextVariants: Record<ModifierType, ModifierVariant | undefined> = {
+        'net-skins': defaultVariant('net-skins'),
+        greenie: defaultVariant('greenie'),
+        polie: undefined,
+        sandie: undefined,
+      };
+      for (const { type } of RULE_TYPES) {
+        const m = byType.get(type);
+        if (m) {
+          nextEnabled[type] = m.enabled;
+          nextVariants[type] = m.variant ?? defaultVariant(type);
+        }
+      }
+      setRuleEnabled(nextEnabled);
+      setRuleVariants(nextVariants);
     } catch {
       /* keep defaults on a malformed config */
     }
@@ -94,11 +173,20 @@ export function GameConfigPage({ eventId }: { eventId: string }) {
         mode === 'flat'
           ? { kind: 'flat', cents: dollarsToCents(flatDollars) }
           : { kind: 'front-back', frontCents: dollarsToCents(frontDollars), backCents: dollarsToCents(backDollars) };
+      // Build the FULL modifiers array — the backend treats a present
+      // `modifiers` as authoritative, so we always send all four with their
+      // preserved variants and per-toggle `enabled`.
+      const modifiers: Modifier[] = RULE_TYPES.map(({ type }) => {
+        const variant = ruleVariants[type];
+        const m: Modifier = { type, enabled: ruleEnabled[type] };
+        if (variant !== undefined) m.variant = variant;
+        return m;
+      });
       const res = await fetch(`/api/admin/events/${encodeURIComponent(eventId)}/game-config`, {
         method: 'PUT',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ pointValueSchedule, lockState }),
+        body: JSON.stringify({ pointValueSchedule, lockState, modifiers }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { code?: string; reason?: string };
@@ -191,6 +279,49 @@ export function GameConfigPage({ eventId }: { eventId: string }) {
               </FormField>
             </div>
           ) : null}
+        </fieldset>
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend style={{ fontWeight: 600, marginBottom: 8 }}>Rules</legend>
+          <div style={{ marginBottom: 12 }}>
+            <RulesSummary
+              modifiers={RULE_TYPES.map(({ type }) => ({ type, enabled: ruleEnabled[type] }))}
+            />
+          </div>
+          {RULE_TYPES.map(({ type, label }) => {
+            const on = ruleEnabled[type];
+            return (
+              <div
+                key={type}
+                data-testid={`rule-row-${type}`}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44 }}
+              >
+                <span style={{ fontWeight: 600 }}>{label}</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={on}
+                  data-testid={`rule-toggle-${type}`}
+                  aria-label={`${on ? 'Disable' : 'Enable'} ${label}`}
+                  onClick={() => setRuleEnabled((prev) => ({ ...prev, [type]: !prev[type] }))}
+                  style={{
+                    minHeight: 36, minWidth: 64, padding: '0 14px', borderRadius: 'var(--radius-md)',
+                    fontWeight: 700, fontSize: 'var(--font-sm)', cursor: 'pointer',
+                    border: `1px solid ${on ? 'var(--color-brand-primary)' : 'var(--color-border)'}`,
+                    background: on ? 'var(--color-brand-primary)' : 'transparent',
+                    color: on ? '#0a0a0a' : 'var(--color-text-muted)',
+                  }}
+                >
+                  {on ? 'On' : 'Off'}
+                </button>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', marginTop: 8 }}>
+            Net Skins is scored on net (gross basis = future).
+          </div>
         </fieldset>
       </Card>
 

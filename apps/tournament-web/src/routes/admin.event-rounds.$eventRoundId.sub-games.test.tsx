@@ -79,13 +79,14 @@ describe('SubGamesPage', () => {
     expect(screen.getByTestId('participant-skins-p-alice')).not.toBeDisabled();
     expect(screen.getByTestId('participant-skins-p-bob')).not.toBeDisabled();
     expect(screen.getByTestId('participant-skins-p-carol')).not.toBeDisabled();
-    // CTP / sandies / putting_contest fieldsets disabled with tooltip.
+    // CTP / putting_contest fieldsets disabled with tooltip. (Sandies was
+    // removed from the picker — it lives in the Guyan rule modifiers now.)
     expect(screen.getByTestId('sub-game-section-ctp')).toBeDisabled();
     expect(screen.getByTestId('sub-game-section-ctp')).toHaveAttribute(
       'title',
       'Coming in v1.5',
     );
-    expect(screen.getByTestId('sub-game-section-sandies')).toBeDisabled();
+    expect(screen.queryByTestId('sub-game-section-sandies')).toBeNull();
     expect(screen.getByTestId('sub-game-section-putting_contest')).toBeDisabled();
   });
 
@@ -195,9 +196,10 @@ describe('SubGamesPage', () => {
       expect(screen.getByTestId('participant-ctp-p-alice')).toBeInTheDocument();
     });
 
-    // ctp/sandies/putting_contest checkboxes for Alice are disabled.
+    // ctp/putting_contest checkboxes for Alice are disabled. (Sandies removed
+    // from the picker.)
     expect(screen.getByTestId('participant-ctp-p-alice')).toBeDisabled();
-    expect(screen.getByTestId('participant-sandies-p-alice')).toBeDisabled();
+    expect(screen.queryByTestId('participant-sandies-p-alice')).toBeNull();
     expect(screen.getByTestId('participant-putting_contest-p-alice')).toBeDisabled();
   });
 

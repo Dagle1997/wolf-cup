@@ -209,3 +209,53 @@ describe('seedOrUpdateEventGameConfig — second write (update)', () => {
     expect(cfg.pointValueSchedule.backCents).toBe(1000);
   });
 });
+
+describe('seedOrUpdateEventGameConfig — rule pills (modifiers)', () => {
+  test('first seed carries all four Standard Guyan modifiers ON', async () => {
+    const eventId = await seedEvent();
+    const res = await run(eventId, { pointValueSchedule: { kind: 'flat', cents: 500 } });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const onTypes = res.config.modifiers.filter((m) => m.enabled).map((m) => m.type).sort();
+    expect(onTypes).toEqual(['greenie', 'net-skins', 'polie', 'sandie']);
+  });
+
+  test('a modifiers update toggles Sandie OFF (others stay on) and persists', async () => {
+    const eventId = await seedEvent();
+    await run(eventId, { pointValueSchedule: { kind: 'flat', cents: 500 } });
+    const res = await run(eventId, {
+      modifiers: [
+        { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
+        { type: 'greenie', enabled: true, variant: { carryover: true } },
+        { type: 'polie', enabled: true },
+        { type: 'sandie', enabled: false },
+      ],
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const byType = new Map(res.config.modifiers.map((m) => [m.type, m.enabled]));
+    expect(byType.get('sandie')).toBe(false);
+    expect(byType.get('greenie')).toBe(true);
+    expect(byType.get('net-skins')).toBe(true);
+    // Persisted to config_json.
+    const row = (await db.select().from(gameConfig).where(eq(gameConfig.refId, eventId)))[0]!;
+    const cfg = JSON.parse(row.configJson) as { modifiers: Array<{ type: string; enabled: boolean }> };
+    expect(cfg.modifiers.find((m) => m.type === 'sandie')!.enabled).toBe(false);
+  });
+
+  test('a point-value-only update PRESERVES the prior modifier toggles', async () => {
+    const eventId = await seedEvent();
+    await run(eventId, {
+      pointValueSchedule: { kind: 'flat', cents: 500 },
+      modifiers: [
+        { type: 'net-skins', enabled: true, variant: { basis: 'net', bonus: 'single' } },
+        { type: 'sandie', enabled: false },
+      ],
+    });
+    const res = await run(eventId, { pointValueSchedule: { kind: 'flat', cents: 1000 } });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // Sandie stays off (not reset to the all-on preset) when only the stake changes.
+    expect(res.config.modifiers.find((m) => m.type === 'sandie')!.enabled).toBe(false);
+  });
+});

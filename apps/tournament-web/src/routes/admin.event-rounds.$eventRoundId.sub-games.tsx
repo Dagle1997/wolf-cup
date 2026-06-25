@@ -31,7 +31,9 @@ import { ErrorCard } from '../components/error-card';
 
 // ---- Types ----------------------------------------------------------------
 
-const ALL_SUB_GAME_TYPES = ['skins', 'ctp', 'sandies', 'putting_contest'] as const;
+// Sandies dropped from the Sub-Games picker (2026-06-24) — it belongs in the
+// Guyan rule modifiers, not here. UI-only; the server schema still accepts it.
+const ALL_SUB_GAME_TYPES = ['skins', 'ctp', 'putting_contest'] as const;
 type SubGameType = (typeof ALL_SUB_GAME_TYPES)[number];
 
 const V1_ENABLED: ReadonlySet<SubGameType> = new Set(['skins'] as const);
@@ -39,7 +41,6 @@ const V1_ENABLED: ReadonlySet<SubGameType> = new Set(['skins'] as const);
 const TYPE_LABELS: Record<SubGameType, string> = {
   skins: 'Skins',
   ctp: 'Closest to the Pin (CTP)',
-  sandies: 'Sandies',
   putting_contest: 'Putting Contest',
 };
 
@@ -65,7 +66,6 @@ function emptyDraft(): DraftState {
   return {
     skins: { buyInDollars: '', participantPlayerIds: new Set() },
     ctp: { buyInDollars: '', participantPlayerIds: new Set() },
-    sandies: { buyInDollars: '', participantPlayerIds: new Set() },
     putting_contest: { buyInDollars: '', participantPlayerIds: new Set() },
   };
 }
