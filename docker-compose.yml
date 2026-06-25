@@ -103,6 +103,14 @@ services:
       # /opt/wolf-cup/.env to EXPOSE F1 dollars (e.g. the Pete Dye money board +
       # the during-round scorecard $ row). Mirrors the kill-switch pattern above.
       - TOURNAMENT_F1_MONEY_ENABLED=${TOURNAMENT_F1_MONEY_ENABLED:-}
+      # At-rest DB encryption (security decision 2026-06-23). Empty/absent default
+      # → unencrypted file (today's behavior; dev/CI). Set DB_ENCRYPTION_KEY in
+      # /opt/wolf-cup/.env to open the libsql file as an ENCRYPTED database. The
+      # key must match how the file was CREATED — an encrypted DB can't be opened
+      # without it, and a key can't be retrofitted onto an unencrypted DB, so the
+      # encrypted DB is born fresh with the key present (the cutover: set the env,
+      # drop the volume, redeploy → migrations + seed recreate it encrypted).
+      - DB_ENCRYPTION_KEY=${DB_ENCRYPTION_KEY:-}
     volumes:
       - tournament_sqlite_data:/app/data
     networks:
