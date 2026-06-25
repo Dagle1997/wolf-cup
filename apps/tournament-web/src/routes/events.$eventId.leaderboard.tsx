@@ -481,12 +481,18 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
       ) : null}
 
       {/* Round header: name + status pill + foursome-results link. */}
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+      <div style={{ marginBottom: 'var(--space-3)' }}>
         {data.round !== null ? (
           <>
-            <strong style={{ fontSize: 'var(--font-md)' }}>{data.round.name}</strong>
-            <StatusPill status={data.round.status} />
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            {/* Round name + status: their own line so the action links below
+                always have full width and never get crushed on a phone. */}
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+              <strong style={{ fontSize: 'var(--font-md)', wordBreak: 'break-word' }}>{data.round.name}</strong>
+              <StatusPill status={data.round.status} />
+            </div>
+            {/* Action links wrap as needed; each stays on its own word
+                (whiteSpace:nowrap) with a ≥44px tap target. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2) var(--space-4)', marginTop: 'var(--space-2)' }}>
               {/* One-tap back to scoring when the round is live (the return half
                   of the scoring ⇄ leaderboard round trip Josh asked for). */}
               {data.round.status === 'in_progress' ? (
@@ -494,7 +500,7 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
                   data-testid="leaderboard-score-link"
                   to="/rounds/$roundId/score-entry"
                   params={{ roundId: data.round.id }}
-                  style={{ fontSize: 'var(--font-sm)', fontWeight: 800, color: 'var(--color-brand-primary)' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontSize: 'var(--font-sm)', fontWeight: 800, color: 'var(--color-brand-primary)', whiteSpace: 'nowrap' }}
                 >
                   Score →
                 </Link>
@@ -504,7 +510,7 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
                   data-testid="foursome-results-link"
                   to="/events/$eventId/event-rounds/$eventRoundId/foursome-results"
                   params={{ eventId, eventRoundId: data.round.eventRoundId }}
-                  style={{ fontSize: 'var(--font-sm)' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, fontSize: 'var(--font-sm)', whiteSpace: 'nowrap' }}
                 >
                   Foursome results →
                 </Link>
@@ -567,11 +573,11 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
               const chPart = row.courseHandicap != null ? ` · CH ${row.courseHandicap}` : '';
               const subline = `HI ${formatHandicap(row.handicapIndex)}${chPart} · ${row.throughHole === 0 ? 'not started' : `Thru ${row.throughHole}`}`;
               const nameBlock = (
-                <span style={{ display: 'block' }}>
-                  <span style={{ display: 'block', fontWeight: 600, lineHeight: 1.15 }}>
+                <span style={{ display: 'block', minWidth: 0 }}>
+                  <span style={{ display: 'block', fontWeight: 600, lineHeight: 1.15, wordBreak: 'break-word' }}>
                     {row.playerName}{isViewer ? ' (you)' : ''}
                   </span>
-                  <span style={{ display: 'block', fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', marginTop: 1 }}>
+                  <span style={{ display: 'block', fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', marginTop: 1, wordBreak: 'break-word' }}>
                     {subline}
                   </span>
                 </span>

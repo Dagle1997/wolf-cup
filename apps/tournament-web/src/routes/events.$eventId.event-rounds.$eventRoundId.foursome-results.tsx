@@ -18,7 +18,6 @@ import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
-import { ScrollableTable } from '../components/scrollable-table';
 import { formatCents } from '../lib/format-cents';
 
 type PlayerHole = { playerId: string; gross: number | null; net: number | null };
@@ -64,6 +63,112 @@ function moneyColor(cents: number): string | undefined {
 function cell(gross: number | null, net: number | null): string {
   if (gross === null) return '—';
   return net !== null && net !== gross ? `${gross} (${net})` : `${gross}`;
+}
+
+/**
+ * A single team's per-hole results as a phone-first stacked mini-list (NOT a
+ * wide table). One row per hole: the hole number, each player's gross(net),
+ * the team's best net, and a "won" marker on holes this team won. The team's
+ * money total sits at the bottom. Replaces the unreadable 8+ column table on
+ * a phone; preserves every value the table showed.
+ */
+function TeamCard({
+  teamKey,
+  heading,
+  players,
+  perHole,
+  bestOf,
+  nameOf,
+  totalCents,
+  totalLabel,
+}: {
+  teamKey: 'teamA' | 'teamB';
+  heading: string;
+  players: Array<{ playerId: string; name: string | null }>;
+  perHole: FoursomeHole[];
+  bestOf: (h: FoursomeHole) => number | null;
+  nameOf: (pid: string) => string;
+  totalCents: number;
+  totalLabel: string;
+}) {
+  const cellPad = '2px 0';
+  // Per-hole money ("$ to this team"). Hidden when every hole is $0 — which is
+  // the case for F1 events (per-hole breakdown is Epic-4 deferred; only the team
+  // TOTAL below is real). Legacy 2v2 events DO carry per-hole money, so we show
+  // the column then (restores what the old table showed — codex/gemini review).
+  const showPerHoleMoney = perHole.some((h) => h.moneyTeamACents !== 0);
+  const teamMoney = (h: FoursomeHole) => (teamKey === 'teamA' ? h.moneyTeamACents : -h.moneyTeamACents);
+  return (
+    <div className="card" style={{ padding: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+      <div
+        style={{
+          fontWeight: 700,
+          fontSize: 'var(--font-sm)',
+          marginBottom: 'var(--space-2)',
+          wordBreak: 'break-word',
+        }}
+      >
+        {heading}
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--font-sm)', tableLayout: 'fixed' }}>
+        <thead>
+          <tr style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)' }}>
+            <th style={{ textAlign: 'left', padding: cellPad, width: 36 }}>Hole</th>
+            <th style={{ textAlign: 'left', padding: cellPad, width: 24 }}>Par</th>
+            {players.map((p) => (
+              <th key={p.playerId} style={{ textAlign: 'right', padding: cellPad, wordBreak: 'break-word' }}>
+                {nameOf(p.playerId)}
+              </th>
+            ))}
+            <th style={{ textAlign: 'right', padding: cellPad, width: 40 }}>Best</th>
+            <th style={{ textAlign: 'center', padding: cellPad, width: 36 }}>Won</th>
+            {showPerHoleMoney ? <th style={{ textAlign: 'right', padding: cellPad, width: 52 }}>$</th> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {perHole.map((h) => {
+            const byId = new Map(h.players.map((p) => [p.playerId, p]));
+            const wonThis = h.winner === teamKey;
+            return (
+              <tr key={h.holeNumber} style={{ borderTop: '1px solid var(--color-border-subtle, var(--color-border))' }}>
+                <td style={{ padding: cellPad, fontVariantNumeric: 'tabular-nums' }}>{h.holeNumber}</td>
+                <td style={{ padding: cellPad, color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{h.par}</td>
+                {players.map((p) => (
+                  <td key={p.playerId} style={{ textAlign: 'right', padding: cellPad, fontVariantNumeric: 'tabular-nums' }}>
+                    {cell(byId.get(p.playerId)?.gross ?? null, byId.get(p.playerId)?.net ?? null)}
+                  </td>
+                ))}
+                <td style={{ textAlign: 'right', padding: cellPad, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{bestOf(h) ?? '—'}</td>
+                <td style={{ textAlign: 'center', padding: cellPad, color: wonThis ? 'var(--color-success, var(--color-brand-primary))' : 'var(--color-text-muted)', fontWeight: wonThis ? 700 : 400 }}>
+                  {wonThis ? '✓' : h.winner === 'tie' ? '–' : ''}
+                </td>
+                {showPerHoleMoney ? (
+                  <td style={{ textAlign: 'right', padding: cellPad, color: moneyColor(teamMoney(h)), fontVariantNumeric: 'tabular-nums' }}>
+                    {formatCents(teamMoney(h))}
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          marginTop: 'var(--space-2)',
+          paddingTop: 'var(--space-2)',
+          borderTop: '1px solid var(--color-border)',
+        }}
+      >
+        <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', wordBreak: 'break-word' }}>{totalLabel}</span>
+        <strong style={{ color: moneyColor(totalCents), fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+          {formatCents(totalCents)}
+        </strong>
+      </div>
+    </div>
+  );
 }
 
 export function FoursomeResultsPage({
@@ -123,68 +228,36 @@ export function FoursomeResultsPage({
           [...f.teamA, ...f.teamB].find((p) => p.playerId === pid)?.name ?? '—';
         const teamAName = f.teamA.map((p) => p.name ?? '—').join(' & ');
         const teamBName = f.teamB.map((p) => p.name ?? '—').join(' & ');
+        const teamALabel = teamAName.split(' & ')[0];
         return (
           <section
             key={f.foursomeNumber}
             data-testid={`foursome-${f.foursomeNumber}`}
-            style={{ marginBottom: 20 }}
+            style={{ marginBottom: 'var(--space-5)' }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-              <h2 style={{ fontSize: 'var(--font-md, 1rem)', margin: 0 }}>
-                Foursome {f.foursomeNumber}: {teamAName} vs {teamBName}
-              </h2>
-              <strong style={{ color: moneyColor(f.teamATotalCents) }}>
-                {teamAName.split(' & ')[0]}’s team {formatCents(f.teamATotalCents)}
-              </strong>
-            </div>
-            <ScrollableTable label={`Foursome ${f.foursomeNumber} scorecard`}>
-              <table style={{ borderCollapse: 'collapse', fontSize: 'var(--font-sm)' }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left', padding: '2px 6px' }}>Hole</th>
-                    <th style={{ textAlign: 'right', padding: '2px 6px' }}>Par</th>
-                    {f.teamA.map((p) => (
-                      <th key={p.playerId} style={{ textAlign: 'right', padding: '2px 6px' }}>{nameOf(p.playerId)}</th>
-                    ))}
-                    <th style={{ textAlign: 'right', padding: '2px 6px' }}>A best</th>
-                    {f.teamB.map((p) => (
-                      <th key={p.playerId} style={{ textAlign: 'right', padding: '2px 6px' }}>{nameOf(p.playerId)}</th>
-                    ))}
-                    <th style={{ textAlign: 'right', padding: '2px 6px' }}>B best</th>
-                    <th style={{ textAlign: 'center', padding: '2px 6px' }}>Won</th>
-                    <th style={{ textAlign: 'right', padding: '2px 6px' }}>$ A</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {f.perHole.map((h) => {
-                    const byId = new Map(h.players.map((p) => [p.playerId, p]));
-                    const won = h.winner === 'teamA' ? 'A' : h.winner === 'teamB' ? 'B' : h.winner === 'tie' ? '–' : '';
-                    return (
-                      <tr key={h.holeNumber}>
-                        <td style={{ padding: '2px 6px' }}>{h.holeNumber}</td>
-                        <td style={{ textAlign: 'right', padding: '2px 6px' }}>{h.par}</td>
-                        {f.teamA.map((p) => (
-                          <td key={p.playerId} style={{ textAlign: 'right', padding: '2px 6px' }}>
-                            {cell(byId.get(p.playerId)?.gross ?? null, byId.get(p.playerId)?.net ?? null)}
-                          </td>
-                        ))}
-                        <td style={{ textAlign: 'right', padding: '2px 6px', fontWeight: 600 }}>{h.teamABestNet ?? '—'}</td>
-                        {f.teamB.map((p) => (
-                          <td key={p.playerId} style={{ textAlign: 'right', padding: '2px 6px' }}>
-                            {cell(byId.get(p.playerId)?.gross ?? null, byId.get(p.playerId)?.net ?? null)}
-                          </td>
-                        ))}
-                        <td style={{ textAlign: 'right', padding: '2px 6px', fontWeight: 600 }}>{h.teamBBestNet ?? '—'}</td>
-                        <td style={{ textAlign: 'center', padding: '2px 6px' }}>{won}</td>
-                        <td style={{ textAlign: 'right', padding: '2px 6px', color: moneyColor(h.moneyTeamACents) }}>
-                          {h.moneyTeamACents === 0 ? '—' : formatCents(h.moneyTeamACents)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </ScrollableTable>
+            <h2 style={{ fontSize: 'var(--font-md, 1rem)', margin: '0 0 var(--space-3)', wordBreak: 'break-word' }}>
+              Foursome {f.foursomeNumber}: {teamAName} vs {teamBName}
+            </h2>
+            <TeamCard
+              teamKey="teamA"
+              heading={teamAName}
+              players={f.teamA}
+              perHole={f.perHole}
+              bestOf={(h) => h.teamABestNet}
+              nameOf={nameOf}
+              totalCents={f.teamATotalCents}
+              totalLabel={`${teamALabel}’s team`}
+            />
+            <TeamCard
+              teamKey="teamB"
+              heading={teamBName}
+              players={f.teamB}
+              perHole={f.perHole}
+              bestOf={(h) => h.teamBBestNet}
+              nameOf={nameOf}
+              totalCents={-f.teamATotalCents}
+              totalLabel={`${teamBName.split(' & ')[0]}’s team`}
+            />
           </section>
         );
       })}

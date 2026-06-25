@@ -105,9 +105,9 @@ export function ScorecardGrid({
   const totalMoney = fMoney.total + bMoney.total;
   const totalMoneyCount = fMoney.count + bMoney.count;
 
-  const tdC = 'text-center py-[3px] text-[10px]';
-  const tdL = 'pl-2 pr-1 py-[3px] text-[10px] font-semibold whitespace-nowrap';
-  const tdTot = 'text-center py-[3px] text-[10px] font-bold';
+  const tdC = 'text-center py-[3px] text-[12px]';
+  const tdL = 'pl-2 pr-1 py-[3px] text-[12px] font-semibold whitespace-nowrap';
+  const tdTot = 'text-center py-[3px] text-[12px] font-bold';
 
   /** Render one Score cell (HoleBadge for played holes, em-dash + dot otherwise). */
   const scoreCell = (h: ScorecardHole | null, key: number) => (

@@ -112,7 +112,7 @@ export function MyMoneyPage({ eventId }: { eventId: string }) {
       {/* Hero: the one number anyone actually wants. */}
       <div className="card" data-testid="my-money-grand-total" style={{ textAlign: 'center', padding: 'var(--space-5)', marginBottom: 'var(--space-4)' }}>
         <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Your money this event</div>
-        <div style={{ fontSize: 'var(--font-2xl)', fontWeight: 800, color: netColor(totalNetCents), marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ fontSize: 'var(--font-xl)', fontWeight: 800, color: netColor(totalNetCents), marginTop: 2, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
           {formatCents(totalNetCents)}
         </div>
       </div>
@@ -126,9 +126,9 @@ export function MyMoneyPage({ eventId }: { eventId: string }) {
           className="card"
           style={{ marginBottom: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)' }}
         >
-          <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', listStyle: 'none' }}>
-            <span style={{ fontSize: 'var(--font-md)', fontWeight: 600 }}>{game.label}</span>
-            <strong data-testid={`my-money-game-total-${game.key}`} style={{ color: netColor(game.netToViewerCents), fontVariantNumeric: 'tabular-nums' }}>
+          <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-2)', cursor: 'pointer', listStyle: 'none', minHeight: 'var(--control-height)' }}>
+            <span style={{ fontSize: 'var(--font-md)', fontWeight: 600, minWidth: 0, overflowWrap: 'anywhere' }}>{game.label}</span>
+            <strong data-testid={`my-money-game-total-${game.key}`} style={{ color: netColor(game.netToViewerCents), fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
               {formatCents(game.netToViewerCents)}
             </strong>
           </summary>

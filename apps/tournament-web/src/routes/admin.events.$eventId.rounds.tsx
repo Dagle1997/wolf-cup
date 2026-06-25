@@ -116,6 +116,7 @@ function RoundCourseEditor({ eventId }: { eventId: string }) {
                   <select
                     aria-label={`Round ${r.roundNumber} course`}
                     value={d.revId}
+                    style={{ maxWidth: '100%' }}
                     onChange={(e) => {
                       const revId = e.target.value;
                       const c = courses.find((x) => x.latestRevision?.id === revId);
@@ -132,6 +133,7 @@ function RoundCourseEditor({ eventId }: { eventId: string }) {
                   <select
                     aria-label={`Round ${r.roundNumber} tee`}
                     value={d.tee}
+                    style={{ maxWidth: '100%' }}
                     onChange={(e) => setDraft((p) => ({ ...p, [r.id]: { ...d, tee: e.target.value } }))}
                   >
                     {tees.length === 0 ? <option value={d.tee}>{d.tee || '—'}</option> : null}

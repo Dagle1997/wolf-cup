@@ -51,16 +51,19 @@ export function HeadToHeadCard({
   let running = 0;
   return (
     <ScrollableTable label={`Hole-by-hole vs ${opponentLabel}`}>
-      <table style={{ borderCollapse: 'collapse', fontSize: 'var(--font-sm)' }}>
+      {/* Scoped, phone-first compaction: tight padding, and hide the Par
+          column on narrow screens (its info is low-value next to net score). */}
+      <style>{H2H_STYLE}</style>
+      <table className="h2h-card" style={{ borderCollapse: 'collapse', fontSize: 'var(--font-xs)', width: '100%' }}>
         <thead>
           <tr>
-            <th style={{ textAlign: 'left', padding: '2px 8px' }}>Hole</th>
-            <th style={{ textAlign: 'right', padding: '2px 8px' }}>Par</th>
-            <th style={{ textAlign: 'right', padding: '2px 8px' }}>{viewerLabel}</th>
-            <th style={{ textAlign: 'right', padding: '2px 8px' }}>{opponentLabel}</th>
-            <th style={{ textAlign: 'center', padding: '2px 8px' }}>Won</th>
-            <th style={{ textAlign: 'right', padding: '2px 8px' }}>$</th>
-            <th style={{ textAlign: 'right', padding: '2px 8px' }}>Total</th>
+            <th className="h2h-l">Hole</th>
+            <th className="h2h-r h2h-par">Par</th>
+            <th className="h2h-r">{viewerLabel}</th>
+            <th className="h2h-r">{opponentLabel}</th>
+            <th className="h2h-c">Won</th>
+            <th className="h2h-r h2h-money">$</th>
+            <th className="h2h-r h2h-money">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -70,19 +73,17 @@ export function HeadToHeadCard({
               h.winner === 'viewer' ? '✓' : h.winner === 'opponent' ? '✗' : h.winner === 'halved' ? '–' : '';
             return (
               <tr key={h.holeNumber}>
-                <td style={{ padding: '2px 8px' }}>{h.holeNumber}</td>
-                <td style={{ textAlign: 'right', padding: '2px 8px' }}>{h.par}</td>
-                <td style={{ textAlign: 'right', padding: '2px 8px' }}>
-                  {score(h.viewerGross, h.viewerNet)}
-                </td>
-                <td style={{ textAlign: 'right', padding: '2px 8px' }}>
+                <td className="h2h-l">{h.holeNumber}</td>
+                <td className="h2h-r h2h-par">{h.par}</td>
+                <td className="h2h-r">{score(h.viewerGross, h.viewerNet)}</td>
+                <td className="h2h-r">
                   {showOpponentScore ? score(h.oppGross, h.oppNet) : h.oppNet ?? '—'}
                 </td>
-                <td style={{ textAlign: 'center', padding: '2px 8px' }}>{wonMark}</td>
-                <td style={{ textAlign: 'right', padding: '2px 8px', color: moneyColor(h.moneyToViewerCents) }}>
+                <td className="h2h-c">{wonMark}</td>
+                <td className="h2h-r h2h-money" style={{ color: moneyColor(h.moneyToViewerCents) }}>
                   {h.moneyToViewerCents === 0 ? '—' : formatCents(h.moneyToViewerCents)}
                 </td>
-                <td style={{ textAlign: 'right', padding: '2px 8px', color: moneyColor(running) }}>
+                <td className="h2h-r h2h-money" style={{ color: moneyColor(running) }}>
                   {formatCents(running)}
                 </td>
               </tr>
@@ -93,3 +94,20 @@ export function HeadToHeadCard({
     </ScrollableTable>
   );
 }
+
+/**
+ * Phone-first table styling. Tight 1px/4px cell padding so 7 columns read at
+ * 390px; money columns never wrap; the Par column collapses below 360px where
+ * horizontal room is tightest (par is the least-needed column when net score is
+ * already shown). Font floor honored (--font-xs = 12px).
+ */
+const H2H_STYLE = `
+.h2h-card th, .h2h-card td { padding: 2px 4px; }
+.h2h-card .h2h-l { text-align: left; }
+.h2h-card .h2h-r { text-align: right; }
+.h2h-card .h2h-c { text-align: center; }
+.h2h-card .h2h-money { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 359px) {
+  .h2h-card .h2h-par { display: none; }
+}
+`;

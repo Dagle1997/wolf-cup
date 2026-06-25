@@ -33,7 +33,6 @@ import { EmptyState } from '../components/empty-state';
 import { Card } from '../components/card';
 import { Button } from '../components/button';
 import { FormField } from '../components/form-field';
-import { ScrollableTable } from '../components/scrollable-table';
 
 // ---- Types ----------------------------------------------------------------
 
@@ -571,139 +570,132 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
       ) : visibleBets.length === 0 ? (
         <EmptyState icon="🎲" title="No bets yet" body="No bets yet — post one above." />
       ) : (
-        <ScrollableTable label="The Action board">
-          <table>
-            <thead>
-              <tr>
-                <th>Matchup</th>
-                <th>Stake</th>
-                <th>Your take</th>
-                <th>Status</th>
-                <th>Who can see</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleBets.map((b) => {
-                const a = b.sides.find((s) => s.side === 'A');
-                const bb = b.sides.find((s) => s.side === 'B');
-                const matchup = `${a?.subjectName ?? '—'} vs ${bb?.subjectName ?? '—'}`;
-                const winnerName =
-                  b.winnerSubjectId != null
-                    ? b.sides.find((s) => s.subjectPlayerId === b.winnerSubjectId)?.subjectName ??
-                      nameById.get(b.winnerSubjectId) ??
-                      null
-                    : null;
+        <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+          {visibleBets.map((b) => {
+            const a = b.sides.find((s) => s.side === 'A');
+            const bb = b.sides.find((s) => s.side === 'B');
+            const matchup = `${a?.subjectName ?? '—'} vs ${bb?.subjectName ?? '—'}`;
+            const winnerName =
+              b.winnerSubjectId != null
+                ? b.sides.find((s) => s.subjectPlayerId === b.winnerSubjectId)?.subjectName ??
+                  nameById.get(b.winnerSubjectId) ??
+                  null
+                : null;
 
-                // The viewer's signed P&L on this bet (h2h = winner takes stake).
-                const mySide = b.sides.find((s) => s.stakeholderPlayerId === viewerId);
-                const isStakeholder = mySide != null;
-                let take: { text: string; color: string } = {
-                  text: '—',
-                  color: 'var(--color-text-muted)',
-                };
-                if (isStakeholder) {
-                  if (b.state === 'push') {
-                    take = { text: '$0', color: 'var(--color-text-muted)' };
-                  } else if (b.state === 'settled' || b.state === 'finalized') {
-                    if (b.winnerSubjectId == null) {
-                      take = { text: '$0', color: 'var(--color-text-muted)' };
-                    } else if (mySide.subjectPlayerId === b.winnerSubjectId) {
-                      take = {
-                        text: fmtSignedWholeDollar(b.stakeCents),
-                        color: 'var(--color-money-pos)',
-                      };
-                    } else {
-                      take = {
-                        text: fmtSignedWholeDollar(-b.stakeCents),
-                        color: 'var(--color-money-neg)',
-                      };
-                    }
-                  } else if (b.state === 'live' || b.state === 'provisional') {
-                    take = { text: 'pending', color: 'var(--color-text-muted)' };
-                  } else {
-                    // unsettleable / anything else: nothing definitive to show.
-                    take = { text: '—', color: 'var(--color-text-muted)' };
-                  }
+            // The viewer's signed P&L on this bet (h2h = winner takes stake).
+            const mySide = b.sides.find((s) => s.stakeholderPlayerId === viewerId);
+            const isStakeholder = mySide != null;
+            let take: { text: string; color: string } = {
+              text: '—',
+              color: 'var(--color-text-muted)',
+            };
+            if (isStakeholder) {
+              if (b.state === 'push') {
+                take = { text: '$0', color: 'var(--color-text-muted)' };
+              } else if (b.state === 'settled' || b.state === 'finalized') {
+                if (b.winnerSubjectId == null) {
+                  take = { text: '$0', color: 'var(--color-text-muted)' };
+                } else if (mySide.subjectPlayerId === b.winnerSubjectId) {
+                  take = { text: fmtSignedWholeDollar(b.stakeCents), color: 'var(--color-money-pos)' };
+                } else {
+                  take = { text: fmtSignedWholeDollar(-b.stakeCents), color: 'var(--color-money-neg)' };
                 }
+              } else if (b.state === 'live' || b.state === 'provisional') {
+                take = { text: 'pending', color: 'var(--color-text-muted)' };
+              } else {
+                take = { text: '—', color: 'var(--color-text-muted)' };
+              }
+            }
 
-                const canCancel = isStakeholder && b.state === 'live';
+            const canCancel = isStakeholder && b.state === 'live';
 
-                return (
-                  <tr key={b.betId} data-testid={`action-row-${b.betId}`}>
-                    <td>
-                      {matchup}
-                      <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)', marginTop: 'var(--space-1)' }}>
-                        {b.basis} · {holeScopeLabel(b.holeScope)}
-                      </div>
-                    </td>
-                    <td>{fmtUsd(b.stakeCents)}</td>
-                    <td
+            // One stacked CARD per bet — readable on a phone, no sideways scroll.
+            return (
+              <div
+                key={b.betId}
+                data-testid={`action-row-${b.betId}`}
+                className="card"
+                style={{ padding: 'var(--space-3) var(--space-4)' }}
+              >
+                {/* Matchup + stake */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--space-2)' }}>
+                  <strong style={{ fontSize: 'var(--font-md)', wordBreak: 'break-word' }}>{matchup}</strong>
+                  <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtUsd(b.stakeCents)}</span>
+                </div>
+                <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)', marginTop: 'var(--space-1)' }}>
+                  {b.basis} · {holeScopeLabel(b.holeScope)}
+                </div>
+
+                {/* Your take (prominent) + status + visibility badge */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                  {isStakeholder ? (
+                    <span
                       data-testid={`action-take-${b.betId}`}
-                      style={{ color: take.color, fontWeight: take.text === '—' || take.text === 'pending' ? 400 : 600 }}
+                      style={{ color: take.color, fontWeight: take.text === '—' || take.text === 'pending' ? 400 : 800, fontSize: 'var(--font-lg)' }}
                     >
                       {take.text}
-                    </td>
-                    <td data-testid={`action-state-${b.betId}`}>
-                      {STATE_LABEL[b.state] ?? b.state}
-                      {b.state === 'settled' && winnerName ? (
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)', marginTop: 'var(--space-1)' }}>
-                          {winnerName} by {b.marginNet}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>
-                      <span
-                        data-testid={`action-visibility-${b.betId}`}
-                        style={{
-                          display: 'inline-block',
-                          padding: '2px 8px',
-                          borderRadius: 'var(--radius-sm, 4px)',
-                          fontSize: 'var(--font-xs)',
-                          fontWeight: 600,
-                          color: 'var(--color-text-secondary)',
-                          border: '1px solid var(--color-border)',
-                          backgroundColor: 'var(--color-surface)',
-                        }}
-                      >
-                        {b.visibility === 'event_wide' ? 'Public' : 'Private'}
-                      </span>
-                    </td>
-                    <td>
-                      {!canCancel ? (
-                        <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                      ) : confirmCancelId === b.betId ? (
-                        <span className="actions-row">
-                          <Button
-                            variant="danger"
-                            data-testid={`confirm-cancel-${b.betId}`}
-                            aria-label={`Confirm cancel of bet: ${matchup}`}
-                            disabled={cancelBet.isPending}
-                            onClick={() => cancelBet.mutate(b.betId)}
-                          >
-                            {cancelBet.isPending ? 'Cancelling…' : 'Confirm'}
-                          </Button>
-                          <Button variant="secondary" data-testid={`dismiss-cancel-${b.betId}`} onClick={dismissCancel}>
-                            Keep
-                          </Button>
-                        </span>
-                      ) : (
+                    </span>
+                  ) : (
+                    <span data-testid={`action-take-${b.betId}`} style={{ color: 'var(--color-text-muted)' }}>—</span>
+                  )}
+                  <span data-testid={`action-state-${b.betId}`} style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)' }}>
+                    {STATE_LABEL[b.state] ?? b.state}
+                    {b.state === 'settled' && winnerName ? (
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)' }}> · {winnerName} by {b.marginNet}</span>
+                    ) : null}
+                  </span>
+                  <span
+                    data-testid={`action-visibility-${b.betId}`}
+                    style={{
+                      marginLeft: 'auto',
+                      display: 'inline-block',
+                      padding: '2px 8px',
+                      borderRadius: 'var(--radius-sm, 4px)',
+                      fontSize: 'var(--font-xs)',
+                      fontWeight: 600,
+                      color: 'var(--color-text-secondary)',
+                      border: '1px solid var(--color-border)',
+                      backgroundColor: 'var(--color-surface)',
+                    }}
+                  >
+                    {b.visibility === 'event_wide' ? 'Public' : 'Private'}
+                  </span>
+                </div>
+
+                {/* Cancel (only your own live bet) */}
+                {canCancel ? (
+                  <div style={{ marginTop: 'var(--space-3)' }}>
+                    {confirmCancelId === b.betId ? (
+                      <span className="actions-row" style={{ display: 'flex', gap: 'var(--space-2)' }}>
                         <Button
-                          variant="secondary"
-                          data-testid={`cancel-${b.betId}`}
-                          aria-label={`Cancel bet: ${matchup}`}
-                          onClick={() => armCancel(b.betId)}
+                          variant="danger"
+                          data-testid={`confirm-cancel-${b.betId}`}
+                          aria-label={`Confirm cancel of bet: ${matchup}`}
+                          disabled={cancelBet.isPending}
+                          onClick={() => cancelBet.mutate(b.betId)}
                         >
-                          Cancel
+                          {cancelBet.isPending ? 'Cancelling…' : 'Confirm cancel'}
                         </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </ScrollableTable>
+                        <Button variant="secondary" data-testid={`dismiss-cancel-${b.betId}`} onClick={dismissCancel}>
+                          Keep
+                        </Button>
+                      </span>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        data-testid={`cancel-${b.betId}`}
+                        aria-label={`Cancel bet: ${matchup}`}
+                        onClick={() => armCancel(b.betId)}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
       )}
     </PageShell>
   );

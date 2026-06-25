@@ -137,14 +137,14 @@ function FoursomeRuleEditor({ eventId, eventRoundId, foursomeNumber }: { eventId
       {RULE_TYPES.map(({ type, label }) => {
         const on = enabled[type];
         return (
-          <div key={type} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 40 }}>
+          <div key={type} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 44 }}>
             <span style={{ fontWeight: 600 }}>{label}</span>
             <button
               type="button" role="switch" aria-checked={on}
               data-testid={`foursome-toggle-${eventRoundId}-${foursomeNumber}-${type}`}
               aria-label={`${on ? 'Disable' : 'Enable'} ${label} for foursome ${foursomeNumber}`}
               onClick={() => setEnabled((p) => ({ ...p, [type]: !p[type] }))}
-              style={{ minHeight: 32, minWidth: 56, padding: '0 12px', borderRadius: 'var(--radius-md)', fontWeight: 700, fontSize: 'var(--font-sm)', cursor: 'pointer', border: `1px solid ${on ? 'var(--color-brand-primary)' : 'var(--color-border)'}`, background: on ? 'var(--color-brand-primary)' : 'transparent', color: on ? '#0a0a0a' : 'var(--color-text-muted)' }}
+              style={{ minHeight: 44, minWidth: 64, padding: '0 14px', borderRadius: 'var(--radius-md)', fontWeight: 700, fontSize: 'var(--font-sm)', cursor: 'pointer', border: `1px solid ${on ? 'var(--color-brand-primary)' : 'var(--color-border)'}`, background: on ? 'var(--color-brand-primary)' : 'transparent', color: on ? '#0a0a0a' : 'var(--color-text-muted)' }}
             >
               {on ? 'On' : 'Off'}
             </button>

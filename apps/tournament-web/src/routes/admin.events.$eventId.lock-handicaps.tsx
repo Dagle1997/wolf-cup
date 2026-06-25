@@ -82,13 +82,6 @@ function lockedAsOfString(lockDateIso: string, pct: number | null | undefined): 
   return pct == null ? `${base}.` : `${base} at ${pct}%.`;
 }
 
-const cellStyle: React.CSSProperties = {
-  padding: '8px 10px',
-  borderBottom: '1px solid var(--color-border)',
-  textAlign: 'left',
-  verticalAlign: 'top',
-};
-
 export function LockHandicapsPage({ eventId }: { eventId: string }) {
   const qc = useQueryClient();
   const query = useQuery<HandicapsResponse, Error>({
@@ -248,7 +241,7 @@ export function LockHandicapsPage({ eventId }: { eventId: string }) {
                 allowance.trim() === '' ? String(ALLOWANCE_DEFAULT) : String(clampAllowance(Number(allowance))),
               )
             }
-            style={{ width: 90 }}
+            style={{ width: 90, minHeight: 'var(--control-height)' }}
           />
         </label>
         <button
@@ -289,46 +282,54 @@ export function LockHandicapsPage({ eventId }: { eventId: string }) {
       {data.players.length === 0 ? (
         <p data-testid="empty-roster">No players on the roster yet.</p>
       ) : (
-        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 'var(--font-sm)' }}>
-          <thead>
-            <tr>
-              <th style={cellStyle}>Player</th>
-              <th style={cellStyle}>Today&apos;s HI</th>
-              <th style={cellStyle}>Locked HI</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.players.map((p) => (
-              <tr key={p.playerId} data-testid={`handicap-row-${p.playerId}`}>
-                <td style={cellStyle}>
-                  {p.name ?? '—'}
-                  {!p.hasGhin ? (
-                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85em' }}>manual index</div>
-                  ) : null}
-                </td>
-                <td style={cellStyle} data-testid={`current-hi-${p.playerId}`}>
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>
+          {data.players.map((p) => (
+            <li
+              key={p.playerId}
+              data-testid={`handicap-row-${p.playerId}`}
+              style={{
+                padding: 'var(--space-3)',
+                border: '1px solid var(--color-border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--color-surface)',
+                fontSize: 'var(--font-sm)',
+              }}
+            >
+              <div style={{ fontWeight: 600, wordBreak: 'break-word' }}>
+                {p.name ?? '—'}
+                {!p.hasGhin ? (
+                  <span style={{ color: 'var(--color-text-muted)', fontWeight: 400, fontSize: 'var(--font-xs)' }}>
+                    {' '}· manual index
+                  </span>
+                ) : null}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-4)', marginTop: 'var(--space-1)' }}>
+                <div data-testid={`current-hi-${p.playerId}`}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Today&apos;s HI: </span>
                   {fmtHi(p.currentHandicapIndex)}
-                </td>
-                <td style={cellStyle} data-testid={`locked-hi-${p.playerId}`}>
+                </div>
+                <div data-testid={`locked-hi-${p.playerId}`}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Locked HI: </span>
                   {p.lockedHandicapIndex == null && p.lockedSource == null ? (
                     '—'
                   ) : (
                     <>
                       {fmtHi(p.lockedHandicapIndex)}
                       {p.lockedSource != null ? (
-                        <div style={{ color: 'var(--color-text-muted)', fontSize: '0.85em' }}>
-                          {p.lockedSource === 'ghin' && p.lockedAsOf
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)' }}>
+                          {' '}
+                          ({p.lockedSource === 'ghin' && p.lockedAsOf
                             ? `GHIN · ${p.lockedAsOf}`
-                            : p.lockedSource}
-                        </div>
+                            : p.lockedSource})
+                        </span>
                       ) : null}
                     </>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </PageShell>
   );

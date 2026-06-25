@@ -450,7 +450,7 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
                 Cancel <strong>{ctx.event.name}</strong>? Everyone you invited will
                 lose access until you restore it.
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 <button
                   type="button"
                   onClick={() => lifecycle.mutate('cancel')}

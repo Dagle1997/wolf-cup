@@ -20,7 +20,6 @@ import { ViewTabs } from '../components/view-tabs';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
-import { ScrollableTable } from '../components/scrollable-table';
 
 type MatchRow = {
   teamKey: string;
@@ -102,47 +101,83 @@ export function MatchPlayStandingsPage({ eventId }: { eventId: string }) {
           body="Set the 2-man teams in the pairings (slots 1-2 / 3-4) and enter scores."
         />
       ) : (
-        <ScrollableTable label="Match-play standings">
-          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 'var(--font-sm)' }}>
-            <thead>
-              <tr>
-                <th style={cell}>#</th>
-                <th style={{ ...cell, textAlign: 'left' }}>Team</th>
-                <th style={cell}>W-H-L</th>
-                <th style={cell}>Points</th>
-                <th style={cell}>Holes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teams.map((t, i) => (
-                <tr key={t.teamKey} data-testid={`match-row-${t.teamKey}`}>
-                  <td style={cell}>{i + 1}</td>
-                  <td style={{ ...cell, textAlign: 'left' }}>{teamName(t)}</td>
-                  <td style={cell}>
+        <div>
+          {teams.map((t, i) => (
+            <div
+              key={t.teamKey}
+              data-testid={`match-row-${t.teamKey}`}
+              className="card"
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 'var(--space-3)',
+                marginBottom: 'var(--space-2)',
+                padding: 'var(--space-3)',
+              }}
+            >
+              {/* Rank badge */}
+              <div
+                style={{
+                  flex: '0 0 auto',
+                  minWidth: 'var(--space-6)',
+                  fontSize: 'var(--font-lg)',
+                  fontWeight: 800,
+                  color: 'var(--color-text-secondary)',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 1.1,
+                }}
+              >
+                {i + 1}
+              </div>
+
+              {/* Team name(s) + stat line */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 'var(--font-md)',
+                    fontWeight: 600,
+                    wordBreak: 'break-word',
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {teamName(t)}
+                </div>
+                <div
+                  style={{
+                    marginTop: 'var(--space-1)',
+                    fontSize: 'var(--font-sm)',
+                    color: 'var(--color-text-muted)',
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'baseline',
+                    gap: '4px',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  <span>
                     {t.won}-{t.halved}-{t.lost}
-                  </td>
-                  <td style={{ ...cell, fontWeight: 700 }} data-testid={`points-${t.teamKey}`}>
-                    {fmtPoints(t.points)}
-                  </td>
-                  <td style={cell} data-testid={`holes-diff-${t.teamKey}`}>
-                    {fmtDiff(t.holesDiff)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </ScrollableTable>
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span>
+                    <strong
+                      data-testid={`points-${t.teamKey}`}
+                      style={{ color: 'var(--color-text-primary)', fontWeight: 700 }}
+                    >
+                      {fmtPoints(t.points)}
+                    </strong>{' '}
+                    pts
+                  </span>
+                  <span aria-hidden="true">·</span>
+                  <span data-testid={`holes-diff-${t.teamKey}`}>{fmtDiff(t.holesDiff)} holes</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </PageShell>
   );
 }
-
-const cell: React.CSSProperties = {
-  padding: '8px 10px',
-  borderBottom: '1px solid var(--color-border)',
-  textAlign: 'center',
-  whiteSpace: 'nowrap',
-};
 
 export const Route = createFileRoute('/events/$eventId/match-play-standings')({
   beforeLoad: async () => {

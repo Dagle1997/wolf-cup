@@ -154,9 +154,9 @@ export function BetsPage({ eventId }: BetsPageProps) {
           aria-label={`Bet vs ${bet.opponentName}`}
           style={{ marginBottom: 'var(--space-3)' }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
-            <div>
-              <strong>vs {bet.opponentName}</strong>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
+            <div style={{ minWidth: 0 }}>
+              <strong style={{ overflowWrap: 'anywhere' }}>vs {bet.opponentName}</strong>
               <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}>
                 {betTypeLabel(bet.betType)} · {formatCents(bet.stakePerHoleCents)}/hole
               </div>
@@ -166,37 +166,60 @@ export function BetsPage({ eventId }: BetsPageProps) {
                 fontWeight: 'bold',
                 fontSize: 'var(--font-md)',
                 color: netColor(bet.totalNetToViewerCents),
+                whiteSpace: 'nowrap',
+                fontVariantNumeric: 'tabular-nums',
               }}
             >
               {formatCents(bet.totalNetToViewerCents)}
             </div>
           </div>
 
-          <ul style={{ marginTop: 'var(--space-2)', paddingLeft: 'var(--space-4)' }}>
+          <div style={{ marginTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
             {bet.perRoundStanding.map((r) => {
               const total = r.holesPlayed + r.holesRemaining;
               return (
-                <li key={r.eventRoundId}>
-                  Round {r.roundNumber} — through hole {r.holesPlayed} of {total}{' '}
-                  — net{' '}
-                  <span style={{ color: netColor(r.netToViewerCents) }}>
+                <div
+                  key={r.eventRoundId}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    gap: 'var(--space-2)',
+                    fontSize: 'var(--font-sm)',
+                  }}
+                >
+                  <span style={{ minWidth: 0, overflowWrap: 'anywhere', color: 'var(--color-text-secondary)' }}>
+                    Round {r.roundNumber}{' '}
+                    <span style={{ color: 'var(--color-text-muted)' }}>
+                      · through hole {r.holesPlayed} of {total}
+                    </span>
+                  </span>
+                  <span
+                    style={{
+                      color: netColor(r.netToViewerCents),
+                      whiteSpace: 'nowrap',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
                     {formatCents(r.netToViewerCents)}
                   </span>
-                </li>
+                </div>
               );
             })}
-          </ul>
+          </div>
 
           {bet.presses.length > 0 ? (
             <div style={{ marginTop: 'var(--space-2)' }}>
-              <div style={{ fontSize: 'var(--font-sm)', fontWeight: 'bold' }}>Presses</div>
-              <ul style={{ paddingLeft: 'var(--space-4)' }}>
+              <div style={{ fontSize: 'var(--font-xs)', fontWeight: 700, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Presses
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
                 {bet.presses.map((p) => (
-                  <li key={p.betPressId}>
+                  <div key={p.betPressId} style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', overflowWrap: 'anywhere' }}>
                     Hole {p.firedAtHole} — {p.triggerType} press, ×{p.multiplier}
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </div>
           ) : null}
         </Card>

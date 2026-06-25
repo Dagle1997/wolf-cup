@@ -120,7 +120,7 @@ export function ScorerPolicyPage({ eventId }: { eventId: string }) {
       ))}
 
       {policy === 'designated' ? (
-        <fieldset data-testid="designee-picker" style={{ margin: '12px 0', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+        <fieldset data-testid="designee-picker" style={{ margin: '12px 0', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
           <legend>Allowed scorers</legend>
           {roster.length === 0 ? (
             <p style={{ padding: 8 }}>No roster yet — add players first.</p>
@@ -128,7 +128,15 @@ export function ScorerPolicyPage({ eventId }: { eventId: string }) {
             <ul style={{ listStyle: 'none', padding: 8, margin: 0 }}>
               {roster.map((r) => (
                 <li key={r.playerId}>
-                  <label>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                      minHeight: 44,
+                      wordBreak: 'break-word',
+                    }}
+                  >
                     <input
                       type="checkbox"
                       data-testid={`designee-${r.playerId}`}
@@ -141,7 +149,7 @@ export function ScorerPolicyPage({ eventId }: { eventId: string }) {
                           return next;
                         })
                       }
-                    />{' '}
+                    />
                     {r.name ?? '—'}
                   </label>
                 </li>

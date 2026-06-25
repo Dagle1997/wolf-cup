@@ -97,7 +97,8 @@ function JoinCodesPage({ eventId }: { eventId: string }) {
               key={p.playerId}
               style={{
                 display: 'flex',
-                alignItems: 'center',
+                flexWrap: 'wrap',
+                alignItems: 'flex-start',
                 justifyContent: 'space-between',
                 gap: 'var(--space-2)',
                 padding: 'var(--space-3)',
@@ -106,7 +107,7 @@ function JoinCodesPage({ eventId }: { eventId: string }) {
                 background: 'var(--color-surface)',
               }}
             >
-              <span style={{ minWidth: 0 }}>
+              <span style={{ minWidth: 0, flex: '1 1 120px', wordBreak: 'break-word' }}>
                 <strong>{p.name}</strong>
                 <span
                   data-testid={`join-code-${p.playerId}`}

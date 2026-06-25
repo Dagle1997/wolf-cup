@@ -254,7 +254,7 @@ export function GameConfigPage({ eventId }: { eventId: string }) {
             Front / back split
           </label>
           {mode === 'front-back' ? (
-            <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               <FormField label="Front $/pt">
                 <input
                   type="number"
@@ -307,7 +307,7 @@ export function GameConfigPage({ eventId }: { eventId: string }) {
                   aria-label={`${on ? 'Disable' : 'Enable'} ${label}`}
                   onClick={() => setRuleEnabled((prev) => ({ ...prev, [type]: !prev[type] }))}
                   style={{
-                    minHeight: 36, minWidth: 64, padding: '0 14px', borderRadius: 'var(--radius-md)',
+                    minHeight: 44, minWidth: 68, padding: '0 14px', borderRadius: 'var(--radius-md)',
                     fontWeight: 700, fontSize: 'var(--font-sm)', cursor: 'pointer',
                     border: `1px solid ${on ? 'var(--color-brand-primary)' : 'var(--color-border)'}`,
                     background: on ? 'var(--color-brand-primary)' : 'transparent',

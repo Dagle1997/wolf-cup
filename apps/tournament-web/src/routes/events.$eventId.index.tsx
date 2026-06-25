@@ -257,7 +257,7 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
       >
         <div style={{ fontSize: 'var(--font-sm)', opacity: 0.9 }}>{dateRange}</div>
         <div data-testid="event-home-hero-status" style={{ marginTop: 4, fontSize: 'var(--font-lg)', fontWeight: 800 }}>{countdown}</div>
-        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--font-sm)', opacity: 0.95 }}>
+        <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--font-sm)', opacity: 0.95, wordBreak: 'break-word' }}>
           <span aria-hidden>✓ </span>You&apos;re in, {firstName(greetName)}.
         </div>
       </div>
@@ -309,10 +309,10 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
                   color: 'inherit',
                 }}
               >
-                <span aria-hidden style={{ fontSize: '1.5rem', lineHeight: 1, width: '1.75rem', textAlign: 'center', flexShrink: 0 }}>{card.icon}</span>
-                <span style={{ flex: 1 }}>
-                  <strong style={{ display: 'block', fontSize: 'var(--font-md)' }}>{card.title}</strong>
-                  <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}>{card.desc}</span>
+                <span aria-hidden style={{ fontSize: '1.5rem', lineHeight: 1, width: '1.5rem', textAlign: 'center', flexShrink: 0 }}>{card.icon}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ display: 'block', fontSize: 'var(--font-md)', wordBreak: 'break-word' }}>{card.title}</strong>
+                  <span style={{ display: 'block', fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', wordBreak: 'break-word' }}>{card.desc}</span>
                 </span>
                 <span aria-hidden style={{ color: 'var(--color-text-muted)', flexShrink: 0 }}>›</span>
               </Link>

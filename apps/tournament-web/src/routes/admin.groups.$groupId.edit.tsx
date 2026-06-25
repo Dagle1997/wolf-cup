@@ -452,8 +452,8 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
 
         {addTab === 'ghin' ? (
           <div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <div style={{ flex: '1 1 140px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              <div>
                 <label htmlFor="ghin-first-input">First name (optional)</label>
                 <input
                   id="ghin-first-input"
@@ -470,7 +470,7 @@ export function EditGroupPage({ groupId }: { groupId: string }) {
                   placeholder="David"
                 />
               </div>
-              <div style={{ flex: '1 1 140px' }}>
+              <div>
                 <label htmlFor="ghin-search-input">Last name</label>
                 <input
                   id="ghin-search-input"

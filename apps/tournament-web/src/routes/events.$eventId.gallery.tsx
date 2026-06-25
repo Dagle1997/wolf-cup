@@ -241,7 +241,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
 
       {/* Camera-direct (one shot) + Library (multi-select). Both feed the
           background queue so you can keep shooting while uploads run. */}
-      <div className="actions-row" style={{ marginBottom: 'var(--space-3)' }}>
+      <div className="actions-row" style={{ marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
         <Button data-testid="gallery-camera-btn" onClick={openCamera}>
           📷 Camera
         </Button>
@@ -340,7 +340,7 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
               gap: 6,
               marginTop: 8,
             }}
@@ -383,14 +383,19 @@ export function GalleryPage({ eventId, isOrganizer }: GalleryPageProps) {
                     onClick={() => setPendingDelete(p)}
                     style={{
                       position: 'absolute',
-                      top: 4,
-                      right: 4,
+                      top: 6,
+                      right: 6,
                       background: 'rgba(255,255,255,0.85)',
                       border: '1px solid var(--color-text-muted)',
                       borderRadius: 4,
                       cursor: 'pointer',
                       fontSize: '0.8rem',
-                      padding: '2px 6px',
+                      minWidth: 28,
+                      minHeight: 28,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: 0,
                     }}
                   >
                     🗑
