@@ -24,6 +24,7 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { ActivityFeed } from '../components/activity-feed';
 import { PageShell } from '../components/page-shell';
+import { BackLink } from '../components/back-link';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 
@@ -228,6 +229,9 @@ export function EventHomePage({ eventId, viewerName, nowMs, isOrganizer }: Event
 
   return (
     <PageShell title={event.name}>
+      {/* Back to the events list — the event screen was otherwise a dead-end on
+          a standalone PWA (no global home button). */}
+      <BackLink to="/" label="All events" />
       {/* Hero: date range + the one line that says "what's next". */}
       <div
         className="card"
