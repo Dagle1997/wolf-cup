@@ -452,6 +452,48 @@ describe('GET /api/rounds/:roundId', () => {
     expect(body.myFoursome.scorerName).toBe('Scorer');
   });
 
+  test('each group is independently joinable: a foursome-2 member gets foursome 2 only, scorer-2 scopes correctly', async () => {
+    // Standard seed = foursome 1 (scorer, p1, p2). Add a SECOND foursome with its
+    // own players + scorer assignment, as start-round would for a multi-group round.
+    const s = await seed({ state: 'in_progress' });
+    const now = Date.now();
+    const f2ScorerId = randomUUID();
+    const f2PlayerId = randomUUID();
+    for (const [id, name] of [[f2ScorerId, 'F2 Scorer'], [f2PlayerId, 'F2 Player']] as const) {
+      await db.insert(players).values({ id, isOrganizer: false, createdAt: now, name, tenantId: TENANT_ID, contextId: CTX_BASE });
+    }
+    const pairing2Id = randomUUID();
+    await db.insert(pairings).values({ id: pairing2Id, eventRoundId: s.eventRoundId, foursomeNumber: 2, createdAt: now, tenantId: TENANT_ID, contextId: s.ctx });
+    await db.insert(pairingMembers).values([
+      { pairingId: pairing2Id, playerId: f2ScorerId, slotNumber: 1, tenantId: TENANT_ID, contextId: s.ctx },
+      { pairingId: pairing2Id, playerId: f2PlayerId, slotNumber: 2, tenantId: TENANT_ID, contextId: s.ctx },
+    ]);
+    await db.insert(scorerAssignments).values({ roundId: s.roundId, foursomeNumber: 2, scorerPlayerId: f2ScorerId, assignedAt: now, assignedByPlayerId: s.organizerId, tenantId: TENANT_ID, contextId: s.ctx });
+
+    // A foursome-2 member joins → sees ONLY foursome 2 (its own members + scorer).
+    const app2 = buildApp(f2ScorerId);
+    const res2 = await getRoundDetail(app2, s.roundId);
+    expect(res2.status).toBe(200);
+    const body2 = (await res2.json()) as { myFoursome: { foursomeNumber: number; isScorer: boolean; members: Array<{ playerId: string }> } };
+    expect(body2.myFoursome.foursomeNumber).toBe(2);
+    expect(body2.myFoursome.isScorer).toBe(true); // scorer-2 is the designated scorer of foursome 2
+    const f2Ids = body2.myFoursome.members.map((m) => m.playerId);
+    expect(f2Ids).toEqual(expect.arrayContaining([f2ScorerId, f2PlayerId]));
+    expect(f2Ids).not.toContain(s.scorerId); // never sees foursome 1's players
+    expect(f2Ids).not.toContain(s.player1Id);
+
+    // The non-scorer member of foursome 2 can ALSO join (read-only), still foursome 2.
+    const appMember = buildApp(f2PlayerId);
+    const bodyMember = (await (await getRoundDetail(appMember, s.roundId)).json()) as { myFoursome: { foursomeNumber: number; isScorer: boolean } };
+    expect(bodyMember.myFoursome.foursomeNumber).toBe(2);
+    expect(bodyMember.myFoursome.isScorer).toBe(false);
+
+    // Foursome 1's scorer is unaffected — still gets foursome 1.
+    const app1 = buildApp(s.scorerId);
+    const body1 = (await (await getRoundDetail(app1, s.roundId)).json()) as { myFoursome: { foursomeNumber: number } };
+    expect(body1.myFoursome.foursomeNumber).toBe(1);
+  });
+
   test('404 round_not_found when session is not in any foursome (uniform with foreign-tenant)', async () => {
     const s = await seed({ state: 'not_started' });
     const app = buildApp(s.outsiderId);
