@@ -118,6 +118,10 @@ interface RoundDetail {
     // Players in an active putting game for this round → score entry asks them
     // for putts each hole. Absent/empty (no putting game) → no putts input.
     puttsPlayerIds?: string[] | null;
+    // Organizer-scoring: when the organizer opened a group they aren't in, the
+    // UI shows a group switcher across these foursome numbers.
+    viewerIsOrganizer?: boolean;
+    availableFoursomes?: number[];
   };
 }
 
@@ -157,7 +161,11 @@ function courseHash(c: RoundCourse | null | undefined): string {
 // ---- Loader ---------------------------------------------------------------
 
 async function fetchRoundDetail(roundId: string): Promise<RoundDetail> {
-  const res = await fetch(`/api/rounds/${roundId}`, {
+  // ?foursome=N lets the ORGANIZER (who isn't in any group) open a specific
+  // group to score; ignored for players (they always resolve to their own).
+  const fs = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('foursome') : null;
+  const qs = fs && /^\d+$/.test(fs) ? `?foursome=${fs}` : '';
+  const res = await fetch(`/api/rounds/${roundId}${qs}`, {
     method: 'GET',
     credentials: 'include',
   });
@@ -1612,6 +1620,32 @@ function ScoreEntryForm({
 
   return (
     <div data-testid="score-entry-form">
+      {/* Organizer group switcher: the organizer (not in any group) opened a
+          group to score — let them jump between groups. Each button reloads with
+          ?foursome=N. Players never see this (viewerIsOrganizer is false). */}
+      {data.myFoursome.viewerIsOrganizer && (data.myFoursome.availableFoursomes?.length ?? 0) > 1 ? (
+        <div data-testid="organizer-group-switch" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
+          <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Scoring group:</span>
+          {data.myFoursome.availableFoursomes!.map((n) => {
+            const active = n === data.myFoursome.foursomeNumber;
+            return (
+              <a
+                key={n}
+                data-testid={`organizer-group-${n}`}
+                href={`/rounds/${roundId}/score-entry?foursome=${n}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 44, minHeight: 44,
+                  borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', textDecoration: 'none', fontWeight: 700,
+                  color: active ? '#fff' : 'var(--color-text-secondary)',
+                  background: active ? 'var(--color-brand-primary)' : 'var(--color-surface)',
+                }}
+              >
+                {n}
+              </a>
+            );
+          })}
+        </div>
+      ) : null}
       {/* Nav row — a way OUT of the scoring screen (Josh: "a way back from inside
           scoring"). Back to the event home on the left, the live leaderboard on
           the right. Both 44px tap targets. */}

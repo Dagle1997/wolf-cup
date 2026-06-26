@@ -22,7 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   holeScores,
@@ -46,6 +46,7 @@ import {
   courseHoles,
   courseTees,
   eventRounds,
+  events,
 } from '../db/schema/index.js';
 import {
   AUDIT_ENTITY_TYPES,
@@ -185,6 +186,33 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
       )
       .limit(1);
     myFoursomeNumber = scorerFoursomeRows[0]?.foursomeNumber;
+  }
+  // Organizer fallback: the event organizer is logged in as the organizer (not
+  // a player), so they're in no foursome and may not be a designated scorer —
+  // yet they need to open any group to score/verify. Let them pick the group
+  // via ?foursome=N (default: the lowest foursome). With the 'open' scorer
+  // policy they can then "Claim scoring" to become the writer for that group.
+  let viewerIsOrganizer = false;
+  let availableFoursomes: number[] = [];
+  if (myFoursomeNumber === undefined && round.eventId !== null) {
+    const evtRow = await db
+      .select({ organizerPlayerId: events.organizerPlayerId })
+      .from(events)
+      .where(and(eq(events.id, round.eventId), eq(events.tenantId, TENANT_ID)))
+      .limit(1);
+    if (evtRow[0]?.organizerPlayerId === player.id) {
+      viewerIsOrganizer = true;
+      const fsRows = await db
+        .select({ foursomeNumber: pairings.foursomeNumber })
+        .from(pairings)
+        .where(and(eq(pairings.eventRoundId, round.eventRoundId), eq(pairings.tenantId, TENANT_ID)))
+        .orderBy(asc(pairings.foursomeNumber));
+      availableFoursomes = fsRows.map((r) => r.foursomeNumber);
+      if (availableFoursomes.length > 0) {
+        const requested = Number(c.req.query('foursome'));
+        myFoursomeNumber = availableFoursomes.includes(requested) ? requested : availableFoursomes[0];
+      }
+    }
   }
   if (myFoursomeNumber === undefined) {
     return c.json(
@@ -399,6 +427,10 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
         claims: myClaims,
         enabledClaimTypes,
         puttsPlayerIds,
+        // Organizer-scoring affordances: when the organizer opened a group they
+        // aren't in, the UI shows a group switcher (the other foursomes).
+        viewerIsOrganizer,
+        availableFoursomes,
       },
     },
     200,
