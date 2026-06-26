@@ -258,3 +258,55 @@ describe('LeaderboardPage — expandable scorecard (Story 3-4)', () => {
     await waitFor(() => expect(screen.getByTestId('expand-p1')).toHaveAttribute('aria-expanded', 'false'));
   });
 });
+
+describe('LeaderboardPage — client-side sort (Josh 2026-06-26)', () => {
+  // Rows arrive in the API's GROSS order (pA first), but pA has the WORSE net.
+  // Default sort is Net, so the better-net player (pB) must lead; switching to
+  // Gross flips it back. Money chip is absent without money mode.
+  const crossedOrder: Json = {
+    rows: [
+      { playerId: 'pA', playerName: 'Albert', handicapIndex: 0, courseHandicap: 0, grossThroughHole: 10, netThroughHole: 10, netToPar: 3, throughHole: 3, rank: 1, tiedWith: 1, skinsCents: null, moneyCents: null },
+      { playerId: 'pB', playerName: 'Bob', handicapIndex: 12, courseHandicap: 12, grossThroughHole: 20, netThroughHole: 8, netToPar: -3, throughHole: 3, rank: 2, tiedWith: 1, skinsCents: null, moneyCents: null },
+    ],
+    round: { id: 'round-1', eventRoundId: 'er-1', name: 'Round 1', status: 'in_progress' },
+    scope: 'round',
+    computedAt: '2026-06-23T00:00:00.000Z',
+  };
+
+  const rowOrder = () =>
+    screen.getAllByTestId(/^expand-/).map((el) => el.getAttribute('data-testid'));
+
+  it('defaults to Net (best individual first) and re-sorts by Gross on demand', async () => {
+    wireFetch(crossedOrder, {});
+    render('evt1');
+    await waitFor(() => expect(screen.getByText('Bob')).toBeInTheDocument());
+    // Default = Net: Bob (-3) ahead of Albert (+3), despite the API's gross order.
+    expect(rowOrder()).toEqual(['expand-pB', 'expand-pA']);
+    // No money mode → no Money chip; Net + Gross present.
+    expect(screen.queryByTestId('sort-money')).toBeNull();
+    expect(screen.getByTestId('sort-net')).toBeInTheDocument();
+    expect(screen.getByTestId('sort-gross')).toBeInTheDocument();
+    // Switch to Gross → Albert (10) leads Bob (20).
+    await userEvent.click(screen.getByTestId('sort-gross'));
+    expect(rowOrder()).toEqual(['expand-pA', 'expand-pB']);
+  });
+
+  it('offers a Money sort only when the $ column is live, and sorts by it desc', async () => {
+    // Money mode on: pA loses $20, pB wins $20 — Money sort puts the winner first.
+    const withMoney: Json = {
+      ...crossedOrder,
+      rows: [
+        { ...(crossedOrder.rows as Json[])[0]!, moneyCents: -2000 },
+        { ...(crossedOrder.rows as Json[])[1]!, moneyCents: 2000 },
+      ],
+      f1: { lockState: 'locked', mode: 'money', moneyEnabled: true },
+    };
+    wireFetch(withMoney, {});
+    render('evt1');
+    await waitFor(() => expect(screen.getByText('Bob')).toBeInTheDocument());
+    expect(screen.getByTestId('sort-money')).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('sort-money'));
+    // Bob (+$20) ahead of Albert (-$20).
+    expect(rowOrder()).toEqual(['expand-pB', 'expand-pA']);
+  });
+});

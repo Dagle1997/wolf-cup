@@ -177,6 +177,73 @@ function rankBadge(row: LeaderboardRow): string {
   return rankCell(row);
 }
 
+// ---- Client-side sort (Josh 2026-06-26: "can't sort by best individual") ----
+// The API ranks rows by GROSS, but the board's only score column is To Par
+// (net). So a gross-ordered board reads as "unsorted" against the visible
+// column. We re-sort client-side and default to net so the To Par column is
+// monotonic; Gross and Money are alternate keys. Money is offered only when the
+// $ column is live.
+type SortKey = 'net' | 'gross' | 'money';
+
+/** The per-key value accessor. Lower is better for net/gross; higher for money. */
+function valueOfFor(key: SortKey): (r: LeaderboardRow) => number | null {
+  return key === 'net'
+    ? (r) => r.netToPar
+    : key === 'gross'
+      ? (r) => r.grossThroughHole
+      : (r) => r.moneyCents;
+}
+
+/** Best→worst sort for a key. Nulls always sort last; ties break on name. */
+function sortRowsBy(rows: LeaderboardRow[], key: SortKey): LeaderboardRow[] {
+  const valueOf = valueOfFor(key);
+  const dir = key === 'money' ? -1 : 1; // money: higher first
+  return [...rows].sort((a, b) => {
+    const av = valueOf(a);
+    const bv = valueOf(b);
+    if (av === null && bv === null) return a.playerName.localeCompare(b.playerName);
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    if (av !== bv) return (av - bv) * dir;
+    return a.playerName.localeCompare(b.playerName);
+  });
+}
+
+/**
+ * 1224 display ranks from an ALREADY best→worst-sorted list: consecutive equal
+ * values share a rank, the next rank skips, and null-valued rows all share the
+ * trailing rank. Direction-agnostic — it trusts the array order and only uses
+ * equality to group ties, so it works for "lower-better" and "higher-better"
+ * keys alike.
+ */
+function rankFromSorted(
+  sorted: LeaderboardRow[],
+  valueOf: (r: LeaderboardRow) => number | null,
+): Map<string, { rank: number; tiedWith: number }> {
+  const out = new Map<string, { rank: number; tiedWith: number }>();
+  const scored = sorted.filter((r) => valueOf(r) !== null);
+  let i = 0;
+  while (i < scored.length) {
+    const v = valueOf(scored[i]!);
+    let j = i;
+    while (j < scored.length && valueOf(scored[j]!) === v) j++;
+    const tiedWith = j - i;
+    const rank = i + 1;
+    for (let k = i; k < j; k++) out.set(scored[k]!.playerId, { rank, tiedWith });
+    i = j;
+  }
+  const unscored = sorted.filter((r) => valueOf(r) === null);
+  const unscoredRank = scored.length + 1;
+  for (const r of unscored) out.set(r.playerId, { rank: unscoredRank, tiedWith: unscored.length });
+  return out;
+}
+
+/** Medallion/numeral for a computed (rank, tiedWith). Mirrors rankBadge. */
+function rankBadgeFor(rank: number, tiedWith: number): string {
+  if (tiedWith === 1 && rank <= 3) return ['🥇', '🥈', '🥉'][rank - 1]!;
+  return tiedWith > 1 ? `T-${rank}` : String(rank);
+}
+
 /** Map a round state to a player-facing status pill. Null → no pill. */
 function statusPill(
   status: string | null,
@@ -328,6 +395,8 @@ import { Fragment, useState } from 'react';
 
 export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   const [scope, setScope] = useState<ScopeMode>('current');
+  // Default to net (To Par) so the visible score column reads top-to-bottom.
+  const [sortKey, setSortKey] = useState<SortKey>('net');
   // Story 3-4 / 3-4a: MULTI-open expandable per-player scorecards (round scope
   // only) — matches Wolf (a card stays open until you close it).
   const [expandedPlayerIds, setExpandedPlayerIds] = useState<Set<string>>(new Set());
@@ -395,6 +464,20 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
   const showMoney = f1?.mode === 'money' && f1.moneyEnabled === true;
   const colSpan = 4;
   const lockLine = handicapLockLine(data.event);
+
+  // Re-sort client-side by the chosen key. If money is the key but the $ column
+  // isn't live, fall back to net so we never sort by a hidden column. Display
+  // ranks/medallions follow the active sort, not the API's gross rank.
+  const effectiveSortKey: SortKey = sortKey === 'money' && !showMoney ? 'net' : sortKey;
+  const sortedRows = sortRowsBy(data.rows, effectiveSortKey);
+  const displayRanks = rankFromSorted(sortedRows, valueOfFor(effectiveSortKey));
+  // Labels deliberately differ from the column headers ("To Par", "$") so the
+  // sort chips don't collide with the table headings on screen or in tests.
+  const sortOptions: ReadonlyArray<[SortKey, string]> = [
+    ['net', 'Net'],
+    ['gross', 'Gross'],
+    ...(showMoney ? ([['money', 'Money']] as ReadonlyArray<[SortKey, string]>) : []),
+  ];
 
   return (
     <PageShell title="Leaderboard">
@@ -538,6 +621,41 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
         // the colspan cell's content overflows INTO its own nested ScrollableTable
         // scroll region instead of dictating the outer table width. Column widths
         // come from the header row (#=36, To Par=64, $=64, Player=remaining).
+        <>
+        {/* Sort control: re-orders the board by the chosen column. Default To
+            Par so the individual-net column reads top-to-bottom. */}
+        <div
+          role="tablist"
+          aria-label="Sort leaderboard"
+          style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}
+        >
+          <span style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', fontWeight: 600 }}>Sort by</span>
+          {sortOptions.map(([key, label]) => {
+            const active = effectiveSortKey === key;
+            return (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={active}
+                data-testid={`sort-${key}`}
+                onClick={() => setSortKey(key)}
+                style={{
+                  minHeight: 36,
+                  padding: '0 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: `1px solid ${active ? 'var(--color-brand-primary)' : 'var(--color-border)'}`,
+                  fontSize: 'var(--font-sm)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  color: active ? '#fff' : 'var(--color-text-secondary)',
+                  backgroundColor: active ? 'var(--color-brand-primary)' : 'var(--color-surface)',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
         <ScrollableTable label="Leaderboard"><table style={{ width: '100%', tableLayout: 'fixed' }}>
           <thead>
             <tr style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)' }}>
@@ -548,8 +666,9 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
             </tr>
           </thead>
           <tbody>
-            {data.rows.map((row) => {
+            {sortedRows.map((row) => {
               const isViewer = viewerId === row.playerId;
+              const badge = displayRanks.get(row.playerId);
               // Round scope only: gate on BOTH a runtime round.id AND scope==='round'
               // (defensive — don't rely solely on the API returning round=null in
               // event scope; an event-aggregated view must never open a round card).
@@ -590,7 +709,7 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
                   <tr
                     style={isViewer ? { backgroundColor: 'var(--color-brand-tint)' } : undefined}
                   >
-                    <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{rankBadge(row)}</td>
+                    <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{badge ? rankBadgeFor(badge.rank, badge.tiedWith) : rankBadge(row)}</td>
                     <td>
                       {expandable ? (
                         <button
@@ -653,6 +772,7 @@ export function LeaderboardPage({ eventId, viewerId }: LeaderboardPageProps) {
             })}
           </tbody>
         </table></ScrollableTable>
+        </>
       )}
     </PageShell>
   );
