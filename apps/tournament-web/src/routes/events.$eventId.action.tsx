@@ -312,10 +312,11 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
         <Card
           data-testid="action-form"
           style={{
-            display: 'flex',
-            flexWrap: 'wrap',
+            // Single-column stack — phone-first. The old wrapping flex squeezed
+            // fields (esp. the open-book label) into slivers that overflowed the
+            // right edge on a narrow screen (Josh 2026-06-25).
+            display: 'grid',
             gap: 'var(--space-3)',
-            alignItems: 'flex-end',
             marginTop: 'var(--space-4)',
           }}
         >
@@ -427,10 +428,9 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
           </FormField>
 
           {/* ---- Open book: someone else can cover the opponent's side ---- */}
-          <div style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
+          <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
             <label
-              className="form-field"
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 'var(--space-2)' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minHeight: 44 }}
             >
               <input
                 type="checkbox"
@@ -440,8 +440,9 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                   setOpenBook(e.target.checked);
                   if (!e.target.checked) setSideBBacker('');
                 }}
+                style={{ flexShrink: 0 }}
               />
-              <span className="form-field__label" style={{ margin: 0 }}>
+              <span style={{ fontWeight: 600, wordBreak: 'break-word' }}>
                 Someone else covers {opponentName ?? 'the opponent'}&rsquo;s side?
               </span>
             </label>
