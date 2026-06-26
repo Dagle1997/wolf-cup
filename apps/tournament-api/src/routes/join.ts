@@ -30,6 +30,7 @@ import { requireSession } from '../middleware/require-session.js';
 import { isEventOrganizerByEventId } from '../services/index.js';
 import { generateJoinCode, normalizeJoinCode } from '../lib/join-code.js';
 import { DEVICE_COOKIE_NAME, deviceCookieHeader } from '../lib/device-auth.js';
+import { sessionCookieHeader } from '../lib/session.js';
 import { logger as moduleLogger } from '../lib/log.js';
 
 const TENANT_ID = 'guyan';
@@ -141,6 +142,12 @@ joinRouter.post(
     }
 
     c.header('Set-Cookie', deviceCookieHeader(deviceBindingId!), { append: true });
+    // Clear any stale Google SESSION cookie so the device binding we just set is
+    // the authority. Without this, a player who got bounced into Google and
+    // signed in as someone else (e.g. a spouse on a shared phone) would keep
+    // that session — and /auth/status checks the session first. A code join is
+    // an explicit "I am THIS player on THIS device", so the session must go.
+    c.header('Set-Cookie', sessionCookieHeader(null), { append: true });
     log.info({ event: 'join_claimed', eventId, playerId, deviceBindingId: deviceBindingId! });
     return c.json({ eventId, player: { id: playerId, name: playerName }, requestId }, 200);
   },

@@ -168,17 +168,19 @@ describe('requireAuthOrRedirect', () => {
     expect(callArgs.retry).toBe(false);
   });
 
-  test('null player → calls window.location.assign("/api/auth/google") AND throws Error("redirecting-to-oauth")', async () => {
+  test('null player → redirects to /join (code-first, NOT forced Google) AND throws Error("redirecting-to-join")', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ player: null }), { status: 200 }),
     );
 
-    await expect(requireAuthOrRedirect()).rejects.toThrow('redirecting-to-oauth');
+    await expect(requireAuthOrRedirect()).rejects.toThrow('redirecting-to-join');
     expect(assignSpy).toHaveBeenCalledTimes(1);
-    expect(assignSpy).toHaveBeenCalledWith('/api/auth/google');
+    expect(assignSpy).toHaveBeenCalledWith(expect.stringMatching(/^\/join/));
+    // Must NOT bounce a logged-out player straight into Google OAuth.
+    expect(assignSpy).not.toHaveBeenCalledWith('/api/auth/google');
   });
 
-  test('thrown Error has exact message string "redirecting-to-oauth" (TanStack Router beforeLoad contract)', async () => {
+  test('thrown Error has exact message string "redirecting-to-join" (TanStack Router beforeLoad contract)', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ player: null }), { status: 200 }),
     );
@@ -190,6 +192,6 @@ describe('requireAuthOrRedirect', () => {
       caught = err;
     }
     expect(caught).toBeInstanceOf(Error);
-    expect((caught as Error).message).toBe('redirecting-to-oauth');
+    expect((caught as Error).message).toBe('redirecting-to-join');
   });
 });

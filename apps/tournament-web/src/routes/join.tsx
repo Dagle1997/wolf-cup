@@ -9,10 +9,9 @@
  * PUBLIC route — no beforeLoad auth check (the whole point is no SSO).
  */
 import { useEffect, useRef, useState } from 'react';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 
 function JoinPage() {
-  const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [state, setState] = useState<
     | { kind: 'idle' | 'joining' }
@@ -52,7 +51,12 @@ function JoinPage() {
       });
       const body = (await res.json().catch(() => null)) as { eventId?: string; code?: string } | null;
       if (res.status === 200 && body?.eventId) {
-        void navigate({ to: '/events/$eventId', params: { eventId: body.eventId } });
+        // FULL page load (not client-side navigate): the join just set/cleared
+        // cookies, and a SPA navigate would re-use the cached ['auth-status']
+        // (30s stale) — which could still be `null` from a pre-join guarded-page
+        // bounce, looping the user right back to /join. A hard load reads the
+        // fresh device cookie and re-fetches auth-status clean.
+        window.location.assign(`/events/${body.eventId}`);
         return;
       }
       if (res.status === 404) {
