@@ -72,7 +72,7 @@ export function MePage({ player }: MePageProps) {
   return (
     <PageShell title="Your account">
       <p>
-        Signed in as <code>{player.id}</code>
+        Signed in as <code style={{ wordBreak: 'break-all' }}>{player.id}</code>
         {player.isOrganizer ? ' (organizer)' : ''}.
       </p>
       <p>

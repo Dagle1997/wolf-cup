@@ -1783,7 +1783,7 @@ function ScoreEntryForm({
         {!allValid && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
             <span>{enteredCount} of {members.length} entered</span>
-            <button data-testid="skip-hole" data-skip-base-style onClick={handleSkipHole} style={{ background: 'none', border: 'none', color: 'var(--color-brand-primary)', fontWeight: 600, padding: 4, margin: 0, cursor: 'pointer' }}>
+            <button data-testid="skip-hole" data-skip-base-style onClick={handleSkipHole} style={{ background: 'none', border: 'none', color: 'var(--color-brand-primary)', fontWeight: 600, minHeight: 44, padding: '0 var(--space-2)', margin: 0, cursor: 'pointer' }}>
               Skip hole
             </button>
           </div>

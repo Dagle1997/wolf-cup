@@ -220,7 +220,9 @@ export function SchedulePage({ eventId }: SchedulePageProps) {
                     href={`/rounds/${r.runtimeRoundId}/score-entry`}
                     style={{
                       display: 'inline-block',
-                      padding: '8px 14px',
+                      padding: '12px 18px',
+                      minHeight: 44,
+                      boxSizing: 'border-box',
                       background: 'var(--color-brand-primary)',
                       color: '#fff',
                       borderRadius: 6,

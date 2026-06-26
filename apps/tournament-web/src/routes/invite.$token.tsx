@@ -232,7 +232,7 @@ export function InvitePage({ token }: { token: string }) {
                 <span aria-hidden="true" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-brand-tint)', color: 'var(--color-brand-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, flex: '0 0 auto' }}>
                   {(entry.name ?? '?').trim().charAt(0).toUpperCase()}
                 </span>
-                <span style={{ flex: 1, fontSize: 'var(--font-md)', fontWeight: 600 }}>{entry.name}</span>
+                <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-word', fontSize: 'var(--font-md)', fontWeight: 600 }}>{entry.name}</span>
                 <span aria-hidden="true" style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-lg)' }}>›</span>
               </button>
             </li>

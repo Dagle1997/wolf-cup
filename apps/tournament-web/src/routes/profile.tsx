@@ -260,7 +260,7 @@ export function ProfilePage({ player: initialPlayer }: ProfilePageProps) {
   return (
     <PageShell title="Your profile">
       <p>
-        Signed in as <code>{player.id}</code>
+        Signed in as <code style={{ wordBreak: 'break-all' }}>{player.id}</code>
         {player.isOrganizer ? ' (organizer)' : ''}.
       </p>
 
@@ -384,6 +384,7 @@ export function ProfilePage({ player: initialPlayer }: ProfilePageProps) {
                               })
                             }
                             data-testid={`match-pick-${m.ghinNumber}`}
+                            style={{ textAlign: 'left', wordBreak: 'break-word', whiteSpace: 'normal' }}
                           >
                             {m.firstName} {m.lastName}
                             {m.club !== null ? ` — ${m.club}` : ''}
