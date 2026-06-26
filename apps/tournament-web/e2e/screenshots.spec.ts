@@ -56,7 +56,8 @@ test('capture UI screenshots at phone viewport', async ({ browser, playwright })
     extraHTTPHeaders: { cookie: `tournament_session=${fx.sessionId}` },
   });
   const startRes = await api.post(`/api/admin/event-rounds/${fx.eventRoundId}/start`, {
-    data: { scorers: [{ foursomeNumber: 1, scorerPlayerId: fx.scorerPlayerId }] },
+    // Seed event has no game config → opt into the scores-only start path.
+    data: { scorers: [{ foursomeNumber: 1, scorerPlayerId: fx.scorerPlayerId }], confirmNoGame: true },
   });
   const { roundId } = (await startRes.json()) as { roundId: string };
   const scorerApi = await playwright.request.newContext({

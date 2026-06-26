@@ -65,6 +65,10 @@ test('start-round: organizer designates a scorer and starts scoring', async ({ b
   // Start is a one-way action → confirm before it posts.
   await page.getByTestId(`confirm-start-${fx.eventRoundId}`).click();
 
+  // The seed event carries no game config, so the no-game-config guard offers a
+  // scores-only start; take it (this lifecycle covers scoring, not money rules).
+  await page.getByTestId(`start-scores-only-${fx.eventRoundId}`).click();
+
   // Navigates to score-entry for the new round.
   await page.waitForURL(/\/rounds\/[^/]+\/score-entry/);
   const m = /\/rounds\/([^/]+)\/score-entry/.exec(page.url());

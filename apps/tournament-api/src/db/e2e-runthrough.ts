@@ -72,7 +72,7 @@ async function main(): Promise<void> {
   // Mint scorer session (members[0]) + start.
   const { sessionId: scorerSid } = await createSession(members[0]!, { userAgent: 'rt', ip: '127.0.0.1' });
   const scorerCookie = `tournament_session=${scorerSid}`;
-  const startRes = await post(`/api/admin/event-rounds/${eventRoundId}/start`, { scorers: [{ foursomeNumber: 1, scorerPlayerId: members[0] }] });
+  const startRes = await post(`/api/admin/event-rounds/${eventRoundId}/start`, { scorers: [{ foursomeNumber: 1, scorerPlayerId: members[0] }], confirmNoGame: true });
   const { roundId } = await startRes.json() as { roundId: string };
   log(`\n=== START: event=${eventId.slice(0, 8)} round=${roundId.slice(0, 8)} status=${startRes.status} ===`);
 
