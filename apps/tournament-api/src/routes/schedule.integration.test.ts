@@ -58,6 +58,7 @@ const {
   groupMembers,
   pairings,
   pairingMembers,
+  eventHandicaps,
 } = await import('../db/schema/index.js');
 const { scheduleRouter } = await import('./schedule.js');
 const { requestIdMiddleware } = await import('../middleware/request-id.js');
@@ -70,6 +71,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  await db.delete(eventHandicaps);
   await db.delete(pairingMembers);
   await db.delete(pairings);
   await db.delete(eventRounds);
@@ -301,6 +303,40 @@ describe('GET /api/events/:eventId/schedule', () => {
     const body = (await res.json()) as ScheduleBody;
     expect(body.rounds[0]!.pairing.kind).toBe('viewer_not_in_foursome');
     expect(body.rounds[1]!.pairing.kind).toBe('foursome');
+  });
+
+  test('(g) locked handicap snapshot overrides the manual index (GHIN player w/ null manual shows the locked HI, not 0.0)', async () => {
+    const s = await seed();
+    // Simulate a GHIN-sourced player: clear the manual index, then write a
+    // lock snapshot (what POST /handicaps/lock persists from GHIN history).
+    await db
+      .update(players)
+      .set({ manualHandicapIndex: null })
+      .where(eq(players.id, s.viewerId));
+    const ctx = `event:${s.eventId}`;
+    await db.insert(eventHandicaps).values({
+      eventId: s.eventId,
+      playerId: s.viewerId,
+      handicapIndex: 9.3,
+      source: 'ghin',
+      asOfDate: Date.now(),
+      ghinValueDate: '2026-06-20',
+      capturedAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: ctx,
+    });
+
+    const app = buildApp(s.viewerId);
+    const res = await getSchedule(app, s.eventId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ScheduleBody;
+    const r0 = body.rounds[0]!;
+    expect(r0.pairing.kind).toBe('foursome');
+    if (r0.pairing.kind === 'foursome') {
+      const viewer = r0.pairing.members.find((m) => m.isViewer)!;
+      // Without the overlay this would be 0 (null manual ?? 0).
+      expect(viewer.handicapIndex).toBe(9.3);
+    }
   });
 
   test('(d) 403 non-participant', async () => {

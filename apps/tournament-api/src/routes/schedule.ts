@@ -34,6 +34,7 @@ import {
 import { logger as moduleLogger } from '../lib/log.js';
 import { requireSession } from '../middleware/require-session.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
+import { loadLockedHandicapsByEvent } from '../services/event-handicap-overrides.js';
 
 const TENANT_ID = 'guyan';
 
@@ -82,6 +83,13 @@ scheduleRouter.get(
           403,
         );
       }
+
+      // When the event's handicaps are LOCKED, the snapshot index — not the
+      // player's manual index — is what every round plays off (and what the
+      // leaderboard/money show). The schedule must show the SAME number, or
+      // GHIN-sourced players (manual index null) render a misleading 0.0.
+      // Empty map for an unlocked event → falls back to the manual index.
+      const lockedHandicaps = await loadLockedHandicapsByEvent(db, eventId, TENANT_ID);
 
       // Event rounds (ordered by round_number asc).
       const roundRows = await db
@@ -233,7 +241,12 @@ scheduleRouter.get(
             members: memberRows.map((m) => ({
               playerId: m.playerId,
               name: m.name,
-              handicapIndex: m.manualHandicapIndex ?? 0,
+              // Locked snapshot overrides the manual index (even when locked to
+              // null), mirroring leaderboard.ts; ?? 0 only for the display type.
+              handicapIndex:
+                (lockedHandicaps.has(m.playerId)
+                  ? lockedHandicaps.get(m.playerId)
+                  : m.manualHandicapIndex) ?? 0,
               isViewer: m.playerId === player.id,
               teeColor: m.teeColor,
             })),
