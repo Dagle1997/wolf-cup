@@ -11,12 +11,14 @@
 
 import { settleH2h } from './h2h.js';
 import { settlePerHoleMatch } from './per-hole-match.js';
+import { settleOverUnder } from './over-under.js';
 import type { H2hInput, SettlementOutcome } from './types.js';
 
 export type { SettlementEdge, SettlementOutcome, BetDef, H2hInput } from './types.js';
 export { netPairwise, type PairwiseDebt } from './settlement-edge.js';
 export { settleH2h } from './h2h.js';
 export { settlePerHoleMatch } from './per-hole-match.js';
+export { settleOverUnder } from './over-under.js';
 
 const unsupported = (): SettlementOutcome => ({
   state: 'unsupported',
@@ -40,6 +42,11 @@ export function settleBet(input: H2hInput): SettlementOutcome {
       // Match play on a putts basis is meaningless (FR12) → fail loud.
       if (input.bet.basis === 'putts') return unsupported();
       return settlePerHoleMatch(input);
+    case 'over_under':
+      // Over/under grades a stroke total against a line — a putts basis is
+      // meaningless here → fail loud (defense-in-depth; creation gates it too).
+      if (input.bet.basis === 'putts') return unsupported();
+      return settleOverUnder(input);
     default:
       return unsupported();
   }

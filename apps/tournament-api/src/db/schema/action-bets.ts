@@ -87,6 +87,12 @@ export const bets = sqliteTable(
     betType: text('bet_type').notNull(), // open enum, Zod-validated (FR20)
     basis: text('basis').notNull(), // open enum, Zod-validated (FR20)
     stakeCents: integer('stake_cents').notNull(),
+    // over_under ONLY: the strokes line the subject's scoped total is graded
+    // against (under wins side A, over wins side B). NULL for every other bet
+    // type. Nullable + no CHECK on purpose — an ALTER ADD with a CHECK forces a
+    // SQLite table rebuild (the documented gotcha); the value is range-validated
+    // in Zod at the write path (migration 0025).
+    line: integer('line'),
     state: text('state').notNull().default('live'),
     // Who may SEE this bet on the player-facing board:
     //   'event_wide'        → every event participant (the default — a public bet).

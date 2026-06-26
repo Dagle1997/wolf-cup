@@ -69,7 +69,12 @@ const SELF_SERVE_MAX_STAKE_CENTS = 100_000;
 const CREATABLE_BASES_BY_TYPE: Record<string, readonly string[]> = {
   h2h: ['net', 'gross'],
   per_hole_match: ['net', 'gross'],
+  over_under: ['net', 'gross'],
 };
+
+// over_under line bounds — any realistic 18-hole total (net or gross).
+const OVER_UNDER_LINE_MIN = 1;
+const OVER_UNDER_LINE_MAX = 200;
 
 export class BetWriteError extends Error {
   readonly code: string;
@@ -97,6 +102,10 @@ export const actionBetParamsSchema = z
     basis: z.string().min(1),
     holeScope: z.enum(['front', 'back', 'total', 'full18']),
     stakeCents: z.number().int().min(1),
+    // over_under ONLY: the strokes line. Optional at the schema level (other
+    // bet types omit it); required + range-checked for over_under in
+    // validateBetParams so the error is a clean coded 400, not a Zod shape error.
+    line: z.number().int().optional(),
     sideA: sideSchema,
     sideB: sideSchema,
     // Who may SEE this bet on the player-facing board. Optional → 'event_wide'
@@ -148,9 +157,30 @@ async function validateBetParams(
   if (stakeholderA === stakeholderB) {
     throw new BetWriteError('same_stakeholder_both_sides', 'a player cannot hold both sides', 400);
   }
-  // A player cannot be h2h against himself.
-  if (subjectA === subjectB) {
-    throw new BetWriteError('same_subject_both_sides', 'the two subjects must differ', 400);
+  if (input.betType === 'over_under') {
+    // over_under is ONE subject + a strokes line: side A backs UNDER, side B
+    // backs OVER, both on the SAME subject. The line is required + sane.
+    if (subjectA !== subjectB) {
+      throw new BetWriteError('over_under_single_subject', 'over/under is one subject on both sides', 400);
+    }
+    if (
+      input.line === undefined ||
+      input.line === null ||
+      !Number.isInteger(input.line) ||
+      input.line < OVER_UNDER_LINE_MIN ||
+      input.line > OVER_UNDER_LINE_MAX
+    ) {
+      throw new BetWriteError(
+        'over_under_needs_line',
+        `over/under requires an integer line (${OVER_UNDER_LINE_MIN}–${OVER_UNDER_LINE_MAX})`,
+        400,
+      );
+    }
+  } else {
+    // A player cannot be h2h / per-hole-match against himself.
+    if (subjectA === subjectB) {
+      throw new BetWriteError('same_subject_both_sides', 'the two subjects must differ', 400);
+    }
   }
 
   // Round must belong to the event; gives us holesToPlay for scope.
@@ -303,6 +333,8 @@ export async function createActionBet(
     betType: input.betType,
     basis: input.basis,
     stakeCents: input.stakeCents,
+    // line is meaningful only for over_under; null for every other type.
+    line: input.betType === 'over_under' ? input.line! : null,
     state: 'live',
     visibility,
     createdByPlayerId: actorPlayerId,
@@ -343,6 +375,9 @@ export async function createActionBet(
       basis: input.basis,
       holeScope: input.holeScope,
       stakeCents: input.stakeCents,
+      // over_under term — recorded so the bet's full terms are recoverable from
+      // history for any later dispute (null for non-over_under).
+      line: input.betType === 'over_under' ? input.line ?? null : null,
       visibility,
       sideA: { stakeholderPlayerId: stakeholderA, subjectPlayerId: subjectA },
       sideB: { stakeholderPlayerId: stakeholderB, subjectPlayerId: subjectB },
@@ -422,6 +457,9 @@ export async function editActionBet(
       betType: input.betType,
       basis: input.basis,
       stakeCents: input.stakeCents,
+      // Re-derive line on every edit so a type change (over_under ⇄ other)
+      // never leaves a stale line behind.
+      line: input.betType === 'over_under' ? input.line! : null,
       ...visibilitySet,
     })
     .where(and(eq(bets.id, betId), eq(bets.tenantId, TENANT_ID)));
@@ -448,6 +486,7 @@ export async function editActionBet(
         basis: before.basis,
         holeScope: before.holeScope,
         stakeCents: before.stakeCents,
+        line: before.line,
         visibility: before.visibility,
         sideA: sideOf('A')
           ? { stakeholderPlayerId: sideOf('A')!.stakeholderPlayerId, subjectPlayerId: sideOf('A')!.subjectPlayerId }
@@ -462,6 +501,7 @@ export async function editActionBet(
         basis: input.basis,
         holeScope: input.holeScope,
         stakeCents: input.stakeCents,
+        line: input.betType === 'over_under' ? input.line ?? null : null,
         visibility: input.visibility ?? before.visibility,
         sideA: { stakeholderPlayerId: stakeholderA, subjectPlayerId: subjectA },
         sideB: { stakeholderPlayerId: stakeholderB, subjectPlayerId: subjectB },

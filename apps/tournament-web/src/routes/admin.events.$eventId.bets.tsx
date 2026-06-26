@@ -52,6 +52,7 @@ type BetView = {
   basis: string;
   holeScope: string;
   stakeCents: number;
+  line: number | null;
   state: string;
   winnerSubjectId: string | null;
   marginNet: number;
@@ -105,6 +106,10 @@ const errorMessageFor = (code: string): string => {
       return 'The two backers must be different people.';
     case 'non_whole_dollar_stake':
       return 'Stakes must be whole dollars (no cents).';
+    case 'over_under_needs_line':
+      return 'Over/Under needs a line (a whole number, 1–200).';
+    case 'over_under_single_subject':
+      return 'Over/Under is one player — pick the player the line is on.';
     case 'cannot_edit_terminal':
       return 'That bet is voided or final and can no longer be changed.';
     case 'cannot_void_terminal':
@@ -128,10 +133,12 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
   });
 
   const [eventRoundId, setEventRoundId] = useState('');
-  const [betType, setBetType] = useState<'h2h' | 'per_hole_match'>('h2h');
+  const [betType, setBetType] = useState<'h2h' | 'per_hole_match' | 'over_under'>('h2h');
   const [basis, setBasis] = useState<'net' | 'gross'>('net');
   const [holeScope, setHoleScope] = useState<(typeof HOLE_SCOPES)[number]>('full18');
   const [stakeDollars, setStakeDollars] = useState('20');
+  // over_under ONLY: the strokes line the subject's total is graded against.
+  const [line, setLine] = useState('');
   const [subjectA, setSubjectA] = useState('');
   const [subjectB, setSubjectB] = useState('');
   const [openBook, setOpenBook] = useState(false);
@@ -155,6 +162,22 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
   // DOLLARS (no cents); the submit gate (stakeValid) guarantees an integer, so
   // the cents conversion is non-lossy — we never round a fractional entry.
   const buildBody = () => {
+    if (betType === 'over_under') {
+      // ONE subject (subjectA) + a line. side A backs UNDER, side B backs OVER;
+      // both carry the same subject. The two stakeholders are the under/over
+      // backers (reuse the open-book stakeholder fields, always shown for o/u).
+      return {
+        eventRoundId,
+        betType,
+        basis,
+        holeScope,
+        stakeCents: Number(stakeDollars) * 100,
+        line: Number(line),
+        sideA: { stakeholderPlayerId: stakeholderA, subjectPlayerId: subjectA },
+        sideB: { stakeholderPlayerId: stakeholderB, subjectPlayerId: subjectA },
+        visibility,
+      };
+    }
     const stA = openBook ? stakeholderA : subjectA;
     const stB = openBook ? stakeholderB : subjectB;
     return {
@@ -174,6 +197,7 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
     setSubjectB('');
     setStakeholderA('');
     setStakeholderB('');
+    setLine('');
   };
   const exitEdit = () => {
     setEditingBetId(null);
@@ -197,7 +221,10 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
     setEditingBetId(b.betId);
     setConfirmEditing(false);
     setEventRoundId(b.eventRoundId);
-    setBetType(b.betType === 'per_hole_match' ? 'per_hole_match' : 'h2h');
+    setBetType(
+      b.betType === 'per_hole_match' ? 'per_hole_match' : b.betType === 'over_under' ? 'over_under' : 'h2h',
+    );
+    setLine(b.line != null ? String(b.line) : '');
     setBasis(b.basis === 'gross' ? 'gross' : 'net');
     setHoleScope(
       (HOLE_SCOPES as readonly string[]).includes(b.holeScope)
@@ -317,13 +344,24 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
   // Whole-dollar stakes only (no cents): digits only, >= 1. Rejects '25.5',
   // '1e2', '', '-1' — so the cents conversion in buildBody is always exact.
   const stakeValid = /^\d+$/.test(stakeDollars.trim()) && Number(stakeDollars) >= 1;
+  const lineNum = Number(line);
+  const lineValid =
+    line !== '' && Number.isInteger(lineNum) && lineNum >= 1 && lineNum <= 200;
   const formValid =
-    eventRoundId !== '' &&
-    subjectA !== '' &&
-    subjectB !== '' &&
-    subjectA !== subjectB &&
-    stakeValid &&
-    (!openBook || (stakeholderA !== '' && stakeholderB !== '' && stakeholderA !== stakeholderB));
+    betType === 'over_under'
+      ? eventRoundId !== '' &&
+        stakeValid &&
+        lineValid &&
+        subjectA !== '' &&
+        stakeholderA !== '' &&
+        stakeholderB !== '' &&
+        stakeholderA !== stakeholderB
+      : eventRoundId !== '' &&
+        subjectA !== '' &&
+        subjectB !== '' &&
+        subjectA !== subjectB &&
+        stakeValid &&
+        (!openBook || (stakeholderA !== '' && stakeholderB !== '' && stakeholderA !== stakeholderB));
 
   const playerOption = (p: RosterEntry) => (
     <option key={p.playerId} value={p.playerId}>
@@ -380,10 +418,11 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
             <select
               data-testid="type-select"
               value={betType}
-              onChange={(e) => setBetType(e.target.value as 'h2h' | 'per_hole_match')}
+              onChange={(e) => setBetType(e.target.value as 'h2h' | 'per_hole_match' | 'over_under')}
             >
               <option value="h2h">Head-to-head (total)</option>
               <option value="per_hole_match">Match play (per hole)</option>
+              <option value="over_under">Over / Under</option>
             </select>
           </FormField>
 
@@ -420,32 +459,69 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
             />
           </FormField>
 
-          <FormField label="Player A">
-            <select data-testid="subject-a-select" value={subjectA} onChange={(e) => setSubjectA(e.target.value)}>
-              <option value="">Select…</option>
-              {roster.map(playerOption)}
-            </select>
-          </FormField>
+          {betType === 'over_under' ? (
+            <>
+              {/* ONE subject + a line; under-backer vs over-backer. */}
+              <FormField label="Line (total strokes, e.g. 90)">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  data-testid="line-input"
+                  value={line}
+                  onChange={(e) => setLine(e.target.value)}
+                />
+              </FormField>
+              <FormField label="Player (the line is on)">
+                <select data-testid="subject-a-select" value={subjectA} onChange={(e) => setSubjectA(e.target.value)}>
+                  <option value="">Select…</option>
+                  {roster.map(playerOption)}
+                </select>
+              </FormField>
+              <FormField label="Backs UNDER">
+                <select data-testid="stakeholder-a-select" value={stakeholderA} onChange={(e) => setStakeholderA(e.target.value)}>
+                  <option value="">Select…</option>
+                  {roster.map(playerOption)}
+                </select>
+              </FormField>
+              <FormField label="Backs OVER">
+                <select data-testid="stakeholder-b-select" value={stakeholderB} onChange={(e) => setStakeholderB(e.target.value)}>
+                  <option value="">Select…</option>
+                  {roster.map(playerOption)}
+                </select>
+              </FormField>
+            </>
+          ) : (
+            <>
+              <FormField label="Player A">
+                <select data-testid="subject-a-select" value={subjectA} onChange={(e) => setSubjectA(e.target.value)}>
+                  <option value="">Select…</option>
+                  {roster.map(playerOption)}
+                </select>
+              </FormField>
 
-          <FormField label="Player B">
-            <select data-testid="subject-b-select" value={subjectB} onChange={(e) => setSubjectB(e.target.value)}>
-              <option value="">Select…</option>
-              {roster.map(playerOption)}
-            </select>
-          </FormField>
+              <FormField label="Player B">
+                <select data-testid="subject-b-select" value={subjectB} onChange={(e) => setSubjectB(e.target.value)}>
+                  <option value="">Select…</option>
+                  {roster.map(playerOption)}
+                </select>
+              </FormField>
 
-          <label
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)' }}
-          >
-            <input
-              type="checkbox"
-              data-testid="open-book-toggle"
-              style={{ width: 'auto', minHeight: 'auto', margin: 0 }}
-              checked={openBook}
-              onChange={(e) => setOpenBook(e.target.checked)}
-            />
-            Open book (different backer)
-          </label>
+              <label
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)' }}
+              >
+                <input
+                  type="checkbox"
+                  data-testid="open-book-toggle"
+                  style={{ width: 'auto', minHeight: 'auto', margin: 0 }}
+                  checked={openBook}
+                  onChange={(e) => setOpenBook(e.target.checked)}
+                />
+                Open book (different backer)
+              </label>
+            </>
+          )}
 
           <FormField label="Who can see this bet">
             <div
@@ -485,7 +561,7 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
             </div>
           </FormField>
 
-          {openBook ? (
+          {betType !== 'over_under' && openBook ? (
             <>
               <FormField label="Backs Player A">
                 <select data-testid="stakeholder-a-select" value={stakeholderA} onChange={(e) => setStakeholderA(e.target.value)}>
@@ -593,7 +669,16 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
                       ? s.subjectName ?? '—'
                       : `${s.subjectName ?? '—'} (${s.stakeholderName ?? '—'})`
                     : '—';
-                const matchup = `${sideLabel(a)} vs ${sideLabel(bb)}`;
+                const matchup =
+                  b.betType === 'over_under'
+                    ? `${a?.subjectName ?? '—'} O/U ${b.line ?? '—'} — ${a?.stakeholderName ?? '—'} under · ${bb?.stakeholderName ?? '—'} over`
+                    : `${sideLabel(a)} vs ${sideLabel(bb)}`;
+                const typeLabel =
+                  b.betType === 'over_under'
+                    ? 'Over/Under'
+                    : b.betType === 'per_hole_match'
+                      ? 'Match play'
+                      : 'Head-to-head';
                 const winnerName = b.winnerSubjectId != null ? nameById.get(b.winnerSubjectId) ?? null : null;
                 const terminal = b.state === 'void' || b.state === 'finalized' || b.state === 'unsettleable';
                 return (
@@ -601,7 +686,7 @@ export function AdminBetsPage({ eventId }: { eventId: string }) {
                     <td>
                       {matchup}
                       <div style={subTextStyle}>
-                        {b.betType === 'per_hole_match' ? 'Match play' : 'Head-to-head'} · {b.basis} · {b.holeScope}
+                        {typeLabel} · {b.basis} · {b.holeScope}
                       </div>
                     </td>
                     <td>{fmtUsd(b.stakeCents)}</td>

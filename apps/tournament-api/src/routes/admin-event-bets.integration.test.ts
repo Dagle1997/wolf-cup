@@ -413,6 +413,67 @@ describe('POST/GET /api/admin/events/:eventId/bets — Story 1.1', () => {
     expect(betId).toBeTruthy();
   });
 
+  test('over_under (gross): subject under the line → over-backer pays under-backer the stake', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    // Line 80 on Rick; Ben backs UNDER (side A), Steven backs OVER (side B).
+    const { betId } = (await (
+      await postBet(app, ids.eventId, {
+        eventRoundId: ids.eventRoundId,
+        betType: 'over_under',
+        basis: 'gross',
+        holeScope: 'full18',
+        stakeCents: 1000,
+        line: 80,
+        sideA: { stakeholderPlayerId: ids.ben, subjectPlayerId: ids.rick },
+        sideB: { stakeholderPlayerId: ids.steven, subjectPlayerId: ids.rick },
+      })
+    ).json()) as { betId: string };
+
+    // Rick shoots 4 on every hole = 72 gross < 80 → UNDER wins. Only the
+    // subject's scores matter for over_under.
+    const now = Date.now();
+    const ctx = `event:${ids.eventId}`;
+    for (let h = 1; h <= 18; h++) {
+      await db.insert(holeScores).values({
+        id: randomUUID(), roundId: ids.roundId, playerId: ids.rick, holeNumber: h, grossStrokes: 4,
+        putts: 2, scorerPlayerId: ids.rick, clientEventId: `r-${h}`, createdAt: now, updatedAt: now,
+        tenantId: TENANT_ID, contextId: ctx,
+      });
+    }
+
+    const list = (await (await app.request(`/api/admin/events/${ids.eventId}/bets`)).json()) as {
+      bets: Array<{ betId: string; betType: string; state: string; line: number | null; winnerSubjectId: string | null }>;
+    };
+    expect(list.bets[0]!.betType).toBe('over_under');
+    expect(list.bets[0]!.line).toBe(80);
+    expect(list.bets[0]!.state).toBe('settled');
+
+    // Over-backer (Steven) pays under-backer (Ben) the stake. The matrix is
+    // keyed [receiver][payer], so Ben (who collects) is owed by Steven.
+    const matrix = await computeMoneyMatrix(db, ids.eventId, ids.ben, TENANT_ID);
+    expect(matrix.matrix[ids.ben]![ids.steven]).toBe(1000);
+    expect(matrix.actionLedger.matrix[ids.ben]![ids.steven]).toBe(1000);
+    expect(betId).toBeTruthy();
+  });
+
+  test('over_under requires a line → 400 over_under_needs_line', async () => {
+    const ids = await seed();
+    const app = buildApp(ids.organizerId);
+    const res = await postBet(app, ids.eventId, {
+      eventRoundId: ids.eventRoundId,
+      betType: 'over_under',
+      basis: 'gross',
+      holeScope: 'full18',
+      stakeCents: 1000,
+      // line omitted
+      sideA: { stakeholderPlayerId: ids.ben, subjectPlayerId: ids.rick },
+      sideB: { stakeholderPlayerId: ids.steven, subjectPlayerId: ids.rick },
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('over_under_needs_line');
+  });
+
   test('Story 1.3: h2h gross settles on GROSS — gross winner differs from net winner', async () => {
     const ids = await seed();
     // Give Ben an 18 handicap: his NET would win, but his GROSS loses. A gross

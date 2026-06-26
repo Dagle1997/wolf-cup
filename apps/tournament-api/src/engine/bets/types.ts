@@ -18,7 +18,7 @@ export type HoleScope = 'front' | 'back' | 'total' | 'full18';
  * DB CHECK. The engine narrows the types it knows and fails loud (P6) on the
  * rest, so an unknown value never settles as a silent $0/push.
  */
-export type BetType = 'h2h' | 'per_hole_match' | 'putting';
+export type BetType = 'h2h' | 'per_hole_match' | 'over_under' | 'putting';
 export type Basis = 'net' | 'gross' | 'putts';
 
 export type BetSideDef = {
@@ -38,6 +38,12 @@ export type BetDef = {
   stakeCents: number;
   /** Course hole numbers in this bet's scope (e.g. 1..18 for full18). */
   scopedHoles: number[];
+  /**
+   * over_under ONLY: the strokes line the subject's scoped total is graded
+   * against (under = side A, over = side B). null/undefined for every other
+   * bet type. A missing line on an over_under bet fails loud (unsupported).
+   */
+  line?: number | null;
   sides: BetSideDef[];
 };
 

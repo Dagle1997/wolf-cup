@@ -55,9 +55,11 @@ type BetView = {
   basis: string;
   holeScope: string;
   stakeCents: number;
+  line: number | null;
   state: string;
   visibility: 'event_wide' | 'stakeholders_only';
   winnerSubjectId: string | null;
+  winnerSide: 'A' | 'B' | null;
   marginNet: number;
   sides: BetViewSide[];
 };
@@ -161,8 +163,12 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
 
   const [eventRoundId, setEventRoundId] = useState('');
   // Bet type: h2h = one total per side (low total wins); per_hole_match = the
-  // classic $X/hole match (most holes won), e.g. the $5-a-hole game.
-  const [betType, setBetType] = useState<'h2h' | 'per_hole_match'>('h2h');
+  // classic $X/hole match (most holes won), e.g. the $5-a-hole game;
+  // over_under = one player + a strokes line, you take under or over.
+  const [betType, setBetType] = useState<'h2h' | 'per_hole_match' | 'over_under'>('h2h');
+  // over_under ONLY: the strokes line + which side the viewer takes.
+  const [line, setLine] = useState('');
+  const [ouSide, setOuSide] = useState<'under' | 'over'>('under');
   const [basis, setBasis] = useState<'net' | 'gross'>('net');
   const [holeScope, setHoleScope] = useState<HoleScope>('full18');
   const [stakeDollars, setStakeDollars] = useState('20');
@@ -191,18 +197,40 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
     setStakeDollars('20');
     setOpenBook(false);
     setSideBBacker('');
+    setLine('');
+    setOuSide('under');
   };
 
-  const buildBody = () => ({
-    eventRoundId,
-    betType,
-    basis,
-    holeScope,
-    stakeCents: Number(stakeDollars) * 100,
-    sideA: { stakeholderPlayerId: viewerId, subjectPlayerId: effectiveSubjectA },
-    sideB: { stakeholderPlayerId: effectiveSideBBacker, subjectPlayerId: opponentId },
-    visibility,
-  });
+  const buildBody = () => {
+    if (betType === 'over_under') {
+      // One subject (effectiveSubjectA = the player the line is on). The viewer
+      // takes ouSide; the opponent takes the other. side A = under, side B = over.
+      const subj = effectiveSubjectA;
+      const underStakeholder = ouSide === 'under' ? viewerId : opponentId;
+      const overStakeholder = ouSide === 'over' ? viewerId : opponentId;
+      return {
+        eventRoundId,
+        betType,
+        basis,
+        holeScope,
+        stakeCents: Number(stakeDollars) * 100,
+        line: Number(line),
+        sideA: { stakeholderPlayerId: underStakeholder, subjectPlayerId: subj },
+        sideB: { stakeholderPlayerId: overStakeholder, subjectPlayerId: subj },
+        visibility,
+      };
+    }
+    return {
+      eventRoundId,
+      betType,
+      basis,
+      holeScope,
+      stakeCents: Number(stakeDollars) * 100,
+      sideA: { stakeholderPlayerId: viewerId, subjectPlayerId: effectiveSubjectA },
+      sideB: { stakeholderPlayerId: effectiveSideBBacker, subjectPlayerId: opponentId },
+      visibility,
+    };
+  };
 
   const create = useMutation<unknown, Error, void>({
     mutationFn: async () => {
@@ -276,12 +304,16 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
   // Open-book backer must be picked (and ≠ the opponent's subject, who'd just
   // be backing themselves anyway) when open book is on.
   const backerValid = !openBook || (sideBBacker !== '' && sideBBacker !== effectiveSubjectA);
+  const ouLineValid =
+    /^\d+$/.test(line.trim()) && Number(line) >= 1 && Number(line) <= 200;
   const formValid =
-    eventRoundId !== '' &&
-    opponentId !== '' &&
-    opponentId !== effectiveSubjectA &&
-    stakeValid &&
-    backerValid;
+    betType === 'over_under'
+      ? eventRoundId !== '' && opponentId !== '' && stakeValid && ouLineValid
+      : eventRoundId !== '' &&
+        opponentId !== '' &&
+        opponentId !== effectiveSubjectA &&
+        stakeValid &&
+        backerValid;
 
   const createError = create.isError ? create.error.message : null;
   const youName = nameById.get(viewerId) ?? 'You';
@@ -343,10 +375,11 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
             <select
               data-testid="bet-type-select"
               value={betType}
-              onChange={(e) => setBetType(e.target.value as 'h2h' | 'per_hole_match')}
+              onChange={(e) => setBetType(e.target.value as 'h2h' | 'per_hole_match' | 'over_under')}
             >
               <option value="h2h">Total — low total wins</option>
               <option value="per_hole_match">Hole-by-hole match — most holes (e.g. $5/hole)</option>
+              <option value="over_under">Over / Under — one player vs a line</option>
             </select>
           </FormField>
 
@@ -412,75 +445,159 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
             />
           </FormField>
 
-          <FormField label="You back">
-            <select
-              data-testid="subject-a-select"
-              value={effectiveSubjectA}
-              onChange={(e) => setSubjectA(e.target.value)}
-            >
-              <option value={viewerId}>{youName} (You)</option>
-              {opponents.map((p) => (
-                <option key={p.playerId} value={p.playerId}>
-                  {p.name ?? '—'}
-                </option>
-              ))}
-            </select>
-          </FormField>
-
-          <FormField label="Opponent">
-            <select
-              data-testid="opponent-select"
-              value={opponentId}
-              onChange={(e) => setOpponentId(e.target.value)}
-            >
-              <option value="">Select…</option>
-              {opponents.map((p) => (
-                <option key={p.playerId} value={p.playerId}>
-                  {p.name ?? '—'}
-                </option>
-              ))}
-            </select>
-          </FormField>
-
-          {/* ---- Open book: someone else can cover the opponent's side ---- */}
-          <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
-            <label
-              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minHeight: 44 }}
-            >
-              <input
-                type="checkbox"
-                data-testid="open-book-toggle"
-                checked={openBook}
-                onChange={(e) => {
-                  setOpenBook(e.target.checked);
-                  if (!e.target.checked) setSideBBacker('');
-                }}
-                style={{ flexShrink: 0 }}
-              />
-              <span style={{ fontWeight: 600, wordBreak: 'break-word' }}>
-                Someone else covers {opponentName ?? 'the opponent'}&rsquo;s side?
-              </span>
-            </label>
-
-            {openBook ? (
-              <FormField label="Backer (covers the opponent)">
+          {betType === 'over_under' ? (
+            <>
+              <FormField label="Player (the line is on)">
                 <select
-                  data-testid="side-b-backer-select"
-                  value={sideBBacker}
-                  onChange={(e) => setSideBBacker(e.target.value)}
+                  data-testid="subject-a-select"
+                  value={effectiveSubjectA}
+                  onChange={(e) => setSubjectA(e.target.value)}
                 >
-                  <option value="">Select…</option>
-                  {roster
-                    .filter((p) => p.playerId !== effectiveSubjectA)
-                    .map((p) => (
-                      <option key={p.playerId} value={p.playerId}>
-                        {p.playerId === viewerId ? `${p.name ?? '—'} (You)` : p.name ?? '—'}
-                      </option>
-                    ))}
+                  <option value={viewerId}>{youName} (You)</option>
+                  {opponents.map((p) => (
+                    <option key={p.playerId} value={p.playerId}>
+                      {p.name ?? '—'}
+                    </option>
+                  ))}
                 </select>
               </FormField>
-            ) : null}
-          </div>
+
+              <FormField label="Line (total strokes, e.g. 90)">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  data-testid="line-input"
+                  value={line}
+                  onChange={(e) => setLine(e.target.value)}
+                />
+              </FormField>
+
+              <FormField label="You take">
+                <div
+                  role="tablist"
+                  aria-label="You take"
+                  style={{ display: 'flex', gap: 0, borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--color-border)' }}
+                >
+                  {([['under', 'Under'], ['over', 'Over']] as const).map(([val, label]) => {
+                    const active = ouSide === val;
+                    return (
+                      <button
+                        key={val}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        data-testid={`ou-side-${val}`}
+                        onClick={() => setOuSide(val)}
+                        style={{
+                          flex: 1,
+                          border: 'none',
+                          borderRadius: 0,
+                          minHeight: 'var(--control-height)',
+                          padding: '0 var(--space-4)',
+                          fontWeight: 600,
+                          fontSize: 'var(--font-sm)',
+                          cursor: 'pointer',
+                          color: active ? '#fff' : 'var(--color-text-secondary)',
+                          backgroundColor: active ? 'var(--color-brand-primary)' : 'var(--color-surface)',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </FormField>
+
+              <FormField label="Opponent (takes the other side)">
+                <select
+                  data-testid="opponent-select"
+                  value={opponentId}
+                  onChange={(e) => setOpponentId(e.target.value)}
+                >
+                  <option value="">Select…</option>
+                  {opponents.map((p) => (
+                    <option key={p.playerId} value={p.playerId}>
+                      {p.name ?? '—'}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </>
+          ) : (
+            <>
+              <FormField label="You back">
+                <select
+                  data-testid="subject-a-select"
+                  value={effectiveSubjectA}
+                  onChange={(e) => setSubjectA(e.target.value)}
+                >
+                  <option value={viewerId}>{youName} (You)</option>
+                  {opponents.map((p) => (
+                    <option key={p.playerId} value={p.playerId}>
+                      {p.name ?? '—'}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              <FormField label="Opponent">
+                <select
+                  data-testid="opponent-select"
+                  value={opponentId}
+                  onChange={(e) => setOpponentId(e.target.value)}
+                >
+                  <option value="">Select…</option>
+                  {opponents.map((p) => (
+                    <option key={p.playerId} value={p.playerId}>
+                      {p.name ?? '—'}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+
+              {/* ---- Open book: someone else can cover the opponent's side ---- */}
+              <div style={{ display: 'grid', gap: 'var(--space-3)' }}>
+                <label
+                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minHeight: 44 }}
+                >
+                  <input
+                    type="checkbox"
+                    data-testid="open-book-toggle"
+                    checked={openBook}
+                    onChange={(e) => {
+                      setOpenBook(e.target.checked);
+                      if (!e.target.checked) setSideBBacker('');
+                    }}
+                    style={{ flexShrink: 0 }}
+                  />
+                  <span style={{ fontWeight: 600, wordBreak: 'break-word' }}>
+                    Someone else covers {opponentName ?? 'the opponent'}&rsquo;s side?
+                  </span>
+                </label>
+
+                {openBook ? (
+                  <FormField label="Backer (covers the opponent)">
+                    <select
+                      data-testid="side-b-backer-select"
+                      value={sideBBacker}
+                      onChange={(e) => setSideBBacker(e.target.value)}
+                    >
+                      <option value="">Select…</option>
+                      {roster
+                        .filter((p) => p.playerId !== effectiveSubjectA)
+                        .map((p) => (
+                          <option key={p.playerId} value={p.playerId}>
+                            {p.playerId === viewerId ? `${p.name ?? '—'} (You)` : p.name ?? '—'}
+                          </option>
+                        ))}
+                    </select>
+                  </FormField>
+                ) : null}
+              </div>
+            </>
+          )}
 
           <FormField label="Who can see this bet">
             <div
@@ -590,13 +707,32 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
           {visibleBets.map((b) => {
             const a = b.sides.find((s) => s.side === 'A');
             const bb = b.sides.find((s) => s.side === 'B');
-            const matchup = `${a?.subjectName ?? '—'} vs ${bb?.subjectName ?? '—'}`;
+            const matchup =
+              b.betType === 'over_under'
+                ? `${a?.subjectName ?? '—'} O/U ${b.line ?? '—'}`
+                : `${a?.subjectName ?? '—'} vs ${bb?.subjectName ?? '—'}`;
             const winnerName =
               b.winnerSubjectId != null
                 ? b.sides.find((s) => s.subjectPlayerId === b.winnerSubjectId)?.subjectName ??
                   nameById.get(b.winnerSubjectId) ??
                   null
                 : null;
+            // Settled-result caption. For over_under, "winnerSubjectId" is the
+            // subject (not the money winner), so show the actual total vs the
+            // line instead of a misleading "X won".
+            const ouTotal = b.betType === 'over_under' ? a?.subjectNetTotal ?? null : null;
+            const resultText =
+              b.state !== 'settled'
+                ? null
+                : b.betType === 'over_under'
+                  ? ouTotal != null
+                    ? `${a?.subjectName ?? '—'} shot ${ouTotal} (${
+                        b.line != null && ouTotal < b.line ? 'under' : 'over'
+                      } ${b.line ?? '—'})`
+                    : null
+                  : winnerName != null
+                    ? `${winnerName} by ${b.marginNet}${b.betType === 'per_hole_match' ? ' holes' : ''}`
+                    : null;
 
             // The viewer's signed P&L on this bet. h2h pays the flat stake to
             // the winner; per_hole_match pays stake × the hole margin (the
@@ -616,9 +752,12 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
               if (b.state === 'push') {
                 take = { text: '$0', color: 'var(--color-text-muted)' };
               } else if (b.state === 'settled' || b.state === 'finalized') {
-                if (b.winnerSubjectId == null) {
+                // Compare by SIDE, not subject: over_under's two sides share the
+                // same subject, so subject comparison can't tell winner from
+                // loser. winnerSide is the reliable signal for every bet type.
+                if (b.winnerSide == null) {
                   take = { text: '$0', color: 'var(--color-text-muted)' };
-                } else if (mySide.subjectPlayerId === b.winnerSubjectId) {
+                } else if (mySide.side === b.winnerSide) {
                   take = { text: fmtSignedWholeDollar(winCents), color: 'var(--color-money-pos)' };
                 } else {
                   take = { text: fmtSignedWholeDollar(-winCents), color: 'var(--color-money-neg)' };
@@ -663,8 +802,8 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                   )}
                   <span data-testid={`action-state-${b.betId}`} style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)' }}>
                     {STATE_LABEL[b.state] ?? b.state}
-                    {b.state === 'settled' && winnerName ? (
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)' }}> · {winnerName} by {b.marginNet}{b.betType === 'per_hole_match' ? ' holes' : ''}</span>
+                    {resultText ? (
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)' }}> · {resultText}</span>
                     ) : null}
                   </span>
                   <span

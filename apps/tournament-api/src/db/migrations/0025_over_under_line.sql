@@ -1,0 +1,1 @@
+ALTER TABLE `bets` ADD `line` integer;

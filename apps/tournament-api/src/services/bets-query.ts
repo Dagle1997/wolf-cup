@@ -45,6 +45,8 @@ export type BetWithSides = {
   betType: string;
   basis: string;
   stakeCents: number;
+  /** over_under ONLY: the strokes line; null for every other bet type. */
+  line: number | null;
   /** Durable lifecycle state from the row (live | void | unsettleable | finalized). */
   state: string;
   /** Board visibility: 'event_wide' (default) | 'stakeholders_only'. */
@@ -60,6 +62,9 @@ export type BetOutcome = {
   derivedState: SettlementState | 'void' | 'unsettleable' | 'finalized';
   subjectNetTotal: Record<string, number>;
   winnerSubjectId: string | null;
+  /** Which SIDE won ('A'|'B'); the correct winner signal for over_under, where
+   *  both sides share the subject so winnerSubjectId can't disambiguate. */
+  winnerSide: 'A' | 'B' | null;
   marginNet: number;
   edges: SettlementEdge[];
   trustBySubject: Record<string, NetForSegmentTrust>;
@@ -103,6 +108,7 @@ export async function loadBetWithSides(
     betType: row.betType,
     basis: row.basis,
     stakeCents: row.stakeCents,
+    line: row.line,
     state: row.state,
     visibility: row.visibility,
     netCalcVersion: row.netCalcVersion,
@@ -131,6 +137,7 @@ export async function settleActionBet(
     derivedState: 'provisional',
     subjectNetTotal: {},
     winnerSubjectId: null,
+    winnerSide: null,
     marginNet: 0,
     edges: [],
     trustBySubject: {},
@@ -216,6 +223,7 @@ export async function settleActionBet(
     holeScope: bet.holeScope,
     stakeCents: bet.stakeCents,
     scopedHoles,
+    line: bet.line,
     sides: bet.sides.map((s) => ({
       side: s.side,
       stakeholderPlayerId: s.stakeholderPlayerId,
@@ -229,6 +237,7 @@ export async function settleActionBet(
     derivedState: outcome.state,
     subjectNetTotal: outcome.subjectNetTotal,
     winnerSubjectId: outcome.result.winnerSubjectId,
+    winnerSide: outcome.result.winnerSide,
     marginNet: outcome.result.marginNet,
     edges: outcome.edges,
     trustBySubject,
@@ -282,11 +291,15 @@ export type BetView = {
   basis: string;
   holeScope: HoleScope;
   stakeCents: number;
+  /** over_under ONLY: the strokes line; null otherwise (for "under/over N" display). */
+  line: number | null;
   /** Durable state, or the derived outcome when live. */
   state: BetOutcome['derivedState'];
   /** Board visibility: 'event_wide' | 'stakeholders_only'. */
   visibility: string;
   winnerSubjectId: string | null;
+  /** Winning side ('A'|'B'); the reliable winner signal for over_under. */
+  winnerSide: 'A' | 'B' | null;
   marginNet: number;
   sides: BetViewSide[];
   trustBySubject: Record<string, NetForSegmentTrust>;
@@ -314,9 +327,11 @@ async function toBetView(
     basis: bet.basis,
     holeScope: bet.holeScope,
     stakeCents: bet.stakeCents,
+    line: bet.line,
     state: bet.state === 'live' ? outcome.derivedState : (bet.state as BetOutcome['derivedState']),
     visibility: bet.visibility,
     winnerSubjectId: outcome.winnerSubjectId,
+    winnerSide: outcome.winnerSide,
     marginNet: outcome.marginNet,
     sides: bet.sides.map((s) => ({
       side: s.side,
