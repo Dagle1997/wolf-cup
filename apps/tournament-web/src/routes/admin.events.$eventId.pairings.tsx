@@ -406,6 +406,51 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
     },
   });
 
+  // ---- Copy-teams-to-other-rounds mutation -------------------------------
+  // "Lock teams across rounds": copy one round's foursomes (same partnerships)
+  // onto the event's other rounds. Server skips locked/started rounds.
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const copyMutation = useMutation<
+    { copiedRounds: number; copiedPairings: number; skippedLocked: string[] },
+    Error,
+    string
+  >({
+    mutationFn: async (sourceEventRoundId) => {
+      const ac = track();
+      try {
+        const res = await fetch(
+          `/api/admin/events/${encodeURIComponent(eventId)}/pairings/copy`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            credentials: 'same-origin',
+            signal: ac.signal,
+            body: JSON.stringify({ sourceEventRoundId }),
+          },
+        );
+        if (!res.ok) throw new Error(`http_${res.status}`);
+        return (await res.json()) as { copiedRounds: number; copiedPairings: number; skippedLocked: string[] };
+      } finally {
+        release(ac);
+      }
+    },
+    onSuccess: (resp) => {
+      setErrorText(null);
+      const skipped = resp.skippedLocked.length;
+      setCopyStatus(
+        `Copied teams to ${resp.copiedRounds} round${resp.copiedRounds === 1 ? '' : 's'}.` +
+          (skipped > 0
+            ? ` ${skipped} locked round${skipped === 1 ? '' : 's'} left unchanged.`
+            : ''),
+      );
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: () => {
+      setCopyStatus(null);
+      setErrorText("Couldn't copy teams. Try again.");
+    },
+  });
+
   // ---- Render ------------------------------------------------------------
 
   const isDirty = useMemo<boolean>(() => {
@@ -617,6 +662,7 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
       ) : null}
 
       {savedAt !== null ? <p role="status" style={{ color: 'var(--color-money-pos)', fontWeight: 600 }}>Saved.</p> : null}
+      {copyStatus !== null ? <p role="status" style={{ color: 'var(--color-money-pos)', fontWeight: 600 }}>{copyStatus}</p> : null}
       {errorText !== null ? <p role="alert" style={{ color: 'var(--color-money-neg)', fontWeight: 600 }}>{errorText}</p> : null}
 
       {/* One stacked card per round; within it, one card per foursome with its
@@ -738,6 +784,33 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
               </div>
             ))}
           </div>
+
+          {/* "Lock teams across rounds": carry THIS round's foursomes (the same
+              partnerships) onto the event's other rounds. Only meaningful with
+              >1 round and players actually assigned here. Disabled while there
+              are unsaved edits (the copy reads the SAVED round on the server). */}
+          {grid.length > 1 &&
+          r.foursomes.some((fs) => fs.some((c) => c.playerId !== EMPTY)) ? (
+            <button
+              type="button"
+              data-testid={`copy-teams-${rIdx}`}
+              disabled={isDirty || copyMutation.isPending}
+              onClick={() => {
+                setCopyStatus(null);
+                copyMutation.mutate(r.eventRoundId);
+              }}
+              title={
+                isDirty
+                  ? 'Save your changes first, then copy.'
+                  : 'Copy these foursomes to the other rounds'
+              }
+              style={{ marginTop: 'var(--space-2)', minHeight: 'var(--control-height)', width: '100%', fontWeight: 600 }}
+            >
+              {copyMutation.isPending
+                ? 'Copying…'
+                : `📋 Copy these teams to the other rounds`}
+            </button>
+          ) : null}
         </section>
       ))}
     </PageShell>

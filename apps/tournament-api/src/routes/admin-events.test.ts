@@ -517,7 +517,7 @@ describe('POST /api/admin/events', () => {
 // T4-2: pairings
 // =====================================================================
 
-const { groupMembers, pairings, pairingMembers } = await import(
+const { groupMembers, pairings, pairingMembers, rounds } = await import(
   '../db/schema/index.js'
 );
 
@@ -1461,5 +1461,135 @@ describe('POST /api/admin/events/:eventId/pairings/suggest', () => {
         w.includes('locked round 2 has no persisted pairings'),
       ),
     ).toBe(true);
+  });
+});
+
+describe('POST /api/admin/events/:eventId/pairings/copy', () => {
+  async function seedRoundOneFoursome(
+    s: PairingsSeedResult,
+    opts: { roundIdx: number; locked: boolean },
+  ): Promise<string> {
+    const pid = randomUUID();
+    await db.insert(pairings).values({
+      id: pid,
+      eventRoundId: s.eventRoundIds[opts.roundIdx]!,
+      foursomeNumber: 1,
+      locked: opts.locked,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: `event:${s.eventId}`,
+    });
+    for (let i = 0; i < 4; i++) {
+      await db.insert(pairingMembers).values({
+        pairingId: pid,
+        playerId: s.playerIds[i]!,
+        slotNumber: i + 1,
+        tenantId: TENANT_ID,
+        contextId: `event:${s.eventId}`,
+      });
+    }
+    return pid;
+  }
+
+  it('copies a round\'s foursomes (same partnerships, same slots) to the other rounds, unlocked', async () => {
+    const s = await seedEventForPairings({ numRounds: 2, numPlayers: 4 });
+    await seedRoundOneFoursome(s, { roundIdx: 0, locked: true });
+
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings/copy`,
+      {
+        method: 'POST',
+        headers: { cookie: cookie(s.organizerSessionId), 'content-type': 'application/json' },
+        body: JSON.stringify({ sourceEventRoundId: s.eventRoundIds[0] }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { copiedRounds: number; copiedPairings: number; skippedLocked: string[] };
+    expect(body.copiedRounds).toBe(1);
+    expect(body.copiedPairings).toBe(1);
+    expect(body.skippedLocked).toEqual([]);
+
+    // Round 2 now has the same foursome, same slot→player mapping, UNLOCKED.
+    const r2 = await db.select().from(pairings).where(eq(pairings.eventRoundId, s.eventRoundIds[1]!));
+    expect(r2).toHaveLength(1);
+    expect(r2[0]!.locked).toBe(false);
+    const r2members = (
+      await db.select().from(pairingMembers).where(eq(pairingMembers.pairingId, r2[0]!.id))
+    ).sort((a, b) => a.slotNumber - b.slotNumber);
+    expect(r2members.map((m) => m.playerId)).toEqual(s.playerIds.slice(0, 4));
+  });
+
+  it('skips a target round that already has locked pairings', async () => {
+    const s = await seedEventForPairings({ numRounds: 2, numPlayers: 4 });
+    await seedRoundOneFoursome(s, { roundIdx: 0, locked: false }); // source
+    const lockedP2 = await seedRoundOneFoursome(s, { roundIdx: 1, locked: true }); // target locked
+
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings/copy`,
+      {
+        method: 'POST',
+        headers: { cookie: cookie(s.organizerSessionId), 'content-type': 'application/json' },
+        body: JSON.stringify({ sourceEventRoundId: s.eventRoundIds[0] }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { copiedRounds: number; skippedLocked: string[] };
+    expect(body.copiedRounds).toBe(0);
+    expect(body.skippedLocked).toEqual([s.eventRoundIds[1]]);
+
+    // The locked round's original pairing is untouched.
+    const r2 = await db.select().from(pairings).where(eq(pairings.eventRoundId, s.eventRoundIds[1]!));
+    expect(r2).toHaveLength(1);
+    expect(r2[0]!.id).toBe(lockedP2);
+    expect(r2[0]!.locked).toBe(true);
+  });
+
+  it('never overwrites a STARTED round (rounds row exists), even if its pairings are unlocked', async () => {
+    const s = await seedEventForPairings({ numRounds: 2, numPlayers: 4 });
+    await seedRoundOneFoursome(s, { roundIdx: 0, locked: false }); // source
+    // Target round 2: pairings present but UNLOCKED, yet a runtime round exists
+    // (the round has been started → scores/money hang off it). Must be skipped.
+    const targetPairingId = await seedRoundOneFoursome(s, { roundIdx: 1, locked: false });
+    await db.insert(rounds).values({
+      id: randomUUID(),
+      eventId: s.eventId,
+      eventRoundId: s.eventRoundIds[1]!,
+      holesToPlay: 18,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: `event:${s.eventId}`,
+    });
+
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings/copy`,
+      {
+        method: 'POST',
+        headers: { cookie: cookie(s.organizerSessionId), 'content-type': 'application/json' },
+        body: JSON.stringify({ sourceEventRoundId: s.eventRoundIds[0] }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { copiedRounds: number; skippedLocked: string[] };
+    expect(body.copiedRounds).toBe(0);
+    expect(body.skippedLocked).toEqual([s.eventRoundIds[1]]);
+
+    // The started round's pairing is untouched.
+    const r2 = await db.select().from(pairings).where(eq(pairings.eventRoundId, s.eventRoundIds[1]!));
+    expect(r2).toHaveLength(1);
+    expect(r2[0]!.id).toBe(targetPairingId);
+  });
+
+  it('422 when the source round has no pairings', async () => {
+    const s = await seedEventForPairings({ numRounds: 2, numPlayers: 4 });
+    const res = await testApp.request(
+      `/api/admin/events/${s.eventId}/pairings/copy`,
+      {
+        method: 'POST',
+        headers: { cookie: cookie(s.organizerSessionId), 'content-type': 'application/json' },
+        body: JSON.stringify({ sourceEventRoundId: s.eventRoundIds[0] }),
+      },
+    );
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('source_has_no_pairings');
   });
 });

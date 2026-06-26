@@ -160,6 +160,9 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
   );
 
   const [eventRoundId, setEventRoundId] = useState('');
+  // Bet type: h2h = one total per side (low total wins); per_hole_match = the
+  // classic $X/hole match (most holes won), e.g. the $5-a-hole game.
+  const [betType, setBetType] = useState<'h2h' | 'per_hole_match'>('h2h');
   const [basis, setBasis] = useState<'net' | 'gross'>('net');
   const [holeScope, setHoleScope] = useState<HoleScope>('full18');
   const [stakeDollars, setStakeDollars] = useState('20');
@@ -182,6 +185,7 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
   const effectiveSideBBacker = openBook ? sideBBacker : opponentId;
 
   const resetForm = () => {
+    setBetType('h2h');
     setSubjectA('');
     setOpponentId('');
     setStakeDollars('20');
@@ -191,7 +195,7 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
 
   const buildBody = () => ({
     eventRoundId,
-    betType: 'h2h' as const,
+    betType,
     basis,
     holeScope,
     stakeCents: Number(stakeDollars) * 100,
@@ -332,6 +336,17 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                   Round {r.roundNumber}
                 </option>
               ))}
+            </select>
+          </FormField>
+
+          <FormField label="Bet type">
+            <select
+              data-testid="bet-type-select"
+              value={betType}
+              onChange={(e) => setBetType(e.target.value as 'h2h' | 'per_hole_match')}
+            >
+              <option value="h2h">Total — low total wins</option>
+              <option value="per_hole_match">Hole-by-hole match — most holes (e.g. $5/hole)</option>
             </select>
           </FormField>
 
@@ -583,7 +598,14 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                   null
                 : null;
 
-            // The viewer's signed P&L on this bet (h2h = winner takes stake).
+            // The viewer's signed P&L on this bet. h2h pays the flat stake to
+            // the winner; per_hole_match pays stake × the hole margin (the
+            // $5/hole game — win by 3 holes at $5 = $15). marginNet carries the
+            // hole margin for per_hole_match and the stroke margin (unused) for
+            // h2h. This mirrors the engine's settlement (the authoritative money
+            // lives in settle-up; this is the board's display of it).
+            const winCents =
+              b.betType === 'per_hole_match' ? b.stakeCents * b.marginNet : b.stakeCents;
             const mySide = b.sides.find((s) => s.stakeholderPlayerId === viewerId);
             const isStakeholder = mySide != null;
             let take: { text: string; color: string } = {
@@ -597,9 +619,9 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                 if (b.winnerSubjectId == null) {
                   take = { text: '$0', color: 'var(--color-text-muted)' };
                 } else if (mySide.subjectPlayerId === b.winnerSubjectId) {
-                  take = { text: fmtSignedWholeDollar(b.stakeCents), color: 'var(--color-money-pos)' };
+                  take = { text: fmtSignedWholeDollar(winCents), color: 'var(--color-money-pos)' };
                 } else {
-                  take = { text: fmtSignedWholeDollar(-b.stakeCents), color: 'var(--color-money-neg)' };
+                  take = { text: fmtSignedWholeDollar(-winCents), color: 'var(--color-money-neg)' };
                 }
               } else if (b.state === 'live' || b.state === 'provisional') {
                 take = { text: 'pending', color: 'var(--color-text-muted)' };
@@ -642,7 +664,7 @@ export function ActionBoardPage({ eventId }: { eventId: string }) {
                   <span data-testid={`action-state-${b.betId}`} style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)' }}>
                     {STATE_LABEL[b.state] ?? b.state}
                     {b.state === 'settled' && winnerName ? (
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)' }}> · {winnerName} by {b.marginNet}</span>
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)' }}> · {winnerName} by {b.marginNet}{b.betType === 'per_hole_match' ? ' holes' : ''}</span>
                     ) : null}
                   </span>
                   <span

@@ -1113,6 +1113,183 @@ adminEventsRouter.post(
 );
 
 /**
+ * POST /api/admin/events/:eventId/pairings/copy — copy one round's foursomes
+ * (the same players in the same slots, i.e. the same best-ball partnerships)
+ * onto other rounds of the event. This is "lock teams across rounds": draw
+ * teams once, carry them to every round.
+ *
+ * Body: { sourceEventRoundId, targetEventRoundIds? }. Omit targets → every
+ * OTHER round of the event. A target that already has LOCKED pairings (a
+ * started/locked round) is never overwritten — it's skipped and reported.
+ * Copies are inserted UNLOCKED (organizer reviews + locks per round before
+ * starting) and per-player tee overrides are dropped (tee defaults differ by
+ * round; players + slots are what define the teams).
+ *
+ * Error precedence: invalid_body (400) → event_not_found (404) →
+ * unknown_event_round (400) → target_is_source (400) →
+ * source_has_no_pairings (422).
+ */
+const CopyPairingsRequestSchema = z.object({
+  sourceEventRoundId: z.string().uuid(),
+  targetEventRoundIds: z.array(z.string().uuid()).optional(),
+});
+
+adminEventsRouter.post(
+  '/events/:eventId/pairings/copy',
+  requireSession,
+  requireOrganizer,
+  async (c) => {
+    const requestId = c.get('requestId');
+    const log = c.get('logger');
+    const eventId = c.req.param('eventId');
+
+    let raw: unknown;
+    try {
+      raw = await c.req.json();
+    } catch {
+      return c.json({ error: 'bad_request', code: 'invalid_body', requestId, issues: [] }, 400);
+    }
+    const parsed = CopyPairingsRequestSchema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json({ error: 'bad_request', code: 'invalid_body', requestId, issues: parsed.error.issues }, 400);
+    }
+    const { sourceEventRoundId, targetEventRoundIds } = parsed.data;
+
+    // Event existence + tenant.
+    const eventRows = await db
+      .select({ id: events.id })
+      .from(events)
+      .where(and(eq(events.id, eventId), eq(events.tenantId, TENANT_ID)));
+    if (eventRows.length === 0) {
+      return c.json({ error: 'not_found', code: 'event_not_found', requestId }, 404);
+    }
+
+    // All rounds of this event (source + targets must belong to it).
+    const erRows = await db
+      .select({ id: eventRounds.id })
+      .from(eventRounds)
+      .where(and(eq(eventRounds.eventId, eventId), eq(eventRounds.tenantId, TENANT_ID)));
+    const validRoundIds = new Set(erRows.map((r) => r.id));
+    if (!validRoundIds.has(sourceEventRoundId)) {
+      return c.json({ error: 'bad_request', code: 'unknown_event_round', requestId, eventRoundId: sourceEventRoundId }, 400);
+    }
+
+    let targets: string[];
+    if (targetEventRoundIds === undefined) {
+      // Field omitted → copy to every OTHER round. An explicit [] means "no
+      // targets" (copies nothing) — NOT "all" — so a client bug can't fan out.
+      targets = erRows.map((r) => r.id).filter((id) => id !== sourceEventRoundId);
+    } else {
+      for (const t of targetEventRoundIds) {
+        if (!validRoundIds.has(t)) {
+          return c.json({ error: 'bad_request', code: 'unknown_event_round', requestId, eventRoundId: t }, 400);
+        }
+        if (t === sourceEventRoundId) {
+          return c.json({ error: 'bad_request', code: 'target_is_source', requestId }, 400);
+        }
+      }
+      targets = [...new Set(targetEventRoundIds)];
+    }
+
+    // Load the source foursomes + their members (ordered by slot).
+    const sourcePairings = await db
+      .select({ id: pairings.id, foursomeNumber: pairings.foursomeNumber })
+      .from(pairings)
+      .where(and(eq(pairings.eventRoundId, sourceEventRoundId), eq(pairings.tenantId, TENANT_ID)))
+      .orderBy(asc(pairings.foursomeNumber));
+    if (sourcePairings.length === 0) {
+      return c.json({ error: 'unprocessable', code: 'source_has_no_pairings', requestId }, 422);
+    }
+    const srcIds = sourcePairings.map((p) => p.id);
+    const sourceMembers = await db
+      .select({ pairingId: pairingMembers.pairingId, playerId: pairingMembers.playerId, slotNumber: pairingMembers.slotNumber })
+      .from(pairingMembers)
+      .where(and(inArray(pairingMembers.pairingId, srcIds), eq(pairingMembers.tenantId, TENANT_ID)))
+      .orderBy(asc(pairingMembers.slotNumber));
+    const membersByPairing = new Map<string, Array<{ playerId: string; slotNumber: number }>>();
+    for (const m of sourceMembers) {
+      let arr = membersByPairing.get(m.pairingId);
+      if (!arr) { arr = []; membersByPairing.set(m.pairingId, arr); }
+      arr.push({ playerId: m.playerId, slotNumber: m.slotNumber });
+    }
+
+    const now = Date.now();
+    const expectedContextId = `event:${eventId}`;
+    let copiedRounds = 0;
+    let copiedPairings = 0;
+    let copiedMembers = 0;
+    let skipped: string[] = [];
+    try {
+      await db.transaction(async (tx) => {
+        // Eligibility is re-read INSIDE the tx (closes the check→delete race).
+        // A target is NEVER overwritten if it is (a) locked (any locked
+        // pairing) or (b) already started — a `rounds` row exists for it
+        // (the authoritative in-play signal; scores/money hang off it). Both
+        // are skipped and reported so the organizer knows what was left alone.
+        const ineligible = new Set<string>();
+        if (targets.length > 0) {
+          const lockedRows = await tx
+            .select({ eventRoundId: pairings.eventRoundId })
+            .from(pairings)
+            .where(and(inArray(pairings.eventRoundId, targets), eq(pairings.locked, true), eq(pairings.tenantId, TENANT_ID)));
+          for (const r of lockedRows) ineligible.add(r.eventRoundId);
+          const startedRows = await tx
+            .select({ eventRoundId: rounds.eventRoundId })
+            .from(rounds)
+            .where(and(inArray(rounds.eventRoundId, targets), eq(rounds.tenantId, TENANT_ID)));
+          for (const r of startedRows) if (r.eventRoundId) ineligible.add(r.eventRoundId);
+        }
+        const eligible = targets.filter((t) => !ineligible.has(t));
+        skipped = targets.filter((t) => ineligible.has(t));
+
+        if (eligible.length > 0) {
+          await tx
+            .delete(pairings)
+            .where(and(inArray(pairings.eventRoundId, eligible), eq(pairings.tenantId, TENANT_ID)));
+        }
+        for (const targetId of eligible) {
+          for (const sp of sourcePairings) {
+            const newPairingId = randomUUID();
+            await tx.insert(pairings).values({
+              id: newPairingId,
+              eventRoundId: targetId,
+              foursomeNumber: sp.foursomeNumber,
+              locked: false,
+              createdAt: now,
+              tenantId: TENANT_ID,
+              contextId: expectedContextId,
+            });
+            copiedPairings += 1;
+            // Preserve the ORIGINAL slotNumber exactly (1&2 = team A, 3&4 =
+            // team B). Re-sequencing to 1..N would scramble partnerships if
+            // slots were ever non-contiguous.
+            const mem = membersByPairing.get(sp.id) ?? [];
+            for (const m of mem) {
+              await tx.insert(pairingMembers).values({
+                pairingId: newPairingId,
+                playerId: m.playerId,
+                slotNumber: m.slotNumber,
+                tenantId: TENANT_ID,
+                contextId: expectedContextId,
+              });
+              copiedMembers += 1;
+            }
+          }
+          copiedRounds += 1;
+        }
+      });
+    } catch (err) {
+      const e = err as { message?: unknown } | null;
+      log.error({ event: 'pairings_copy_failed', eventId, sourceEventRoundId, message: e?.message ?? null });
+      return c.json({ error: 'internal', code: 'copy_failed', requestId }, 500);
+    }
+
+    log.info({ event: 'pairings_copied', eventId, sourceEventRoundId, copiedRounds, copiedPairings, copiedMembers, skippedLocked: skipped.length });
+    return c.json({ copiedRounds, copiedPairings, copiedMembers, skippedLocked: skipped, requestId });
+  },
+);
+
+/**
  * POST /api/admin/events/:eventId/pairings/suggest — wire-up to T4-1's
  * suggestPairings engine. Honors lockedRounds via post-suggest replacement
  * with currently-persisted pairings.
