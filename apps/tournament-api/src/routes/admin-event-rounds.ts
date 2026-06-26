@@ -78,7 +78,11 @@ const TENANT_ID = 'guyan';
 
 // v1 sub-game type allowlist. v1.5+ enabling = add types to this set; no
 // schema migration required (the schema CHECK already accepts all 4).
-const V1_ENABLED_SUB_GAME_TYPES = new Set(['skins'] as const);
+// 'putting_contest' enables PUTTS TRACKING: checking it for a group makes the
+// score-entry screen ask those players for putts each hole (used for snake /
+// least-putts, settled on paper for now — no auto-pot yet). buy-in 0 is fine
+// (tracking only). Score entry is unchanged for any group without it.
+const V1_ENABLED_SUB_GAME_TYPES = new Set<string>(['skins', 'putting_contest']);
 const ALL_SUB_GAME_TYPES = ['skins', 'ctp', 'sandies', 'putting_contest'] as const;
 type SubGameType = (typeof ALL_SUB_GAME_TYPES)[number];
 
@@ -315,9 +319,9 @@ adminEventRoundsRouter.post(
       );
     }
 
-    // Step 3 — sub_game_type_not_enabled (v1 rejects non-skins).
+    // Step 3 — sub_game_type_not_enabled (only the enabled types are accepted).
     for (const entry of body.subGames) {
-      if (!V1_ENABLED_SUB_GAME_TYPES.has(entry.type as 'skins')) {
+      if (!V1_ENABLED_SUB_GAME_TYPES.has(entry.type)) {
         return c.json(
           {
             error: 'bad_request',

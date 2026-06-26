@@ -33,6 +33,8 @@ import {
   roundPins,
   roundStates,
   scorerAssignments,
+  subGames,
+  subGameParticipants,
 } from '../db/schema/index.js';
 import { perPlayerHandicapsSchema, parseGameConfig } from '../engine/games/config-schema.js';
 import { requireSession } from '../middleware/require-session.js';
@@ -358,6 +360,29 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
         })
       : [];
 
+  // (8) Putts tracking: which of THIS foursome's members are in an active
+  // putting-game (sub_game type 'putting_contest') for the round. The score
+  // entry UI asks those players for putts; everyone else is unchanged. Empty
+  // unless a putting game was enabled for these players.
+  const puttsPlayerIds =
+    memberPlayerIds.length > 0
+      ? (
+          await db
+            .select({ playerId: subGameParticipants.playerId })
+            .from(subGameParticipants)
+            .innerJoin(subGames, eq(subGameParticipants.subGameId, subGames.id))
+            .where(
+              and(
+                eq(subGames.eventRoundId, round.eventRoundId),
+                eq(subGames.type, 'putting_contest'),
+                eq(subGames.tenantId, TENANT_ID),
+                eq(subGameParticipants.tenantId, TENANT_ID),
+                inArray(subGameParticipants.playerId, memberPlayerIds),
+              ),
+            )
+        ).map((r) => r.playerId)
+      : [];
+
   return c.json(
     {
       roundId,
@@ -373,6 +398,7 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
         holeScores: myHoleScores,
         claims: myClaims,
         enabledClaimTypes,
+        puttsPlayerIds,
       },
     },
     200,

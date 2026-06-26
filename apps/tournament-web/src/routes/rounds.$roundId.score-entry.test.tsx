@@ -52,6 +52,7 @@ interface MockRoundDetail {
       putts: number | null;
     }>;
     enabledClaimTypes?: Array<'greenie' | 'polie' | 'sandie'> | null;
+    puttsPlayerIds?: string[] | null;
   };
 }
 
@@ -277,6 +278,27 @@ describe('ScoreEntryRoute', () => {
     expect(screen.getByTestId('current-hole').textContent).toBe('Hole 1');
     expect(screen.getByTestId('score-input-0')).toBeInTheDocument();
     expect(screen.getByTestId('score-input-3')).toBeInTheDocument();
+  });
+
+  test('no putting game → NO putts row anywhere (score entry unchanged)', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
+    await renderRoute();
+    await waitFor(() => expect(screen.getByTestId('score-entry-form')).toBeInTheDocument());
+    expect(screen.queryByTestId('putts-minus-0')).toBeNull();
+    expect(screen.queryByTestId('putts-minus-3')).toBeNull();
+  });
+
+  test('putting game → putts row ONLY for its players (gated by puttsPlayerIds)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonOk(buildHappyPathDetail({ puttsPlayerIds: [SCORER_ID] })),
+    );
+    await renderRoute();
+    await waitFor(() => expect(screen.getByTestId('score-entry-form')).toBeInTheDocument());
+    // Scorer (member index 0) is in the putting game → putts stepper shown.
+    expect(screen.getByTestId('putts-minus-0')).toBeInTheDocument();
+    expect(screen.getByTestId('putts-plus-0')).toBeInTheDocument();
+    // Player One (index 1) is NOT → no putts row.
+    expect(screen.queryByTestId('putts-minus-1')).toBeNull();
   });
 
   test('renders read-only placeholder when isScorer=false', async () => {

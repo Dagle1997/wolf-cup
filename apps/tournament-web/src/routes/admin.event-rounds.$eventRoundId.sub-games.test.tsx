@@ -37,7 +37,7 @@ beforeEach(() => vi.stubGlobal('fetch', vi.fn()));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('SubGamesPage', () => {
-  it('renders three skins pots (net/gross/canadian) + disabled CTP/putting', async () => {
+  it('renders three skins pots (net/gross/canadian) + active putting + disabled CTP', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify(baseGetResponse), { status: 200, headers: { 'content-type': 'application/json' } }));
     renderWithQueryClient();
 
@@ -49,9 +49,10 @@ describe('SubGamesPage', () => {
     // Each pot has its own buy-in + per-player checkboxes.
     expect(screen.getByTestId('skins-buyin-net')).toBeInTheDocument();
     expect(screen.getByTestId('skins-participant-gross-p-alice')).toBeInTheDocument();
-    // CTP / putting disabled.
+    // Putting is now an active section (enables putts entry); CTP still disabled.
+    expect(screen.getByTestId('putting-section')).toBeInTheDocument();
+    expect(screen.getByTestId('putting-participant-p-alice')).toBeInTheDocument();
     expect(screen.getByTestId('sub-game-section-ctp')).toBeDisabled();
-    expect(screen.getByTestId('sub-game-section-putting_contest')).toBeDisabled();
   });
 
   it('enabling Net + Gross pots + Save → POST sends two skins entries with modes + $25', async () => {

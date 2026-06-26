@@ -51,6 +51,8 @@ const {
   roundStates,
   scorerAssignments,
   holeScores,
+  subGames,
+  subGameParticipants,
 } = await import('../db/schema/index.js');
 const { scoresRouter } = await import('./scores.js');
 const { requestIdMiddleware } = await import('../middleware/request-id.js');
@@ -437,6 +439,43 @@ describe('GET /api/rounds/:roundId', () => {
     const body = (await res.json()) as { myFoursome: { enabledClaimTypes: string[] } };
     // The scorer is in foursome 1 → its override (polie only), NOT the round default.
     expect(body.myFoursome.enabledClaimTypes).toEqual(['polie']);
+  });
+
+  test('puttsPlayerIds: empty when no putting game is enabled for the round', async () => {
+    const s = await seed();
+    const app = buildApp(s.scorerId);
+    const res = await getRoundDetail(app, s.roundId);
+    const body = (await res.json()) as { myFoursome: { puttsPlayerIds: string[] } };
+    expect(body.myFoursome.puttsPlayerIds).toEqual([]);
+  });
+
+  test('puttsPlayerIds: lists this foursome\'s players who are in an active putting game', async () => {
+    const s = await seed();
+    const sgId = randomUUID();
+    await db.insert(subGames).values({
+      id: sgId,
+      eventRoundId: s.eventRoundId,
+      type: 'putting_contest',
+      configJson: '{}',
+      buyInPerParticipant: 0,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: s.ctx,
+    });
+    // Scorer + Player One are in the putting game; Player Two is not.
+    for (const pid of [s.scorerId, s.player1Id]) {
+      await db.insert(subGameParticipants).values({
+        subGameId: sgId,
+        playerId: pid,
+        optedInAt: Date.now(),
+        tenantId: TENANT_ID,
+        contextId: s.ctx,
+      });
+    }
+    const app = buildApp(s.scorerId);
+    const res = await getRoundDetail(app, s.roundId);
+    const body = (await res.json()) as { myFoursome: { puttsPlayerIds: string[] } };
+    expect([...body.myFoursome.puttsPlayerIds].sort()).toEqual([s.scorerId, s.player1Id].sort());
   });
 
   test('200 non-scorer participant: isScorer=false but scorer info populated', async () => {

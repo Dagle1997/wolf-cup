@@ -28,7 +28,6 @@ const SKINS_MODES: ReadonlyArray<{ mode: SkinsMode; label: string; blurb: string
 ];
 const DISABLED_TYPES: ReadonlyArray<{ type: string; label: string }> = [
   { type: 'ctp', label: 'Closest to the Pin (CTP)' },
-  { type: 'putting_contest', label: 'Putting Contest' },
 ];
 
 type GetResponse = {
@@ -63,6 +62,10 @@ export type SubGamesPageProps = { eventRoundId: string };
 export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
   const queryClient = useQueryClient();
   const [skins, setSkins] = useState<SkinsState>(emptySkins);
+  // Putting game: checking a player makes score entry ask them for putts each
+  // hole (for snake / least-putts). Buy-in optional — tracking works at $0.
+  const [puttingParticipants, setPuttingParticipants] = useState<Set<string>>(new Set());
+  const [puttingBuyIn, setPuttingBuyIn] = useState('');
   const [errorText, setErrorText] = useState<string | null>(null);
   const [successAt, setSuccessAt] = useState<number | null>(null);
 
@@ -88,12 +91,19 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
   useEffect(() => {
     if (!data) return;
     const next = emptySkins();
+    let puttingPlayers = new Set<string>();
+    let puttingBuy = '';
     for (const sg of data.subGames) {
       if (sg.type === 'skins' && sg.mode && next[sg.mode]) {
         next[sg.mode] = { buyInDollars: centsToDollars(sg.buyInPerParticipant), participants: new Set(sg.participantPlayerIds) };
+      } else if (sg.type === 'putting_contest') {
+        puttingPlayers = new Set(sg.participantPlayerIds);
+        puttingBuy = centsToDollars(sg.buyInPerParticipant);
       }
     }
     setSkins(next);
+    setPuttingParticipants(puttingPlayers);
+    setPuttingBuyIn(puttingBuy);
   }, [data]);
 
   const enabledCount = useMemo(
@@ -107,7 +117,12 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
       inFlight.current.add(ac);
       try {
         // Emit one entry per ENABLED mode (a buy-in OR at least one player).
-        const subGames = SKINS_MODES
+        const subGames: Array<{
+          type: 'skins' | 'putting_contest';
+          mode?: SkinsMode;
+          buyInPerParticipant: number;
+          participantPlayerIds: string[];
+        }> = SKINS_MODES
           .filter(({ mode }) => dollarsToCents(skins[mode].buyInDollars) > 0 || skins[mode].participants.size > 0)
           .map(({ mode }) => ({
             type: 'skins' as const,
@@ -115,6 +130,14 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
             buyInPerParticipant: dollarsToCents(skins[mode].buyInDollars),
             participantPlayerIds: Array.from(skins[mode].participants),
           }));
+        // Putting game: enabled when anyone is checked (buy-in optional).
+        if (puttingParticipants.size > 0) {
+          subGames.push({
+            type: 'putting_contest',
+            buyInPerParticipant: dollarsToCents(puttingBuyIn),
+            participantPlayerIds: Array.from(puttingParticipants),
+          });
+        }
         const res = await fetch(`/api/admin/event-rounds/${encodeURIComponent(eventRoundId)}/sub-games`, {
           method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', signal: ac.signal,
           body: JSON.stringify({ subGames }),
@@ -151,6 +174,13 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
   function setBuyIn(mode: SkinsMode, value: string): void {
     setSkins((prev) => ({ ...prev, [mode]: { ...prev[mode], buyInDollars: value } }));
   }
+  function togglePutting(playerId: string): void {
+    setPuttingParticipants((prev) => {
+      const set = new Set(prev);
+      if (set.has(playerId)) set.delete(playerId); else set.add(playerId);
+      return set;
+    });
+  }
 
   return (
     <PageShell title={`Sub-game setup — Round ${data.eventRound.roundNumber}`}>
@@ -181,6 +211,27 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
         </fieldset>
       ))}
 
+      <fieldset data-testid="putting-section" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 12, marginBottom: 12 }}>
+        <legend style={{ fontWeight: 700 }}>Putting game</legend>
+        <div style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)', marginBottom: 8 }}>
+          Checking a player makes the score-entry screen ask them for putts each hole (for snake / least-putts). Settle the game in person. Buy-in optional.
+        </div>
+        <label style={{ display: 'block', marginBottom: 8 }}>
+          Buy-in ($/player, optional):{' '}
+          <input type="number" step="0.01" min="0" data-testid="putting-buyin" value={puttingBuyIn} onChange={(e) => setPuttingBuyIn(e.target.value)} style={{ minHeight: 40, width: 90 }} />
+        </label>
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {data.roster.map((p) => (
+            <li key={p.playerId}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minHeight: 44 }}>
+                <input type="checkbox" data-testid={`putting-participant-${p.playerId}`} checked={puttingParticipants.has(p.playerId)} onChange={() => togglePutting(p.playerId)} style={{ flexShrink: 0, width: 20, height: 20 }} />
+                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{p.name}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      </fieldset>
+
       {DISABLED_TYPES.map(({ type, label }) => (
         <fieldset key={type} disabled title="Coming in v1.5" data-testid={`sub-game-section-${type}`} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 12, marginBottom: 12, opacity: 0.6 }}>
           <legend>{label}</legend>
@@ -189,7 +240,14 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
       ))}
 
       <button type="button" data-testid="save-sub-games" onClick={() => save.mutate()} disabled={save.isPending} style={{ minHeight: 44 }}>
-        {save.isPending ? 'Saving…' : `Save (${enabledCount} skins pot${enabledCount === 1 ? '' : 's'})`}
+        {save.isPending
+          ? 'Saving…'
+          : (() => {
+              const parts: string[] = [];
+              if (enabledCount > 0) parts.push(`${enabledCount} skins pot${enabledCount === 1 ? '' : 's'}`);
+              if (puttingParticipants.size > 0) parts.push('putting');
+              return parts.length > 0 ? `Save (${parts.join(' + ')})` : 'Save';
+            })()}
       </button>
       {successAt !== null ? <p role="status">Saved.</p> : null}
       {errorText !== null ? <p role="alert">{errorText}</p> : null}

@@ -115,6 +115,9 @@ interface RoundDetail {
     // or absent (un-pinned / non-F1 round, or an older server build) → show all
     // three (no regression). Empty array → all three OFF, no claim buttons.
     enabledClaimTypes?: ClaimType[] | null;
+    // Players in an active putting game for this round → score entry asks them
+    // for putts each hole. Absent/empty (no putting game) → no putts input.
+    puttsPlayerIds?: string[] | null;
   };
 }
 
@@ -1060,6 +1063,13 @@ function ScoreEntryForm({
   const members = data.myFoursome.members;
   const markMutation = useMarkMutation();
 
+  // Players in an active putting game → show a small per-hole putts field for
+  // them. Empty (no putting game) → the score card is exactly as before.
+  const puttsPlayerIds = useMemo(
+    () => new Set(data.myFoursome.puttsPlayerIds ?? []),
+    [data.myFoursome.puttsPlayerIds],
+  );
+
   // F1 Epic 2 (Story 2.1) — current claims keyed `${playerId}:${hole}:${type}`.
   // Seeded from the server-derived current-claim set; toggled optimistically as
   // the scorer taps a chip (each toggle is a queued set/remove mutation).
@@ -1171,6 +1181,9 @@ function ScoreEntryForm({
 
   // Per-input score string; clientEventIds are generated at Save time.
   const [currentInputs, setCurrentInputs] = useState<Record<string, string>>({});
+  // Per-hole putts for the current hole, keyed by playerId (putting-game players
+  // only). Seeded from saved putts when stepping to a scored hole.
+  const [currentPutts, setCurrentPutts] = useState<Record<string, string>>({});
 
   // Latest server scores, read (not subscribed) by the hole-change seed effect so
   // navigating BACK to a scored hole pre-fills its inputs — without a poll
@@ -1211,12 +1224,18 @@ function ScoreEntryForm({
   useEffect(() => {
     if (currentHole === null) {
       setCurrentInputs({});
+      setCurrentPutts({});
     } else {
       const seeded: Record<string, string> = {};
+      const seededPutts: Record<string, string> = {};
       for (const hs of holeScoresRef.current) {
-        if (hs.holeNumber === currentHole) seeded[hs.playerId] = String(hs.grossStrokes);
+        if (hs.holeNumber === currentHole) {
+          seeded[hs.playerId] = String(hs.grossStrokes);
+          if (hs.putts != null) seededPutts[hs.playerId] = String(hs.putts);
+        }
       }
       setCurrentInputs(seeded);
+      setCurrentPutts(seededPutts);
     }
     pendingAdvanceTimers.current.forEach((t) => {
       if (t !== null && t !== undefined) clearTimeout(t);
@@ -1276,6 +1295,16 @@ function ScoreEntryForm({
     },
     [clearPendingAdvanceTimer],
   );
+
+  // Putts steppers (putting-game players only): 0..15, in place, no advance.
+  const handlePuttsStep = useCallback((member: Member, delta: 1 | -1) => {
+    setCurrentPutts((prev) => {
+      const cur = parseInt(prev[member.playerId] ?? '', 10);
+      const base = Number.isNaN(cur) ? 0 : cur;
+      const next = Math.max(0, Math.min(15, base + delta));
+      return { ...prev, [member.playerId]: String(next) };
+    });
+  }, []);
 
   const handleBlur = useCallback(
     (idx: number) => {
@@ -1388,14 +1417,26 @@ function ScoreEntryForm({
       try {
         const score = currentInputs[member.playerId];
         const grossStrokes = parseInt(score!, 10);
-        // The entry UI no longer captures putts (visual condense). PRESERVE any
-        // putts the server already has for this (player, hole) instead of
-        // overwriting them to null — a re-save of a hole must never delete
-        // existing putting data. New cells have no prior putts → null.
-        const putts =
+        // Putts: for a putting-game player, save what the scorer entered (the
+        // per-hole stepper). For everyone else, PRESERVE any putts the server
+        // already has (never overwrite to null on a re-save) — the entry UI
+        // shows no putts field for them.
+        const priorPutts =
           data.myFoursome.holeScores.find(
             (hs) => hs.playerId === member.playerId && hs.holeNumber === currentHole,
           )?.putts ?? null;
+        let putts: number | null = priorPutts;
+        if (puttsPlayerIds.has(member.playerId)) {
+          const entered = currentPutts[member.playerId];
+          if (entered != null && entered !== '') {
+            const n = parseInt(entered, 10);
+            // Defensive clamp — the stepper only ever sets 0..15, but never let a
+            // stray value serialize to NaN (→ null) or out of the server's range.
+            putts = Number.isFinite(n) ? Math.max(0, Math.min(15, n)) : null;
+          } else {
+            putts = null;
+          }
+        }
         // Stable clientEventId per (hole, player) — reuse across retries
         // so retried cells dedupe on the server's UNIQUE(round_id,
         // player_id, hole_number, client_event_id) target. Fresh ID
@@ -1458,7 +1499,7 @@ function ScoreEntryForm({
     // Trigger drain immediately if online; queue's setTimeout heartbeat
     // handles offline gracefully.
     void queue.drain();
-  }, [allValid, currentHole, currentInputs, data.myFoursome.holeScores, isSaving, manualHole, markMutation, members, persistClientEventIdCache, roundId, queue]);
+  }, [allValid, currentHole, currentInputs, currentPutts, puttsPlayerIds, data.myFoursome.holeScores, isSaving, manualHole, markMutation, members, persistClientEventIdCache, roundId, queue]);
 
   // Toggle a claim for (player, current hole, type). A toggle ON enqueues a
   // `set` op; a toggle OFF enqueues a `remove` op (removal is a queued mutation
@@ -1727,6 +1768,41 @@ function ScoreEntryForm({
                         </button>
                       </div>
                     </div>
+                    {/* Putts (putting-game players only): a small per-hole number
+                        with −/+ steppers, so each hole's putts are visible/editable.
+                        Steppers (not typing) keep it from fighting the score input's
+                        auto-advance. Hidden entirely when no putting game is on. */}
+                    {puttsPlayerIds.has(member.playerId) && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
+                        <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                          Putts
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button
+                            type="button"
+                            data-testid={`putts-minus-${idx}`}
+                            aria-label={`Decrease putts for ${member.name}`}
+                            onClick={() => handlePuttsStep(member, -1)}
+                            style={{ width: 44, height: 44, flex: '0 0 auto', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-lg)', fontWeight: 800, lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer' }}
+                          >
+                            −
+                          </button>
+                          <span data-testid={`putts-value-${idx}`} style={{ minWidth: 30, textAlign: 'center', fontSize: 'var(--font-lg)', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: currentPutts[member.playerId] ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                            {currentPutts[member.playerId] ?? '–'}
+                          </span>
+                          <button
+                            type="button"
+                            data-testid={`putts-plus-${idx}`}
+                            aria-label={`Increase putts for ${member.name}`}
+                            onClick={() => handlePuttsStep(member, 1)}
+                            style={{ width: 44, height: 44, flex: '0 0 auto', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-lg)', fontWeight: 800, lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer' }}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Bonuses, in the same card, below a hairline divider. Circular
                         toggles (no square corners) in the SAME colors as the
                         leaderboard scorecard dots (emerald / amber / orange), with a
