@@ -46,6 +46,7 @@ import { Route as AdminEventsEventIdLockHandicapsRouteImport } from './routes/ad
 import { Route as AdminEventsEventIdJoinCodesRouteImport } from './routes/admin.events.$eventId.join-codes'
 import { Route as AdminEventsEventIdGameConfigRouteImport } from './routes/admin.events.$eventId.game-config'
 import { Route as AdminEventsEventIdFoursomeRulesRouteImport } from './routes/admin.events.$eventId.foursome-rules'
+import { Route as AdminEventsEventIdFixTeesRouteImport } from './routes/admin.events.$eventId.fix-tees'
 import { Route as AdminEventsEventIdBetsRouteImport } from './routes/admin.events.$eventId.bets'
 import { Route as AdminEventRoundsEventRoundIdSubGamesRouteImport } from './routes/admin.event-rounds.$eventRoundId.sub-games'
 import { Route as EventsEventIdEventRoundsEventRoundIdFoursomeResultsRouteImport } from './routes/events.$eventId.event-rounds.$eventRoundId.foursome-results'
@@ -247,6 +248,12 @@ const AdminEventsEventIdFoursomeRulesRoute =
     path: '/admin/events/$eventId/foursome-rules',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AdminEventsEventIdFixTeesRoute =
+  AdminEventsEventIdFixTeesRouteImport.update({
+    id: '/admin/events/$eventId/fix-tees',
+    path: '/admin/events/$eventId/fix-tees',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AdminEventsEventIdBetsRoute = AdminEventsEventIdBetsRouteImport.update({
   id: '/admin/events/$eventId/bets',
   path: '/admin/events/$eventId/bets',
@@ -293,6 +300,7 @@ export interface FileRoutesByFullPath {
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/bets': typeof AdminEventsEventIdBetsRoute
+  '/admin/events/$eventId/fix-tees': typeof AdminEventsEventIdFixTeesRoute
   '/admin/events/$eventId/foursome-rules': typeof AdminEventsEventIdFoursomeRulesRoute
   '/admin/events/$eventId/game-config': typeof AdminEventsEventIdGameConfigRoute
   '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
@@ -335,6 +343,7 @@ export interface FileRoutesByTo {
   '/events/$eventId': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/bets': typeof AdminEventsEventIdBetsRoute
+  '/admin/events/$eventId/fix-tees': typeof AdminEventsEventIdFixTeesRoute
   '/admin/events/$eventId/foursome-rules': typeof AdminEventsEventIdFoursomeRulesRoute
   '/admin/events/$eventId/game-config': typeof AdminEventsEventIdGameConfigRoute
   '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
@@ -378,6 +387,7 @@ export interface FileRoutesById {
   '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/admin/event-rounds/$eventRoundId/sub-games': typeof AdminEventRoundsEventRoundIdSubGamesRoute
   '/admin/events/$eventId/bets': typeof AdminEventsEventIdBetsRoute
+  '/admin/events/$eventId/fix-tees': typeof AdminEventsEventIdFixTeesRoute
   '/admin/events/$eventId/foursome-rules': typeof AdminEventsEventIdFoursomeRulesRoute
   '/admin/events/$eventId/game-config': typeof AdminEventsEventIdGameConfigRoute
   '/admin/events/$eventId/join-codes': typeof AdminEventsEventIdJoinCodesRoute
@@ -422,6 +432,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/bets'
+    | '/admin/events/$eventId/fix-tees'
     | '/admin/events/$eventId/foursome-rules'
     | '/admin/events/$eventId/game-config'
     | '/admin/events/$eventId/join-codes'
@@ -464,6 +475,7 @@ export interface FileRouteTypes {
     | '/events/$eventId'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/bets'
+    | '/admin/events/$eventId/fix-tees'
     | '/admin/events/$eventId/foursome-rules'
     | '/admin/events/$eventId/game-config'
     | '/admin/events/$eventId/join-codes'
@@ -506,6 +518,7 @@ export interface FileRouteTypes {
     | '/events/$eventId/'
     | '/admin/event-rounds/$eventRoundId/sub-games'
     | '/admin/events/$eventId/bets'
+    | '/admin/events/$eventId/fix-tees'
     | '/admin/events/$eventId/foursome-rules'
     | '/admin/events/$eventId/game-config'
     | '/admin/events/$eventId/join-codes'
@@ -549,6 +562,7 @@ export interface RootRouteChildren {
   EventsEventIdIndexRoute: typeof EventsEventIdIndexRoute
   AdminEventRoundsEventRoundIdSubGamesRoute: typeof AdminEventRoundsEventRoundIdSubGamesRoute
   AdminEventsEventIdBetsRoute: typeof AdminEventsEventIdBetsRoute
+  AdminEventsEventIdFixTeesRoute: typeof AdminEventsEventIdFixTeesRoute
   AdminEventsEventIdFoursomeRulesRoute: typeof AdminEventsEventIdFoursomeRulesRoute
   AdminEventsEventIdGameConfigRoute: typeof AdminEventsEventIdGameConfigRoute
   AdminEventsEventIdJoinCodesRoute: typeof AdminEventsEventIdJoinCodesRoute
@@ -825,6 +839,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventsEventIdFoursomeRulesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/events/$eventId/fix-tees': {
+      id: '/admin/events/$eventId/fix-tees'
+      path: '/admin/events/$eventId/fix-tees'
+      fullPath: '/admin/events/$eventId/fix-tees'
+      preLoaderRoute: typeof AdminEventsEventIdFixTeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/events/$eventId/bets': {
       id: '/admin/events/$eventId/bets'
       path: '/admin/events/$eventId/bets'
@@ -878,6 +899,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminEventRoundsEventRoundIdSubGamesRoute:
     AdminEventRoundsEventRoundIdSubGamesRoute,
   AdminEventsEventIdBetsRoute: AdminEventsEventIdBetsRoute,
+  AdminEventsEventIdFixTeesRoute: AdminEventsEventIdFixTeesRoute,
   AdminEventsEventIdFoursomeRulesRoute: AdminEventsEventIdFoursomeRulesRoute,
   AdminEventsEventIdGameConfigRoute: AdminEventsEventIdGameConfigRoute,
   AdminEventsEventIdJoinCodesRoute: AdminEventsEventIdJoinCodesRoute,
