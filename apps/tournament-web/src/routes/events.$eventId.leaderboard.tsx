@@ -191,7 +191,10 @@ function statusPill(
     case 'cancelled':
       return { label: 'Cancelled', live: false };
     case 'not_started':
-      return { label: 'Not started', live: false };
+      // The round has been STARTED but no score is in yet (the first score
+      // flips it to 'in_progress'). It is LIVE — showing "Not started" on a
+      // started round read as broken.
+      return { label: 'Live', live: true };
     default:
       return null;
   }

@@ -189,9 +189,12 @@ eventsRouter.get(
       const viewerName = rawName ? rawName : null;
 
       // Live scoring round (if any) — powers the home "Round N is live →
-      // Enter scores" CTA. Only `in_progress` qualifies (complete_editable =
-      // scoring done, no CTA). Most-recent by opened/created. `roundId` is the
-      // scoring round id consumed by /rounds/:roundId/score-entry.
+      // Enter scores" CTA. A round counts as live the moment it's STARTED:
+      // its state is 'not_started' (started, no scores yet) UNTIL the first
+      // score flips it to 'in_progress'. BOTH are live for scoring (the CTA must
+      // appear immediately after Start, or no one can reach score entry to enter
+      // that first score). 'complete_editable'/'finalized' are done → no CTA.
+      // Most-recent by opened/created. `roundId` feeds /rounds/:roundId/score-entry.
       const liveRows = await db
         .select({
           roundId: rounds.id,
@@ -204,7 +207,7 @@ eventsRouter.get(
         .where(
           and(
             eq(eventRounds.eventId, eventId),
-            eq(roundStates.state, 'in_progress'),
+            inArray(roundStates.state, ['not_started', 'in_progress']),
             eq(rounds.tenantId, TENANT_ID),
             eq(eventRounds.tenantId, TENANT_ID),
             eq(roundStates.tenantId, TENANT_ID),
