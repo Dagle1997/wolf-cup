@@ -8,7 +8,7 @@
  *
  * PUBLIC route — no beforeLoad auth check (the whole point is no SSO).
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 
 function JoinPage() {
@@ -19,8 +19,25 @@ function JoinPage() {
     | { kind: 'error'; message: string }
   >({ kind: 'idle' });
 
-  async function submit() {
-    const trimmed = code.trim();
+  // One-click join: a personal link of the form /join?code=ABC123 (what the
+  // organizer's "Copy invite" sends) pre-fills the code and submits on its own,
+  // so tapping the texted link joins with no typing. A bad/expired code falls
+  // back to the normal manual screen with the code pre-filled to retry.
+  const autoTried = useRef(false);
+  useEffect(() => {
+    if (autoTried.current) return;
+    autoTried.current = true;
+    if (typeof window === 'undefined') return;
+    const fromUrl = new URLSearchParams(window.location.search).get('code');
+    const trimmed = fromUrl?.trim();
+    if (trimmed && trimmed.length >= 4) {
+      setCode(trimmed);
+      void submit(trimmed);
+    }
+  }, []);
+
+  async function submit(codeOverride?: string) {
+    const trimmed = (codeOverride ?? code).trim();
     if (trimmed.length < 4) {
       setState({ kind: 'error', message: 'Enter the code your organizer gave you.' });
       return;

@@ -125,14 +125,14 @@ function JoinCodesPage({ eventId }: { eventId: string }) {
               {p.code ? (
                 <CopyButton
                   text={[
-                    `You're in the tournament! Here's how to get on:`,
+                    `You're in the Pete Dye Invitational! Tap to join (no code to type):`,
+                    `${joinUrl}?code=${encodeURIComponent(p.code ?? '')}`,
                     ``,
-                    `1. Open this link: ${joinUrl}`,
-                    `2. Enter your join code: ${p.code}`,
+                    `(If the link doesn't open, go to ${joinUrl} and enter code ${p.code}.)`,
                     ``,
-                    `📲 Add it to your phone's home screen for one-tap access:`,
-                    `• iPhone (Safari): tap the Share button (□↑), then "Add to Home Screen"`,
-                    `• Android (Chrome): tap the ⋮ menu, then "Add to Home screen"`,
+                    `📲 Then add it to your home screen so it opens like an app:`,
+                    `• iPhone (Safari): Share button → "Add to Home Screen"`,
+                    `• Android (Chrome): ⋮ menu → "Add to Home screen"`,
                   ].join('\n')}
                 />
               ) : null}
