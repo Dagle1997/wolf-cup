@@ -43,6 +43,7 @@ import { BusinessRuleError } from './round-state.js';
 import {
   calcSkins,
   type CalcSkinsInput,
+  type CalcSkinsOutput,
   type HoleScoresByPlayer,
   type SkinsMode,
   type LastHoleUnclaimedResolution,
@@ -56,12 +57,31 @@ type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 /**
  * Compute and persist a sub-game's results. Returns the inserted row's id.
  */
-export async function computeSubGame(
-  tx: Tx,
+export type SkinsComputeBundle = {
+  type: string;
+  mode: SkinsMode;
+  lastHoleUnclaimedResolution: LastHoleUnclaimedResolution;
+  payoutModel: 'per-hole-carry' | 'even-per-skin';
+  handicapAllowancePct: number;
+  buyInPerParticipantCents: number;
+  participants: string[];
+  contextId: string;
+  result: CalcSkinsOutput;
+};
+
+/**
+ * Gather a skins sub-game's inputs and run the engine — WITHOUT persisting.
+ * The SINGLE source of skins math: computeSubGame (which persists a
+ * sub_game_results row at finalize) AND the live read endpoint both call this,
+ * so the live board can never diverge from the banked pot. Scopes strictly to
+ * the sub-game's selected participants (non-participants are never counted).
+ */
+export async function computeSkinsResult(
+  txOrDb: Db | Tx,
   subGameId: string,
-  actorPlayerId: string | null,
   tenantId: string,
-): Promise<{ subGameResultId: string; totalPotCents: number; resultsJson: string }> {
+): Promise<SkinsComputeBundle> {
+  const tx = txOrDb as Tx;
   // (1) Read sub-game row.
   const subGameRows = await tx
     .select()
@@ -313,16 +333,40 @@ export async function computeSubGame(
     );
   }
 
-  // (4) Persist sub_game_results row.
-  const subGameResultId = randomUUID();
-  const now = Date.now();
-  const configSnapshot = {
+  return {
     type: subGame.type,
     mode,
     lastHoleUnclaimedResolution,
-    buyInPerParticipantCents: subGame.buyInPerParticipant,
-    handicapAllowancePct,
     payoutModel,
+    handicapAllowancePct,
+    buyInPerParticipantCents: subGame.buyInPerParticipant,
+    participants,
+    contextId: runtimeRound.contextId,
+    result,
+  };
+}
+
+/**
+ * Compute + PERSIST a sub_game_results row (the finalize path). Delegates the
+ * math to computeSkinsResult so the banked pot and the live board are identical.
+ */
+export async function computeSubGame(
+  tx: Tx,
+  subGameId: string,
+  actorPlayerId: string | null,
+  tenantId: string,
+): Promise<{ subGameResultId: string; totalPotCents: number; resultsJson: string }> {
+  const bundle = await computeSkinsResult(tx, subGameId, tenantId);
+  const { result } = bundle;
+  const subGameResultId = randomUUID();
+  const now = Date.now();
+  const configSnapshot = {
+    type: bundle.type,
+    mode: bundle.mode,
+    lastHoleUnclaimedResolution: bundle.lastHoleUnclaimedResolution,
+    buyInPerParticipantCents: bundle.buyInPerParticipantCents,
+    handicapAllowancePct: bundle.handicapAllowancePct,
+    payoutModel: bundle.payoutModel,
   };
   const resultsJson = JSON.stringify(result);
   await tx.insert(subGameResults).values({
@@ -334,7 +378,7 @@ export async function computeSubGame(
     totalPotCents: result.totalPotCents,
     createdByPlayerId: actorPlayerId,
     tenantId,
-    contextId: runtimeRound.contextId,
+    contextId: bundle.contextId,
   });
 
   return { subGameResultId, totalPotCents: result.totalPotCents, resultsJson };

@@ -29,6 +29,7 @@ import { eventsActionBetsRouter } from './routes/events-action-bets.js';
 import { moneyRouter } from './routes/money.js';
 import { eventsRouter } from './routes/events.js';
 import { scheduleRouter } from './routes/schedule.js';
+import { eventsSkinsRouter } from './routes/events-skins.js';
 import { coursePreviewRouter } from './routes/course-preview.js';
 import { pressesRouter } from './routes/presses.js';
 import { subGamesComputeRouter } from './routes/sub-games.js';
@@ -229,6 +230,7 @@ app.route('/api/events', eventsRouter);
 // Returns rounds + course + viewer's-foursome pairing (3-state). Read-only;
 // cache-control: no-store. Auth: requireSession + requireEventParticipant.
 app.route('/api/events', scheduleRouter);
+app.route('/api/events', eventsSkinsRouter);
 
 // T7-3 course preview endpoint.
 //   GET /api/events/:eventId/courses/:courseId

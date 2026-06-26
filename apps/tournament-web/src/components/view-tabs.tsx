@@ -13,10 +13,14 @@ import { Link } from '@tanstack/react-router';
 
 type TabSet = 'standings' | 'money';
 
+// The event is a 2-man best-ball — the TEAM standings are the real result, so
+// Teams leads. Foursome = the per-foursome Guyan money; Skins = the live skins
+// board. (The individual stroke leaderboard + match-play still exist at their
+// routes; they're just not the primary standings hub for this format.)
 const STANDINGS_TABS = [
-  { key: 'leaderboard', label: 'Leaderboard', to: '/events/$eventId/leaderboard' },
   { key: 'teams', label: 'Teams', to: '/events/$eventId/team-standings' },
-  { key: 'match', label: 'Match', to: '/events/$eventId/match-play-standings' },
+  { key: 'foursome', label: 'Foursome', to: '/events/$eventId/foursomes' },
+  { key: 'skins', label: 'Skins', to: '/events/$eventId/skins' },
 ] as const;
 
 // "The Action" lives in the MONEY hub (it's betting, not standings) so it sits

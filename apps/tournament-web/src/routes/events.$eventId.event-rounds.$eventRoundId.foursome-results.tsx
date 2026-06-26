@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { requireAuthOrRedirect } from '../hooks/use-auth-session';
 import { PageShell } from '../components/page-shell';
 import { BackLink } from '../components/back-link';
+import { ViewTabs } from '../components/view-tabs';
 import { LoadingCard } from '../components/loading-card';
 import { ErrorCard } from '../components/error-card';
 import { EmptyState } from '../components/empty-state';
@@ -174,10 +175,14 @@ function TeamCard({
 export function FoursomeResultsPage({
   eventId,
   eventRoundId,
+  embedTabs = false,
 }: {
   eventId: string;
   eventRoundId: string;
+  /** When rendered as the standings "Foursome" tab, show the Teams/Foursome/Skins strip. */
+  embedTabs?: boolean;
 }) {
+  const tabs = embedTabs ? <ViewTabs set="standings" active="foursome" eventId={eventId} /> : null;
   const query = useQuery<FetchOutcome>({
     queryKey: ['foursomeResults', eventId, eventRoundId],
     queryFn: () => fetchFoursomeResults(eventId, eventRoundId),
@@ -215,6 +220,7 @@ export function FoursomeResultsPage({
     return (
       <PageShell title="Foursome results">
         <BackLink to="/events/$eventId/leaderboard" params={{ eventId }} label="Leaderboard" />
+        {tabs}
         <EmptyState title="No team results yet." body="Once foursomes are scored, the 2-ball match shows up here." />
       </PageShell>
     );
@@ -223,6 +229,7 @@ export function FoursomeResultsPage({
   return (
     <PageShell title="Foursome results">
       <BackLink to="/events/$eventId/leaderboard" params={{ eventId }} label="Leaderboard" />
+      {tabs}
       {foursomes.map((f) => {
         const nameOf = (pid: string) =>
           [...f.teamA, ...f.teamB].find((p) => p.playerId === pid)?.name ?? '—';
