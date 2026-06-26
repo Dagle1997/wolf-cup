@@ -47,7 +47,7 @@ function CopyButton({ text }: { text: string }) {
         flexShrink: 0,
       }}
     >
-      {copied ? '✓ Copied' : 'Copy'}
+      {copied ? '✓ Copied' : 'Copy invite'}
     </button>
   );
 }
@@ -122,7 +122,20 @@ function JoinCodesPage({ eventId }: { eventId: string }) {
                   {p.code ?? '—'}
                 </span>
               </span>
-              {p.code ? <CopyButton text={`Your join code: ${p.code} — go to ${joinUrl} to join.`} /> : null}
+              {p.code ? (
+                <CopyButton
+                  text={[
+                    `You're in the tournament! Here's how to get on:`,
+                    ``,
+                    `1. Open this link: ${joinUrl}`,
+                    `2. Enter your join code: ${p.code}`,
+                    ``,
+                    `📲 Add it to your phone's home screen for one-tap access:`,
+                    `• iPhone (Safari): tap the Share button (□↑), then "Add to Home Screen"`,
+                    `• Android (Chrome): tap the ⋮ menu, then "Add to Home screen"`,
+                  ].join('\n')}
+                />
+              ) : null}
             </li>
           ))}
         </ul>
