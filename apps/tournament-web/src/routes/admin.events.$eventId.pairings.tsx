@@ -678,22 +678,47 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
                       data-testid={`cell-${rIdx}-${fIdx}-${sIdx}`}
                       style={{ padding: 'var(--space-2) 0', borderTop: sIdx > 0 && sIdx !== 2 ? '1px solid var(--color-border-subtle)' : 'none' }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                        <span aria-hidden style={{ width: 18, flexShrink: 0, fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{sIdx + 1}</span>
-                        <select
-                          value={cell.playerId}
-                          onChange={(e) => setCell(rIdx, fIdx, sIdx, e.target.value)}
-                          disabled={r.locked}
-                          data-testid={`select-${rIdx}-${fIdx}-${sIdx}`}
-                          style={{ flex: 1, minWidth: 0, minHeight: 'var(--control-height)' }}
-                        >
-                          <option value={EMPTY}>(empty)</option>
-                          {data.roster.map((p) => (
-                            <option key={p.playerId} value={p.playerId}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+                        <span aria-hidden style={{ width: 18, flexShrink: 0, minHeight: 'var(--control-height)', display: 'flex', alignItems: 'center', fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{sIdx + 1}</span>
+                        {/* Name + per-player tee share one column so both selects
+                            line up to the same width; the pin sits beside them
+                            (was: tee select ran full-width *under* the pin box). */}
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <select
+                            value={cell.playerId}
+                            onChange={(e) => setCell(rIdx, fIdx, sIdx, e.target.value)}
+                            disabled={r.locked}
+                            data-testid={`select-${rIdx}-${fIdx}-${sIdx}`}
+                            style={{ width: '100%', minHeight: 'var(--control-height)' }}
+                          >
+                            <option value={EMPTY}>(empty)</option>
+                            {data.roster.map((p) => (
+                              <option key={p.playerId} value={p.playerId}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                          {/* Per-player tee override — only meaningful for a filled slot. */}
+                          {filled ? (
+                            <select
+                              value={teeSelectValue}
+                              onChange={(e) => setCellTee(rIdx, fIdx, sIdx, e.target.value)}
+                              disabled={r.locked}
+                              data-testid={`tee-${rIdx}-${fIdx}-${sIdx}`}
+                              title={`Round default: ${r.defaultTeeColor}`}
+                              style={{ width: '100%', minHeight: 'var(--control-height)', fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}
+                            >
+                              <option value="">{`tee: ${r.defaultTeeColor} (default)`}</option>
+                              {r.availableTees
+                                .filter((t) => t !== r.defaultTeeColor)
+                                .map((t) => (
+                                  <option key={t} value={t}>
+                                    tee: {t}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : null}
+                        </div>
                         <button
                           type="button"
                           onClick={() => togglePin(rIdx, fIdx, sIdx)}
@@ -706,26 +731,6 @@ export function PairingsPage({ eventId }: PairingsPageProps) {
                           {pinned ? '📌' : '📍'}
                         </button>
                       </div>
-                      {/* Per-player tee override — only meaningful for a filled slot. */}
-                      {filled ? (
-                        <select
-                          value={teeSelectValue}
-                          onChange={(e) => setCellTee(rIdx, fIdx, sIdx, e.target.value)}
-                          disabled={r.locked}
-                          data-testid={`tee-${rIdx}-${fIdx}-${sIdx}`}
-                          title={`Round default: ${r.defaultTeeColor}`}
-                          style={{ marginTop: 4, marginLeft: 26, fontSize: 'var(--font-sm)', color: 'var(--color-text-muted)' }}
-                        >
-                          <option value="">{`tee: ${r.defaultTeeColor} (default)`}</option>
-                          {r.availableTees
-                            .filter((t) => t !== r.defaultTeeColor)
-                            .map((t) => (
-                              <option key={t} value={t}>
-                                tee: {t}
-                              </option>
-                            ))}
-                        </select>
-                      ) : null}
                     </div>
                     </Fragment>
                   );
