@@ -106,8 +106,16 @@ export async function computeTeamStandings(
 
   const teams = [...acc.values()]
     .map((r) => ({ ...r, toPar: r.netTotal - r.parTotal }))
-    // Default sort: cumulative net to par (lowest wins), then raw net.
-    .sort((a, b) => a.toPar - b.toPar || a.netTotal - b.netTotal);
+    // Default sort: cumulative net to par (lowest wins), then raw net. Teams with
+    // ZERO scored holes sort LAST — a no-score team has toPar 0, which would
+    // otherwise tie a legitimately even-par team and (via the net-0 tiebreak)
+    // rank AHEAD of teams that actually played. An unscored team is last, not even.
+    .sort((a, b) => {
+      const au = a.holesPlayed === 0 ? 1 : 0;
+      const bu = b.holesPlayed === 0 ? 1 : 0;
+      if (au !== bu) return au - bu;
+      return a.toPar - b.toPar || a.netTotal - b.netTotal;
+    });
 
   return { eventId, teams };
 }

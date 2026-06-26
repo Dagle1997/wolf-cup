@@ -81,6 +81,46 @@ describe('TeamStandingsPage', () => {
     await waitFor(() => expect(screen.getByText('No teams scored yet')).toBeInTheDocument());
   });
 
+  it('sorts a no-score team LAST (not tied at even) and renders — for its totals', async () => {
+    // A team with no scored holes (toPar 0, net 0) must not outrank a team that
+    // actually played to +6 — regardless of sort key.
+    const withUnscored = {
+      eventId: 'evt1',
+      teams: [
+        ...FIXTURE.teams,
+        {
+          teamKey: 'e|f',
+          players: [
+            { playerId: 'e', name: 'Rich' },
+            { playerId: 'f', name: 'Chris' },
+          ],
+          holesPlayed: 0,
+          grossTotal: 0,
+          netTotal: 0,
+          parTotal: 0,
+          toPar: 0,
+        },
+      ],
+    };
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => withUnscored,
+    });
+    render('evt1');
+    await waitFor(() => expect(screen.getByTestId('team-row-e|f')).toBeInTheDocument());
+    const rows = screen.getAllByTestId(/^team-row-/);
+    // The unscored team is dead last, even though its toPar/net are numerically 0.
+    expect(rows[rows.length - 1]).toHaveAttribute('data-testid', 'team-row-e|f');
+    // Its totals read "—", not 0 / E.
+    expect(within(screen.getByTestId('team-row-e|f')).getByTestId('to-par-e|f')).toHaveTextContent('—');
+    expect(screen.getByText(/no scores/)).toBeInTheDocument();
+    // Still last after switching to Net sort (where net 0 would otherwise lead).
+    await userEvent.click(screen.getByTestId('sort-net'));
+    const rows2 = screen.getAllByTestId(/^team-row-/);
+    expect(rows2[rows2.length - 1]).toHaveAttribute('data-testid', 'team-row-e|f');
+  });
+
   it('re-sorts when a sort toggle is clicked', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,

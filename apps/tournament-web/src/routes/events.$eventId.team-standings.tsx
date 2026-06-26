@@ -79,13 +79,18 @@ export function TeamStandingsPage({ eventId }: { eventId: string }) {
     );
   }
 
-  const teams = [...query.data!.teams].sort((a, b) =>
-    sort === 'gross'
+  const teams = [...query.data!.teams].sort((a, b) => {
+    // Teams with no scored holes sort LAST regardless of the chosen key — a 0/0
+    // team isn't "even par" and must never outrank a team that actually played.
+    const au = a.holesPlayed === 0 ? 1 : 0;
+    const bu = b.holesPlayed === 0 ? 1 : 0;
+    if (au !== bu) return au - bu;
+    return sort === 'gross'
       ? a.grossTotal - b.grossTotal
       : sort === 'net'
         ? a.netTotal - b.netTotal
-        : a.toPar - b.toPar,
-  );
+        : a.toPar - b.toPar;
+  });
 
   return (
     <PageShell title="Team standings">
@@ -136,17 +141,27 @@ export function TeamStandingsPage({ eventId }: { eventId: string }) {
               </tr>
             </thead>
             <tbody>
-              {teams.map((t, i) => (
-                <tr key={t.teamKey} data-testid={`team-row-${t.teamKey}`}>
-                  <td style={cell}>{i + 1}</td>
-                  <td style={{ ...cell, textAlign: 'left' }}>{teamName(t)}</td>
-                  <td style={cell}>{t.grossTotal}</td>
-                  <td style={cell}>{t.netTotal}</td>
-                  <td style={{ ...cell, fontWeight: 700 }} data-testid={`to-par-${t.teamKey}`}>
-                    {fmtToPar(t.toPar)}
-                  </td>
-                </tr>
-              ))}
+              {teams.map((t, i) => {
+                const scored = t.holesPlayed > 0;
+                return (
+                  <tr key={t.teamKey} data-testid={`team-row-${t.teamKey}`}>
+                    <td style={cell}>{i + 1}</td>
+                    <td style={{ ...cell, textAlign: 'left' }}>
+                      {teamName(t)}
+                      {scored ? null : (
+                        <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--font-xs)' }}>
+                          {' '}· no scores
+                        </span>
+                      )}
+                    </td>
+                    <td style={cell}>{scored ? t.grossTotal : '—'}</td>
+                    <td style={cell}>{scored ? t.netTotal : '—'}</td>
+                    <td style={{ ...cell, fontWeight: 700 }} data-testid={`to-par-${t.teamKey}`}>
+                      {scored ? fmtToPar(t.toPar) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </ScrollableTable>
