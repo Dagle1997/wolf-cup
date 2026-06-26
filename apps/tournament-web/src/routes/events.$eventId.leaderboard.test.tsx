@@ -296,8 +296,8 @@ describe('LeaderboardPage — client-side sort (Josh 2026-06-26)', () => {
     const withMoney: Json = {
       ...crossedOrder,
       rows: [
-        { ...(crossedOrder.rows as Json[])[0]!, moneyCents: -2000 },
-        { ...(crossedOrder.rows as Json[])[1]!, moneyCents: 2000 },
+        { ...(crossedOrder['rows'] as Json[])[0]!, moneyCents: -2000 },
+        { ...(crossedOrder['rows'] as Json[])[1]!, moneyCents: 2000 },
       ],
       f1: { lockState: 'locked', mode: 'money', moneyEnabled: true },
     };
