@@ -567,6 +567,13 @@ const StartRoundRequestSchema = z
           .strict(),
       )
       .min(1),
+    // Pre-flight guard (Josh 2026-06-26): if no game/money rules are configured
+    // for the event, starting the round means players see no greenies/polies/
+    // sandies or money (the bug that bit Round 1). The endpoint refuses with
+    // 422 `no_game_config` unless the organizer explicitly opts into a
+    // scores-only round by setting this true — a deliberate acknowledgment, not
+    // a hard block (a genuine scores-only event sets it and proceeds).
+    confirmNoGame: z.boolean().optional(),
   })
   .strict();
 
@@ -749,6 +756,17 @@ adminEventRoundsRouter.post(
     // round from starting (logged + skipped → the round is fail-closed
     // unsettleable on read, never settled against live data).
     const eventIsF1 = await isF1Event(db, eventId, TENANT_ID);
+
+    // 5b. No-game-config pre-flight guard (Josh 2026-06-26). An event with no
+    // event-level game_config row will start with no pin → players see no
+    // greenie/polie/sandie buttons and no money (the Round-1 mistake). Refuse
+    // unless the organizer explicitly confirms a scores-only round. This is the
+    // ONLY new reason a start can be rejected; it sits AFTER all the structural
+    // validations so the organizer fixes those first, and is overridable in one
+    // tap (confirmNoGame) so a deliberately scores-only event is never blocked.
+    if (!eventIsF1 && parsed.data.confirmNoGame !== true) {
+      return c.json({ error: 'unprocessable', code: 'no_game_config', requestId }, 422);
+    }
 
     // 6. Create rounds + round_states + scorer_assignments atomically.
     const roundId = randomUUID();

@@ -80,6 +80,9 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
   const [errorText, setErrorText] = useState<string | null>(null);
   // The eventRoundId the organizer is confirming (one-way action → confirm step).
   const [confirming, setConfirming] = useState<string | null>(null);
+  // The eventRoundId the server flagged as having no game/money rules configured
+  // (422 no_game_config). Shows a scores-only confirmation instead of starting.
+  const [noGamePrompt, setNoGamePrompt] = useState<string | null>(null);
 
   if (query.isPending) {
     return (
@@ -102,7 +105,11 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
     (r) => r.pairings.length > 0 && r.pairings.every((p) => p.locked),
   );
 
-  async function start(eventRoundId: string, foursomes: PairingsResponse['rounds'][number]['pairings']) {
+  async function start(
+    eventRoundId: string,
+    foursomes: PairingsResponse['rounds'][number]['pairings'],
+    confirmNoGame = false,
+  ) {
     setErrorText(null);
     setBusy(eventRoundId);
     try {
@@ -120,11 +127,18 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ scorers }),
+          body: JSON.stringify({ scorers, ...(confirmNoGame ? { confirmNoGame: true } : {}) }),
         },
       );
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { code?: string };
+        // No game/money rules configured → don't start silently; surface a
+        // scores-only confirmation so the organizer can set rules first.
+        if (body.code === 'no_game_config') {
+          setConfirming(null);
+          setNoGamePrompt(eventRoundId);
+          return;
+        }
         setErrorText(
           body.code === 'pairings_not_ready'
             ? 'Lock every foursome before starting the round.'
@@ -210,7 +224,41 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
                 );
               })}
 
-            {isConfirming ? (
+            {noGamePrompt === r.eventRoundId ? (
+              <div style={{ marginTop: 'var(--space-4)' }} data-testid={`no-game-prompt-${r.eventRoundId}`}>
+                <div role="alert" style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
+                  <span aria-hidden>⚠ </span><strong>No game or money rules are set for this event.</strong> If you
+                  start now, players won&apos;t see greenies / polies / sandies or any money. Set them up first, or
+                  start a scores-only round.
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                  <Link
+                    to="/admin/events/$eventId/game-config"
+                    params={{ eventId }}
+                    data-testid={`go-game-config-${r.eventRoundId}`}
+                    style={{ flex: 1, minWidth: 160, minHeight: 'var(--control-height-lg)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-brand-primary)', color: '#fff', fontWeight: 700, borderRadius: 'var(--radius-md)', textDecoration: 'none' }}
+                  >
+                    Set up Rules &amp; Games
+                  </Link>
+                  <button
+                    type="button"
+                    data-testid={`start-scores-only-${r.eventRoundId}`}
+                    disabled={busy === r.eventRoundId}
+                    onClick={() => start(r.eventRoundId, r.pairings, true)}
+                    style={{ flex: 1, minWidth: 160, minHeight: 'var(--control-height-lg)', background: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', fontWeight: 600 }}
+                  >
+                    {busy === r.eventRoundId ? 'Starting…' : 'Start scores-only'}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNoGamePrompt(null)}
+                  style={{ marginTop: 'var(--space-2)', background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 0, fontSize: 'var(--font-sm)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : isConfirming ? (
               <div style={{ marginTop: 'var(--space-4)' }}>
                 <div role="alert" style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
                   <span aria-hidden>⚠ </span>This opens scoring for Round {r.roundNumber} and locks the lineup. You can&apos;t undo it.

@@ -55,6 +55,7 @@ function renderPage(node: ReactNode) {
   const stubs = [
     '/admin/events/$eventId',
     '/admin/events/$eventId/pairings',
+    '/admin/events/$eventId/game-config',
     '/rounds/$roundId/score-entry',
   ].map((p) =>
     createRoute({ getParentRoute: () => rootRoute, path: p, component: () => <div>stub {p}</div> }),
@@ -128,5 +129,44 @@ describe('StartRoundPage', () => {
     setFetch(UNLOCKED);
     renderPage(<StartRoundPage eventId="evt-1" organizerId={ORG_ID} />);
     await waitFor(() => expect(screen.getByText(/No round is ready to start/i)).toBeInTheDocument());
+  });
+
+  it('422 no_game_config → scores-only prompt; "Start scores-only" re-posts with confirmNoGame', async () => {
+    // First /start (no confirm) → 422 no_game_config; a confirmNoGame start → 201.
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes('/scorer-policy')) {
+        return new Response(JSON.stringify(POLICY), { status: 200, headers: JSON_HEADERS });
+      }
+      if (url.includes('/start')) {
+        const body = JSON.parse((init as RequestInit).body as string) as { confirmNoGame?: boolean };
+        return body.confirmNoGame === true
+          ? new Response(JSON.stringify({ roundId: 'round-1' }), { status: 201, headers: JSON_HEADERS })
+          : new Response(JSON.stringify({ code: 'no_game_config' }), { status: 422, headers: JSON_HEADERS });
+      }
+      return new Response(JSON.stringify(STARTABLE), { status: 200, headers: JSON_HEADERS });
+    });
+    renderPage(<StartRoundPage eventId="evt-1" organizerId={ORG_ID} />);
+    await waitFor(() => expect(screen.getByTestId('start-btn-er-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('start-btn-er-1'));
+    await waitFor(() => expect(screen.getByTestId('confirm-start-er-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('confirm-start-er-1'));
+    // The guard surfaces the scores-only prompt (with a Rules & Games link).
+    await waitFor(() => expect(screen.getByTestId('no-game-prompt-er-1')).toBeInTheDocument());
+    expect(screen.getByTestId('go-game-config-er-1')).toBeInTheDocument();
+    // The first start carried NO confirmNoGame flag.
+    const firstStart = vi.mocked(fetch).mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('/start'),
+    );
+    expect(JSON.parse((firstStart![1] as RequestInit).body as string).confirmNoGame).toBeUndefined();
+    // Tapping "Start scores-only" re-posts WITH confirmNoGame:true.
+    fireEvent.click(screen.getByTestId('start-scores-only-er-1'));
+    await waitFor(() => {
+      const confirmed = vi.mocked(fetch).mock.calls.find((c) => {
+        if (typeof c[0] !== 'string' || !c[0].includes('/start')) return false;
+        return JSON.parse((c[1] as RequestInit).body as string).confirmNoGame === true;
+      });
+      expect(confirmed).toBeTruthy();
+    });
   });
 });

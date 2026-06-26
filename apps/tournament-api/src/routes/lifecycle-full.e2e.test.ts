@@ -269,6 +269,7 @@ async function buildAndStart(app: Hono): Promise<Built> {
   const scorerId = members[0]!;
   const startRes = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, {
     scorers: [{ foursomeNumber: 1, scorerPlayerId: scorerId }],
+    confirmNoGame: true,
   });
   expect(startRes.status).toBe(201);
   const { roundId } = (await startRes.json()) as { roundId: string };

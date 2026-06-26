@@ -342,10 +342,30 @@ async function buildToLockedPairings(app: Hono, foursomeCount = 1, lockAll = tru
 }
 
 function startBody(scorers: Array<{ foursomeNumber: number; scorerPlayerId: string }>) {
-  return { scorers };
+  // These lifecycle events carry no game config, so they are legitimately
+  // scores-only: opt past the no_game_config pre-flight guard.
+  return { scorers, confirmNoGame: true };
 }
 
 describe('E2E: T13-2 start round + score lifecycle', () => {
+  test('no_game_config guard: refuses to start an event with no game rules unless confirmed', async () => {
+    const app = buildApp();
+    const { eventRoundId, organizerId } = await buildToLockedPairings(app, 1);
+    asOrganizer(organizerId);
+    // No game config on this event → the pre-flight guard blocks a silent start.
+    const blocked = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, {
+      scorers: [{ foursomeNumber: 1, scorerPlayerId: organizerId }],
+    });
+    expect(blocked.status).toBe(422);
+    expect(((await blocked.json()) as { code: string }).code).toBe('no_game_config');
+    // Explicit scores-only acknowledgment lets the same start through.
+    const ok = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, {
+      scorers: [{ foursomeNumber: 1, scorerPlayerId: organizerId }],
+      confirmNoGame: true,
+    });
+    expect(ok.status, await ok.clone().text()).toBe(201);
+  });
+
   test('full lifecycle: start -> score -> leaderboard reflects the score (the gap closes)', async () => {
     const app = buildApp();
     const { eventId, eventRoundId, organizerId, foursomeMembers } = await buildToLockedPairings(app, 1);
@@ -584,6 +604,7 @@ describe('E2E: T13-4 scorer policy', () => {
     // Caddie (designee, NOT a foursome member) is a valid scorer now.
     const ok = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, {
       scorers: [{ foursomeNumber: 1, scorerPlayerId: caddieId }],
+      confirmNoGame: true,
     });
     expect(ok.status, await ok.clone().text()).toBe(201);
 
@@ -607,6 +628,7 @@ describe('E2E: T13-4 scorer policy', () => {
     asOrganizer(organizerId);
     const startRes = await postJson(app, `/api/admin/event-rounds/${eventRoundId}/start`, {
       scorers: [{ foursomeNumber: 1, scorerPlayerId: m0 }],
+      confirmNoGame: true,
     });
     expect(startRes.status).toBe(201);
     const { roundId } = (await startRes.json()) as { roundId: string };
