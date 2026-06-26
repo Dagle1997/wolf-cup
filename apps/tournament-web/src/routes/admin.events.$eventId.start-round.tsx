@@ -180,7 +180,7 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
                       Foursome {p.foursomeNumber}
                     </div>
                     {/* Context: who's actually playing in this foursome. */}
-                    <div style={{ fontSize: 'var(--font-sm)', margin: '2px 0 var(--space-2)' }}>{memberNames || '—'}</div>
+                    <div style={{ fontSize: 'var(--font-sm)', margin: '2px 0 var(--space-2)', overflowWrap: 'break-word', wordBreak: 'break-word' }}>{memberNames || '—'}</div>
                     <label htmlFor={`scorer-sel-${key}`} style={{ display: 'block', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 2 }}>Scorer</label>
                     <select
                       id={`scorer-sel-${key}`}
@@ -220,7 +220,7 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
                     type="button"
                     onClick={() => setConfirming(null)}
                     disabled={busy === r.eventRoundId}
-                    style={{ minHeight: 'var(--control-height-lg)' }}
+                    style={{ minHeight: 'var(--control-height-lg)', flexShrink: 0 }}
                   >
                     Cancel
                   </button>

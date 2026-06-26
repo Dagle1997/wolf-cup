@@ -170,10 +170,10 @@ export function SubGamesPage({ eventRoundId }: SubGamesPageProps) {
           </label>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {data.roster.map((p) => (
-              <li key={p.playerId} style={{ minHeight: 32 }}>
-                <label>
-                  <input type="checkbox" data-testid={`skins-participant-${mode}-${p.playerId}`} checked={skins[mode].participants.has(p.playerId)} onChange={() => toggle(mode, p.playerId)} />{' '}
-                  {p.name}
+              <li key={p.playerId}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minHeight: 44 }}>
+                  <input type="checkbox" data-testid={`skins-participant-${mode}-${p.playerId}`} checked={skins[mode].participants.has(p.playerId)} onChange={() => toggle(mode, p.playerId)} style={{ flexShrink: 0, width: 20, height: 20 }} />
+                  <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{p.name}</span>
                 </label>
               </li>
             ))}
