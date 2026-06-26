@@ -114,6 +114,33 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
     },
   });
 
+  // Re-apply the game rules to the LIVE round (re-pin). For when the Guyan game
+  // wasn't configured before Start: set the rules, then tap this to light them
+  // up on the already-started round (dots + money recompute on read).
+  const [repinStatus, setRepinStatus] = useState<string | null>(null);
+  const repin = useMutation<void, Error & { code?: string; reason?: string | null }>({
+    mutationFn: async () => {
+      const schedRes = await fetch(`/api/events/${encodeURIComponent(eventId)}/schedule`, { credentials: 'same-origin', cache: 'no-store' });
+      if (!schedRes.ok) throw new Error('schedule_failed');
+      const sched = (await schedRes.json()) as { rounds: Array<{ id: string; runtimeRoundId: string | null; roundNumber: number }> };
+      const started = sched.rounds.filter((r) => r.runtimeRoundId !== null).sort((a, b) => b.roundNumber - a.roundNumber)[0];
+      if (!started) { const e = new Error('no_started_round') as Error & { code?: string }; e.code = 'no_started_round'; throw e; }
+      const res = await fetch(`/api/admin/event-rounds/${encodeURIComponent(started.id)}/repin`, { method: 'POST', credentials: 'same-origin' });
+      const body = (await res.json().catch(() => null)) as { code?: string; reason?: string | null } | null;
+      if (!res.ok) { const e = new Error(body?.code ?? `http_${res.status}`) as Error & { code?: string; reason?: string | null }; if (body?.code) e.code = body.code; e.reason = body?.reason ?? null; throw e; }
+    },
+    onSuccess: () => setRepinStatus('✓ Applied. Refresh the score screen — dots + money are now live for this round.'),
+    onError: (err) => {
+      if (err.code === 'repin_failed' && (err.reason ?? '').includes('no_event_level_config')) {
+        setRepinStatus("✕ No game is set up yet. Seed the Standard Guyan game first (Rules & Games), then tap this.");
+      } else if (err.code === 'no_started_round') {
+        setRepinStatus('✕ No round has started yet.');
+      } else {
+        setRepinStatus(`✕ Couldn't apply (${err.code ?? 'error'}). Make sure the game rules are set.`);
+      }
+    },
+  });
+
   if (query.isPending) {
     return (
       <PageShell title="Admin">
@@ -259,6 +286,21 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
           </Link>
         </li>
 
+        {/* 3a. Fix a tee AFTER the round started (re-pins that player's CH) */}
+        <li>
+          <Link
+            to="/admin/events/$eventId/fix-tees"
+            params={{ eventId }}
+            style={cardStyle}
+            data-testid="admin-link-fix-tees"
+          >
+            <strong>Fix tees (after start)</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>
+              Wrong tee once the round&apos;s going? Change it here — it re-figures that player&apos;s handicap.
+            </div>
+          </Link>
+        </li>
+
         {/* 3b. Per-foursome Guyan rules (Epic 6) — needs pairings first */}
         <li>
           <Link
@@ -272,6 +314,29 @@ function AdminLandingPage({ eventId }: { eventId: string }) {
               Give a foursome its own Guyan rules/stake when it plays differently.
             </div>
           </Link>
+        </li>
+
+        {/* 3c. Apply rules to the LIVE round — for when the game wasn't set up
+            before Start. Re-pins the started round so dots + money go live. */}
+        <li>
+          <div style={cardStyle}>
+            <strong>Apply rules to the live round</strong>
+            <div style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', marginBottom: 8 }}>
+              Set the Guyan rules / foursome rules above first, then tap to light them up on the round that&apos;s already going (greenie/polie/sandie + money).
+            </div>
+            <button
+              type="button"
+              data-testid="apply-rules-live"
+              onClick={() => { setRepinStatus(null); repin.mutate(); }}
+              disabled={repin.isPending}
+              style={{ minHeight: 44, fontWeight: 700 }}
+            >
+              {repin.isPending ? 'Applying…' : 'Apply rules to the live round'}
+            </button>
+            {repinStatus ? (
+              <div role="status" style={{ marginTop: 8, fontSize: '0.85em', color: repinStatus.startsWith('✓') ? 'var(--color-money-pos)' : 'var(--color-money-neg)' }}>{repinStatus}</div>
+            ) : null}
+          </div>
         </li>
 
         {/* 4. Rounds & courses */}

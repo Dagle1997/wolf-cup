@@ -64,6 +64,7 @@ import {
   pairingMembers,
   rounds,
   roundStates,
+  roundPins,
   scorerAssignments,
   courseRevisions,
   courseTees,
@@ -72,6 +73,8 @@ import { INITIAL_ROUND_STATE, isEventOrganizerByEventId } from '../services/roun
 import { isEligibleScorer, isScorerPolicy } from '../lib/scorer-eligibility.js';
 import { isF1Event } from '../services/games-money.js';
 import { pinRoundAtStart } from '../services/pin-round-at-start.js';
+import { calcCourseHandicap } from '../services/handicap.js';
+import { perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
 
 const SAVE_BODY_LIMIT_BYTES = 8 * 1024;
 const TENANT_ID = 'guyan';
@@ -951,3 +954,192 @@ adminEventRoundsRouter.patch(
     return c.json({ ok: true, eventRoundId, courseRevisionId, teeColor, requestId }, 200);
   },
 );
+
+// =====================================================================
+// PATCH /event-rounds/:eventRoundId/players/:playerId/tee — change ONE
+// player's tee AFTER the round has started, and re-pin JUST that player's
+// course handicap so net/money are correct (recompute-on-read). Money-safe:
+// only this player's `{ ch }` in the pin changes; their pinned `hi` and every
+// other player's pin entry are untouched. The fix Josh needs for "wrong tee,
+// already started" — no full re-pin, no effect on anyone else.
+// =====================================================================
+const ChangePlayerTeeSchema = z.object({ teeColor: z.string().min(1) }).strict();
+
+adminEventRoundsRouter.patch(
+  '/event-rounds/:eventRoundId/players/:playerId/tee',
+  bodyLimit({
+    maxSize: SAVE_BODY_LIMIT_BYTES,
+    onError: (c) => c.json({ error: 'bad_request', code: 'body_too_large', requestId: c.get('requestId') }, 400),
+  }),
+  async (c) => {
+    const requestId = c.get('requestId');
+    const log = c.get('logger');
+    const player = c.get('player')!;
+    const eventRoundId = c.req.param('eventRoundId');
+    const targetPlayerId = c.req.param('playerId');
+
+    let raw: unknown;
+    try { raw = await c.req.json(); } catch { return c.json({ error: 'bad_request', code: 'invalid_body', requestId }, 400); }
+    const parsed = ChangePlayerTeeSchema.safeParse(raw);
+    if (!parsed.success) return c.json({ error: 'bad_request', code: 'invalid_body', requestId, issues: parsed.error.issues }, 400);
+    const { teeColor } = parsed.data;
+
+    // 1. event_round + its event (auth) + course revision.
+    const erRows = await db
+      .select({ eventId: eventRounds.eventId, courseRevisionId: eventRounds.courseRevisionId })
+      .from(eventRounds)
+      .where(and(eq(eventRounds.id, eventRoundId), eq(eventRounds.tenantId, TENANT_ID)))
+      .limit(1);
+    if (erRows.length === 0) return c.json({ error: 'not_found', code: 'event_round_not_found', requestId }, 404);
+    const { eventId, courseRevisionId } = erRows[0]!;
+    if (!(await isEventOrganizerByEventId(db, eventId, player.id, TENANT_ID))) {
+      return c.json({ error: 'forbidden', code: 'not_event_organizer', requestId }, 403);
+    }
+
+    // 2. teeColor must be a REAL tee of this round's course → slope/rating.
+    const teeRows = await db
+      .select({ slope: courseTees.slope, rating: courseTees.rating })
+      .from(courseTees)
+      .where(and(eq(courseTees.courseRevisionId, courseRevisionId), eq(courseTees.teeColor, teeColor), eq(courseTees.tenantId, TENANT_ID)))
+      .limit(1);
+    if (teeRows.length === 0) return c.json({ error: 'bad_request', code: 'unknown_tee', requestId, teeColor }, 400);
+
+    // 3. the player must be in THIS round's pairings.
+    const pmRows = await db
+      .select({ pairingId: pairingMembers.pairingId })
+      .from(pairingMembers)
+      .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
+      .where(
+        and(
+          eq(pairings.eventRoundId, eventRoundId),
+          eq(pairingMembers.playerId, targetPlayerId),
+          eq(pairings.tenantId, TENANT_ID),
+          eq(pairingMembers.tenantId, TENANT_ID),
+        ),
+      )
+      .limit(1);
+    if (pmRows.length === 0) return c.json({ error: 'not_found', code: 'player_not_in_round', requestId }, 404);
+
+    // 4. coursePar for the CH recompute (mirrors pin-round-at-start exactly).
+    const revRows = await db
+      .select({ coursePar: courseRevisions.courseTotal })
+      .from(courseRevisions)
+      .where(and(eq(courseRevisions.id, courseRevisionId), eq(courseRevisions.tenantId, TENANT_ID)))
+      .limit(1);
+    if (revRows.length === 0) return c.json({ error: 'internal', code: 'course_revision_missing', requestId }, 500);
+    const coursePar = revRows[0]!.coursePar;
+
+    // 5. runtime round + pin (present once started for an F1 money round). The
+    //    pinned hi drives the CH recompute — we NEVER change hi.
+    const rtRows = await db
+      .select({ id: rounds.id })
+      .from(rounds)
+      .where(and(eq(rounds.eventRoundId, eventRoundId), eq(rounds.tenantId, TENANT_ID)))
+      .limit(1);
+    const roundId = rtRows[0]?.id ?? null;
+
+    let newCh: number | null = null;
+    let repinned = false;
+    try {
+      await db.transaction(async (tx) => {
+        // (a) update the per-player tee override on the pairing.
+        await tx
+          .update(pairingMembers)
+          .set({ teeColor })
+          .where(
+            and(
+              eq(pairingMembers.pairingId, pmRows[0]!.pairingId),
+              eq(pairingMembers.playerId, targetPlayerId),
+              eq(pairingMembers.tenantId, TENANT_ID),
+            ),
+          );
+
+        // (b) if the round is pinned, recompute ONLY this player's ch from the
+        //     new tee + their pinned hi, and write back just that entry.
+        if (roundId !== null) {
+          const pinRows = await tx
+            .select({ perPlayerHandicapsJson: roundPins.perPlayerHandicapsJson })
+            .from(roundPins)
+            .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, TENANT_ID)))
+            .limit(1);
+          if (pinRows.length === 1) {
+            let map: Record<string, { hi: number | null; ch: number | null }>;
+            try {
+              map = perPlayerHandicapsSchema.parse(JSON.parse(pinRows[0]!.perPlayerHandicapsJson));
+            } catch {
+              throw new Error('corrupt_pin');
+            }
+            const hi = map[targetPlayerId]?.hi ?? null;
+            newCh = hi !== null
+              ? calcCourseHandicap({ handicapIndex: hi, slope: teeRows[0]!.slope, ratingTimes10: teeRows[0]!.rating, coursePar })
+              : null;
+            map[targetPlayerId] = { hi, ch: newCh };
+            await tx
+              .update(roundPins)
+              .set({ perPlayerHandicapsJson: JSON.stringify(map) })
+              .where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, TENANT_ID)));
+            repinned = true;
+          }
+        }
+      });
+    } catch (err) {
+      log.error({ event: 'player_tee_change_failed', requestId, eventRoundId, targetPlayerId, message: (err as Error)?.message ?? null });
+      return c.json({ error: 'internal', code: 'tee_change_failed', requestId }, 500);
+    }
+
+    log.info({ event: 'player_tee_changed', eventRoundId, eventId, targetPlayerId, teeColor, newCh, repinned, actorPlayerId: player.id });
+    return c.json({ ok: true, eventRoundId, playerId: targetPlayerId, teeColor, courseHandicap: newCh, repinned, requestId }, 200);
+  },
+);
+
+// =====================================================================
+// POST /event-rounds/:eventRoundId/repin — RE-APPLY the event's game rules to
+// an ALREADY-STARTED round. The pin is normally frozen at start; if the game
+// (Guyan rules + per-foursome stake) wasn't configured before Start, the round
+// has no money/dots. This deletes the existing pin and re-runs the same pin
+// logic with the CURRENT config + handicaps. If the game still isn't configured
+// (pinRoundAtStart returns !ok), the whole tx ROLLS BACK so the old pin (if any)
+// is never lost. Money recomputes on read, so the live round picks it up.
+// =====================================================================
+adminEventRoundsRouter.post('/event-rounds/:eventRoundId/repin', async (c) => {
+  const requestId = c.get('requestId');
+  const log = c.get('logger');
+  const player = c.get('player')!;
+  const eventRoundId = c.req.param('eventRoundId');
+
+  const erRows = await db
+    .select({ eventId: eventRounds.eventId })
+    .from(eventRounds)
+    .where(and(eq(eventRounds.id, eventRoundId), eq(eventRounds.tenantId, TENANT_ID)))
+    .limit(1);
+  if (erRows.length === 0) return c.json({ error: 'not_found', code: 'event_round_not_found', requestId }, 404);
+  const { eventId } = erRows[0]!;
+  if (!(await isEventOrganizerByEventId(db, eventId, player.id, TENANT_ID))) {
+    return c.json({ error: 'forbidden', code: 'not_event_organizer', requestId }, 403);
+  }
+
+  const rtRows = await db
+    .select({ id: rounds.id })
+    .from(rounds)
+    .where(and(eq(rounds.eventRoundId, eventRoundId), eq(rounds.tenantId, TENANT_ID)))
+    .limit(1);
+  if (rtRows.length === 0) return c.json({ error: 'unprocessable', code: 'round_not_started', requestId }, 422);
+  const roundId = rtRows[0]!.id;
+
+  let result: Awaited<ReturnType<typeof pinRoundAtStart>> = { ok: false, reason: 'unknown' };
+  try {
+    await db.transaction(async (tx) => {
+      await tx.delete(roundPins).where(and(eq(roundPins.roundId, roundId), eq(roundPins.tenantId, TENANT_ID)));
+      result = await pinRoundAtStart(tx, { roundId, eventRoundId, eventId, tenantId: TENANT_ID, actorPlayerId: player.id, createdAt: Date.now() });
+      // No game configured → roll back the delete so the prior pin (if any) survives.
+      if (!result.ok) throw new Error(`repin_no_config:${result.reason}`);
+    });
+  } catch (err) {
+    const reason = result.ok ? null : result.reason;
+    log.warn({ event: 'round_repin_failed', requestId, eventRoundId, roundId, reason, message: (err as Error)?.message ?? null });
+    return c.json({ error: 'unprocessable', code: 'repin_failed', reason, requestId }, 422);
+  }
+
+  log.info({ event: 'round_repinned', eventId, eventRoundId, roundId, actorPlayerId: player.id });
+  return c.json({ ok: true, eventRoundId, requestId }, 200);
+});
