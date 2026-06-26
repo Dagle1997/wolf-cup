@@ -525,14 +525,46 @@ export function ScoreEntryRoute() {
     // `!isInstalled` check below so non-scorers never see the install
     // prompt (which was misleading for users who couldn't score anyway).
     return (
-      <>
+      <div>
+        {/* A way OUT — never trap a non-scorer on this screen. */}
+        {data.eventId !== null ? (
+          <nav style={{ marginBottom: 'var(--space-2)' }}>
+            <a
+              data-testid="read-only-back"
+              href={`/events/${data.eventId}`}
+              style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '0 var(--space-2)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-sm)', fontWeight: 600, textDecoration: 'none' }}
+            >
+              ← Event home
+            </a>
+          </nav>
+        ) : null}
+        {/* Organizer group switcher — lets the organizer jump to ANY group from
+            this read-only view (else they're stuck on whatever group loaded). */}
+        {data.myFoursome.viewerIsOrganizer && (data.myFoursome.availableFoursomes?.length ?? 0) > 1 ? (
+          <div data-testid="organizer-group-switch" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
+            <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', fontWeight: 600 }}>Scoring group:</span>
+            {data.myFoursome.availableFoursomes!.map((n) => {
+              const active = n === data.myFoursome.foursomeNumber;
+              return (
+                <a
+                  key={n}
+                  data-testid={`organizer-group-${n}`}
+                  href={`/rounds/${roundId}/score-entry?foursome=${n}`}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 44, minHeight: 44, borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', textDecoration: 'none', fontWeight: 700, color: active ? '#fff' : 'var(--color-text-secondary)', background: active ? 'var(--color-brand-primary)' : 'var(--color-surface)' }}
+                >
+                  {n}
+                </a>
+              );
+            })}
+          </div>
+        ) : null}
         <StaleQueueBanner roundId={roundId} />
         <div data-testid="read-only">
           <strong>{data.myFoursome.scorerName}</strong> is currently scoring
           foursome {data.myFoursome.foursomeNumber}.
         </div>
         <ClaimScoringButton roundId={roundId} foursomeNumber={data.myFoursome.foursomeNumber} />
-      </>
+      </div>
     );
   }
   if (!isInstalled) {
