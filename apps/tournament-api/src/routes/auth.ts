@@ -24,6 +24,7 @@ import {
   TENANT_ID as DEVICE_TENANT_ID,
   deviceCookieClearHeader,
 } from './invites.js';
+import { validateDeviceBinding } from '../lib/device-auth.js';
 
 /**
  * Auth sub-router. T1-6a shipped the infrastructure (schema, middleware,
@@ -102,28 +103,52 @@ export class OAuthRebindConflictError extends Error {
  */
 authRouter.get('/status', async (c) => {
   const cookieHeader = c.req.header('cookie') ?? '';
+
+  // Resolve the player from a Google SESSION cookie OR a device-binding cookie
+  // (the join-code / invite-link path), MIRRORING requireSession. /status MUST
+  // honor the device cookie too: code-joined players have only a device cookie
+  // (no Google session), and an earlier session-only check made them look
+  // logged-out to the SPA loader → it bounced them to Google OAuth (the
+  // "stuck in Google / signed in as a spouse" loop). Whoever happened to have a
+  // stale session got in; everyone else didn't — exactly the reported flakiness.
   const sessionId = extractCookieValue(cookieHeader, SESSION_COOKIE_NAME);
+  const deviceCookieValue = extractCookieValue(cookieHeader, DEVICE_COOKIE_NAME);
 
-  if (!sessionId) {
+  let playerId: string | null = null;
+  let isOrganizer = false;
+
+  if (
+    sessionId &&
+    sessionId.length >= 16 &&
+    sessionId.length <= 128 &&
+    /^[A-Za-z0-9_-]+$/.test(sessionId)
+  ) {
+    const validated = await validateSession(sessionId);
+    if (validated) {
+      playerId = validated.playerId;
+      isOrganizer = validated.isOrganizer;
+    }
+  }
+
+  if (
+    playerId === null &&
+    deviceCookieValue !== null &&
+    deviceCookieValue.length >= 8 &&
+    deviceCookieValue.length <= 128 &&
+    /^[A-Za-z0-9_-]+$/.test(deviceCookieValue)
+  ) {
+    const dev = await validateDeviceBinding(deviceCookieValue);
+    if (dev) {
+      playerId = dev.playerId;
+      isOrganizer = dev.isOrganizer;
+    }
+  }
+
+  if (playerId === null) {
     return c.json({ player: null, device: null });
   }
 
-  // Cheap shape guard before hitting the DB — same idiom as
-  // require-session middleware. base64url session IDs are 16-128 chars.
-  if (sessionId.length < 16 || sessionId.length > 128 || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {
-    return c.json({ player: null, device: null });
-  }
-
-  const validated = await validateSession(sessionId);
-  if (!validated) {
-    return c.json({ player: null, device: null });
-  }
-
-  // T3-10 — additive shape: read the player row to surface ghin +
-  // manual_handicap_index for the /profile page. Tenant-scoped per the
-  // post-T3-7/T3-9 hardening pattern. Existing T2-3b consumers extract
-  // only `id` + `isOrganizer` and ignore unknown keys, so this is
-  // forward-compat (verified at spec-time, see T3-10 Risk §2.2).
+  // T3-10 — additive shape: ghin + manual_handicap_index for /profile.
   const playerRows = await db
     .select({
       id: players.id,
@@ -131,24 +156,15 @@ authRouter.get('/status', async (c) => {
       manualHandicapIndex: players.manualHandicapIndex,
     })
     .from(players)
-    .where(
-      and(
-        eq(players.id, validated.playerId),
-        eq(players.tenantId, DEFAULT_TENANT_ID),
-      ),
-    );
+    .where(and(eq(players.id, playerId), eq(players.tenantId, DEFAULT_TENANT_ID)));
   const profile = playerRows[0];
 
-  // T7-6 — read the device cookie + look up the matching device_bindings
-  // row scoped to (id, player_id, tenant_id). Returns null on any miss
-  // (no cookie, malformed cookie, cross-player row, missing row). Never
-  // throws — the auth-status loader is non-strict per existing T2-3b /
-  // T3-10 contract.
+  // T7-6 — device-binding decoration (install-prompt state). Now keyed on the
+  // resolved playerId (works whether auth came from the session or the device).
   let deviceInfo: {
     id: string;
     installPromptShownAt: number | null;
   } | null = null;
-  const deviceCookieValue = extractCookieValue(cookieHeader, DEVICE_COOKIE_NAME);
   if (
     deviceCookieValue !== null &&
     deviceCookieValue.length >= 16 &&
@@ -164,7 +180,7 @@ authRouter.get('/status', async (c) => {
       .where(
         and(
           eq(deviceBindings.id, deviceCookieValue),
-          eq(deviceBindings.playerId, validated.playerId),
+          eq(deviceBindings.playerId, playerId),
           eq(deviceBindings.tenantId, DEVICE_TENANT_ID),
         ),
       )
@@ -179,8 +195,8 @@ authRouter.get('/status', async (c) => {
 
   return c.json({
     player: {
-      id: validated.playerId,
-      isOrganizer: validated.isOrganizer,
+      id: playerId,
+      isOrganizer,
       ghin: profile?.ghin ?? null,
       manualHandicapIndex: profile?.manualHandicapIndex ?? null,
     },

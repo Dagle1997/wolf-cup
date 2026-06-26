@@ -179,8 +179,18 @@ export async function requireAuthOrRedirect(
     retry: false,
   });
   if (status.player === null) {
-    window.location.assign('/api/auth/google');
-    throw new Error('redirecting-to-oauth');
+    // Send a logged-out user to the JOIN screen — NOT straight to Google.
+    // Most players authenticate with a per-player code (no Google account);
+    // auto-redirecting to /api/auth/google bounced them into whatever Google
+    // account was signed in on the phone (e.g. a spouse's) and trapped them in
+    // an OAuth loop. /join is public, code-first, and carries a "Sign in with
+    // Google" link for organizers who want it. Preserve the intended path so a
+    // post-join landing can honor it later.
+    const dest = typeof window !== 'undefined'
+      ? `/join?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
+      : '/join';
+    window.location.assign(dest);
+    throw new Error('redirecting-to-join');
   }
   return { player: status.player };
 }
