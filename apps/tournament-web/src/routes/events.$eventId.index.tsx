@@ -127,13 +127,18 @@ export function computeCountdown(
     return 'Event complete';
   }
 
-  // Find the next future round; if all are in the past, we're mid-event.
-  const next = sorted.find((r) => r.roundDate > now);
+  // The next round that hasn't fully passed. A round dated TODAY (roundDate is
+  // typically midnight) must stay "today's round" ALL DAY — not flip to the
+  // following round the moment its midnight timestamp slips into the past
+  // (which made the morning of round 1 read "Round 2 starts today"). So a round
+  // counts as current until ONE_DAY_MS after its date.
+  const next = sorted.find((r) => r.roundDate + ONE_DAY_MS > now);
   if (!next) {
     return 'Round in progress';
   }
   const diffMs = next.roundDate - now;
   if (diffMs < ONE_DAY_MS) {
+    // Includes a round whose midnight already passed today → still "today".
     return `Round ${next.roundNumber} starts today`;
   }
   const days = Math.floor(diffMs / ONE_DAY_MS);

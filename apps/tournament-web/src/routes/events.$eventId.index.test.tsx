@@ -379,9 +379,11 @@ describe('computeCountdown', () => {
     expect(computeCountdown(rounds, MAY_8_NY_MIDNIGHT - 1.5 * 86_400_000)).toBe('Round 1 starts in 1 day');
   });
 
-  it('mid-event (after round 1, < 1 day to round 2) → "Round 2 starts today"', () => {
-    // Round 1 just started; round 2 is exactly ONE_DAY_MS - 1 ms away → "today".
-    expect(computeCountdown(rounds, MAY_8_NY_MIDNIGHT + 1)).toBe('Round 2 starts today');
+  it('on round 1\'s OWN day (just past its midnight) → still "Round 1 starts today", NOT round 2 (regression: morning of round 1 read "Round 2 starts today")', () => {
+    // now = round 1's date + 1 ms (the morning of round 1). A round dated today
+    // must stay today's round ALL DAY, not flip to round 2 the instant its
+    // midnight timestamp slips into the past.
+    expect(computeCountdown(rounds, MAY_8_NY_MIDNIGHT + 1)).toBe('Round 1 starts today');
   });
 
   it('boundary — diff exactly ONE_DAY_MS → "Round 1 starts in 1 day" (≥ branch, codex M #3)', () => {
@@ -398,8 +400,10 @@ describe('computeCountdown', () => {
     expect(computeCountdown(rounds, MAY_10_NY_MIDNIGHT + 86_400_000)).toBe('Event complete');
   });
 
-  it('mid-event window (after last round but before +1 day) → "Round in progress"', () => {
-    expect(computeCountdown(rounds, MAY_10_NY_MIDNIGHT + 1)).toBe('Round in progress');
+  it('on the LAST round\'s own day (just past its midnight) → "Round 3 starts today"', () => {
+    // The last round dated today stays "today" all day; the live banner (set
+    // separately when the round is actually started) overrides this hero text.
+    expect(computeCountdown(rounds, MAY_10_NY_MIDNIGHT + 1)).toBe('Round 3 starts today');
   });
 
   it('empty rounds → fallback', () => {
