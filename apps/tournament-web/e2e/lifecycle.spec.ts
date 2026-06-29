@@ -128,12 +128,15 @@ test('score-entry + offline queue: a score entered offline survives and drains t
   await context.close();
 });
 
-test('scorer policy: a non-active foursome member taps "I\'ll score" to take over (T13-4)', async ({
+test('group-member gate: any foursome member scores their group directly (Josh 2026-06-28)', async ({
   browser,
 }) => {
   expect(startedRoundId, 'start-round test must have run first').toBeTruthy();
 
-  // scorer2 is a foursome member but NOT the active scorer (that's scorer #1).
+  // scorer2 is a foursome member but NOT the designated active scorer (that's
+  // scorer #1). Under the group-member gate, membership IS the authorization —
+  // a verified, join-code-bound member scores their own group directly, with no
+  // read-only "I'll score" handoff dance. (Every write is still audit-logged.)
   const context = await browser.newContext();
   await authAsSession(context, fx.scorer2SessionId);
   await context.addInitScript(FAKE_STANDALONE_INIT);
@@ -141,16 +144,10 @@ test('scorer policy: a non-active foursome member taps "I\'ll score" to take ove
 
   await page.goto(`/rounds/${startedRoundId}/score-entry`);
 
-  // Default 'foursome' policy → they see the read-only state + an "I'll score"
-  // button (NOT the score form yet).
-  await expect(page.getByTestId('read-only')).toBeVisible();
-  const claim = page.getByTestId('claim-scoring');
-  await expect(claim).toBeVisible();
-  await expect(page.getByTestId('score-entry-form')).toHaveCount(0);
-
-  // One tap takes over — they become the active scorer and the form renders.
-  await claim.click();
+  // The score-entry form renders directly — no read-only/claim gate for a member.
   await expect(page.getByTestId('score-entry-form')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('read-only')).toHaveCount(0);
+  await expect(page.getByTestId('claim-scoring')).toHaveCount(0);
 
   await context.close();
 });
