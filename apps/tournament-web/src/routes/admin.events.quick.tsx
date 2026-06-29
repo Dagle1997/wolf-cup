@@ -20,7 +20,7 @@
  * A partial failure leaves a half-created event (surfaced with the failing
  * step); it's a throwaway test path, so the organizer can cancel it later.
  */
-import { useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthSession, requireAuthOrRedirect } from '../hooks/use-auth-session';
@@ -155,6 +155,7 @@ export function QuickEventPage() {
   const [ghinLast, setGhinLast] = useState('');
   const [ghinFirst, setGhinFirst] = useState('');
   const [ghinSearchTriggered, setGhinSearchTriggered] = useState(false);
+  const ghinLastRef = useRef<HTMLInputElement>(null);
 
   // Step 3 — arrange (per-player foursome number, 1-based)
   const [foursomeOf, setFoursomeOf] = useState<number[]>(() => [1, 1, 1, 1]);
@@ -219,6 +220,10 @@ export function QuickEventPage() {
           ],
     );
     setGhinSearchTriggered(false);
+    // Return focus to the last-name box (and select it) so the organizer can
+    // immediately type the next golfer without reaching for the field.
+    ghinLastRef.current?.focus();
+    ghinLastRef.current?.select();
   }
   function removePlayer(i: number) {
     setPlayers((prev) => prev.filter((_, j) => j !== i));
@@ -481,7 +486,7 @@ export function QuickEventPage() {
           <div style={{ display: 'grid', gap: 'var(--space-2)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)' }}>
             <span style={labelStyle}>Search GHIN</span>
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <input data-testid="quick-ghin-last" value={ghinLast} placeholder="Last name"
+              <input ref={ghinLastRef} data-testid="quick-ghin-last" value={ghinLast} placeholder="Last name"
                 onChange={(e) => { setGhinLast(e.target.value); setGhinSearchTriggered(false); }}
                 onKeyDown={(e) => { if (e.key === 'Enter') runGhinSearch(); }}
                 style={{ ...inputStyle, flex: 1 }} />

@@ -183,6 +183,8 @@ describe('QuickEventPage', () => {
     fireEvent.click(screen.getByTestId('quick-ghin-search'));
     await waitFor(() => expect(screen.getByTestId('quick-ghin-add-1234567')).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('quick-ghin-add-1234567'));
+    // Focus returns to the last-name box so the next golfer can be typed at once.
+    expect(document.activeElement).toBe(screen.getByTestId('quick-ghin-last'));
     // Drop the 4 default blank manual rows so only the GHIN player remains.
     fireEvent.change(screen.getByTestId('quick-num-players'), { target: { value: '1' } });
 
