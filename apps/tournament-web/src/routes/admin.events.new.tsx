@@ -145,7 +145,10 @@ function tzOffsetMs(instant: number, timeZone: string): number {
   try {
     const dtf = new Intl.DateTimeFormat('en-US', {
       timeZone,
-      hour12: false,
+      // h23 forces a 00–23 clock so midnight formats as "00", never "24:00" on
+      // the same calendar day (an h24 engine would otherwise produce a 24h
+      // offset error in the computed epoch — codex review 2026-06-29).
+      hourCycle: 'h23',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
