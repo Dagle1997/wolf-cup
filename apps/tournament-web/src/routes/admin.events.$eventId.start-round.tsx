@@ -83,6 +83,10 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
   // The eventRoundId the server flagged as having no game/money rules configured
   // (422 no_game_config). Shows a scores-only confirmation instead of starting.
   const [noGamePrompt, setNoGamePrompt] = useState<string | null>(null);
+  // The eventRoundId the server flagged as having NO greenie/polie/sandie enabled
+  // for any foursome (422 no_claim_modifiers). Shows a "set the rules or start
+  // without bonuses" confirmation — the post-trip fix for "modifiers didn't show".
+  const [noModifiersPrompt, setNoModifiersPrompt] = useState<string | null>(null);
 
   if (query.isPending) {
     return (
@@ -109,8 +113,13 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
     eventRoundId: string,
     foursomes: PairingsResponse['rounds'][number]['pairings'],
     confirmNoGame = false,
+    confirmNoModifiers = false,
   ) {
     setErrorText(null);
+    // Clear any prior pre-flight prompt before a fresh attempt so a stale one
+    // can never mask the surface this attempt should show.
+    setNoGamePrompt(null);
+    setNoModifiersPrompt(null);
     setBusy(eventRoundId);
     try {
       const scorers = foursomes.map((p) => {
@@ -127,7 +136,11 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ scorers, ...(confirmNoGame ? { confirmNoGame: true } : {}) }),
+          body: JSON.stringify({
+            scorers,
+            ...(confirmNoGame ? { confirmNoGame: true } : {}),
+            ...(confirmNoModifiers ? { confirmNoModifiers: true } : {}),
+          }),
         },
       );
       if (!res.ok) {
@@ -137,6 +150,14 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
         if (body.code === 'no_game_config') {
           setConfirming(null);
           setNoGamePrompt(eventRoundId);
+          return;
+        }
+        // F1 event configured, but no greenie/polie/sandie are enabled for any
+        // foursome → players would see no bonus buttons. Surface a prompt to
+        // set the rules first, or start without bonuses (post-trip fix).
+        if (body.code === 'no_claim_modifiers') {
+          setConfirming(null);
+          setNoModifiersPrompt(eventRoundId);
           return;
         }
         setErrorText(
@@ -253,6 +274,49 @@ export function StartRoundPage({ eventId, organizerId }: { eventId: string; orga
                 <button
                   type="button"
                   onClick={() => setNoGamePrompt(null)}
+                  style={{ marginTop: 'var(--space-2)', background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 0, fontSize: 'var(--font-sm)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : noModifiersPrompt === r.eventRoundId ? (
+              <div style={{ marginTop: 'var(--space-4)' }} data-testid={`no-modifiers-prompt-${r.eventRoundId}`}>
+                <div role="alert" style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-2)' }}>
+                  <span aria-hidden>⚠ </span><strong>No bonuses (greenie / polie / sandie) are turned on for any group.</strong> If you
+                  start now, scorers won&apos;t see bonus buttons. Set the rules first — at the event level or per foursome — or start without bonuses.
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                  <Link
+                    to="/admin/events/$eventId/game-config"
+                    params={{ eventId }}
+                    data-testid={`go-game-config-modifiers-${r.eventRoundId}`}
+                    style={{ flex: 1, minWidth: 140, minHeight: 'var(--control-height-lg)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-brand-primary)', color: '#fff', fontWeight: 700, borderRadius: 'var(--radius-md)', textDecoration: 'none' }}
+                  >
+                    Event rules
+                  </Link>
+                  <Link
+                    to="/admin/events/$eventId/foursome-rules"
+                    params={{ eventId }}
+                    data-testid={`go-foursome-rules-${r.eventRoundId}`}
+                    style={{ flex: 1, minWidth: 140, minHeight: 'var(--control-height-lg)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', fontWeight: 700, borderRadius: 'var(--radius-md)', textDecoration: 'none' }}
+                  >
+                    Foursome rules
+                  </Link>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                  <button
+                    type="button"
+                    data-testid={`start-without-bonuses-${r.eventRoundId}`}
+                    disabled={busy === r.eventRoundId}
+                    onClick={() => start(r.eventRoundId, r.pairings, false, true)}
+                    style={{ flex: 1, minWidth: 160, minHeight: 'var(--control-height-lg)', background: 'var(--color-surface)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)', fontWeight: 600 }}
+                  >
+                    {busy === r.eventRoundId ? 'Starting…' : 'Start without bonuses'}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNoModifiersPrompt(null)}
                   style={{ marginTop: 'var(--space-2)', background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 0, fontSize: 'var(--font-sm)' }}
                 >
                   Cancel

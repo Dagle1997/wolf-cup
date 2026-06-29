@@ -543,6 +543,12 @@ scoresRouter.post(
         );
       }
 
+      // Putts are REQUIRED for putting-game players, but enforced at the score-
+      // entry UI (the Save gate), NOT here: a valid gross is money-critical and
+      // must always persist, so the write path never rejects a gross for a
+      // missing secondary stat (post-trip review 2026-06-29 — rejecting the
+      // whole write risked silently dropping a queued gross on sync).
+
       // (4) INSERT with idempotent dedupe target. Catch UNIQUE-collision separately.
       const insertId = randomUUID();
       const now = Date.now();

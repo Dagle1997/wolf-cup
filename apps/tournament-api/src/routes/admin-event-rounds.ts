@@ -54,6 +54,7 @@ import {
   eventRounds,
   events,
   eventScorerDesignees,
+  gameConfig,
   groups,
   groupMembers,
   players,
@@ -75,6 +76,8 @@ import { isF1Event } from '../services/games-money.js';
 import { pinRoundAtStart } from '../services/pin-round-at-start.js';
 import { calcCourseHandicap } from '../services/handicap.js';
 import { perPlayerHandicapsSchema } from '../engine/games/config-schema.js';
+import { resolveConfig, type LeveledConfigRow } from '../engine/games/resolver.js';
+import type { GameConfig } from '../engine/games/types.js';
 
 const SAVE_BODY_LIMIT_BYTES = 8 * 1024;
 const TENANT_ID = 'guyan';
@@ -574,6 +577,13 @@ const StartRoundRequestSchema = z
     // scores-only round by setting this true — a deliberate acknowledgment, not
     // a hard block (a genuine scores-only event sets it and proceeds).
     confirmNoGame: z.boolean().optional(),
+    // Claim-modifier pre-flight (post-trip 2026-06-28): if NO foursome's
+    // resolved config enables any greenie/polie/sandie, players see no bonus
+    // buttons on score entry (the live-trip surprise — per-foursome games were
+    // set up but their rules were never entered). The endpoint refuses with 422
+    // `no_claim_modifiers` unless the organizer opts in here. Like confirmNoGame,
+    // a one-tap acknowledgment, not a hard block.
+    confirmNoModifiers: z.boolean().optional(),
   })
   .strict();
 
@@ -601,6 +611,83 @@ function isUniqueOrPkConstraintError(err: unknown): boolean {
     e?.cause?.rawCode === 2067 ||
     e?.cause?.rawCode === 1555
   );
+}
+
+/** Claim-modifier types that render a bonus button on score entry. */
+const CLAIM_MODIFIER_TYPES = new Set(['greenie', 'polie', 'sandie']);
+
+/**
+ * True when NOT A SINGLE foursome in this round would show a claim-modifier
+ * (greenie/polie/sandie) button on score entry — i.e. every foursome's
+ * effective config has them all disabled/absent.
+ *
+ * Resolves each foursome the SAME WAY the round pin + score-entry do: the
+ * event-level base merged with the per-foursome (Epic 6) override, with
+ * overrides applied even when the event is locked (the pin, not the cascade, is
+ * the money lock). Drives the start-round pre-flight guard (post-trip
+ * 2026-06-28): per-foursome games were enabled but the claim rules were never
+ * entered, so no bonus buttons appeared and nobody was prompted.
+ *
+ * Fail-open (returns false) on any missing/corrupt/unresolvable config so it
+ * NEVER blocks a start for a reason the no_game_config / pin paths already own —
+ * its only job is to catch the "configured F1 round, zero bonuses anywhere" case.
+ */
+export async function noClaimModifiersForAnyFoursome(
+  eventId: string,
+  pairingIds: readonly string[],
+): Promise<boolean> {
+  const eventRows = await db
+    .select({ configJson: gameConfig.configJson })
+    .from(gameConfig)
+    .where(
+      and(
+        eq(gameConfig.level, 'event'),
+        eq(gameConfig.refId, eventId),
+        eq(gameConfig.tenantId, TENANT_ID),
+      ),
+    )
+    .limit(1);
+  if (eventRows.length === 0) return false; // not an F1 event — other guards own this
+  let eventCfg: Partial<GameConfig>;
+  try {
+    eventCfg = JSON.parse(eventRows[0]!.configJson) as Partial<GameConfig>;
+  } catch {
+    return false;
+  }
+
+  const foursomeRows =
+    pairingIds.length > 0
+      ? await db
+          .select({ refId: gameConfig.refId, configJson: gameConfig.configJson })
+          .from(gameConfig)
+          .where(
+            and(
+              eq(gameConfig.level, 'foursome'),
+              inArray(gameConfig.refId, [...pairingIds]),
+              eq(gameConfig.tenantId, TENANT_ID),
+            ),
+          )
+      : [];
+  const foursomeByPairing = new Map(foursomeRows.map((r) => [r.refId, r.configJson]));
+
+  for (const pairingId of pairingIds) {
+    const leveled: LeveledConfigRow[] = [{ level: 'event', config: eventCfg }];
+    const fJson = foursomeByPairing.get(pairingId);
+    if (fJson !== undefined) {
+      try {
+        leveled.push({ level: 'foursome', config: JSON.parse(fJson) as Partial<GameConfig> });
+      } catch {
+        return false; // corrupt foursome config — don't block on this guard
+      }
+    }
+    const resolved = resolveConfig(leveled, { applyOverridesWhenLocked: true });
+    if (!resolved.ok) return false; // config problem — don't block on this guard
+    const anyOn = resolved.config.modifiers.some(
+      (m) => m.enabled && CLAIM_MODIFIER_TYPES.has(m.type),
+    );
+    if (anyOn) return false; // at least one foursome will show a bonus button
+  }
+  return true; // no foursome will show any greenie/polie/sandie
 }
 
 adminEventRoundsRouter.post(
@@ -766,6 +853,23 @@ adminEventRoundsRouter.post(
     // tap (confirmNoGame) so a deliberately scores-only event is never blocked.
     if (!eventIsF1 && parsed.data.confirmNoGame !== true) {
       return c.json({ error: 'unprocessable', code: 'no_game_config', requestId }, 422);
+    }
+
+    // 5c. Claim-modifier pre-flight (post-trip 2026-06-28). An F1 event where
+    // NO foursome's resolved config enables any greenie/polie/sandie will show
+    // no bonus buttons on score entry — the live-trip surprise: per-foursome
+    // games were set up but their rules were never entered, and nobody was
+    // prompted. Refuse unless the organizer confirms (one tap, mirrors the
+    // no_game_config guard). Only checked for F1 events that cleared the guard
+    // above; the helper fails OPEN on any config problem so it never blocks a
+    // start for a reason the pin path already owns.
+    if (eventIsF1 && parsed.data.confirmNoModifiers !== true) {
+      if (await noClaimModifiersForAnyFoursome(eventId, pairingIds)) {
+        return c.json(
+          { error: 'unprocessable', code: 'no_claim_modifiers', requestId },
+          422,
+        );
+      }
     }
 
     // 6. Create rounds + round_states + scorer_assignments atomically.

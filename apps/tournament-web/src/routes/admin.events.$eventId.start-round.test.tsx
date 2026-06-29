@@ -169,4 +169,44 @@ describe('StartRoundPage', () => {
       expect(confirmed).toBeTruthy();
     });
   });
+
+  it('422 no_claim_modifiers → bonuses prompt; "Start without bonuses" re-posts with confirmNoModifiers', async () => {
+    // First /start (no confirm) → 422 no_claim_modifiers; confirmNoModifiers → 201.
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes('/scorer-policy')) {
+        return new Response(JSON.stringify(POLICY), { status: 200, headers: JSON_HEADERS });
+      }
+      if (url.includes('/start')) {
+        const body = JSON.parse((init as RequestInit).body as string) as { confirmNoModifiers?: boolean };
+        return body.confirmNoModifiers === true
+          ? new Response(JSON.stringify({ roundId: 'round-1' }), { status: 201, headers: JSON_HEADERS })
+          : new Response(JSON.stringify({ code: 'no_claim_modifiers' }), { status: 422, headers: JSON_HEADERS });
+      }
+      return new Response(JSON.stringify(STARTABLE), { status: 200, headers: JSON_HEADERS });
+    });
+    renderPage(<StartRoundPage eventId="evt-1" organizerId={ORG_ID} />);
+    await waitFor(() => expect(screen.getByTestId('start-btn-er-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('start-btn-er-1'));
+    await waitFor(() => expect(screen.getByTestId('confirm-start-er-1')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('confirm-start-er-1'));
+    // The guard surfaces the no-bonuses prompt with rules links.
+    await waitFor(() => expect(screen.getByTestId('no-modifiers-prompt-er-1')).toBeInTheDocument());
+    expect(screen.getByTestId('go-game-config-modifiers-er-1')).toBeInTheDocument();
+    expect(screen.getByTestId('go-foursome-rules-er-1')).toBeInTheDocument();
+    // First start carried NO confirmNoModifiers flag.
+    const firstStart = vi.mocked(fetch).mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('/start'),
+    );
+    expect(JSON.parse((firstStart![1] as RequestInit).body as string).confirmNoModifiers).toBeUndefined();
+    // Tapping "Start without bonuses" re-posts WITH confirmNoModifiers:true.
+    fireEvent.click(screen.getByTestId('start-without-bonuses-er-1'));
+    await waitFor(() => {
+      const confirmed = vi.mocked(fetch).mock.calls.find((c) => {
+        if (typeof c[0] !== 'string' || !c[0].includes('/start')) return false;
+        return JSON.parse((c[1] as RequestInit).body as string).confirmNoModifiers === true;
+      });
+      expect(confirmed).toBeTruthy();
+    });
+  });
 });

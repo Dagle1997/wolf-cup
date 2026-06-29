@@ -428,6 +428,32 @@ describe('ScoreEntryRoute', () => {
     await waitFor(() => expect(saveButton.disabled).toBe(false));
   });
 
+  test('Save gated until putting-game players have putts; hint explains why', async () => {
+    // Scorer (member index 0) is in the putting game → putts are REQUIRED.
+    vi.mocked(fetch).mockResolvedValue(
+      jsonOk(buildHappyPathDetail({ puttsPlayerIds: [SCORER_ID] })),
+    );
+    await renderRoute();
+    await waitFor(() => screen.getByTestId('save-button'));
+    const saveButton = screen.getByTestId('save-button') as HTMLButtonElement;
+
+    // All 4 gross scores entered, but the putting-game player's putts are not.
+    for (const idx of [0, 1, 2, 3]) {
+      fireEvent.change(screen.getByTestId(`score-input-${idx}`) as HTMLInputElement, {
+        target: { value: '4' },
+      });
+    }
+    // Save stays disabled; the hint tells the scorer putts are missing.
+    expect(saveButton.disabled).toBe(true);
+    expect(screen.getByTestId('save-hint').textContent).toMatch(/putts/i);
+
+    // Enter putts for the putting-game player → Save enables.
+    await act(async () => {
+      (screen.getByTestId('putts-plus-0') as HTMLButtonElement).click();
+    });
+    await waitFor(() => expect(saveButton.disabled).toBe(false));
+  });
+
   test('iOS keyboard fix: Save onClick calls focus() on input 0 SYNCHRONOUSLY before enqueueMutation', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonOk(buildHappyPathDetail()));
     await renderRoute();

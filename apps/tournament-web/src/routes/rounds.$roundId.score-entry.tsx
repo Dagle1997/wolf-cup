@@ -9,9 +9,13 @@
  *   - REMOVED CTP per-par-3 prompt (Wolf Cup-only sub-game)
  *   - REMOVED entry-code header (session-cookie auth via T1-6a)
  *   - REMOVED autoCalculateMoney (T6 owns)
- *   - REMOVED the putts input (2026-06-23 condense — putting moves to Bets per
- *     Josh). Save PRESERVES any existing server-side putts for a cell (never
- *     overwrites to null); the entry UI just no longer captures new putts.
+ *   - PUTTS: a per-hole putts stepper is shown ONLY for players in an active
+ *     putting game (`puttsPlayerIds`), and is REQUIRED for them before Save
+ *     (post-trip 2026-06-28 — a forgotten putt left the snake/putting game
+ *     unplayable). Players NOT in a putting game show no putts field; Save
+ *     PRESERVES any existing server-side putts for their cell (never overwrites
+ *     to null). (Earlier the putts input was removed; it is back — conditional
+ *     and required — for putting-game participants only.)
  *   - CHANGED enqueue payload to T5-3 generic-kind shape with clientEventId
  *   - CHANGED score range 1-9 (Wolf Cup limitation) → 1-20 (T5-6 Zod compat)
  *   - ADDED Skip hole sessionStorage persistence with cleared-on-server-fill
@@ -1378,8 +1382,21 @@ function ScoreEntryForm({
     [],
   );
 
-  const allValid = members.length > 0
+  // A hole is saveable when every member has a valid gross score AND every
+  // putting-game player has a putts value entered. Putts are REQUIRED for
+  // players in an active putting game (puttsPlayerIds) so the snake/putting
+  // game can settle — a forgotten putt left the game unplayable live
+  // (post-trip 2026-06-28). Players NOT in a putting game show no putts field
+  // and are unaffected.
+  const grossComplete = members.length > 0
     && members.every((m) => SCORE_RE.test(currentInputs[m.playerId] ?? ''));
+  // Require a valid putts value (0–15) — not merely non-empty — so a putting-
+  // game player can never enqueue a missing/out-of-range putt. The stepper only
+  // ever sets 0–15, so this just hardens the gate against any stray value.
+  const puttsComplete = members.every(
+    (m) => !puttsPlayerIds.has(m.playerId) || /^([0-9]|1[0-5])$/.test(currentPutts[m.playerId] ?? ''),
+  );
+  const allValid = grossComplete && puttsComplete;
 
   // isSaving is THIS Save action's local "in-flight" flag — short-lived,
   // covers the duration of the Promise.allSettled. We deliberately do NOT
@@ -1940,7 +1957,14 @@ function ScoreEntryForm({
       <div data-testid="save-bar" style={{ position: 'sticky', bottom: 0, marginTop: 'var(--space-4)', paddingTop: 'var(--space-2)', paddingBottom: 'calc(var(--space-2) + env(safe-area-inset-bottom))', background: 'var(--color-surface-sunken)' }}>
         {!allValid && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--font-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
-            <span>{enteredCount} of {members.length} entered</span>
+            {/* When all gross scores are in but a putting-game player is missing
+                putts, say so — otherwise "4 of 4 entered" + a disabled Save is
+                baffling. */}
+            <span data-testid="save-hint">
+              {!grossComplete
+                ? `${enteredCount} of ${members.length} entered`
+                : 'Enter putts for the putting game to save'}
+            </span>
             <button data-testid="skip-hole" data-skip-base-style onClick={handleSkipHole} style={{ background: 'none', border: 'none', color: 'var(--color-brand-primary)', fontWeight: 600, minHeight: 44, padding: '0 var(--space-2)', margin: 0, cursor: 'pointer' }}>
               Skip hole
             </button>
