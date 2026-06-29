@@ -167,6 +167,12 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
     )
     .limit(1);
   let myFoursomeNumber = myFoursomeRows[0]?.foursomeNumber;
+  // Captured BEFORE the scorer/organizer fallbacks reassign myFoursomeNumber:
+  // is the VIEWER an actual pairing member of the group they're viewing? If so
+  // they may score it directly (group-member gate — Josh 2026-06-28), no
+  // designated-scorer handoff. Organizer-only viewers (no pairing) stay false
+  // and keep the pick-a-group + Claim-scoring flow.
+  const viewerIsFoursomeMember = myFoursomeRows[0]?.foursomeNumber !== undefined;
   if (myFoursomeNumber === undefined) {
     // T13-3: a DESIGNATED SCORER who is not a pairing member (e.g. the event
     // organizer running a foursome they aren't playing in) still resolves to
@@ -420,6 +426,10 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
       myFoursome: {
         foursomeNumber: myFoursomeNumber,
         isScorer,
+        // A foursome member may always score their own group; the designated
+        // scorer still can too (covers the organizer-as-scorer non-member case).
+        canScore: isScorer || viewerIsFoursomeMember,
+        viewerIsFoursomeMember,
         scorerPlayerId,
         scorerName,
         members,

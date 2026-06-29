@@ -105,6 +105,11 @@ interface RoundDetail {
   myFoursome: {
     foursomeNumber: number;
     isScorer: boolean;
+    // Group-member gate (Josh 2026-06-28): true when the viewer may write scores
+    // for this group — either the designated scorer OR any member of the
+    // foursome. Absent on older server builds → fall back to isScorer.
+    canScore?: boolean;
+    viewerIsFoursomeMember?: boolean;
     scorerPlayerId: string | null;
     scorerName: string | null;
     members: Member[]; // sorted by slot_number ASC (load-bearing)
@@ -496,6 +501,10 @@ export function ScoreEntryRoute() {
   if (!data) {
     return <div data-testid="error">No data.</div>;
   }
+  // Group-member gate (Josh 2026-06-28): a member of this foursome may score it
+  // directly — no designated-scorer handoff. Falls back to isScorer for older
+  // server builds that don't send canScore (no regression).
+  const canScore = data.myFoursome.canScore ?? data.myFoursome.isScorer;
   if (data.state === 'finalized' || data.state === 'cancelled') {
     return (
       <div data-testid="round-closed">
@@ -503,14 +512,14 @@ export function ScoreEntryRoute() {
       </div>
     );
   }
-  if (data.myFoursome.scorerPlayerId === null) {
+  if (data.myFoursome.scorerPlayerId === null && !canScore) {
     return (
       <div data-testid="no-scorer">
         Scorer not yet assigned for this foursome — ask the organizer.
       </div>
     );
   }
-  if (!data.myFoursome.isScorer) {
+  if (!canScore) {
     // Stale-queue banner is rendered ONLY in the read-only state. When
     // the user IS the active scorer, errored entries scoped to this
     // round are necessarily historical (e.g., user was demoted then
@@ -634,14 +643,21 @@ export function ScoreEntryRoute() {
           More — hand off scorer, presses
         </summary>
         <div style={{ marginTop: 'var(--space-3)' }}>
-          <HandoffControl
-            roundId={roundId}
-            foursomeNumber={data.myFoursome.foursomeNumber}
-            members={data.myFoursome.members}
-            myPlayerId={data.myFoursome.scorerPlayerId}
-            queueDrain={queue.drain}
-            queueRefreshCount={queue.refreshCount}
-          />
+          {/* Handoff is a designated-scorer action (myPlayerId is the current
+              scorer). A foursome member who can score via the group-member gate
+              but ISN'T the designated scorer doesn't manage the handoff, so this
+              renders only for the designated scorer (also narrows the non-null
+              scorerPlayerId the control requires). */}
+          {data.myFoursome.isScorer && data.myFoursome.scorerPlayerId !== null ? (
+            <HandoffControl
+              roundId={roundId}
+              foursomeNumber={data.myFoursome.foursomeNumber}
+              members={data.myFoursome.members}
+              myPlayerId={data.myFoursome.scorerPlayerId}
+              queueDrain={queue.drain}
+              queueRefreshCount={queue.refreshCount}
+            />
+          ) : null}
           <PressControl roundId={roundId} />
         </div>
       </details>

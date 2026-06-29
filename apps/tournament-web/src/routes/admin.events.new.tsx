@@ -102,8 +102,74 @@ function emptyState(): FormState {
 
 // ---- Date helpers (string ↔ epoch ms) -------------------------------------
 
-function dateStringToEpochMs(s: string): number {
-  return new Date(`${s}T00:00:00Z`).getTime();
+/**
+ * Convert a 'YYYY-MM-DD' date string to the epoch-ms of LOCAL MIDNIGHT in the
+ * event's IANA `timeZone` — NOT UTC midnight.
+ *
+ * The whole app treats event.startDate / endDate / round.roundDate as
+ * "local-day-start (midnight) in event.timezone" (see the time-semantics
+ * comment in events.$eventId.index.tsx). The old body `new Date(`${s}T00:00:00Z`)`
+ * encoded UTC midnight via a stray `Z`, shifting every date 4–5h early for US
+ * zones — which made the "Event complete" countdown flip the *evening before*
+ * the last round (the day-2 "tournament is over" banner) and dates appear to
+ * roll at UTC-midnight. We instead resolve the real zone offset for that
+ * wall-clock day and subtract it, landing on true local midnight.
+ */
+function dateStringToEpochMs(s: string, timeZone: string): number {
+  const parts = s.split('-');
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (
+    parts.length !== 3 ||
+    !Number.isFinite(y) ||
+    !Number.isFinite(m) ||
+    !Number.isFinite(d)
+  ) {
+    return new Date(`${s}T00:00:00Z`).getTime();
+  }
+  // The instant this wall-clock date would be if it were UTC midnight.
+  const utcGuess = Date.UTC(y, m - 1, d, 0, 0, 0);
+  // local − UTC offset at that instant in the target zone (DST-aware).
+  const offsetMs = tzOffsetMs(utcGuess, timeZone);
+  // Subtract the offset → local midnight expressed as a UTC instant.
+  return utcGuess - offsetMs;
+}
+
+/**
+ * Milliseconds the given IANA `timeZone` is ahead of UTC at `instant` (epoch ms),
+ * via Intl. Returns 0 for an unparseable zone so date math degrades to UTC
+ * rather than throwing (call sites validate the zone first, so this is a guard).
+ */
+function tzOffsetMs(instant: number, timeZone: string): number {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    const parts = dtf.formatToParts(instant);
+    const get = (type: Intl.DateTimeFormatPartTypes): number => {
+      const p = parts.find((x) => x.type === type);
+      return p ? Number(p.value) : 0;
+    };
+    const asUTC = Date.UTC(
+      get('year'),
+      get('month') - 1,
+      get('day'),
+      get('hour') % 24,
+      get('minute'),
+      get('second'),
+    );
+    return asUTC - instant;
+  } catch {
+    return 0;
+  }
 }
 
 // ---- Save state-machine ---------------------------------------------------
@@ -200,7 +266,11 @@ export function NewEventWizard() {
     if (!form.start_date || !form.end_date) return false;
     if (!form.timezone.trim() || !isValidIanaTimezone(form.timezone.trim()))
       return false;
-    if (dateStringToEpochMs(form.end_date) < dateStringToEpochMs(form.start_date))
+    const tz = form.timezone.trim();
+    if (
+      dateStringToEpochMs(form.end_date, tz) <
+      dateStringToEpochMs(form.start_date, tz)
+    )
       return false;
     return true;
   }
@@ -209,11 +279,12 @@ export function NewEventWizard() {
 
   function step2Valid(): boolean {
     if (form.rounds.length < 1) return false;
-    const startMs = dateStringToEpochMs(form.start_date);
-    const endMs = dateStringToEpochMs(form.end_date);
+    const tz = form.timezone.trim();
+    const startMs = dateStringToEpochMs(form.start_date, tz);
+    const endMs = dateStringToEpochMs(form.end_date, tz);
     for (const r of form.rounds) {
       if (!r.round_date) return false;
-      const rms = dateStringToEpochMs(r.round_date);
+      const rms = dateStringToEpochMs(r.round_date, tz);
       if (rms < startMs || rms > endMs) return false;
       if (!r.course_revision_id) return false;
       if (!r.tee_color.trim()) return false;
@@ -270,13 +341,14 @@ export function NewEventWizard() {
   // ---- Submit --------------------------------------------------------------
 
   function buildPayload(): Record<string, unknown> {
+    const tz = form.timezone.trim();
     return {
       name: form.name.trim(),
-      start_date: dateStringToEpochMs(form.start_date),
-      end_date: dateStringToEpochMs(form.end_date),
-      timezone: form.timezone.trim(),
+      start_date: dateStringToEpochMs(form.start_date, tz),
+      end_date: dateStringToEpochMs(form.end_date, tz),
+      timezone: tz,
       rounds: form.rounds.map((r) => ({
-        round_date: dateStringToEpochMs(r.round_date),
+        round_date: dateStringToEpochMs(r.round_date, tz),
         course_revision_id: r.course_revision_id,
         tee_color: r.tee_color.trim(),
         holes_to_play: Number(r.holes_to_play),

@@ -513,7 +513,14 @@ describe('POST /api/rounds/:roundId/scorer-assignments/transfer', () => {
     expect(body.code).toBe('invalid_body');
   });
 
-  test('(i) Stale-queue scenario — POST score AS prior scorer after handoff returns 403 with new scorer name', async () => {
+  test('(i) Group-member gate — prior scorer (a foursome member) can STILL score after handoff (Josh 2026-06-28)', async () => {
+    // Behavior change: the group-member gate trusts ANY verified member of a
+    // foursome to write for that group (their join code binds them to the
+    // roster + handicap), and every write is audit-logged. A handoff re-points
+    // the designated-scorer pointer (which still matters for an organizer who
+    // isn't a foursome member), but it no longer LOCKS OUT a member who was the
+    // prior scorer. The old single-writer stale-queue 403 only applies to a
+    // non-member designated scorer now.
     const s = await seed();
 
     // Step 1: transfer scorer from scorerId → inFoursomeNonScorerId.
@@ -524,9 +531,8 @@ describe('POST /api/rounds/:roundId/scorer-assignments/transfer', () => {
     );
     expect(transferRes.status).toBe(200);
 
-    // Step 2: prior scorer (scorerId) attempts to POST a score; T5-6
-    // middleware should now 403 with currentScorerName populated for
-    // the new scorer (NonScorerMember).
+    // Step 2: prior scorer (scorerId) is a member of foursome 1, so they can
+    // still POST a score for a groupmate — membership IS the authorization.
     const priorScorerApp = buildApp(s.scorerId);
     const scoreRes = await priorScorerApp.request(
       `/api/rounds/${s.roundId}/holes/1/scores`,
@@ -540,15 +546,7 @@ describe('POST /api/rounds/:roundId/scorer-assignments/transfer', () => {
         }),
       },
     );
-    expect(scoreRes.status).toBe(403);
-    const scoreBody = (await scoreRes.json()) as {
-      code: string;
-      currentScorerName: string | null;
-    };
-    expect(['player_not_in_your_foursome', 'not_scorer_for_this_foursome']).toContain(
-      scoreBody.code,
-    );
-    expect(scoreBody.currentScorerName).toBe('NonScorerMember');
+    expect(scoreRes.status).toBe(201);
   });
 
   test('(j) Audit-row assertion — exactly one scorer.transferred row after happy path', async () => {

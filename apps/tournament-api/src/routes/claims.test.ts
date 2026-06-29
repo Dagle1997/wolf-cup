@@ -261,9 +261,23 @@ describe('POST /api/rounds/:roundId/claims', () => {
     expect(rows.length).toBe(0); // refused — nothing written
   });
 
-  test('non-scorer ⇒ 403 (single-writer gate)', async () => {
+  test('foursome member (not the designated scorer) ⇒ 201 (group-member gate, Josh 2026-06-28)', async () => {
+    // player2 is a member of foursome 1 but NOT the designated scorer. Under the
+    // group-member gate, any member may write for their own group — no handoff.
     const seed = await seedRound({ state: 'in_progress' });
-    const app = buildApp(seed.player1Id); // a player, NOT the designated scorer
+    const app = buildApp(seed.player2Id);
+    const res = await postClaim(app, seed.roundId, {
+      playerId: seed.player1Id, holeNumber: 7, claimType: 'greenie', op: 'set', clientEventId: 'evt-member',
+    });
+    expect(res.status).toBe(201);
+  });
+
+  test('non-member, non-scorer ⇒ 403 (still gated)', async () => {
+    // The organizer is neither a pairing member of foursome 1 nor its designated
+    // scorer, so the raw gate rejects them (they'd claim scoring to become the
+    // writer). Proves the member gate didn't open the door to everyone.
+    const seed = await seedRound({ state: 'in_progress' });
+    const app = buildApp(seed.organizerId);
     const res = await postClaim(app, seed.roundId, {
       playerId: seed.player1Id, holeNumber: 7, claimType: 'greenie', op: 'set', clientEventId: 'evt-403',
     });

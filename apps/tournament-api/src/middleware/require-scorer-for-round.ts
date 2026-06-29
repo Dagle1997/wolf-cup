@@ -106,6 +106,33 @@ export async function resolveScorerGate(
     return { ok: false, code: 'player_not_in_any_foursome' };
   }
   const targetFoursomeNumber = targetFoursomeRows[0]!.foursomeNumber;
+
+  // Group-member gate (Josh 2026-06-28): ANYONE in the target foursome may write
+  // for that foursome — their join code already binds them to the roster (and
+  // their handicap), so membership IS the authorization. This relaxes the older
+  // single-designated-scorer model that, in live use, left a player unable to
+  // score their own group without a "Claim scoring" handoff dance. Last-write-
+  // wins per (round, player, hole) cell; every write is still audit-logged and
+  // correctable, so concurrent entry is recoverable. The designated-scorer
+  // fallback below is retained ONLY for the non-member case (an organizer
+  // running a group they aren't playing in, designated via scorer_assignments).
+  const callerFoursomeRows = await txOrDb
+    .select({ foursomeNumber: pairings.foursomeNumber })
+    .from(pairingMembers)
+    .innerJoin(pairings, eq(pairingMembers.pairingId, pairings.id))
+    .where(
+      and(
+        eq(pairings.eventRoundId, args.eventRoundId),
+        eq(pairingMembers.playerId, args.callerPlayerId),
+        eq(pairings.tenantId, tenantId),
+        eq(pairingMembers.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  if (callerFoursomeRows[0]?.foursomeNumber === targetFoursomeNumber) {
+    return { ok: true, foursomeNumber: targetFoursomeNumber };
+  }
+
   const targetScorer = roundScorers.find(
     (s) => s.foursomeNumber === targetFoursomeNumber,
   );
@@ -113,7 +140,8 @@ export async function resolveScorerGate(
     return { ok: false, code: 'foursome_has_no_scorer' };
   }
 
-  // Happy path: caller IS the designated scorer of the target foursome.
+  // Non-member happy path: caller IS the designated scorer of the target
+  // foursome (e.g. the organizer scoring a group they aren't playing in).
   if (targetScorer.scorerPlayerId === args.callerPlayerId) {
     return { ok: true, foursomeNumber: targetFoursomeNumber };
   }
