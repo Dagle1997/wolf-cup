@@ -49,6 +49,54 @@ function formatDateRange(startMs: number, endMs: number, timeZone: string): stri
   return `${fmt.format(startMs)} – ${fmt.format(endMs)}`;
 }
 
+/**
+ * Organizer hero — the landing's primary call-to-action block (phone-first:
+ * centered, full-width stacked buttons, big tap targets, matching the join
+ * page's polish). Two ways in: the full create wizard, or the fast Quick Event
+ * flow. Rendered both as the empty-state hero and atop the multi-event list.
+ */
+function OrganizerHero() {
+  return (
+    <div
+      data-testid="organizer-hero"
+      style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center', padding: '0 var(--space-2)' }}
+    >
+      <div style={{ fontSize: 'var(--font-2xl)', marginBottom: 4 }} aria-hidden>⛳️</div>
+      <h1 style={{ fontSize: 'var(--font-xl)', margin: '0 0 4px' }}>Run your event</h1>
+      <p style={{ color: 'var(--color-text-muted)', margin: '0 0 var(--space-4)', fontSize: 'var(--font-sm)' }}>
+        Spin up a round in seconds, or set one up in full.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <Link
+          to="/admin/events/quick"
+          data-testid="home-create-quick-event"
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            minHeight: 'var(--control-height-lg)', borderRadius: 'var(--radius-md)',
+            background: 'var(--color-brand-primary)', color: '#fff', fontWeight: 700,
+            fontSize: 'var(--font-md)', textDecoration: 'none',
+          }}
+        >
+          ⚡ Create Quick Event
+        </Link>
+        <Link
+          to="/admin/events/new"
+          data-testid="home-create-event"
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            minHeight: 'var(--control-height-lg)', borderRadius: 'var(--radius-md)',
+            background: 'var(--color-surface)', color: 'var(--color-text-secondary)',
+            border: '1px solid var(--color-border)', fontWeight: 700,
+            fontSize: 'var(--font-md)', textDecoration: 'none',
+          }}
+        >
+          ＋ Create New Event
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function IndexPage() {
   const session = useAuthSession();
   const navigate = useNavigate();
@@ -82,8 +130,14 @@ function IndexPage() {
   // flag is read once from the URL so a normal app launch still auto-enters.
   const explicitList =
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('list');
+  // Organizers always land on the hub (so "Create Quick Event" is reachable even
+  // when they already have one active event). Players with a single ACTIVE event
+  // still auto-enter it (no UUID typing) — keyed on the filtered active list so a
+  // returning player with an old archived event still auto-enters (director review).
   const autoRedirectId =
-    !explicitList && events.length === 1 && !isArchived(events[0]!) ? events[0]!.id : null;
+    !explicitList && !session.player?.isOrganizer && activeEvents.length === 1
+      ? activeEvents[0]!.id
+      : null;
   useEffect(() => {
     if (session.player !== null && autoRedirectId !== null) {
       void navigate({ to: '/events/$eventId', params: { eventId: autoRedirectId } });
@@ -183,28 +237,8 @@ function IndexPage() {
   if (events.length === 0) {
     return (
       <div style={{ padding: 24 }}>
-        <h1>Tournament</h1>
         {session.player.isOrganizer ? (
-          <EmptyState
-            title="No events yet. Create one to start."
-            action={
-              <Link
-                to="/admin/events/new"
-                style={{
-                  display: 'inline-block',
-                  padding: '10px 18px',
-                  background: 'var(--color-brand-primary)',
-                  color: '#fff',
-                  borderRadius: 6,
-                  textDecoration: 'none',
-                  fontWeight: 600,
-                }}
-                data-testid="home-create-event"
-              >
-                + Create your first event
-              </Link>
-            }
-          />
+          <OrganizerHero />
         ) : (
           <EmptyState
             title="You aren't in any events yet."
@@ -229,7 +263,12 @@ function IndexPage() {
   // Multi-event: pick list (current events by default; archived behind a toggle).
   return (
     <div style={{ padding: 16 }}>
-      <h1>Your events</h1>
+      {session.player.isOrganizer ? (
+        <div style={{ marginBottom: 'var(--space-5)' }}>
+          <OrganizerHero />
+        </div>
+      ) : null}
+      <h1 style={{ fontSize: 'var(--font-lg)' }}>Your events</h1>
       {visibleEvents.length === 0 ? (
         <p data-testid="no-current-events" style={{ color: 'var(--color-text-muted)' }}>
           No current events.
@@ -315,13 +354,6 @@ function IndexPage() {
               ? 'Hide past & cancelled'
               : `Show past & cancelled (${archivedEvents.length})`}
           </button>
-        </p>
-      ) : null}
-      {session.player.isOrganizer ? (
-        <p style={{ marginTop: 16 }}>
-          <Link to="/admin/events/new" data-testid="home-create-event">
-            + Create another event
-          </Link>
         </p>
       ) : null}
     </div>

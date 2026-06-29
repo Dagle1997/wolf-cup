@@ -56,6 +56,9 @@ const {
   scorerAssignments,
   holeScores,
   auditLog,
+  subGames,
+  subGameParticipants,
+  snakeHolderWrites,
 } = await import('../db/schema/index.js');
 const { scoresRouter } = await import('./scores.js');
 const { requestIdMiddleware } = await import('../middleware/request-id.js');
@@ -73,6 +76,9 @@ beforeEach(async () => {
   const { teamPressLog: tplTable, ruleSetRevisions: rsrTable, ruleSets: rsTable, courseTees: ctTable, courseHoles: chTable } =
     await import('../db/schema/index.js');
   await db.delete(tplTable);
+  await db.delete(snakeHolderWrites);
+  await db.delete(subGameParticipants);
+  await db.delete(subGames);
   await db.delete(holeScores);
   await db.delete(roundStates);
   await db.delete(scorerAssignments);
@@ -587,6 +593,132 @@ describe('POST /api/rounds/:roundId/holes/:holeNumber/scores', () => {
     expect(body.code).toBe('round_not_found');
   });
 });
+
+// ===========================================================================
+// Snake token (2026-06-29): POST /api/rounds/:roundId/snake — take the snake.
+// Single transferable token per (round, foursome); latest write wins. Shown
+// only to players who elected the 'snake' sub-game. Display-only (paper settle).
+// ===========================================================================
+describe('POST /api/rounds/:roundId/snake', () => {
+  async function addSnakeGame(
+    eventRoundId: string,
+    ctx: string,
+    participantIds: string[],
+  ): Promise<void> {
+    const sgId = randomUUID();
+    await db.insert(subGames).values({
+      id: sgId,
+      eventRoundId,
+      type: 'snake',
+      configJson: '{}',
+      buyInPerParticipant: 0,
+      createdAt: Date.now(),
+      tenantId: TENANT_ID,
+      contextId: ctx,
+    });
+    for (const pid of participantIds) {
+      await db.insert(subGameParticipants).values({
+        subGameId: sgId,
+        playerId: pid,
+        optedInAt: Date.now(),
+        tenantId: TENANT_ID,
+        contextId: ctx,
+      });
+    }
+  }
+
+  async function takeSnake(app: Hono, roundId: string, body: unknown): Promise<Response> {
+    return await app.request(`/api/rounds/${roundId}/snake`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test('200: take the snake for a snake participant → becomes holder', async () => {
+    const seed = await seedRound({ state: 'in_progress' });
+    await addSnakeGame(seed.eventRoundId, seed.ctx, [seed.player1Id, seed.player2Id]);
+    const app = buildApp(seed.scorerId); // designated scorer of the foursome
+    const res = await takeSnake(app, seed.roundId, {
+      playerId: seed.player1Id,
+      clientEventId: 'snake-1',
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; holderPlayerId: string; deduped: boolean };
+    expect(body.status).toBe('ok');
+    expect(body.holderPlayerId).toBe(seed.player1Id);
+    expect(body.deduped).toBe(false);
+
+    const rows = await db.select().from(snakeHolderWrites).where(eq(snakeHolderWrites.roundId, seed.roundId));
+    expect(rows.length).toBe(1);
+    expect(rows[0]!.holderPlayerId).toBe(seed.player1Id);
+    expect(rows[0]!.takenByPlayerId).toBe(seed.scorerId);
+  });
+
+  test('latest take wins: taking it for player2 makes player2 the holder', async () => {
+    const seed = await seedRound({ state: 'in_progress' });
+    await addSnakeGame(seed.eventRoundId, seed.ctx, [seed.player1Id, seed.player2Id]);
+    const app = buildApp(seed.scorerId);
+    await takeSnake(app, seed.roundId, { playerId: seed.player1Id, clientEventId: 'snake-a' });
+    await takeSnake(app, seed.roundId, { playerId: seed.player2Id, clientEventId: 'snake-b' });
+
+    // GET round detail (as a foursome member) reflects the latest holder.
+    const memberApp = buildApp(seed.player1Id);
+    const detail = await getRoundDetailFor(memberApp, seed.roundId);
+    expect(detail.snakeHolderPlayerId).toBe(seed.player2Id);
+    expect([...detail.snakePlayerIds].sort()).toEqual([seed.player1Id, seed.player2Id].sort());
+  });
+
+  test('200 deduped: same clientEventId replay → no duplicate holder row', async () => {
+    const seed = await seedRound({ state: 'in_progress' });
+    await addSnakeGame(seed.eventRoundId, seed.ctx, [seed.player1Id]);
+    const app = buildApp(seed.scorerId);
+    await takeSnake(app, seed.roundId, { playerId: seed.player1Id, clientEventId: 'snake-dup' });
+    const second = await takeSnake(app, seed.roundId, { playerId: seed.player1Id, clientEventId: 'snake-dup' });
+    expect(second.status).toBe(200);
+    const body = (await second.json()) as { deduped: boolean };
+    expect(body.deduped).toBe(true);
+    const rows = await db.select().from(snakeHolderWrites).where(eq(snakeHolderWrites.roundId, seed.roundId));
+    expect(rows.length).toBe(1);
+  });
+
+  test('422 not_snake_participant: target did not elect the snake game', async () => {
+    const seed = await seedRound({ state: 'in_progress' });
+    await addSnakeGame(seed.eventRoundId, seed.ctx, [seed.player1Id]); // player2 NOT in snake
+    const app = buildApp(seed.scorerId);
+    const res = await takeSnake(app, seed.roundId, {
+      playerId: seed.player2Id,
+      clientEventId: 'snake-bad',
+    });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('not_snake_participant');
+  });
+
+  test('422 round_not_writable: finalized round rejects a take', async () => {
+    const seed = await seedRound({ state: 'finalized' });
+    await addSnakeGame(seed.eventRoundId, seed.ctx, [seed.player1Id]);
+    const app = buildApp(seed.scorerId);
+    const res = await takeSnake(app, seed.roundId, {
+      playerId: seed.player1Id,
+      clientEventId: 'snake-final',
+    });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string };
+    expect(body.code).toBe('round_not_writable');
+  });
+});
+
+async function getRoundDetailFor(
+  app: Hono,
+  roundId: string,
+): Promise<{ snakePlayerIds: string[]; snakeHolderPlayerId: string | null }> {
+  const res = await app.request(`/api/rounds/${roundId}`, { method: 'GET' });
+  const body = (await res.json()) as {
+    myFoursome: { snakePlayerIds: string[]; snakeHolderPlayerId: string | null };
+  };
+  return body.myFoursome;
+}
 
 // ===========================================================================
 // T6-4 press-orchestrator integration tests

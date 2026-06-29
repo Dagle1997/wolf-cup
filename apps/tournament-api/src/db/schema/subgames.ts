@@ -1,8 +1,9 @@
-import { integer, sqliteTable, text, index, primaryKey, check } from 'drizzle-orm/sqlite-core';
+import { integer, sqliteTable, text, index, primaryKey, check, unique } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 import { ecosystemColumns } from './_columns.js';
 import { eventRounds } from './events.js';
 import { players } from './players.js';
+import { rounds } from './scoring.js';
 
 /**
  * Sub-games + sub_game_participants schema (T3-1, FD-6).
@@ -13,8 +14,10 @@ import { players } from './players.js';
  * row at compute time. T6.13 narrows to adding `sub_game_results` + the
  * dispatcher; the opt-in setup schema lives here.
  *
- * **`type CHECK IN ('skins','ctp','sandies','putting_contest')`:** the v1
- * sub-game type catalog. New types extend the CHECK in a future migration.
+ * **`type CHECK IN ('skins','ctp','sandies','putting_contest','snake')`:** the
+ * sub-game type catalog. `snake` (2026-06-29) is an election-only game (no
+ * auto-pot): electing it surfaces a tap-to-take "snake" token on score entry,
+ * tracked in `snake_holder_writes`. New types extend the CHECK in a migration.
  *
  * **`buy_in_per_participant` integer-cents discipline + CHECK >= 0:** mirrors
  * Wolf Cup's engine money posture. v1 default is 0 ($0); future stories may
@@ -49,7 +52,7 @@ export const subGames = sqliteTable(
     eventRoundIdx: index('idx_sub_games_event_round_id').on(t.eventRoundId),
     typeCheck: check(
       'check_sub_games_type',
-      sql`${t.type} IN ('skins', 'ctp', 'sandies', 'putting_contest')`,
+      sql`${t.type} IN ('skins', 'ctp', 'sandies', 'putting_contest', 'snake')`,
     ),
     buyInCheck: check('check_sub_games_buy_in_non_negative', sql`${t.buyInPerParticipant} >= 0`),
   }),
@@ -76,6 +79,59 @@ export const subGameParticipants = sqliteTable(
 );
 
 export type SubGameParticipant = typeof subGameParticipants.$inferSelect;
+
+/**
+ * snake_holder_writes (2026-06-29) — append-only log of who holds the "snake"
+ * for a foursome during a round. The snake is a single transferable token: a
+ * player tapping the snake icon on score entry APPENDS a row claiming it, and
+ * the CURRENT holder for a (round, foursome) is simply the row with the latest
+ * `created_at`. "Taking it from someone" needs no explicit removal — the newer
+ * write wins, so the prior holder is implicitly released (the UI greys theirs).
+ *
+ * Election is separate: the snake icon only appears for players in a `snake`
+ * sub-game (sub_game_participants). This table only tracks the live holder.
+ *
+ * Money-safe by construction: the snake settles on paper (no auto-pot), so this
+ * log never feeds the F1/legacy money engines — it is display state only.
+ *
+ * Idempotency: UNIQUE(round_id, client_event_id) so an offline-queue replay of
+ * the same tap dedupes instead of appending a duplicate holder row.
+ *
+ * FK delete posture: round_id → rounds.id CASCADE (round-scoped); holder/actor
+ * player_id → players.id RESTRICT (preserve attribution).
+ */
+export const snakeHolderWrites = sqliteTable(
+  'snake_holder_writes',
+  {
+    id: text('id').primaryKey(),
+    roundId: text('round_id')
+      .notNull()
+      .references(() => rounds.id, { onDelete: 'cascade' }),
+    foursomeNumber: integer('foursome_number').notNull(),
+    holderPlayerId: text('holder_player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'restrict' }),
+    takenByPlayerId: text('taken_by_player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'restrict' }),
+    clientEventId: text('client_event_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    ...ecosystemColumns(),
+  },
+  (t) => ({
+    roundFoursomeIdx: index('idx_snake_holder_writes_round_foursome').on(
+      t.roundId,
+      t.foursomeNumber,
+      t.createdAt,
+    ),
+    dedupeUnique: unique('uq_snake_holder_writes_round_client_event').on(
+      t.roundId,
+      t.clientEventId,
+    ),
+  }),
+);
+
+export type SnakeHolderWrite = typeof snakeHolderWrites.$inferSelect;
 
 /**
  * T6-13 sub_game_results — append-only history of computed sub-game results.

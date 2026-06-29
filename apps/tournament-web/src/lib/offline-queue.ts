@@ -27,7 +27,9 @@ export type MutationKind =
   | 'round_finalize'
   // F1 Epic 2 (Story 2.1) — a greenie/polie/sandie claim write (set OR remove).
   // Removal is ALSO a queued mutation (a `remove` op), never a client-only delete.
-  | 'claim';
+  | 'claim'
+  // 2026-06-29 — a "take the snake" tap (single transferable token; latest wins).
+  | 'snake';
 
 /**
  * Single source of truth for the v1 mutation kinds at runtime. Kept module-
@@ -41,6 +43,7 @@ const VALID_KINDS_INTERNAL: ReadonlySet<MutationKind> = new Set([
   'scorer_handoff',
   'round_finalize',
   'claim',
+  'snake',
 ]);
 
 /** Read-only predicate. Returns true if `k` is a v1 MutationKind. */

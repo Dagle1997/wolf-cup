@@ -53,6 +53,8 @@ interface MockRoundDetail {
     }>;
     enabledClaimTypes?: Array<'greenie' | 'polie' | 'sandie'> | null;
     puttsPlayerIds?: string[] | null;
+    snakePlayerIds?: string[] | null;
+    snakeHolderPlayerId?: string | null;
   };
 }
 
@@ -299,6 +301,47 @@ describe('ScoreEntryRoute', () => {
     expect(screen.getByTestId('putts-plus-0')).toBeInTheDocument();
     // Player One (index 1) is NOT → no putts row.
     expect(screen.queryByTestId('putts-minus-1')).toBeNull();
+  });
+
+  test('snake icon shows ONLY for snake-game players (gated by snakePlayerIds)', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonOk(buildHappyPathDetail({ snakePlayerIds: [SCORER_ID] })),
+    );
+    await renderRoute();
+    await waitFor(() => expect(screen.getByTestId('score-entry-form')).toBeInTheDocument());
+    // Scorer elected snake → icon shown; Player One did not → no icon.
+    expect(screen.getByTestId(`snake-${SCORER_ID}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`snake-${P1_ID}`)).toBeNull();
+  });
+
+  test('tapping the snake icon enqueues a snake-take for that player', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonOk(buildHappyPathDetail({ snakePlayerIds: [SCORER_ID, P1_ID] })),
+    );
+    await renderRoute();
+    await waitFor(() => expect(screen.getByTestId('score-entry-form')).toBeInTheDocument());
+    await act(async () => {
+      (screen.getByTestId(`snake-${P1_ID}`) as HTMLButtonElement).click();
+    });
+    await waitFor(() => {
+      const call = enqueueSpy.mock.calls.find(
+        (c) => (c[0] as { kind: string }).kind === 'snake',
+      );
+      expect(call).toBeTruthy();
+      const arg = call![0] as { url: string; body: { playerId: string } };
+      expect(arg.url).toBe(`/api/rounds/${ROUND_ID}/snake`);
+      expect(arg.body.playerId).toBe(P1_ID);
+    });
+  });
+
+  test('snake holder icon is pressed (aria) for the current holder', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      jsonOk(buildHappyPathDetail({ snakePlayerIds: [SCORER_ID, P1_ID], snakeHolderPlayerId: P1_ID })),
+    );
+    await renderRoute();
+    await waitFor(() => expect(screen.getByTestId('score-entry-form')).toBeInTheDocument());
+    expect(screen.getByTestId(`snake-${P1_ID}`).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId(`snake-${SCORER_ID}`).getAttribute('aria-pressed')).toBe('false');
   });
 
   test('renders read-only placeholder when isScorer=false', async () => {

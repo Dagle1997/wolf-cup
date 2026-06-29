@@ -88,8 +88,12 @@ const TENANT_ID = 'guyan';
 // score-entry screen ask those players for putts each hole (used for snake /
 // least-putts, settled on paper for now — no auto-pot yet). buy-in 0 is fine
 // (tracking only). Score entry is unchanged for any group without it.
-const V1_ENABLED_SUB_GAME_TYPES = new Set<string>(['skins', 'putting_contest']);
-const ALL_SUB_GAME_TYPES = ['skins', 'ctp', 'sandies', 'putting_contest'] as const;
+// 'snake' enables the tap-to-take snake token on score entry for its
+// participants (settled on paper — no auto-pot, like putting_contest). Distinct
+// from putting_contest so a group can elect snake without the per-hole putts
+// stepper, and vice versa.
+const V1_ENABLED_SUB_GAME_TYPES = new Set<string>(['skins', 'putting_contest', 'snake']);
+const ALL_SUB_GAME_TYPES = ['skins', 'ctp', 'sandies', 'putting_contest', 'snake'] as const;
 type SubGameType = (typeof ALL_SUB_GAME_TYPES)[number];
 
 // Skins modes (the engine's three): net / gross / Canadian (= gross-OR-net wins,

@@ -22,7 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   holeScores,
@@ -35,10 +35,11 @@ import {
   scorerAssignments,
   subGames,
   subGameParticipants,
+  snakeHolderWrites,
 } from '../db/schema/index.js';
 import { perPlayerHandicapsSchema, parseGameConfig } from '../engine/games/config-schema.js';
 import { requireSession } from '../middleware/require-session.js';
-import { requireScorerForRound } from '../middleware/require-scorer-for-round.js';
+import { requireScorerForRound, resolveScorerGate } from '../middleware/require-scorer-for-round.js';
 import { requireEventParticipant } from '../middleware/require-event-participant.js';
 import {
   courses,
@@ -417,6 +418,46 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
         ).map((r) => r.playerId)
       : [];
 
+  // (9) Snake game: which of THIS foursome's members elected the 'snake'
+  // sub-game (→ they see the tap-to-take snake icon on score entry), and who
+  // currently HOLDS it (the latest append in snake_holder_writes for this
+  // round+foursome; null if nobody has taken it yet). Empty/null unless snake
+  // was enabled for these players. Display-only — never feeds money.
+  const snakePlayerIds =
+    memberPlayerIds.length > 0
+      ? (
+          await db
+            .select({ playerId: subGameParticipants.playerId })
+            .from(subGameParticipants)
+            .innerJoin(subGames, eq(subGameParticipants.subGameId, subGames.id))
+            .where(
+              and(
+                eq(subGames.eventRoundId, round.eventRoundId),
+                eq(subGames.type, 'snake'),
+                eq(subGames.tenantId, TENANT_ID),
+                eq(subGameParticipants.tenantId, TENANT_ID),
+                inArray(subGameParticipants.playerId, memberPlayerIds),
+              ),
+            )
+        ).map((r) => r.playerId)
+      : [];
+  const snakeHolderRows =
+    snakePlayerIds.length > 0
+      ? await db
+          .select({ holderPlayerId: snakeHolderWrites.holderPlayerId })
+          .from(snakeHolderWrites)
+          .where(
+            and(
+              eq(snakeHolderWrites.roundId, roundId),
+              eq(snakeHolderWrites.foursomeNumber, myFoursomeNumber),
+              eq(snakeHolderWrites.tenantId, TENANT_ID),
+            ),
+          )
+          .orderBy(desc(snakeHolderWrites.createdAt))
+          .limit(1)
+      : [];
+  const snakeHolderPlayerId = snakeHolderRows[0]?.holderPlayerId ?? null;
+
   return c.json(
     {
       roundId,
@@ -437,6 +478,8 @@ scoresRouter.get('/:roundId', requireSession, async (c) => {
         claims: myClaims,
         enabledClaimTypes,
         puttsPlayerIds,
+        snakePlayerIds,
+        snakeHolderPlayerId,
         // Organizer-scoring affordances: when the organizer opened a group they
         // aren't in, the UI shows a group switcher (the other foursomes).
         viewerIsOrganizer,
@@ -876,6 +919,159 @@ function isUniqueConstraintError(err: unknown): boolean {
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// POST /api/rounds/:roundId/snake — take the snake token (2026-06-29).
+//
+// The snake is a single transferable token per (round, foursome): tapping it on
+// score entry APPENDS a holder row; the latest append wins (taking it from
+// someone needs no explicit release). Authorization reuses the SAME per-user
+// scorer gate as a score/claim write (any member of the target's foursome, or
+// the designated scorer). The target must have elected the `snake` sub-game.
+// Display-only — never feeds money (snake settles on paper).
+// ---------------------------------------------------------------------------
+const snakeTakeBodySchema = z.object({
+  playerId: z.string().uuid(),
+  clientEventId: z.string().min(1).max(128),
+});
+
+scoresRouter.post('/:roundId/snake', requireSession, async (c) => {
+  const requestId = c.get('requestId') ?? randomUUID();
+  const player = c.get('player')!;
+  const roundId = c.req.param('roundId')!;
+
+  if (!UUID_RE.test(roundId)) {
+    return c.json({ error: 'bad_request', code: 'invalid_round_id', requestId }, 400);
+  }
+  let rawBody: unknown;
+  try {
+    rawBody = await c.req.json();
+  } catch {
+    return c.json(
+      { error: 'bad_request', code: 'invalid_body', reason: 'malformed_json', requestId },
+      400,
+    );
+  }
+  const parsed = snakeTakeBodySchema.safeParse(rawBody);
+  if (!parsed.success) {
+    return c.json(
+      { error: 'validation_error', code: 'invalid_body', issues: parsed.error.issues, requestId },
+      400,
+    );
+  }
+  const body = parsed.data;
+
+  return await db.transaction(async (tx) => {
+    // (1) Round existence (tenant-scoped).
+    const roundRows = await tx
+      .select({ eventId: rounds.eventId, eventRoundId: rounds.eventRoundId, contextId: rounds.contextId })
+      .from(rounds)
+      .where(and(eq(rounds.id, roundId), eq(rounds.tenantId, TENANT_ID)))
+      .limit(1);
+    if (roundRows.length === 0) {
+      return c.json({ error: 'not_found', code: 'round_not_found', requestId }, 404);
+    }
+    const round = roundRows[0]!;
+    if (round.eventRoundId === null) {
+      return c.json({ error: 'unprocessable', code: 'foursome_has_no_scorer', requestId }, 422);
+    }
+
+    // (2) Writability gate (mirror the score/claim write).
+    const rsRows = await tx
+      .select({ state: roundStates.state })
+      .from(roundStates)
+      .where(and(eq(roundStates.roundId, roundId), eq(roundStates.tenantId, TENANT_ID)))
+      .limit(1);
+    if (rsRows.length === 0) {
+      return c.json({ error: 'unprocessable', code: 'round_state_missing', requestId }, 422);
+    }
+    const writableStates = new Set(['not_started', 'in_progress', 'complete_editable']);
+    if (!writableStates.has(rsRows[0]!.state)) {
+      return c.json(
+        { error: 'unprocessable', code: 'round_not_writable', currentState: rsRows[0]!.state, requestId },
+        422,
+      );
+    }
+
+    // (3) Single-writer scorer gate (same per-user gate as a score write) —
+    // also resolves the target player's foursome + validates membership.
+    const decision = await resolveScorerGate(tx, {
+      roundId,
+      eventRoundId: round.eventRoundId,
+      targetPlayerId: body.playerId,
+      callerPlayerId: player.id,
+      tenantId: TENANT_ID,
+    });
+    if (!decision.ok) {
+      switch (decision.code) {
+        case 'player_not_in_any_foursome':
+          return c.json({ error: 'not_found', code: 'player_not_in_any_foursome', requestId }, 404);
+        case 'foursome_has_no_scorer':
+          return c.json({ error: 'unprocessable', code: 'foursome_has_no_scorer', requestId }, 422);
+        default:
+          return c.json(
+            {
+              error: 'forbidden',
+              code: decision.code,
+              currentScorerPlayerId: decision.currentScorerPlayerId,
+              currentScorerName: decision.currentScorerName ?? null,
+              requestId,
+            },
+            403,
+          );
+      }
+    }
+
+    // (4) Target must have elected the snake sub-game for this round.
+    const snakeRows = await tx
+      .select({ playerId: subGameParticipants.playerId })
+      .from(subGameParticipants)
+      .innerJoin(subGames, eq(subGameParticipants.subGameId, subGames.id))
+      .where(
+        and(
+          eq(subGames.eventRoundId, round.eventRoundId),
+          eq(subGames.type, 'snake'),
+          eq(subGames.tenantId, TENANT_ID),
+          eq(subGameParticipants.tenantId, TENANT_ID),
+          eq(subGameParticipants.playerId, body.playerId),
+        ),
+      )
+      .limit(1);
+    if (snakeRows.length === 0) {
+      return c.json({ error: 'unprocessable', code: 'not_snake_participant', requestId }, 422);
+    }
+
+    // (5) Append the holder write, idempotent on (round_id, client_event_id).
+    const result = await tx
+      .insert(snakeHolderWrites)
+      .values({
+        id: randomUUID(),
+        roundId,
+        foursomeNumber: decision.foursomeNumber,
+        holderPlayerId: body.playerId,
+        takenByPlayerId: player.id,
+        clientEventId: body.clientEventId,
+        createdAt: Date.now(),
+        tenantId: TENANT_ID,
+        contextId: round.contextId,
+      })
+      .onConflictDoNothing({
+        target: [snakeHolderWrites.roundId, snakeHolderWrites.clientEventId],
+      })
+      .returning({ id: snakeHolderWrites.id });
+
+    return c.json(
+      {
+        status: 'ok',
+        holderPlayerId: body.playerId,
+        foursomeNumber: decision.foursomeNumber,
+        deduped: result.length === 0,
+        clientEventId: body.clientEventId,
+      },
+      200,
+    );
+  });
+});
 
 // ---------------------------------------------------------------------------
 // T5-4 course endpoint: GET /api/events/:eventId/rounds/:roundId/course

@@ -30,6 +30,7 @@ import { Route as EventsEventIdGalleryRouteImport } from './routes/events.$event
 import { Route as EventsEventIdFoursomesRouteImport } from './routes/events.$eventId.foursomes'
 import { Route as EventsEventIdBetsRouteImport } from './routes/events.$eventId.bets'
 import { Route as EventsEventIdActionRouteImport } from './routes/events.$eventId.action'
+import { Route as AdminEventsQuickRouteImport } from './routes/admin.events.quick'
 import { Route as AdminEventsNewRouteImport } from './routes/admin.events.new'
 import { Route as AdminCoursesUploadRouteImport } from './routes/admin.courses.upload'
 import { Route as AdminCoursesNewRouteImport } from './routes/admin.courses.new'
@@ -159,6 +160,11 @@ const EventsEventIdActionRoute = EventsEventIdActionRouteImport.update({
   path: '/events/$eventId/action',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminEventsQuickRoute = AdminEventsQuickRouteImport.update({
+  id: '/admin/events/quick',
+  path: '/admin/events/quick',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminEventsNewRoute = AdminEventsNewRouteImport.update({
   id: '/admin/events/new',
   path: '/admin/events/new',
@@ -284,6 +290,7 @@ export interface FileRoutesByFullPath {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/admin/events/quick': typeof AdminEventsQuickRoute
   '/events/$eventId/action': typeof EventsEventIdActionRoute
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/foursomes': typeof EventsEventIdFoursomesRoute
@@ -327,6 +334,7 @@ export interface FileRoutesByTo {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/admin/events/quick': typeof AdminEventsQuickRoute
   '/events/$eventId/action': typeof EventsEventIdActionRoute
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/foursomes': typeof EventsEventIdFoursomesRoute
@@ -371,6 +379,7 @@ export interface FileRoutesById {
   '/admin/courses/new': typeof AdminCoursesNewRoute
   '/admin/courses/upload': typeof AdminCoursesUploadRoute
   '/admin/events/new': typeof AdminEventsNewRoute
+  '/admin/events/quick': typeof AdminEventsQuickRoute
   '/events/$eventId/action': typeof EventsEventIdActionRoute
   '/events/$eventId/bets': typeof EventsEventIdBetsRoute
   '/events/$eventId/foursomes': typeof EventsEventIdFoursomesRoute
@@ -416,6 +425,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/admin/events/quick'
     | '/events/$eventId/action'
     | '/events/$eventId/bets'
     | '/events/$eventId/foursomes'
@@ -459,6 +469,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/admin/events/quick'
     | '/events/$eventId/action'
     | '/events/$eventId/bets'
     | '/events/$eventId/foursomes'
@@ -502,6 +513,7 @@ export interface FileRouteTypes {
     | '/admin/courses/new'
     | '/admin/courses/upload'
     | '/admin/events/new'
+    | '/admin/events/quick'
     | '/events/$eventId/action'
     | '/events/$eventId/bets'
     | '/events/$eventId/foursomes'
@@ -546,6 +558,7 @@ export interface RootRouteChildren {
   AdminCoursesNewRoute: typeof AdminCoursesNewRoute
   AdminCoursesUploadRoute: typeof AdminCoursesUploadRoute
   AdminEventsNewRoute: typeof AdminEventsNewRoute
+  AdminEventsQuickRoute: typeof AdminEventsQuickRoute
   EventsEventIdActionRoute: typeof EventsEventIdActionRoute
   EventsEventIdBetsRoute: typeof EventsEventIdBetsRoute
   EventsEventIdFoursomesRoute: typeof EventsEventIdFoursomesRoute
@@ -727,6 +740,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsEventIdActionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/events/quick': {
+      id: '/admin/events/quick'
+      path: '/admin/events/quick'
+      fullPath: '/admin/events/quick'
+      preLoaderRoute: typeof AdminEventsQuickRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/events/new': {
       id: '/admin/events/new'
       path: '/admin/events/new'
@@ -882,6 +902,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminCoursesNewRoute: AdminCoursesNewRoute,
   AdminCoursesUploadRoute: AdminCoursesUploadRoute,
   AdminEventsNewRoute: AdminEventsNewRoute,
+  AdminEventsQuickRoute: AdminEventsQuickRoute,
   EventsEventIdActionRoute: EventsEventIdActionRoute,
   EventsEventIdBetsRoute: EventsEventIdBetsRoute,
   EventsEventIdFoursomesRoute: EventsEventIdFoursomesRoute,

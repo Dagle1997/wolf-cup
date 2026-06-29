@@ -127,6 +127,12 @@ interface RoundDetail {
     // Players in an active putting game for this round → score entry asks them
     // for putts each hole. Absent/empty (no putting game) → no putts input.
     puttsPlayerIds?: string[] | null;
+    // Players who elected the 'snake' sub-game → they see the tap-to-take snake
+    // icon. Absent/empty (no snake game) → no snake icon shown.
+    snakePlayerIds?: string[] | null;
+    // The player who currently HOLDS the snake for this foursome (null if nobody
+    // has taken it yet). The holder's icon is bright; everyone else's is greyed.
+    snakeHolderPlayerId?: string | null;
     // Organizer-scoring: when the organizer opened a group they aren't in, the
     // UI shows a group switcher across these foursome numbers.
     viewerIsOrganizer?: boolean;
@@ -459,6 +465,18 @@ export function ScoreEntryRoute() {
       'player_not_in_any_foursome',
       'player_not_in_your_foursome',
       'not_scorer_for_this_foursome',
+    ]);
+    // Snake-take 4xx codes the queue must treat as terminal (no retry loop).
+    registerTerminalErrors('snake', [
+      'invalid_round_id',
+      'invalid_body',
+      'round_state_missing',
+      'round_not_writable',
+      'foursome_has_no_scorer',
+      'player_not_in_any_foursome',
+      'player_not_in_your_foursome',
+      'not_scorer_for_this_foursome',
+      'not_snake_participant',
     ]);
   }, []);
 
@@ -1130,6 +1148,22 @@ function ScoreEntryForm({
     [data.myFoursome.puttsPlayerIds],
   );
 
+  // Snake game (2026-06-29): the icon shows ONLY for players who elected the
+  // snake sub-game; the current holder's icon is bright, everyone else's greyed.
+  // Tapping takes it (single transferable token). `snakeHolder` is optimistic —
+  // it updates instantly on tap and re-syncs when the server reports a new
+  // holder (e.g. another scorer took it on a different device).
+  const snakePlayerIds = useMemo(
+    () => new Set(data.myFoursome.snakePlayerIds ?? []),
+    [data.myFoursome.snakePlayerIds],
+  );
+  const [snakeHolder, setSnakeHolder] = useState<string | null>(
+    data.myFoursome.snakeHolderPlayerId ?? null,
+  );
+  useEffect(() => {
+    setSnakeHolder(data.myFoursome.snakeHolderPlayerId ?? null);
+  }, [data.myFoursome.snakeHolderPlayerId]);
+
   // F1 Epic 2 (Story 2.1) — current claims keyed `${playerId}:${hole}:${type}`.
   // Seeded from the server-derived current-claim set; toggled optimistically as
   // the scorer taps a chip (each toggle is a queued set/remove mutation).
@@ -1617,6 +1651,35 @@ function ScoreEntryForm({
     [currentHole, claimState, roundId, queue],
   );
 
+  // Take the snake for a player. Single transferable token: tapping a player's
+  // icon makes them the holder (greys whoever had it). Optimistic + queued; the
+  // server's latest-write-wins matches this. Tapping the current holder again is
+  // a no-op (already theirs).
+  const handleTakeSnake = useCallback(
+    (playerId: string) => {
+      if (snakeHolder === playerId) return;
+      const prevHolder = snakeHolder;
+      setSnakeHolder(playerId);
+      const clientEventId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      void enqueueMutation({
+        kind: 'snake',
+        url: `/api/rounds/${roundId}/snake`,
+        body: { playerId, clientEventId },
+        clientEventId,
+        roundId,
+      })
+        .then(() => queue.drain())
+        .catch(() => {
+          // Enqueue failed — revert so the icon reflects reality.
+          setSnakeHolder(prevHolder);
+        });
+    },
+    [snakeHolder, roundId, queue],
+  );
+
   const handleSkipHole = useCallback(() => {
     if (currentHole === null) return;
     setSkippedHoles((prev) => {
@@ -1901,6 +1964,37 @@ function ScoreEntryForm({
                         </div>
                       </div>
                     )}
+                    {/* Snake (snake-game players only): a single transferable token.
+                        Tap to take it — yours brightens, whoever had it greys out.
+                        Shown only for players who elected the snake game. */}
+                    {snakePlayerIds.has(member.playerId) && (() => {
+                      const holdsSnake = snakeHolder === member.playerId;
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
+                          <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                            Snake
+                          </span>
+                          <button
+                            type="button"
+                            data-testid={`snake-${member.playerId}`}
+                            aria-pressed={holdsSnake}
+                            aria-label={`${holdsSnake ? 'Has' : 'Give'} the snake${holdsSnake ? '' : ` to ${member.name}`}`}
+                            onClick={() => handleTakeSnake(member.playerId)}
+                            style={{
+                              width: 44, height: 44, flex: '0 0 auto', borderRadius: '50%',
+                              fontSize: 'var(--font-lg)', lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer',
+                              border: `1px solid ${holdsSnake ? '#22c55e' : 'var(--color-border)'}`,
+                              background: holdsSnake ? '#22c55e' : 'transparent',
+                              // Greyed (low opacity) when not held; full + bright when held.
+                              opacity: holdsSnake ? 1 : 0.4,
+                              filter: holdsSnake ? 'none' : 'grayscale(1)',
+                            }}
+                          >
+                            🐍
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                     {/* Bonuses, in the same card, below a hairline divider. Circular
                         toggles (no square corners) in the SAME colors as the
