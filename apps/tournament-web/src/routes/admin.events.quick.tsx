@@ -85,7 +85,27 @@ const RULE_PILLS: Array<{ type: RuleType; label: string }> = [
   { type: 'sandie', label: 'Sandie' },
 ];
 
-interface QuickPlayer { name: string; handicap: string }
+// A roster entry is either a manual row (typed name + handicap) or a
+// GHIN-linked player (ghin set; name/firstName/lastName from the lookup,
+// handicap shown for reassurance but resolved live server-side, never sent).
+interface QuickPlayer {
+  name: string;
+  handicap: string;
+  ghin?: number;
+  firstName?: string;
+  lastName?: string;
+}
+
+// Mirrors the GHIN search result shape returned by GET /api/players/search.
+// (Small type already duplicated in admin.groups.$groupId.edit.tsx + profile.tsx.)
+type GhinSearchResult = {
+  ghinNumber: number;
+  firstName: string;
+  lastName: string;
+  handicapIndex: number | null;
+  club: string | null;
+  state: string | null;
+};
 
 const TZ = (() => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York'; }
@@ -125,11 +145,16 @@ export function QuickEventPage() {
   const [dateStr, setDateStr] = useState(() => todayInTimeZone(TZ));
   const [eventName, setEventName] = useState('');
 
-  // Step 2 — players
-  const [numPlayers, setNumPlayers] = useState(4);
+  // Step 2 — roster (manual rows + GHIN-linked players). Starts with 4 empty
+  // manual rows so the fast "type four names" flow still works; GHIN search
+  // appends locked rows, and blank manual rows are dropped when leaving step 2.
   const [players, setPlayers] = useState<QuickPlayer[]>(
     () => Array.from({ length: 4 }, () => ({ name: '', handicap: '' })),
   );
+  // GHIN search (ported from admin.groups.$groupId.edit.tsx).
+  const [ghinLast, setGhinLast] = useState('');
+  const [ghinFirst, setGhinFirst] = useState('');
+  const [ghinSearchTriggered, setGhinSearchTriggered] = useState(false);
 
   // Step 3 — arrange (per-player foursome number, 1-based)
   const [foursomeOf, setFoursomeOf] = useState<number[]>(() => [1, 1, 1, 1]);
@@ -152,26 +177,95 @@ export function QuickEventPage() {
   const selectedCourse = courses.find((c) => c.latestRevision?.id === courseRevisionId) ?? null;
   const tees = selectedCourse?.latestRevision?.tees ?? [];
 
-  // Keep players[] + foursomeOf[] sized to numPlayers.
-  function resizePlayers(n: number) {
-    const count = Math.max(1, Math.min(40, Math.floor(n) || 1));
-    setNumPlayers(count);
+  // GHIN name search (ported from admin.groups.$groupId.edit.tsx). 503 from a
+  // missing/down GHIN integration degrades to a graceful "add manually" notice.
+  const ghinSearchQuery = useQuery<{ results: GhinSearchResult[] } | { error: 'unavailable' }>({
+    queryKey: ['ghin-search', ghinLast, ghinFirst],
+    queryFn: async ({ signal }) => {
+      const fn = ghinFirst.trim();
+      const res = await fetch(
+        `/api/players/search?name=${encodeURIComponent(ghinLast.trim())}${fn ? `&firstName=${encodeURIComponent(fn)}` : ''}`,
+        { credentials: 'same-origin', signal },
+      );
+      if (res.status === 503) return { error: 'unavailable' as const };
+      if (!res.ok) throw new Error('ghin_search_failed');
+      return (await res.json()) as { results: GhinSearchResult[] };
+    },
+    enabled: ghinSearchTriggered && ghinLast.trim().length > 0,
+    staleTime: 30_000,
+  });
+
+  // Roster mutators. foursomeOf[] is NOT maintained here — during step 2 it is
+  // unused, and goToArrange() rebuilds it to exactly the roster length, so these
+  // can only ever change players[] (no players/foursomeOf desync to manage).
+  function addManualRow() {
+    setPlayers((prev) => [...prev, { name: '', handicap: '' }]);
+  }
+  function addGhinPlayer(r: GhinSearchResult) {
+    // De-dupe INSIDE the updater so a fast double-tap can't add the same golfer
+    // twice (a dup would later 409 player_already_in_group and fail Start).
+    setPlayers((prev) =>
+      prev.some((p) => p.ghin === r.ghinNumber)
+        ? prev
+        : [
+            ...prev,
+            {
+              name: `${r.firstName} ${r.lastName}`.trim(),
+              handicap: r.handicapIndex !== null ? String(r.handicapIndex) : '',
+              ghin: r.ghinNumber,
+              firstName: r.firstName,
+              lastName: r.lastName,
+            },
+          ],
+    );
+    setGhinSearchTriggered(false);
+  }
+  function removePlayer(i: number) {
+    setPlayers((prev) => prev.filter((_, j) => j !== i));
+  }
+  function updatePlayer(i: number, patch: Partial<QuickPlayer>) {
+    setPlayers((prev) => prev.map((pp, j) => (j === i ? { ...pp, ...patch } : pp)));
+  }
+  // Quick count setter (e.g. bump to 8 or 12). Pads with blank manual rows, or
+  // trims TRAILING fully-blank manual rows — never auto-removes a GHIN row or a
+  // row with ANY data (name OR handicap), so a mid-edit row is never lost.
+  function setRosterSize(n: number) {
+    const target = Math.max(1, Math.min(40, Math.floor(n) || 1));
     setPlayers((prev) => {
-      const next = prev.slice(0, count);
-      while (next.length < count) next.push({ name: '', handicap: '' });
+      const next = [...prev];
+      while (next.length < target) next.push({ name: '', handicap: '' });
+      for (let i = next.length - 1; i >= 0 && next.length > target; i--) {
+        const p = next[i]!;
+        if (p.ghin === undefined && p.name.trim() === '' && p.handicap.trim() === '') next.splice(i, 1);
+      }
       return next;
     });
-    // Auto-split into foursomes of 4 in entry order as the default arrangement.
-    setFoursomeOf(Array.from({ length: count }, (_, i) => Math.floor(i / 4) + 1));
+  }
+  // Run (or re-run) the GHIN search. Re-clicking/Enter with the same criteria
+  // refetches rather than no-op'ing (matters after a transient 503).
+  function runGhinSearch() {
+    if (ghinLast.trim().length === 0) return;
+    if (ghinSearchTriggered) void ghinSearchQuery.refetch();
+    else setGhinSearchTriggered(true);
   }
 
-  const numFoursomes = Math.max(1, ...foursomeOf);
-  const namedPlayers = players.map((p) => p.name.trim()).filter((n) => n.length > 0);
+  // Effective roster = GHIN players + non-blank manual rows (blank manual rows
+  // are ignored). Advancing to step 3 commits this compacted list and rebuilds
+  // the default foursome split so blanks never reach Arrange / the POST loop.
+  const effectivePlayers = players.filter((p) => p.ghin !== undefined || p.name.trim() !== '');
+  function goToArrange() {
+    const roster = effectivePlayers;
+    setPlayers(roster);
+    setFoursomeOf(Array.from({ length: roster.length }, (_, i) => Math.floor(i / 4) + 1));
+    setStep(3);
+  }
+
+  const numFoursomes = foursomeOf.length ? Math.max(1, ...foursomeOf) : 1;
 
   // A tee is always required (the free-text input covers no-tee courses), so a
   // round never starts with an empty tee → unpinnable/unsettleable (codex review).
   const step1Valid = courseRevisionId !== '' && teeColor.trim() !== '' && dateStr !== '';
-  const step2Valid = namedPlayers.length >= 1 && players.slice(0, numPlayers).every((p) => p.name.trim().length > 0);
+  const step2Valid = effectivePlayers.length >= 1;
   // Every foursome that has players is fine; arrange is always structurally valid.
   const step3Valid = true;
   // Point value must be a positive WHOLE-DOLLAR amount: the engine rejects any
@@ -213,17 +307,21 @@ export function QuickEventPage() {
       const eventRoundId = ctx.eventRounds[0]?.id;
       if (!groupId || !eventRoundId) throw new Error('event_context_incomplete');
 
-      // 3. Add the roster (manual players); collect their ids in entry order.
+      // 3. Add the roster; collect ids in entry order. GHIN-linked players are
+      // added by GHIN (server resolves the live handicap); the rest are manual.
       setProgress('Adding players…');
       const playerIds: string[] = [];
-      for (let i = 0; i < numPlayers; i++) {
+      for (let i = 0; i < players.length; i++) {
         const p = players[i]!;
         const hi = p.handicap.trim() === '' ? undefined : Number(p.handicap);
-        const member = (await apiSend(`/api/admin/groups/${encodeURIComponent(groupId)}/members`, 'POST', {
-          mode: 'manual',
-          name: p.name.trim(),
-          ...(hi !== undefined && Number.isFinite(hi) ? { manualHandicapIndex: hi } : {}),
-        })) as { player: { id: string } };
+        const body = p.ghin !== undefined
+          ? { mode: 'ghin', ghin: p.ghin, firstName: p.firstName ?? '', lastName: p.lastName ?? '' }
+          : {
+              mode: 'manual',
+              name: p.name.trim(),
+              ...(hi !== undefined && Number.isFinite(hi) ? { manualHandicapIndex: hi } : {}),
+            };
+        const member = (await apiSend(`/api/admin/groups/${encodeURIComponent(groupId)}/members`, 'POST', body)) as { player: { id: string } };
         playerIds.push(member.player.id);
       }
 
@@ -257,7 +355,7 @@ export function QuickEventPage() {
       // 7. Pairings (locked) from the arrange step.
       setProgress('Building foursomes…');
       const byFoursome = new Map<number, string[]>();
-      for (let i = 0; i < numPlayers; i++) {
+      for (let i = 0; i < players.length; i++) {
         const fn = foursomeOf[i] ?? 1;
         if (!byFoursome.has(fn)) byFoursome.set(fn, []);
         byFoursome.get(fn)!.push(playerIds[i]!);
@@ -374,30 +472,99 @@ export function QuickEventPage() {
         </section>
       )}
 
-      {/* STEP 2 — players */}
+      {/* STEP 2 — roster (GHIN search + manual entry) */}
       {step === 2 && (
         <section style={{ display: 'grid', gap: 'var(--space-3)' }} data-testid="quick-step-players">
           <h2 style={{ fontSize: 'var(--font-lg)', margin: 0 }}>Players</h2>
+
+          {/* GHIN search */}
+          <div style={{ display: 'grid', gap: 'var(--space-2)', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)' }}>
+            <span style={labelStyle}>Search GHIN</span>
+            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+              <input data-testid="quick-ghin-last" value={ghinLast} placeholder="Last name"
+                onChange={(e) => { setGhinLast(e.target.value); setGhinSearchTriggered(false); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') runGhinSearch(); }}
+                style={{ ...inputStyle, flex: 1 }} />
+              <input data-testid="quick-ghin-first" value={ghinFirst} placeholder="First (optional)"
+                onChange={(e) => { setGhinFirst(e.target.value); setGhinSearchTriggered(false); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') runGhinSearch(); }}
+                style={{ ...inputStyle, flex: 1 }} />
+            </div>
+            <button type="button" data-testid="quick-ghin-search" disabled={ghinLast.trim().length === 0}
+              onClick={runGhinSearch}
+              style={{ ...secondaryBtn, opacity: ghinLast.trim().length === 0 ? 0.6 : 1 }}>
+              Search
+            </button>
+            <span style={{ fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)' }}>
+              Add a first name to narrow common last names. WV golfers only (v1).
+            </span>
+
+            {ghinSearchQuery.isFetching ? <p style={{ margin: 0 }}>Searching…</p> : null}
+            {ghinSearchQuery.data && 'error' in ghinSearchQuery.data ? (
+              <p role="alert" data-testid="quick-ghin-unavailable" style={{ margin: 0, color: 'var(--color-text-muted)' }}>
+                GHIN search unavailable — add players manually below.
+              </p>
+            ) : null}
+            {ghinSearchQuery.data && 'results' in ghinSearchQuery.data ? (
+              ghinSearchQuery.data.results.length === 0 ? (
+                <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>No matches in WV. Add a first name, or add manually.</p>
+              ) : (
+                <ul data-testid="quick-ghin-results" style={{ listStyle: 'none', padding: 0, margin: 0, maxHeight: 300, overflowY: 'auto', border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-sm)' }}>
+                  {ghinSearchQuery.data.results.map((r) => (
+                    <li key={r.ghinNumber} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                      <span>
+                        <strong>{r.firstName} {r.lastName}</strong>{r.handicapIndex !== null ? ` — HI ${r.handicapIndex}` : ''}
+                        <span style={{ display: 'block', fontSize: 'var(--font-xs)', color: 'var(--color-text-muted)' }}>
+                          GHIN {r.ghinNumber}{r.club ? ` · ${r.club}` : ''}
+                        </span>
+                      </span>
+                      <button type="button" data-testid={`quick-ghin-add-${r.ghinNumber}`} onClick={() => addGhinPlayer(r)}
+                        disabled={players.some((p) => p.ghin === r.ghinNumber)}
+                        style={{ ...secondaryBtn, flexShrink: 0, padding: '0 var(--space-3)' }}>
+                        {players.some((p) => p.ghin === r.ghinNumber) ? 'Added' : 'Add'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : null}
+          </div>
+
+          {/* Quick count + roster */}
           <label style={{ display: 'grid', gap: 4 }}>
             <span style={labelStyle}>How many players?</span>
-            <input type="number" inputMode="numeric" min={1} max={40} data-testid="quick-num-players" value={numPlayers}
-              onChange={(e) => resizePlayers(Number(e.target.value))} style={inputStyle} />
+            <input type="number" inputMode="numeric" min={1} max={40} data-testid="quick-num-players" value={players.length}
+              onChange={(e) => setRosterSize(Number(e.target.value))} style={inputStyle} />
           </label>
           <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-            {players.slice(0, numPlayers).map((p, i) => (
-              <div key={i} style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                <input data-testid={`quick-player-name-${i}`} value={p.name} placeholder={`Player ${i + 1}`}
-                  onChange={(e) => setPlayers((prev) => prev.map((pp, j) => j === i ? { ...pp, name: e.target.value } : pp))}
-                  style={{ ...inputStyle, flex: 1 }} />
-                <input data-testid={`quick-player-hcp-${i}`} value={p.handicap} placeholder="HCP" inputMode="decimal"
-                  onChange={(e) => setPlayers((prev) => prev.map((pp, j) => j === i ? { ...pp, handicap: e.target.value } : pp))}
-                  style={{ ...inputStyle, width: 72 }} />
-              </div>
+            <span style={labelStyle}>Roster ({effectivePlayers.length})</span>
+            {players.map((p, i) => (
+              p.ghin !== undefined ? (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }} data-testid={`quick-roster-ghin-${i}`}>
+                  <span style={{ flex: 1, overflowWrap: 'anywhere' }}>
+                    {p.name}{p.handicap !== '' ? ` — HI ${p.handicap}` : ''}{' '}
+                    <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, color: 'var(--color-brand-primary)', border: '1px solid var(--color-brand-primary)', borderRadius: 'var(--radius-sm)', padding: '0 4px' }}>GHIN</span>
+                  </span>
+                  <button type="button" aria-label={`Remove ${p.name}`} data-testid={`quick-player-remove-${i}`} onClick={() => removePlayer(i)} style={{ ...secondaryBtn, width: 44, padding: 0 }}>✕</button>
+                </div>
+              ) : (
+                <div key={i} style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <input data-testid={`quick-player-name-${i}`} value={p.name} placeholder={`Player ${i + 1}`}
+                    onChange={(e) => updatePlayer(i, { name: e.target.value })}
+                    style={{ ...inputStyle, flex: 1 }} />
+                  <input data-testid={`quick-player-hcp-${i}`} value={p.handicap} placeholder="HCP" inputMode="decimal"
+                    onChange={(e) => updatePlayer(i, { handicap: e.target.value })}
+                    style={{ ...inputStyle, width: 72 }} />
+                  <button type="button" aria-label={`Remove player ${i + 1}`} data-testid={`quick-player-remove-${i}`} onClick={() => removePlayer(i)} style={{ ...secondaryBtn, width: 44, padding: 0 }}>✕</button>
+                </div>
+              )
             ))}
+            <button type="button" data-testid="quick-add-manual" onClick={addManualRow} style={secondaryBtn}>+ Add manual player</button>
           </div>
+
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button type="button" onClick={() => setStep(1)} style={secondaryBtn}>Back</button>
-            <button type="button" data-testid="quick-next-2" disabled={!step2Valid} onClick={() => setStep(3)} style={{ ...primaryBtn, flex: 1 }}>Next</button>
+            <button type="button" data-testid="quick-next-2" disabled={!step2Valid} onClick={goToArrange} style={{ ...primaryBtn, flex: 1 }}>Next</button>
           </div>
         </section>
       )}
@@ -410,7 +577,7 @@ export function QuickEventPage() {
             Set each player's group ({numFoursomes} group{numFoursomes === 1 ? '' : 's'}).
           </p>
           <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-            {players.slice(0, numPlayers).map((p, i) => (
+            {players.map((p, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
                 <span style={{ flex: 1, overflowWrap: 'anywhere' }}>{p.name.trim() || `Player ${i + 1}`}</span>
                 <select data-testid={`quick-foursome-${i}`} value={foursomeOf[i] ?? 1}

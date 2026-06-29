@@ -42,6 +42,16 @@ function setFetch(): void {
     if (url.includes('/api/courses')) {
       return new Response(JSON.stringify(COURSES), { status: 200, headers: JSON_HEADERS });
     }
+    if (url.includes('/api/players/search')) {
+      return new Response(
+        JSON.stringify({
+          results: [
+            { ghinNumber: 1234567, firstName: 'Dave', lastName: 'Miller', handicapIndex: 8.4, club: 'Guyan G&CC', state: 'WV' },
+          ],
+        }),
+        { status: 200, headers: JSON_HEADERS },
+      );
+    }
     if (url.includes('/admin-context')) {
       return new Response(
         JSON.stringify({ groups: [{ id: 'group-1' }], eventRounds: [{ id: 'er-1' }] }),
@@ -155,6 +165,43 @@ describe('QuickEventPage', () => {
     expect(startBody.scorers[0]!.scorerPlayerId).toBe('org-1');
     // Guyan on with bonuses on → no need to confirm "no modifiers".
     expect(startBody.confirmNoModifiers).toBe(false);
+  });
+
+  it('adds a GHIN-searched player by GHIN mode (live handicap, no manual index)', async () => {
+    renderWizard();
+
+    // Step 1 — course + tee.
+    await waitFor(() => expect(screen.getByTestId('quick-course')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('quick-course'), { target: { value: 'rev-1' } });
+    await waitFor(() => expect(screen.getByTestId('quick-tee')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('quick-tee'), { target: { value: 'Blue' } });
+    fireEvent.click(screen.getByTestId('quick-next-1'));
+
+    // Step 2 — search GHIN, add the match, then trim the blank manual rows.
+    await waitFor(() => expect(screen.getByTestId('quick-step-players')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('quick-ghin-last'), { target: { value: 'Miller' } });
+    fireEvent.click(screen.getByTestId('quick-ghin-search'));
+    await waitFor(() => expect(screen.getByTestId('quick-ghin-add-1234567')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('quick-ghin-add-1234567'));
+    // Drop the 4 default blank manual rows so only the GHIN player remains.
+    fireEvent.change(screen.getByTestId('quick-num-players'), { target: { value: '1' } });
+
+    fireEvent.click(screen.getByTestId('quick-next-2'));
+    await waitFor(() => expect(screen.getByTestId('quick-step-arrange')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('quick-next-3'));
+    await waitFor(() => expect(screen.getByTestId('quick-step-rules')).toBeInTheDocument());
+    await act(async () => { fireEvent.click(screen.getByTestId('quick-start')); });
+    await waitFor(() => expect(screen.getByText('stub /rounds/$roundId/score-entry')).toBeInTheDocument());
+
+    // Exactly one roster add, and it used GHIN mode (no manualHandicapIndex).
+    const memberCalls = calls.filter((c) => c.url.includes('/members') && c.method === 'POST');
+    expect(memberCalls.length).toBe(1);
+    const body = memberCalls[0]!.body as { mode: string; ghin: number; firstName: string; lastName: string; manualHandicapIndex?: number };
+    expect(body.mode).toBe('ghin');
+    expect(body.ghin).toBe(1234567);
+    expect(body.firstName).toBe('Dave');
+    expect(body.lastName).toBe('Miller');
+    expect(body.manualHandicapIndex).toBeUndefined();
   });
 
   it('scores-only (Guyan off) confirms no_game_config and skips game-config', async () => {
