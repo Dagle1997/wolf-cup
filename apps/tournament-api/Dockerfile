@@ -57,6 +57,7 @@ COPY apps/tournament-api/src/db/migrations/ ./apps/tournament-api/dist/db/migrat
 # from dist/db/seed.js.
 COPY reference/pinehurst-may-2026-courses.json ./apps/tournament-api/dist/reference/pinehurst-may-2026-courses.json
 COPY reference/pete-dye-golf-club.json ./apps/tournament-api/dist/reference/pete-dye-golf-club.json
+COPY reference/guyan-golf-country-club.json ./apps/tournament-api/dist/reference/guyan-golf-country-club.json
 
 WORKDIR /app/apps/tournament-api
 

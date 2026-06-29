@@ -466,6 +466,7 @@ export async function promoteOrganizer(sub: string): Promise<OrganizerResult> {
 const SEED_FILENAMES = [
   'pinehurst-may-2026-courses.json',
   'pete-dye-golf-club.json',
+  'guyan-golf-country-club.json',
 ] as const;
 
 /**

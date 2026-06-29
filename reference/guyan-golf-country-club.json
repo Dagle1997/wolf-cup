@@ -1,0 +1,42 @@
+{
+  "_meta": {
+    "trip": "guyan-library",
+    "extracted": "2026-06-29",
+    "source_note": "Authoritative data is the Guyan Golf & Country Club physical scorecard (Huntington, WV), mirrored verbatim from the Wolf Cup engine constant packages/engine/src/course.ts (COURSE_DATA + tee ratings). NOT scraped from the club website; the source URL below is a nominal course-identity URL only. Weekly tee rotation in Wolf Cup is black → blue → white.",
+    "validation": "All three tee yardage totals reconcile to the scorecard: Black 6523, Blue 6209, White 5795. Par 71 (out 36 / in 35). Stroke indexes are the 18 distinct values 1-18."
+  },
+  "courses": [
+    {
+      "name": "Guyan Golf & Country Club",
+      "location": "Huntington, WV",
+      "par": 71,
+      "source": "https://www.guyangcc.com",
+      "verified": true,
+      "tees": [
+        { "name": "Black", "rating": 71.3, "slope": 126, "yardage": 6523 },
+        { "name": "Blue",  "rating": 69.7, "slope": 121, "yardage": 6209 },
+        { "name": "White", "rating": 67.4, "slope": 118, "yardage": 5795 }
+      ],
+      "holes": [
+        { "hole": 1,  "par": 5, "si": 3,  "yardages": { "Black": 558, "Blue": 543, "White": 497 } },
+        { "hole": 2,  "par": 4, "si": 1,  "yardages": { "Black": 444, "Blue": 396, "White": 396 } },
+        { "hole": 3,  "par": 4, "si": 13, "yardages": { "Black": 339, "Blue": 325, "White": 325 } },
+        { "hole": 4,  "par": 4, "si": 5,  "yardages": { "Black": 358, "Blue": 353, "White": 276 } },
+        { "hole": 5,  "par": 4, "si": 9,  "yardages": { "Black": 423, "Blue": 409, "White": 402 } },
+        { "hole": 6,  "par": 3, "si": 17, "yardages": { "Black": 148, "Blue": 135, "White": 135 } },
+        { "hole": 7,  "par": 3, "si": 15, "yardages": { "Black": 222, "Blue": 201, "White": 188 } },
+        { "hole": 8,  "par": 5, "si": 7,  "yardages": { "Black": 525, "Blue": 515, "White": 499 } },
+        { "hole": 9,  "par": 4, "si": 11, "yardages": { "Black": 387, "Blue": 331, "White": 331 } },
+        { "hole": 10, "par": 4, "si": 8,  "yardages": { "Black": 352, "Blue": 344, "White": 344 } },
+        { "hole": 11, "par": 5, "si": 2,  "yardages": { "Black": 561, "Blue": 547, "White": 474 } },
+        { "hole": 12, "par": 3, "si": 18, "yardages": { "Black": 165, "Blue": 156, "White": 156 } },
+        { "hole": 13, "par": 4, "si": 6,  "yardages": { "Black": 378, "Blue": 365, "White": 365 } },
+        { "hole": 14, "par": 4, "si": 10, "yardages": { "Black": 361, "Blue": 341, "White": 309 } },
+        { "hole": 15, "par": 3, "si": 16, "yardages": { "Black": 191, "Blue": 167, "White": 140 } },
+        { "hole": 16, "par": 4, "si": 4,  "yardages": { "Black": 390, "Blue": 381, "White": 328 } },
+        { "hole": 17, "par": 4, "si": 14, "yardages": { "Black": 341, "Blue": 334, "White": 296 } },
+        { "hole": 18, "par": 4, "si": 12, "yardages": { "Black": 380, "Blue": 366, "White": 334 } }
+      ]
+    }
+  ]
+}
