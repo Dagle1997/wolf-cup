@@ -64,10 +64,27 @@ Putts input is gated to players in an active `putting_contest` sub-game
 (`scores.ts:391`+, `puttsPlayerIds`) but is **optional** — there's no "required when a
 putting game is active" rule, so snake couldn't settle in-app. Needs a gating rule.
 
-### 6. Many screens not designed for mobile entry — ⚠️ KNOWN BACKLOG
-Consistent with the standing note that the score-entry screen is the un-ported
-original T5 UI (Epic-3 ported only the leaderboard/scorecard *display*). Backlog:
-Wolf-style score-entry port.
+### 6. Many screens not designed for mobile entry — ✅ LARGELY RESOLVED (audited 2026-06-30)
+**Update (2026-06-30 source audit):** the standing "un-ported T5 UI" claim is now
+**STALE.** A re-read of `rounds.$roundId.score-entry.tsx` (modified 2026-06-29) shows
+the Wolf-style entry rework already shipped — the items listed here as missing are
+present:
+- Single-digit type → **auto-advance** to next player (L1367–1369).
+- **± steppers** for 10–20, no advance (L1374–1391 / L1889–1930).
+- **Prev/Next hole nav** + auto-advance to next unscored hole (save bar L2068–2101).
+- **Optimistic offline queue** (drains async — not a ~20s sync block) (L1505–1609).
+- **Required putts** before Save for putting-game players (L1419–1433).
+- **HI always shown; CH shown when the round is pinned** (L1881–1884; pin source
+  `scores.ts:254–280, 338`).
+- A **way back out of scoring** (← Event / Leaderboard →) + organizer group switcher
+  (L1751–1797).
+
+**Only genuinely-open item:** *vertical density* — with putts + snake + bonuses all on,
+4 player cards + sticky header + nav + sticky save bar will scroll on a 390×844 phone.
+Not a bug; inherent to the feature richness. Worth a device/viewport eyeball, and a
+small denser-card follow-up only if it feels cramped. This is NOT the "big port" — that
+work is done. (Item 9 / missing-handicap fail-closed decision below is unaffected and
+still open.)
 
 ### 7. Group-code text entry + Google auth — 👍 worked once auth was fixed (per Josh)
 
