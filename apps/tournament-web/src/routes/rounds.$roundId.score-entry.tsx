@@ -1930,108 +1930,113 @@ function ScoreEntryForm({
                         </button>
                       </div>
                     </div>
-                    {/* Putts (putting-game players only): a small per-hole number
-                        with −/+ steppers, so each hole's putts are visible/editable.
-                        Steppers (not typing) keep it from fighting the score input's
-                        auto-advance. Hidden entirely when no putting game is on. */}
-                    {puttsPlayerIds.has(member.playerId) && (
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                        <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-                          Putts
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <button
-                            type="button"
-                            data-testid={`putts-minus-${idx}`}
-                            aria-label={`Decrease putts for ${member.name}`}
-                            onClick={() => handlePuttsStep(member, -1)}
-                            style={{ width: 44, height: 44, flex: '0 0 auto', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-lg)', fontWeight: 800, lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer' }}
-                          >
-                            −
-                          </button>
-                          <span data-testid={`putts-value-${idx}`} style={{ minWidth: 30, textAlign: 'center', fontSize: 'var(--font-lg)', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: currentPutts[member.playerId] ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
-                            {currentPutts[member.playerId] ?? '–'}
-                          </span>
-                          <button
-                            type="button"
-                            data-testid={`putts-plus-${idx}`}
-                            aria-label={`Increase putts for ${member.name}`}
-                            onClick={() => handlePuttsStep(member, 1)}
-                            style={{ width: 44, height: 44, flex: '0 0 auto', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-lg)', fontWeight: 800, lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer' }}
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {/* Snake (snake-game players only): a single transferable token.
-                        Tap to take it — yours brightens, whoever had it greys out.
-                        Shown only for players who elected the snake game. */}
-                    {snakePlayerIds.has(member.playerId) && (() => {
-                      const holdsSnake = snakeHolder === member.playerId;
-                      return (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                          <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-                            Snake
-                          </span>
-                          <button
-                            type="button"
-                            data-testid={`snake-${member.playerId}`}
-                            aria-pressed={holdsSnake}
-                            aria-label={`${holdsSnake ? 'Has' : 'Give'} the snake${holdsSnake ? '' : ` to ${member.name}`}`}
-                            onClick={() => handleTakeSnake(member.playerId)}
-                            style={{
-                              width: 44, height: 44, flex: '0 0 auto', borderRadius: '50%',
-                              fontSize: 'var(--font-lg)', lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer',
-                              border: `1px solid ${holdsSnake ? '#22c55e' : 'var(--color-border)'}`,
-                              background: holdsSnake ? '#22c55e' : 'transparent',
-                              // Greyed (low opacity) when not held; full + bright when held.
-                              opacity: holdsSnake ? 1 : 0.4,
-                              filter: holdsSnake ? 'none' : 'grayscale(1)',
-                            }}
-                          >
-                            🐍
-                          </button>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Bonuses, in the same card, below a hairline divider. Circular
-                        toggles (no square corners) in the SAME colors as the
-                        leaderboard scorecard dots (emerald / amber / orange), with a
-                        dark letter on the bright active fill for contrast. The whole
-                        row is hidden when every claim-modifier is OFF in the pinned
-                        config (bonusButtons empty) — no orphaned "Bonus" label. */}
-                    {bonusButtons.length > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                      <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-                        Bonus
-                      </span>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {bonusButtons.map(([type, letter, color]) => {
-                          const on = claimState.has(`${member.playerId}:${currentHole}:${type}`);
+                    {/* Extras — putts, snake, and bonus claims collapsed onto ONE
+                        wrapping row under a SINGLE hairline divider (was three
+                        stacked rows, each with its own divider + label; this roughly
+                        halves card height so more of the foursome fits on a phone —
+                        post-trip density fix 2026-06-30). Each cluster is gated
+                        exactly as before (putting-game players → putts; snake-game
+                        players → snake token; ≥1 pinned claim-modifier → bonus
+                        toggles); the row renders only when at least one is active.
+                        Controls stay 44px tap targets — on a narrow phone with all
+                        three active the row wraps to a second line rather than
+                        overflowing. */}
+                    {(puttsPlayerIds.has(member.playerId) || snakePlayerIds.has(member.playerId) || bonusButtons.length > 0) && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 14, rowGap: 8, marginTop: 'var(--space-3)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
+                        {/* Putts (putting-game players only): −/value/+ steppers, so
+                            each hole's putts are editable without fighting the score
+                            input's auto-advance. */}
+                        {puttsPlayerIds.has(member.playerId) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                              Putts
+                            </span>
+                            <button
+                              type="button"
+                              data-testid={`putts-minus-${idx}`}
+                              aria-label={`Decrease putts for ${member.name}`}
+                              onClick={() => handlePuttsStep(member, -1)}
+                              style={{ width: 44, height: 44, flex: '0 0 auto', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-lg)', fontWeight: 800, lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer' }}
+                            >
+                              −
+                            </button>
+                            <span data-testid={`putts-value-${idx}`} style={{ minWidth: 30, textAlign: 'center', fontSize: 'var(--font-lg)', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: currentPutts[member.playerId] ? 'var(--color-text-primary)' : 'var(--color-text-muted)' }}>
+                              {currentPutts[member.playerId] ?? '–'}
+                            </span>
+                            <button
+                              type="button"
+                              data-testid={`putts-plus-${idx}`}
+                              aria-label={`Increase putts for ${member.name}`}
+                              onClick={() => handlePuttsStep(member, 1)}
+                              style={{ width: 44, height: 44, flex: '0 0 auto', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text-secondary)', fontSize: 'var(--font-lg)', fontWeight: 800, lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer' }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
+                        {/* Snake (snake-game players only): a single transferable
+                            token. Tap to take it — yours brightens, whoever had it
+                            greys out. */}
+                        {snakePlayerIds.has(member.playerId) && (() => {
+                          const holdsSnake = snakeHolder === member.playerId;
                           return (
                             <button
-                              key={type}
                               type="button"
-                              data-testid={`claim-${type}-${member.playerId}`}
-                              aria-pressed={on}
-                              aria-label={`${on ? 'Remove' : 'Add'} ${CLAIM_LABELS[type]} for ${member.name} on hole ${currentHole}`}
-                              onClick={() => handleToggleClaim(member.playerId, type)}
+                              data-testid={`snake-${member.playerId}`}
+                              aria-pressed={holdsSnake}
+                              aria-label={`${holdsSnake ? 'Has' : 'Give'} the snake${holdsSnake ? '' : ` to ${member.name}`}`}
+                              onClick={() => handleTakeSnake(member.playerId)}
                               style={{
                                 width: 44, height: 44, flex: '0 0 auto', borderRadius: '50%',
-                                fontSize: 'var(--font-sm)', fontWeight: 800, padding: 0, margin: 0, cursor: 'pointer',
-                                border: `1px solid ${on ? color : 'var(--color-border)'}`,
-                                background: on ? color : 'transparent',
-                                color: on ? '#0a0a0a' : 'var(--color-text-muted)',
+                                fontSize: 'var(--font-lg)', lineHeight: 1, padding: 0, margin: 0, cursor: 'pointer',
+                                border: `1px solid ${holdsSnake ? '#22c55e' : 'var(--color-border)'}`,
+                                background: holdsSnake ? '#22c55e' : 'transparent',
+                                // Greyed (low opacity) when not held; full + bright when held.
+                                opacity: holdsSnake ? 1 : 0.4,
+                                filter: holdsSnake ? 'none' : 'grayscale(1)',
                               }}
                             >
-                              {letter}
+                              🐍
                             </button>
                           );
-                        })}
+                        })()}
+                        {/* Bonuses — circular G/P/S toggles in the SAME colors as the
+                            leaderboard scorecard dots (emerald / amber / orange), with
+                            a dark letter on the bright active fill for contrast.
+                            Rendered only when ≥1 claim-modifier is on in the pinned
+                            config (no orphaned "Bonus" label otherwise). */}
+                        {bonusButtons.length > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 'var(--font-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                              Bonus
+                            </span>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              {bonusButtons.map(([type, letter, color]) => {
+                                const on = claimState.has(`${member.playerId}:${currentHole}:${type}`);
+                                return (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    data-testid={`claim-${type}-${member.playerId}`}
+                                    aria-pressed={on}
+                                    aria-label={`${on ? 'Remove' : 'Add'} ${CLAIM_LABELS[type]} for ${member.name} on hole ${currentHole}`}
+                                    onClick={() => handleToggleClaim(member.playerId, type)}
+                                    style={{
+                                      width: 44, height: 44, flex: '0 0 auto', borderRadius: '50%',
+                                      fontSize: 'var(--font-sm)', fontWeight: 800, padding: 0, margin: 0, cursor: 'pointer',
+                                      border: `1px solid ${on ? color : 'var(--color-border)'}`,
+                                      background: on ? color : 'transparent',
+                                      color: on ? '#0a0a0a' : 'var(--color-text-muted)',
+                                    }}
+                                  >
+                                    {letter}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </div>
                     )}
                   </div>
                 );
